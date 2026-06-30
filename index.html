@@ -8,26 +8,26 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
 :root{
-  --bg-base:#0E1A26;
-  --bg-surface:#16273A;
-  --bg-panel:#1D3248;
-  --bg-hover:#223A52;
-  --border:#2A4460;
-  --border-light:#1F3550;
-  --accent:#4A8EC2;
-  --accent-dim:#3A6E9A;
-  --accent-glow:rgba(74,142,194,0.15);
-  --amber:#E8971E;
-  --amber-dim:rgba(232,151,30,0.15);
-  --green:#2BB57A;
-  --green-dim:rgba(43,181,122,0.12);
-  --red:#D95B5B;
-  --red-dim:rgba(217,91,91,0.12);
-  --purple:#8B68D4;
-  --purple-dim:rgba(139,104,212,0.12);
-  --text-1:#D6E8F5;
-  --text-2:#7AA2BE;
-  --text-3:#4A6B85;
+  --bg-base:#EEF3F8;
+  --bg-surface:#FFFFFF;
+  --bg-panel:#E2EAF3;
+  --bg-hover:#D4E2EF;
+  --border:#C0D0DF;
+  --border-light:#D4E0EC;
+  --accent:#2272B6;
+  --accent-dim:#1A5A92;
+  --accent-glow:rgba(34,114,182,0.10);
+  --amber:#B87200;
+  --amber-dim:rgba(184,114,0,0.10);
+  --green:#158050;
+  --green-dim:rgba(21,128,80,0.10);
+  --red:#C03030;
+  --red-dim:rgba(192,48,48,0.10);
+  --purple:#5E44B0;
+  --purple-dim:rgba(94,68,176,0.10);
+  --text-1:#162030;
+  --text-2:#3A5870;
+  --text-3:#6A8AA4;
   --sidebar-w:224px;
   --topbar-h:56px;
   --radius:8px;
@@ -619,6 +619,51 @@ canvas{display:block;}
 .cal-detail-name{font-size:13px;font-weight:600;color:var(--text-1);}
 .cal-detail-who{font-size:11px;color:var(--text-3);margin-top:1px;}
 
+/* ─── MODAL ──────────────────────────────────── */
+.modal-overlay{
+  position:fixed;inset:0;
+  background:rgba(20,35,55,0.45);
+  display:flex;align-items:center;justify-content:center;
+  z-index:999;
+  opacity:0;pointer-events:none;
+  transition:opacity .2s;
+}
+.modal-overlay.open{opacity:1;pointer-events:all;}
+.modal{
+  background:var(--bg-surface);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  width:680px;max-width:96vw;
+  max-height:90vh;overflow-y:auto;
+  box-shadow:0 8px 40px rgba(0,0,0,.18);
+  transform:translateY(16px);
+  transition:transform .2s;
+}
+.modal-overlay.open .modal{transform:translateY(0);}
+.modal-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:18px 22px 14px;
+  border-bottom:1px solid var(--border-light);
+}
+.modal-head h3{font-size:16px;font-weight:800;color:var(--text-1);}
+.modal-close{
+  width:30px;height:30px;border-radius:6px;
+  background:none;border:none;cursor:pointer;
+  color:var(--text-3);font-size:18px;line-height:1;
+  display:grid;place-items:center;
+  transition:background .15s;
+}
+.modal-close:hover{background:var(--bg-panel);color:var(--text-1);}
+.modal-body{padding:20px 22px;}
+.modal-footer{
+  padding:14px 22px 18px;
+  border-top:1px solid var(--border-light);
+  display:flex;justify-content:flex-end;gap:10px;
+}
+.modal-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
+.modal-row.full{grid-template-columns:1fr;}
+.modal-row.three{grid-template-columns:1fr 1fr 1fr;}
+
 /* pending pill */
 .pending-row td:first-child{border-left:3px solid var(--amber);}
 .overdue-row td:first-child{border-left:3px solid var(--red);}
@@ -680,15 +725,6 @@ canvas{display:block;}
     </div>
   </div>
 
-  <div class="sidebar-footer">
-    <div class="user-card">
-      <div class="user-avatar">PP</div>
-      <div class="user-info">
-        <div><strong>พรชัย ป.</strong></div>
-        <div><span>วิศวกร Tooling</span></div>
-      </div>
-    </div>
-  </div>
 </nav>
 
 <!-- MAIN -->
@@ -2074,9 +2110,9 @@ const DATA = {
 const C_GREEN  = '#2BB57A';
 const C_AMBER  = '#E8971E';
 const C_RED    = '#D95B5B';
-const C_GRID   = '#2A4460';
-const C_TEXT   = '#4A6B85';
-const C_TEXT2  = '#7AA2BE';
+const C_GRID   = '#C0D0DF';
+const C_TEXT   = '#6A8AA4';
+const C_TEXT2  = '#3A5870';
 
 // ─── NAVIGATION ───────────────────────────────────────────────────────────────
 const PAGE_META = {
@@ -2445,6 +2481,181 @@ function renderCalDetail(sel) {
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 initDashboard();
 renderCal();
+</script>
+<!-- ══ MODAL: เพิ่ม Tooling ══ -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModalOutside(event)">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="modal-title">เพิ่ม Tooling ใหม่</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="saveModal()">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        บันทึก
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── MODAL FORMS ─────────────────────────────────────────────────────────────
+const MODAL_FORMS = {
+  roll: {
+    title: 'เพิ่ม Roll ใหม่',
+    fields: `
+      <div class="modal-row">
+        <div class="form-group"><label class="form-label">รหัส Roll</label><input class="form-input" placeholder="RL-0000"></div>
+        <div class="form-group"><label class="form-label">ชื่อ / รุ่น</label><input class="form-input" placeholder="เช่น Work Roll #1 (Top)"></div>
+      </div>
+      <div class="modal-row three">
+        <div class="form-group"><label class="form-label">วัสดุ</label><input class="form-input" placeholder="เช่น Forged Steel"></div>
+        <div class="form-group"><label class="form-label">เส้นผ่าศูนย์กลาง</label><input class="form-input" placeholder="เช่น Ø320 mm"></div>
+        <div class="form-group"><label class="form-label">ความกว้าง</label><input class="form-input" placeholder="เช่น 1,200 mm"></div>
+      </div>
+      <div class="modal-row">
+        <div class="form-group"><label class="form-label">ตำแหน่ง / Stand</label><input class="form-input" placeholder="เช่น Mill-01 Stand 1"></div>
+        <div class="form-group"><label class="form-label">Regrind ครั้งที่ / สูงสุด</label><input class="form-input" placeholder="เช่น 2/5"></div>
+      </div>
+      <div class="modal-row">
+        <div class="form-group"><label class="form-label">รอบการใช้งาน (ตัน)</label><input class="form-input" type="number" placeholder="0"></div>
+        <div class="form-group"><label class="form-label">สถานะ</label>
+          <select class="form-select">
+            <option>พร้อมใช้</option><option>ใช้งานอยู่</option>
+            <option>ซ่อมบำรุง</option><option>Regrind</option>
+            <option>มีปัญหา</option><option>หมดอายุ</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-row full">
+        <div class="form-group"><label class="form-label">หมายเหตุ</label><input class="form-input" placeholder="(ถ้ามี)"></div>
+      </div>`
+  },
+  sq: {
+    title: 'เพิ่ม Roll SQ ใหม่',
+    fields: `
+      <div class="modal-row">
+        <div class="form-group"><label class="form-label">รหัส</label><input class="form-input" placeholder="SQ-0000"></div>
+        <div class="form-group"><label class="form-label">ชื่อ / ประเภท</label><input class="form-input" placeholder="เช่น Guide Roll (Entry)"></div>
+      </div>
+      <div class="modal-row three">
+        <div class="form-group"><label class="form-label">ขนาด (mm)</label><input class="form-input" placeholder="เช่น Ø80×120"></div>
+        <div class="form-group"><label class="form-label">วัสดุ</label><input class="form-input" placeholder="เช่น Carbide"></div>
+        <div class="form-group"><label class="form-label">เครื่องที่ใช้</label><input class="form-input" placeholder="เช่น SQ Mill-01"></div>
+      </div>
+      <div class="modal-row">
+        <div class="form-group"><label class="form-label">ตำแหน่งเก็บ</label><input class="form-input" placeholder="เช่น SQ-A-01"></div>
+        <div class="form-group"><label class="form-label">รอบการใช้งาน (ตัน)</label><input class="form-input" type="number" placeholder="0"></div>
+      </div>
+      <div class="modal-row">
+        <div class="form-group"><label class="form-label">บำรุงรักษาล่าสุด</label><input class="form-input" type="date"></div>
+        <div class="form-group"><label class="form-label">สถานะ</label>
+          <select class="form-select">
+            <option>พร้อมใช้</option><option>ใช้งานอยู่</option>
+            <option>ซ่อมบำรุง</option><option>มีปัญหา</option><option>หมดอายุ</option>
+          </select>
+        </div>
+      </div>`
+  },
+  saw: {
+    title: 'เพิ่มใบเลื่อยใหม่',
+    fields: `
+      <div class="modal-row">
+        <div class="form-group"><label class="form-label">รหัส</label><input class="form-input" placeholder="SW-0000"></div>
+        <div class="form-group"><label class="form-label">ชื่อ / ยี่ห้อ</label><input class="form-input" placeholder="เช่น Circular Saw Ø710 (Kinkelder)"></div>
+      </div>
+      <div class="modal-row three">
+        <div class="form-group"><label class="form-label">เส้นผ่าศูนย์กลาง</label><input class="form-input" placeholder="เช่น Ø710 mm"></div>
+        <div class="form-group"><label class="form-label">จำนวนฟัน</label><input class="form-input" placeholder="เช่น 96 ฟัน"></div>
+        <div class="form-group"><label class="form-label">ความหนา kerf</label><input class="form-input" placeholder="เช่น 5.0 mm"></div>
+      </div>
+      <div class="modal-row">
+        <div class="form-group"><label class="form-label">วัสดุ / Grade</label><input class="form-input" placeholder="เช่น HSS-E"></div>
+        <div class="form-group"><label class="form-label">เครื่องที่ใช้</label><input class="form-input" placeholder="เช่น Cold Saw-01"></div>
+      </div>
+      <div class="modal-row three">
+        <div class="form-group"><label class="form-label">ตัดสะสม (ตัน)</label><input class="form-input" type="number" placeholder="0"></div>
+        <div class="form-group"><label class="form-label">Regrind ครั้งที่ / สูงสุด</label><input class="form-input" placeholder="เช่น 1/6"></div>
+        <div class="form-group"><label class="form-label">สถานะ</label>
+          <select class="form-select">
+            <option>พร้อมใช้</option><option>ใช้งานอยู่</option>
+            <option>Regrind</option><option>ใกล้หมดอายุ</option>
+            <option>มีปัญหา</option><option>หมดอายุ</option>
+          </select>
+        </div>
+      </div>`
+  },
+  slitter: {
+    title: 'เพิ่มมีดสลิตเตอร์ใหม่',
+    fields: `
+      <div class="modal-row">
+        <div class="form-group"><label class="form-label">รหัส</label><input class="form-input" placeholder="SL-0000"></div>
+        <div class="form-group"><label class="form-label">ชื่อ / ยี่ห้อ</label><input class="form-input" placeholder="เช่น Slitter Knife Ø250 (Kinkelder)"></div>
+      </div>
+      <div class="modal-row three">
+        <div class="form-group"><label class="form-label">เส้นผ่าศูนย์กลาง</label><input class="form-input" placeholder="เช่น Ø250 mm"></div>
+        <div class="form-group"><label class="form-label">ความหนา</label><input class="form-input" placeholder="เช่น 16 mm"></div>
+        <div class="form-group"><label class="form-label">รูเพลา (Bore)</label><input class="form-input" placeholder="เช่น Ø76.2 mm"></div>
+      </div>
+      <div class="modal-row">
+        <div class="form-group"><label class="form-label">วัสดุ / Grade</label><input class="form-input" placeholder="เช่น HSS M2"></div>
+        <div class="form-group"><label class="form-label">เครื่องที่ใช้</label><input class="form-input" placeholder="เช่น Slitter-01"></div>
+      </div>
+      <div class="modal-row three">
+        <div class="form-group"><label class="form-label">ตัดสะสม (ตัน)</label><input class="form-input" type="number" placeholder="0"></div>
+        <div class="form-group"><label class="form-label">Regrind ครั้งที่ / สูงสุด</label><input class="form-input" placeholder="เช่น 2/8"></div>
+        <div class="form-group"><label class="form-label">สถานะ</label>
+          <select class="form-select">
+            <option>พร้อมใช้</option><option>ใช้งานอยู่</option>
+            <option>Regrind</option><option>ใกล้หมดอายุ</option>
+            <option>มีปัญหา</option><option>หมดอายุ</option>
+          </select>
+        </div>
+      </div>`
+  }
+};
+
+let currentRegTab = 'roll';
+
+function openModal() {
+  const form = MODAL_FORMS[currentRegTab] || MODAL_FORMS.roll;
+  document.getElementById('modal-title').textContent = form.title;
+  document.getElementById('modal-body').innerHTML = form.fields;
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+}
+
+function closeModalOutside(e) {
+  if (e.target === document.getElementById('modal-overlay')) closeModal();
+}
+
+function saveModal() {
+  // Show success feedback then close
+  const btn = document.querySelector('.modal-footer .btn-primary');
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> บันทึกแล้ว';
+  btn.style.background = 'var(--green)';
+  setTimeout(() => {
+    btn.innerHTML = orig;
+    btn.style.background = '';
+    closeModal();
+  }, 1000);
+}
+
+// Wire up the Add button
+document.getElementById('add-btn').addEventListener('click', openModal);
+
+// Track active reg tab for modal context
+const origSwitchRegTab = switchRegTab;
+window.switchRegTab = function(key) {
+  currentRegTab = key;
+  origSwitchRegTab(key);
+};
 </script>
 </body>
 </html>
