@@ -2507,20 +2507,14 @@ const MODAL_FORMS = {
     title: 'เพิ่ม Roll ใหม่',
     fields: `
       <div class="modal-row">
-        <div class="form-group"><label class="form-label">รหัส Roll</label><input class="form-input" placeholder="RL-0000"></div>
-        <div class="form-group"><label class="form-label">ชื่อ / รุ่น</label><input class="form-input" placeholder="เช่น Work Roll #1 (Top)"></div>
-      </div>
-      <div class="modal-row three">
-        <div class="form-group"><label class="form-label">วัสดุ</label><input class="form-input" placeholder="เช่น Forged Steel"></div>
-        <div class="form-group"><label class="form-label">เส้นผ่าศูนย์กลาง</label><input class="form-input" placeholder="เช่น Ø320 mm"></div>
-        <div class="form-group"><label class="form-label">ความกว้าง</label><input class="form-input" placeholder="เช่น 1,200 mm"></div>
+        <div class="form-group"><label class="form-label">รหัส Roll</label><input class="form-input" placeholder="เช่น RL-0001"></div>
+        <div class="form-group"><label class="form-label">ชุด Roll</label><input class="form-input" placeholder="เช่น ชุด A / Set 1"></div>
       </div>
       <div class="modal-row">
-        <div class="form-group"><label class="form-label">ตำแหน่ง / Stand</label><input class="form-input" placeholder="เช่น Mill-01 Stand 1"></div>
-        <div class="form-group"><label class="form-label">Regrind ครั้งที่ / สูงสุด</label><input class="form-input" placeholder="เช่น 2/5"></div>
+        <div class="form-group"><label class="form-label">ไซร์ Roll</label><input class="form-input" placeholder="เช่น Ø320×1200 mm"></div>
+        <div class="form-group"><label class="form-label">สีชุด Roll</label><input class="form-input" placeholder="เช่น แดง / น้ำเงิน / เขียว"></div>
       </div>
       <div class="modal-row">
-        <div class="form-group"><label class="form-label">รอบการใช้งาน (ตัน)</label><input class="form-input" type="number" placeholder="0"></div>
         <div class="form-group"><label class="form-label">สถานะ</label>
           <select class="form-select">
             <option>พร้อมใช้</option><option>ใช้งานอยู่</option>
@@ -2528,8 +2522,6 @@ const MODAL_FORMS = {
             <option>มีปัญหา</option><option>หมดอายุ</option>
           </select>
         </div>
-      </div>
-      <div class="modal-row full">
         <div class="form-group"><label class="form-label">หมายเหตุ</label><input class="form-input" placeholder="(ถ้ามี)"></div>
       </div>`
   },
