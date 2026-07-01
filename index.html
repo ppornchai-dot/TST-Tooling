@@ -1015,22 +1015,39 @@ canvas{display:block;}
 
       <!-- ── TAB: ROLL ── -->
       <div class="reg-panel active" id="regpanel-roll">
-        <div class="reg-kpi-row">
-          <div class="reg-kpi"><span class="reg-kpi-val">62</span><span class="reg-kpi-lbl">รายการทั้งหมด</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--green);">44</span><span class="reg-kpi-lbl">พร้อมใช้</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--amber);">12</span><span class="reg-kpi-lbl">ซ่อมบำรุง / Regrind</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);">6</span><span class="reg-kpi-lbl">หมดอายุ</span></div>
+        <div class="reg-kpi-row" id="roll-kpi-row">
+          <div class="reg-kpi"><span class="reg-kpi-val" id="kpi-roll-total">0</span><span class="reg-kpi-lbl">รายการทั้งหมด</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--green);" id="kpi-roll-ready">0</span><span class="reg-kpi-lbl">พร้อมใช้</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--amber);" id="kpi-roll-repair">0</span><span class="reg-kpi-lbl">ซ่อมบำรุง / Regrind</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-roll-expired">0</span><span class="reg-kpi-lbl">หมดอายุ</span></div>
         </div>
-        <div class="card">
-          <div class="table-wrap">
-            <table>
-              <thead><tr>
-                <th>รหัส</th><th>ชื่อ Roll / รุ่น</th><th>วัสดุ</th><th>เส้นผ่าศูนย์กลาง</th><th>ความกว้าง</th><th>ตำแหน่ง</th><th>รอบการใช้งาน</th><th>Regrind ครั้งที่</th><th>บำรุงล่าสุด</th><th>สถานะ</th><th></th>
-              </tr></thead>
-              <tbody id="tbody-roll"></tbody>
-            </table>
+        <div style="display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:start;">
+          <!-- LEFT: set list -->
+          <div class="card" style="position:sticky;top:70px;">
+            <div style="padding:12px 14px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:13px;font-weight:700;">กลุ่ม Roll</span>
+            </div>
+            <div style="padding:8px;">
+              <input type="text" class="form-input" id="roll-set-search" placeholder="ค้นหากลุ่ม..." oninput="renderRollSetList()" style="width:100%;margin-bottom:6px;">
+            </div>
+            <div id="roll-set-list" style="max-height:520px;overflow-y:auto;padding:4px 8px 8px;"></div>
           </div>
-          <div class="tbl-footer" id="footer-roll"></div>
+          <!-- RIGHT: roll detail -->
+          <div class="card">
+            <div style="padding:12px 16px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:13px;font-weight:700;" id="roll-detail-title">เลือกกลุ่มจากซ้าย</span>
+              <span style="font-size:11px;color:var(--text-3);" id="roll-detail-count"></span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr>
+                  <th>รหัส</th><th>ชื่อ Roll / รุ่น</th><th>วัสดุ</th><th>เส้นผ่าศูนย์กลาง</th><th>ความกว้าง</th><th>ตำแหน่ง</th><th>รอบการใช้งาน</th><th>Regrind ครั้งที่</th><th>บำรุงล่าสุด</th><th>สถานะ</th><th></th>
+                </tr></thead>
+                <tbody id="tbody-roll"></tbody>
+              </table>
+            </div>
+            <div class="tbl-footer" id="footer-roll"></div>
+          </div>
         </div>
       </div>
 
@@ -2656,16 +2673,16 @@ function saveModal() {
 // ─── TOOLING DATA ────────────────────────────────────────────────────────────
 const toolingData = {
   roll: [
-    {id:'RL-0001',name:'Work Roll #1 (Top)',material:'Forged Steel',diameter:'Ø320 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'1,840 ตัน',regrind:'3/5',lastService:'10 มิ.ย. 69',status:'พร้อมใช้'},
-    {id:'RL-0002',name:'Work Roll #1 (Bot)',material:'Forged Steel',diameter:'Ø320 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'1,840 ตัน',regrind:'3/5',lastService:'10 มิ.ย. 69',status:'พร้อมใช้'},
-    {id:'RL-0003',name:'Backup Roll #1 (Top)',material:'Cast Iron',diameter:'Ø650 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'12,400 ตัน',regrind:'1/3',lastService:'5 มิ.ย. 69',status:'พร้อมใช้'},
-    {id:'RL-0004',name:'Backup Roll #1 (Bot)',material:'Cast Iron',diameter:'Ø650 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'12,400 ตัน',regrind:'1/3',lastService:'5 มิ.ย. 69',status:'พร้อมใช้'},
-    {id:'RL-0007',name:'Work Roll #2 (Top)',material:'Forged Steel',diameter:'Ø300 mm',width:'1,200 mm',position:'Mill-01 Stand 2',usage:'980 ตัน',regrind:'2/5',lastService:'20 มิ.ย. 69',status:'Regrind'},
-    {id:'RL-0008',name:'Work Roll #2 (Bot)',material:'Forged Steel',diameter:'Ø300 mm',width:'1,200 mm',position:'Mill-01 Stand 2',usage:'980 ตัน',regrind:'2/5',lastService:'20 มิ.ย. 69',status:'Regrind'},
-    {id:'RL-0015',name:'Edger Roll (Left)',material:'Tool Steel D2',diameter:'Ø250 mm',width:'180 mm',position:'Mill-01 Edger',usage:'3,200 ตัน',regrind:'4/5',lastService:'1 มิ.ย. 69',status:'หมดอายุ'},
-    {id:'RL-0016',name:'Edger Roll (Right)',material:'Tool Steel D2',diameter:'Ø250 mm',width:'180 mm',position:'Mill-01 Edger',usage:'3,200 ตัน',regrind:'4/5',lastService:'1 มิ.ย. 69',status:'หมดอายุ'},
-    {id:'RL-0021',name:'Straightener Roll Set A',material:'Forged Steel',diameter:'Ø180 mm',width:'900 mm',position:'Leveler-01',usage:'5,600 ตัน',regrind:'2/4',lastService:'28 พ.ค. 69',status:'ซ่อมบำรุง'},
-    {id:'RL-0030',name:'Pinch Roll (Entry)',material:'Rubber-coated',diameter:'Ø200 mm',width:'1,100 mm',position:'Mill-02 Entry',usage:'8,100 ตัน',regrind:'—',lastService:'15 มิ.ย. 69',status:'ใช้งานอยู่'}
+    {id:'RL-0001',name:'Work Roll #1 (Top)',material:'Forged Steel',diameter:'Ø320 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'1,840 ตัน',regrind:'3/5',lastService:'10 มิ.ย. 69',status:'พร้อมใช้',set:'Work Roll Stand 1 — Ø320 mm'},
+    {id:'RL-0002',name:'Work Roll #1 (Bot)',material:'Forged Steel',diameter:'Ø320 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'1,840 ตัน',regrind:'3/5',lastService:'10 มิ.ย. 69',status:'พร้อมใช้',set:'Work Roll Stand 1 — Ø320 mm'},
+    {id:'RL-0003',name:'Backup Roll #1 (Top)',material:'Cast Iron',diameter:'Ø650 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'12,400 ตัน',regrind:'1/3',lastService:'5 มิ.ย. 69',status:'พร้อมใช้',set:'Backup Roll Stand 1 — Ø650 mm'},
+    {id:'RL-0004',name:'Backup Roll #1 (Bot)',material:'Cast Iron',diameter:'Ø650 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'12,400 ตัน',regrind:'1/3',lastService:'5 มิ.ย. 69',status:'พร้อมใช้',set:'Backup Roll Stand 1 — Ø650 mm'},
+    {id:'RL-0007',name:'Work Roll #2 (Top)',material:'Forged Steel',diameter:'Ø300 mm',width:'1,200 mm',position:'Mill-01 Stand 2',usage:'980 ตัน',regrind:'2/5',lastService:'20 มิ.ย. 69',status:'Regrind',set:'Work Roll Stand 2 — Ø300 mm'},
+    {id:'RL-0008',name:'Work Roll #2 (Bot)',material:'Forged Steel',diameter:'Ø300 mm',width:'1,200 mm',position:'Mill-01 Stand 2',usage:'980 ตัน',regrind:'2/5',lastService:'20 มิ.ย. 69',status:'Regrind',set:'Work Roll Stand 2 — Ø300 mm'},
+    {id:'RL-0015',name:'Edger Roll (Left)',material:'Tool Steel D2',diameter:'Ø250 mm',width:'180 mm',position:'Mill-01 Edger',usage:'3,200 ตัน',regrind:'4/5',lastService:'1 มิ.ย. 69',status:'หมดอายุ',set:'Edger Roll — Ø250 mm'},
+    {id:'RL-0016',name:'Edger Roll (Right)',material:'Tool Steel D2',diameter:'Ø250 mm',width:'180 mm',position:'Mill-01 Edger',usage:'3,200 ตัน',regrind:'4/5',lastService:'1 มิ.ย. 69',status:'หมดอายุ',set:'Edger Roll — Ø250 mm'},
+    {id:'RL-0021',name:'Straightener Roll Set A',material:'Forged Steel',diameter:'Ø180 mm',width:'900 mm',position:'Leveler-01',usage:'5,600 ตัน',regrind:'2/4',lastService:'28 พ.ค. 69',status:'ซ่อมบำรุง',set:'Straightener Roll — Ø180 mm'},
+    {id:'RL-0030',name:'Pinch Roll (Entry)',material:'Rubber-coated',diameter:'Ø200 mm',width:'1,100 mm',position:'Mill-02 Entry',usage:'8,100 ตัน',regrind:'—',lastService:'15 มิ.ย. 69',status:'ใช้งานอยู่',set:'Pinch Roll — Ø200 mm'}
   ],
   sq: [
     {id:'SQ-0001',name:'Guide Roll (Entry) ชุด A',size:'Ø80×120',material:'Carbide',machine:'SQ Mill-01',location:'SQ-A-01',usage:'2,100 ตัน',lastService:'18 มิ.ย. 69',status:'พร้อมใช้'},
@@ -2719,12 +2736,67 @@ function renderFooter(tab, total, shown, page, totalPages) {
     `<span>แสดง ${shown} จาก ${total} รายการ</span><div class="tbl-pages">${btns}</div>`;
 }
 
+let selectedRollSet = null;
+
+function getRollSets() {
+  const sets = [];
+  toolingData.roll.forEach(r => { if (!sets.includes(r.set)) sets.push(r.set); });
+  return sets;
+}
+
+function renderRollSetList() {
+  const q = (document.getElementById('roll-set-search')||{}).value||'';
+  const sets = getRollSets().filter(s => s.toLowerCase().includes(q.toLowerCase()));
+  const el = document.getElementById('roll-set-list');
+  if (!el) return;
+  el.innerHTML = sets.map(s => {
+    const rolls = toolingData.roll.filter(r => r.set === s);
+    const hasIssue = rolls.some(r => r.status === 'หมดอายุ' || r.status === 'มีปัญหา');
+    const hasWarn  = rolls.some(r => r.status === 'ซ่อมบำรุง' || r.status === 'Regrind');
+    const dot = hasIssue ? 'var(--red)' : hasWarn ? 'var(--amber)' : 'var(--green)';
+    const active = s === selectedRollSet;
+    return `<div onclick="selectRollSet('${s.replace(/'/g,"\\'")}')"
+      style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:6px;cursor:pointer;
+             background:${active?'var(--accent-glow)':'transparent'};
+             color:${active?'var(--accent)':'var(--text-2)'};font-weight:${active?'700':'400'};
+             margin-bottom:2px;transition:background .12s;">
+      <span style="width:8px;height:8px;border-radius:50%;background:${dot};flex-shrink:0;"></span>
+      <span style="flex:1;font-size:13px;">${s}</span>
+      <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;">${rolls.length}</span>
+    </div>`;
+  }).join('');
+}
+
+function selectRollSet(setName) {
+  selectedRollSet = setName;
+  renderRollSetList();
+  renderRollTable(1);
+}
+
+function updateRollKpi() {
+  const d = toolingData.roll;
+  document.getElementById('kpi-roll-total').textContent = d.length;
+  document.getElementById('kpi-roll-ready').textContent = d.filter(r=>r.status==='พร้อมใช้'||r.status==='ใช้งานอยู่').length;
+  document.getElementById('kpi-roll-repair').textContent = d.filter(r=>r.status==='ซ่อมบำรุง'||r.status==='Regrind').length;
+  document.getElementById('kpi-roll-expired').textContent = d.filter(r=>r.status==='หมดอายุ'||r.status==='มีปัญหา').length;
+  document.getElementById('cnt-roll').textContent = d.length;
+}
+
 function renderRollTable(page) {
-  const data = toolingData.roll;
+  const allData = toolingData.roll;
+  const data = selectedRollSet ? allData.filter(r => r.set === selectedRollSet) : allData;
   const start = (page-1)*PAGE_SIZE;
   const rows = data.slice(start, start+PAGE_SIZE);
-  document.getElementById('tbody-roll').innerHTML = rows.map((r,i)=>`
-    <tr>
+
+  // update right-panel header
+  const titleEl = document.getElementById('roll-detail-title');
+  const countEl = document.getElementById('roll-detail-count');
+  if (titleEl) titleEl.textContent = selectedRollSet || 'Roll ทั้งหมด';
+  if (countEl) countEl.textContent = data.length + ' รายการ';
+
+  const html = rows.map(r => {
+    const realIdx = allData.indexOf(r);
+    return `<tr>
       <td class="muted">${r.id}</td>
       <td><strong>${r.name}</strong></td>
       <td>${r.material}</td>
@@ -2736,13 +2808,17 @@ function renderRollTable(page) {
       <td class="muted">${r.lastService}</td>
       <td>${statusChip(r.status)}</td>
       <td style="display:flex;gap:4px;">
-        <button class="btn btn-ghost btn-sm" onclick="editRoll(${start+i})">แก้ไข</button>
-        <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteRoll(${start+i})">ลบ</button>
+        <button class="btn btn-ghost btn-sm" onclick="editRoll(${realIdx})">แก้ไข</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteRoll(${realIdx})">ลบ</button>
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('') || `<tr><td colspan="11" class="empty" style="padding:32px;text-align:center;color:var(--text-3);">เลือกกลุ่ม Roll จากด้านซ้าย</td></tr>`;
+
+  document.getElementById('tbody-roll').innerHTML = html;
   const tp = Math.max(1, Math.ceil(data.length/PAGE_SIZE));
   renderFooter('roll', data.length, rows.length, page, tp);
-  document.getElementById('cnt-roll').textContent = data.length;
+  updateRollKpi();
+  renderRollSetList();
 }
 
 function editRoll(idx) {
