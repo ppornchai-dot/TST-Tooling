@@ -1025,7 +1025,7 @@ canvas{display:block;}
           <!-- LEFT: set list -->
           <div class="card" style="position:sticky;top:70px;">
             <div style="padding:12px 14px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
-              <span style="font-size:13px;font-weight:700;">กลุ่ม Roll</span>
+              <span style="font-size:13px;font-weight:700;">Size Roll</span>
             </div>
             <div style="padding:8px;">
               <input type="text" class="form-input" id="roll-set-search" placeholder="ค้นหากลุ่ม..." oninput="renderRollSetList()" style="width:100%;margin-bottom:6px;">
@@ -1041,7 +1041,7 @@ canvas{display:block;}
             <div class="table-wrap">
               <table>
                 <thead><tr>
-                  <th>รหัส</th><th>ชื่อ Roll / รุ่น</th><th>วัสดุ</th><th>เส้นผ่าศูนย์กลาง</th><th>ความกว้าง</th><th>ตำแหน่ง</th><th>รอบการใช้งาน</th><th>Regrind ครั้งที่</th><th>บำรุงล่าสุด</th><th>สถานะ</th><th></th>
+                  <th>รหัส</th><th>ชื่อ Roll</th><th>เส้นผ่าศูนย์กลาง</th><th>ความกว้าง</th><th>ตำแหน่ง</th><th>รอบการใช้งาน</th><th>แต่งครั้งที่</th><th>แต่งล่าสุด</th><th>สถานะ</th><th></th>
                 </tr></thead>
                 <tbody id="tbody-roll"></tbody>
               </table>
@@ -2487,20 +2487,19 @@ const MODAL_FORMS = {
     fields: `
       <div class="modal-row">
         <div class="form-group"><label class="form-label">รหัส</label><input class="form-input" id="f-id" placeholder="เช่น RL-0031"></div>
-        <div class="form-group"><label class="form-label">ชื่อ Roll / รุ่น</label><input class="form-input" id="f-name" placeholder="เช่น Work Roll #3 (Top)"></div>
+        <div class="form-group"><label class="form-label">ชื่อ Roll</label><input class="form-input" id="f-name" placeholder="เช่น Work Roll #3 (Top)"></div>
       </div>
-      <div class="modal-row three">
-        <div class="form-group"><label class="form-label">วัสดุ</label><input class="form-input" id="f-material" placeholder="เช่น Forged Steel"></div>
+      <div class="modal-row">
         <div class="form-group"><label class="form-label">เส้นผ่าศูนย์กลาง</label><input class="form-input" id="f-diameter" placeholder="เช่น Ø320 mm"></div>
         <div class="form-group"><label class="form-label">ความกว้าง</label><input class="form-input" id="f-width" placeholder="เช่น 1,200 mm"></div>
       </div>
       <div class="modal-row three">
         <div class="form-group"><label class="form-label">ตำแหน่ง</label><input class="form-input" id="f-position" placeholder="เช่น Mill-01 Stand 1"></div>
         <div class="form-group"><label class="form-label">รอบการใช้งาน (ตัน)</label><input class="form-input" id="f-usage" placeholder="เช่น 0 ตัน"></div>
-        <div class="form-group"><label class="form-label">Regrind ครั้งที่ / สูงสุด</label><input class="form-input" id="f-regrind" placeholder="เช่น 0/5"></div>
+        <div class="form-group"><label class="form-label">แต่งครั้งที่ / สูงสุด</label><input class="form-input" id="f-regrind" placeholder="เช่น 0/5"></div>
       </div>
       <div class="modal-row">
-        <div class="form-group"><label class="form-label">บำรุงล่าสุด</label><input class="form-input" id="f-service" placeholder="เช่น 1 ก.ค. 69"></div>
+        <div class="form-group"><label class="form-label">แต่งล่าสุด</label><input class="form-input" id="f-service" type="date"></div>
         <div class="form-group"><label class="form-label">สถานะ</label>
           <select class="form-select" id="f-status">
             <option>พร้อมใช้</option><option>ใช้งานอยู่</option>
@@ -2799,7 +2798,6 @@ function renderRollTable(page) {
     return `<tr>
       <td class="muted">${r.id}</td>
       <td><strong>${r.name}</strong></td>
-      <td>${r.material}</td>
       <td>${r.diameter}</td>
       <td>${r.width}</td>
       <td>${r.position}</td>
