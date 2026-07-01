@@ -2469,25 +2469,28 @@ const MODAL_FORMS = {
     title: 'เพิ่ม Roll ใหม่',
     fields: `
       <div class="modal-row">
-        <div class="form-group"><label class="form-label">รหัส Roll</label><input class="form-input" placeholder="เช่น RL-0001"></div>
-        <div class="form-group"><label class="form-label">ชุด Roll</label><input class="form-input" placeholder="เช่น ชุด A / Set 1"></div>
+        <div class="form-group"><label class="form-label">รหัส</label><input class="form-input" id="f-id" placeholder="เช่น RL-0031"></div>
+        <div class="form-group"><label class="form-label">ชื่อ Roll / รุ่น</label><input class="form-input" id="f-name" placeholder="เช่น Work Roll #3 (Top)"></div>
+      </div>
+      <div class="modal-row three">
+        <div class="form-group"><label class="form-label">วัสดุ</label><input class="form-input" id="f-material" placeholder="เช่น Forged Steel"></div>
+        <div class="form-group"><label class="form-label">เส้นผ่าศูนย์กลาง</label><input class="form-input" id="f-diameter" placeholder="เช่น Ø320 mm"></div>
+        <div class="form-group"><label class="form-label">ความกว้าง</label><input class="form-input" id="f-width" placeholder="เช่น 1,200 mm"></div>
+      </div>
+      <div class="modal-row three">
+        <div class="form-group"><label class="form-label">ตำแหน่ง</label><input class="form-input" id="f-position" placeholder="เช่น Mill-01 Stand 1"></div>
+        <div class="form-group"><label class="form-label">รอบการใช้งาน (ตัน)</label><input class="form-input" id="f-usage" placeholder="เช่น 0 ตัน"></div>
+        <div class="form-group"><label class="form-label">Regrind ครั้งที่ / สูงสุด</label><input class="form-input" id="f-regrind" placeholder="เช่น 0/5"></div>
       </div>
       <div class="modal-row">
-        <div class="form-group"><label class="form-label">ไซร์ Roll</label><input class="form-input" placeholder="เช่น Ø320×1200 mm"></div>
-        <div class="form-group"><label class="form-label">สีชุด Roll</label><input class="form-input" placeholder="เช่น แดง / น้ำเงิน / เขียว"></div>
-      </div>
-      <div class="modal-row">
-        <div class="form-group"><label class="form-label">เครื่อง</label><input class="form-input" placeholder="เช่น Mill-01"></div>
+        <div class="form-group"><label class="form-label">บำรุงล่าสุด</label><input class="form-input" id="f-service" placeholder="เช่น 1 ก.ค. 69"></div>
         <div class="form-group"><label class="form-label">สถานะ</label>
-          <select class="form-select">
+          <select class="form-select" id="f-status">
             <option>พร้อมใช้</option><option>ใช้งานอยู่</option>
             <option>ซ่อมบำรุง</option><option>Regrind</option>
             <option>มีปัญหา</option><option>หมดอายุ</option>
           </select>
         </div>
-      </div>
-      <div class="modal-row full">
-        <div class="form-group"><label class="form-label">หมายเหตุ</label><input class="form-input" placeholder="(ถ้ามี)"></div>
       </div>`
   },
   sq: {
@@ -2597,11 +2600,13 @@ function saveModal() {
   const vals = Array.from(inputs).map(i => i.value.trim() || '—');
 
   if (currentRegTab === 'roll') {
+    const g = id => (document.getElementById(id)||{}).value||'—';
     toolingData.roll.push({
-      id: vals[0]||'RL-NEW', name: vals[1]||'(ไม่มีชื่อ)',
-      material: '—', diameter: vals[2]||'—', width: '—',
-      position: vals[4]||'—', usage: '0 ตัน', regrind: '0/5',
-      lastService: '—', status: vals[5]||'พร้อมใช้'
+      id: g('f-id')||'RL-NEW', name: g('f-name')||'(ไม่มีชื่อ)',
+      material: g('f-material'), diameter: g('f-diameter'),
+      width: g('f-width'), position: g('f-position'),
+      usage: g('f-usage'), regrind: g('f-regrind'),
+      lastService: g('f-service'), status: g('f-status')
     });
     const lastPage = Math.ceil(toolingData.roll.length / PAGE_SIZE);
     pageState.roll = lastPage;
@@ -2716,8 +2721,9 @@ function renderFooter(tab, total, shown, page, totalPages) {
 
 function renderRollTable(page) {
   const data = toolingData.roll;
-  const rows = data.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
-  document.getElementById('tbody-roll').innerHTML = rows.map(r=>`
+  const start = (page-1)*PAGE_SIZE;
+  const rows = data.slice(start, start+PAGE_SIZE);
+  document.getElementById('tbody-roll').innerHTML = rows.map((r,i)=>`
     <tr>
       <td class="muted">${r.id}</td>
       <td><strong>${r.name}</strong></td>
@@ -2729,11 +2735,55 @@ function renderRollTable(page) {
       <td class="muted">${r.regrind}</td>
       <td class="muted">${r.lastService}</td>
       <td>${statusChip(r.status)}</td>
-      <td><button class="btn btn-ghost btn-sm">ดู</button></td>
+      <td style="display:flex;gap:4px;">
+        <button class="btn btn-ghost btn-sm" onclick="editRoll(${start+i})">แก้ไข</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteRoll(${start+i})">ลบ</button>
+      </td>
     </tr>`).join('');
   const tp = Math.max(1, Math.ceil(data.length/PAGE_SIZE));
   renderFooter('roll', data.length, rows.length, page, tp);
   document.getElementById('cnt-roll').textContent = data.length;
+}
+
+function editRoll(idx) {
+  const r = toolingData.roll[idx];
+  document.getElementById('modal-title').textContent = 'แก้ไข Roll — ' + r.id;
+  document.getElementById('modal-body').innerHTML = MODAL_FORMS.roll.fields;
+  document.getElementById('f-id').value = r.id;
+  document.getElementById('f-name').value = r.name;
+  document.getElementById('f-material').value = r.material === '—' ? '' : r.material;
+  document.getElementById('f-diameter').value = r.diameter === '—' ? '' : r.diameter;
+  document.getElementById('f-width').value = r.width === '—' ? '' : r.width;
+  document.getElementById('f-position').value = r.position === '—' ? '' : r.position;
+  document.getElementById('f-usage').value = r.usage === '—' ? '' : r.usage;
+  document.getElementById('f-regrind').value = r.regrind === '—' ? '' : r.regrind;
+  document.getElementById('f-service').value = r.lastService === '—' ? '' : r.lastService;
+  document.getElementById('f-status').value = r.status;
+  document.getElementById('modal-overlay').classList.add('open');
+  document.querySelector('.modal-footer .btn-primary').onclick = function() {
+    const g = id => (document.getElementById(id)||{}).value||'—';
+    toolingData.roll[idx] = {
+      id: g('f-id'), name: g('f-name'), material: g('f-material'),
+      diameter: g('f-diameter'), width: g('f-width'), position: g('f-position'),
+      usage: g('f-usage'), regrind: g('f-regrind'),
+      lastService: g('f-service'), status: g('f-status')
+    };
+    renderRollTable(pageState.roll);
+    const btn = this;
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✓ บันทึกแล้ว';
+    btn.style.background = 'var(--green)';
+    setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.onclick = saveModal; closeModal(); }, 1000);
+  };
+}
+
+function deleteRoll(idx) {
+  const r = toolingData.roll[idx];
+  if (!confirm('ลบ "' + r.name + '" ออกจากระบบ?')) return;
+  toolingData.roll.splice(idx, 1);
+  const maxPage = Math.max(1, Math.ceil(toolingData.roll.length / PAGE_SIZE));
+  if (pageState.roll > maxPage) pageState.roll = maxPage;
+  renderRollTable(pageState.roll);
 }
 
 function renderSqTable(page) {
