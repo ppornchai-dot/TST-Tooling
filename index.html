@@ -2635,7 +2635,10 @@ function saveModal() {
     };
     toolingData.roll.push(newRoll);
     if (newRoll.set) extraRollSets = extraRollSets.filter(s => s !== newRoll.set);
-    const lastPage = Math.ceil(toolingData.roll.length / PAGE_SIZE);
+    const filteredCount = selectedRollSet
+      ? toolingData.roll.filter(r => r.set === selectedRollSet).length
+      : toolingData.roll.length;
+    const lastPage = Math.ceil(filteredCount / PAGE_SIZE) || 1;
     pageState.roll = lastPage;
     renderRollTable(lastPage);
   } else if (currentRegTab === 'sq') {
