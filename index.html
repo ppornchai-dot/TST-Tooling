@@ -1036,8 +1036,14 @@ canvas{display:block;}
           <!-- RIGHT: roll detail -->
           <div class="card" style="min-width:0;overflow:hidden;">
             <div style="padding:12px 16px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
-              <span style="font-size:13px;font-weight:700;" id="roll-detail-title">เลือกกลุ่มจากซ้าย</span>
-              <span style="font-size:11px;color:var(--text-3);" id="roll-detail-count"></span>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:13px;font-weight:700;" id="roll-detail-title">เลือกกลุ่มจากซ้าย</span>
+                <span style="font-size:11px;color:var(--text-3);" id="roll-detail-count"></span>
+              </div>
+              <button class="btn btn-primary btn-sm" id="add-roll-btn" onclick="openModal('roll')">
+                <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                เพิ่ม Roll
+              </button>
             </div>
             <div class="table-wrap" style="overflow-x:auto;">
               <table>
@@ -2619,13 +2625,16 @@ function saveModal() {
 
   if (currentRegTab === 'roll') {
     const g = id => (document.getElementById(id)||{}).value||'—';
-    toolingData.roll.push({
+    const newRoll = {
       id: g('f-id')||'RL-NEW', name: g('f-name')||'(ไม่มีชื่อ)',
       material: g('f-material'), diameter: g('f-diameter'),
       width: g('f-width'), position: g('f-position'),
       usage: g('f-usage'), regrind: g('f-regrind'),
-      grindTime: g('f-grindtime')||'—', lastService: g('f-service'), status: g('f-status')
-    });
+      grindTime: g('f-grindtime')||'—', lastService: g('f-service'), status: g('f-status'),
+      set: selectedRollSet || ''
+    };
+    toolingData.roll.push(newRoll);
+    if (newRoll.set) extraRollSets = extraRollSets.filter(s => s !== newRoll.set);
     const lastPage = Math.ceil(toolingData.roll.length / PAGE_SIZE);
     pageState.roll = lastPage;
     renderRollTable(lastPage);
@@ -2738,10 +2747,12 @@ function renderFooter(tab, total, shown, page, totalPages) {
 }
 
 let selectedRollSet = null;
+let extraRollSets = [];
 
 function getRollSets() {
   const sets = [];
-  toolingData.roll.forEach(r => { if (!sets.includes(r.set)) sets.push(r.set); });
+  toolingData.roll.forEach(r => { if (r.set && !sets.includes(r.set)) sets.push(r.set); });
+  extraRollSets.forEach(s => { if (!sets.includes(s)) sets.push(s); });
   return sets;
 }
 
@@ -2873,10 +2884,8 @@ function openAddSetModal() {
     const name = (document.getElementById('f-set-name')||{}).value.trim();
     if (!name) return;
     if (!getRollSets().includes(name)) {
-      // sets are implicit — just store as placeholder until rolls are added
-      // add a placeholder roll so set appears
+      extraRollSets.push(name);
     }
-    // Save new set name for use when adding rolls
     selectedRollSet = name;
     renderRollSetList();
     const btn = this;
@@ -2915,6 +2924,7 @@ function deleteSet(setName) {
     : `ลบกลุ่ม "${setName}" ออก?`;
   if (!confirm(msg)) return;
   toolingData.roll = toolingData.roll.filter(r => r.set !== setName);
+  extraRollSets = extraRollSets.filter(s => s !== setName);
   if (selectedRollSet === setName) selectedRollSet = null;
   renderRollSetList();
   renderRollTable(1);
