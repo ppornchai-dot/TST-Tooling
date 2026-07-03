@@ -2802,6 +2802,37 @@ function pickPresetColor(hex) {
   });
 }
 
+const THAI_COLOR_NAME_MAP = [
+  ['เขียวน้ำทะเล', '#14B8A6'],
+  ['น้ำเงิน', '#2272B6'],
+  ['ฟ้า',    '#0EA5E9'],
+  ['เขียว',  '#22C55E'],
+  ['เหลือง', '#EAB308'],
+  ['ทอง',    '#C9A227'],
+  ['ส้ม',    '#F97316'],
+  ['แดง',    '#C03030'],
+  ['ชมพู',   '#EC4899'],
+  ['ม่วง',   '#5E44B0'],
+  ['เทา',    '#64748B'],
+  ['ดำ',     '#111827'],
+];
+
+function guessColorFromName(name) {
+  const n = (name||'').trim();
+  if (!n) return null;
+  const hit = THAI_COLOR_NAME_MAP.find(([kw]) => n.includes(kw));
+  return hit ? hit[1] : null;
+}
+
+function wireColorNameAutoGuess() {
+  const nameInput = document.getElementById('f-color-name');
+  if (!nameInput) return;
+  nameInput.addEventListener('input', function() {
+    const guess = guessColorFromName(this.value);
+    if (guess) pickPresetColor(guess);
+  });
+}
+
 function escapeHtmlAttr(str) {
   return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
@@ -3131,6 +3162,7 @@ function openAddColorModal() {
         <input type="hidden" id="f-color-value" value="#2272B6"></div>
     </div>`;
   document.getElementById('modal-overlay').classList.add('open');
+  wireColorNameAutoGuess();
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const name = (document.getElementById('f-color-name')||{}).value.trim();
     const val = (document.getElementById('f-color-value')||{}).value || '#2272B6';
@@ -3168,6 +3200,7 @@ function openEditColorModal(key) {
         <input type="hidden" id="f-color-value" value="${g.dot}"></div>
     </div>`;
   document.getElementById('modal-overlay').classList.add('open');
+  wireColorNameAutoGuess();
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const name = (document.getElementById('f-color-name')||{}).value.trim();
     const val = (document.getElementById('f-color-value')||{}).value;
