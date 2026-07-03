@@ -2641,6 +2641,7 @@ function saveModal() {
     pageState.slitter = lastPage;
     renderSlitterTable(lastPage);
   }
+  persistState();
 
   const btn = document.querySelector('.modal-footer .btn-primary');
   const orig = btn.innerHTML;
@@ -2737,6 +2738,35 @@ let rollSetColors = {
   'Straightener Roll — Ø180 mm':   'purple',
   'Pinch Roll — Ø200 mm':          'blue',
 };
+
+// ─── PERSISTENCE (localStorage) ────────────────────────────────────────────────
+const STORAGE_KEY = 'tstToolingState_v1';
+
+function persistState() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      toolingData, extraRollSets, ROLL_COLOR_GROUPS, rollSetColors, rollColorSeq
+    }));
+  } catch (e) { /* localStorage unavailable — edits stay in-memory only */ }
+}
+
+function restoreState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    if (saved.toolingData) {
+      ['roll','sq','saw','slitter'].forEach(k => {
+        if (Array.isArray(saved.toolingData[k])) toolingData[k] = saved.toolingData[k];
+      });
+    }
+    if (Array.isArray(saved.extraRollSets)) extraRollSets = saved.extraRollSets;
+    if (Array.isArray(saved.ROLL_COLOR_GROUPS)) ROLL_COLOR_GROUPS = saved.ROLL_COLOR_GROUPS;
+    if (saved.rollSetColors) rollSetColors = saved.rollSetColors;
+    if (typeof saved.rollColorSeq === 'number') rollColorSeq = saved.rollColorSeq;
+  } catch (e) { /* corrupted/old data — fall back to defaults */ }
+}
+restoreState();
 
 function getRollSetColor(setName) {
   return rollSetColors[setName] || null;
@@ -2935,6 +2965,7 @@ function editRoll(idx) {
       color: r.color, set: r.set
     };
     renderRollTable(pageState.roll);
+    persistState();
     const btn = this;
     const orig = btn.innerHTML;
     btn.innerHTML = '✓ บันทึกแล้ว';
@@ -2962,6 +2993,7 @@ function openAddSetModal() {
     renderRollSetList();
     renderRollColorList();
     renderRollTable(1);
+    persistState();
     const btn = this;
     const orig = btn.innerHTML;
     btn.innerHTML = '✓ เพิ่มแล้ว'; btn.style.background = 'var(--green)';
@@ -2991,6 +3023,7 @@ function openEditSetModal(oldName) {
     renderRollSetList();
     renderRollColorList();
     renderRollTable(pageState.roll);
+    persistState();
     const btn = this;
     const orig = btn.innerHTML;
     btn.innerHTML = '✓ บันทึกแล้ว'; btn.style.background = 'var(--green)';
@@ -3011,6 +3044,7 @@ function deleteSet(setName) {
   renderRollSetList();
   renderRollColorList();
   renderRollTable(1);
+  persistState();
 }
 
 function openAddColorModal() {
@@ -3030,6 +3064,7 @@ function openAddColorModal() {
     rollColorSeq++;
     ROLL_COLOR_GROUPS.push({key:'custom'+rollColorSeq, label:name, dot:val});
     renderRollColorList();
+    persistState();
     const btn = this;
     const orig = btn.innerHTML;
     btn.innerHTML = '✓ เพิ่มแล้ว'; btn.style.background = 'var(--green)';
@@ -3057,6 +3092,7 @@ function openEditColorModal(key) {
     g.dot = val;
     renderRollColorList();
     renderRollTable(pageState.roll);
+    persistState();
     const btn = this;
     const orig = btn.innerHTML;
     btn.innerHTML = '✓ บันทึกแล้ว'; btn.style.background = 'var(--green)';
@@ -3076,6 +3112,7 @@ function deleteColor(key) {
   if (selectedRollColor === key) selectedRollColor = null;
   renderRollColorList();
   renderRollTable(pageState.roll);
+  persistState();
 }
 
 function deleteRoll(idx) {
@@ -3085,6 +3122,7 @@ function deleteRoll(idx) {
   const maxPage = Math.max(1, Math.ceil(toolingData.roll.length / PAGE_SIZE));
   if (pageState.roll > maxPage) pageState.roll = maxPage;
   renderRollTable(pageState.roll);
+  persistState();
 }
 
 function renderSqTable(page) {
