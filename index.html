@@ -3132,10 +3132,7 @@ function openAddSetModal() {
       <div class="form-group"><label class="form-label">ชุด Roll</label>
         ${categoryDropdownHtml('')}</div>
     </div>
-    <div class="modal-row full">
-      <div class="form-group"><label class="form-label">ชื่อที่จะบันทึก</label>
-        <input class="form-input" id="f-set-name" readonly style="background:var(--bg-panel);color:var(--text-2);"></div>
-    </div>`;
+    <input type="hidden" id="f-set-name">`;
   document.getElementById('modal-overlay').classList.add('open');
   updateComposedSetName();
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
@@ -3175,10 +3172,7 @@ function openEditSetModal(oldName) {
       <div class="form-group"><label class="form-label">ชุด Roll</label>
         ${categoryDropdownHtml(parsed.category)}</div>
     </div>
-    <div class="modal-row full">
-      <div class="form-group"><label class="form-label">ชื่อที่จะบันทึก</label>
-        <input class="form-input" id="f-set-name" readonly style="background:var(--bg-panel);color:var(--text-2);"></div>
-    </div>`;
+    <input type="hidden" id="f-set-name">`;
   document.getElementById('modal-overlay').classList.add('open');
   updateComposedSetName();
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
