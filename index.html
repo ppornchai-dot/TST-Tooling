@@ -2838,7 +2838,7 @@ function renderRollSetList() {
     const hasWarn  = rolls.some(r => r.status === 'ซ่อมบำรุง' || r.status === 'Regrind');
     const dot = hasIssue ? 'var(--red)' : hasWarn ? 'var(--amber)' : 'var(--green)';
     const active = s === selectedRollSet;
-    const esc = s.replace(/'/g,"\\'");
+    const esc = s.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
       <div onclick="selectRollSet('${esc}')"
         style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:6px;cursor:pointer;flex:1;
