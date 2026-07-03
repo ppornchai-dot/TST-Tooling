@@ -2740,6 +2740,10 @@ let rollSetColors = {
   'Pinch Roll — Ø200 mm':          'blue',
 };
 
+function escapeHtmlAttr(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
 // ─── PERSISTENCE (localStorage) ────────────────────────────────────────────────
 const STORAGE_KEY = 'tstToolingState_v1';
 
@@ -2791,6 +2795,14 @@ function renderRollColorList() {
   if (scopeEl) scopeEl.textContent = selectedRollSet ? ('ขอบเขต: ' + selectedRollSet) : 'ทุก Size Roll';
 
   const scope = rollSetScope();
+  const groups = selectedRollSet
+    ? ROLL_COLOR_GROUPS.filter(g => scope.some(r => r.color === g.key))
+    : ROLL_COLOR_GROUPS;
+
+  if (selectedRollColor && !groups.some(g => g.key === selectedRollColor)) {
+    selectedRollColor = null;
+  }
+
   const cardStyle = active => `display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:8px;cursor:pointer;
     border:1px solid ${active ? 'var(--accent)' : 'var(--border)'};
     background:${active ? 'var(--accent-glow)' : 'var(--bg-surface)'};
@@ -2804,7 +2816,7 @@ function renderRollColorList() {
     <span style="font-size:11px;color:var(--text-3);">ทุกสีใน${selectedRollSet ? 'กลุ่มนี้' : 'ระบบ'}</span>
   </div>`;
 
-  html += ROLL_COLOR_GROUPS.map(g => {
+  html += groups.map(g => {
     const items = scope.filter(r => r.color === g.key);
     const active = g.key === selectedRollColor;
     return `<div style="display:flex;align-items:center;gap:6px;">
@@ -3007,7 +3019,7 @@ function openEditSetModal(oldName) {
   document.getElementById('modal-body').innerHTML = `
     <div class="modal-row full">
       <div class="form-group"><label class="form-label">ชื่อ Size Roll</label>
-        <input class="form-input" id="f-set-name" value="${oldName}"></div>
+        <input class="form-input" id="f-set-name" value="${escapeHtmlAttr(oldName)}"></div>
     </div>`;
   document.getElementById('modal-overlay').classList.add('open');
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
@@ -3080,7 +3092,7 @@ function openEditColorModal(key) {
   document.getElementById('modal-body').innerHTML = `
     <div class="modal-row">
       <div class="form-group"><label class="form-label">ชื่อสี</label>
-        <input class="form-input" id="f-color-name" value="${g.label}"></div>
+        <input class="form-input" id="f-color-name" value="${escapeHtmlAttr(g.label)}"></div>
       <div class="form-group"><label class="form-label">สี</label>
         <input type="color" class="form-input" id="f-color-value" value="${g.dot}" style="padding:2px;height:36px;"></div>
     </div>`;
