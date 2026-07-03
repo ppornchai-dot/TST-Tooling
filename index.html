@@ -655,6 +655,8 @@ canvas{display:block;}
   display:flex;align-items:center;justify-content:space-between;
   padding:18px 22px 14px;
   border-bottom:1px solid var(--border-light);
+  cursor:move;
+  user-select:none;
 }
 .modal-head h3{font-size:16px;font-weight:800;color:var(--text-1);}
 .modal-close{
@@ -663,6 +665,7 @@ canvas{display:block;}
   color:var(--text-3);font-size:18px;line-height:1;
   display:grid;place-items:center;
   transition:background .15s;
+  flex-shrink:0;
 }
 .modal-close:hover{background:var(--bg-panel);color:var(--text-1);}
 .modal-body{padding:20px 22px;}
@@ -2579,11 +2582,53 @@ function openModal() {
 
 function closeModal() {
   document.getElementById('modal-overlay').classList.remove('open');
+  const modal = document.querySelector('.modal');
+  modal.style.position = '';
+  modal.style.left = '';
+  modal.style.top = '';
+  modal.style.margin = '';
 }
 
 function closeModalOutside(e) {
   if (e.target === document.getElementById('modal-overlay')) closeModal();
 }
+
+// ─── DRAG MODAL BY HEADER ───────────────────────────────────────────────────
+(function initModalDrag() {
+  const modal = document.querySelector('.modal');
+  const head = document.querySelector('.modal-head');
+  let dragging = false, offsetX = 0, offsetY = 0;
+
+  head.addEventListener('mousedown', (e) => {
+    if (e.target.closest('.modal-close')) return;
+    const rect = modal.getBoundingClientRect();
+    dragging = true;
+    offsetX = e.clientX - rect.left;
+    offsetY = e.clientY - rect.top;
+    modal.style.position = 'fixed';
+    modal.style.margin = '0';
+    modal.style.left = rect.left + 'px';
+    modal.style.top = rect.top + 'px';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const maxLeft = window.innerWidth - modal.offsetWidth;
+    const maxTop = window.innerHeight - modal.offsetHeight;
+    const left = Math.min(Math.max(0, e.clientX - offsetX), Math.max(0, maxLeft));
+    const top = Math.min(Math.max(0, e.clientY - offsetY), Math.max(0, maxTop));
+    modal.style.left = left + 'px';
+    modal.style.top = top + 'px';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.userSelect = '';
+  });
+})();
 
 function saveModal() {
   const body = document.getElementById('modal-body');
