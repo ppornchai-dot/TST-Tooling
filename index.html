@@ -2890,11 +2890,8 @@ function renderRollSetList() {
 
   const q = (document.getElementById('roll-set-search')||{}).value||'';
   const sets = getRollSets().filter(s => s.toLowerCase().includes(q.toLowerCase()));
-  el.innerHTML = sets.map(s => {
+  el.innerHTML = sets.map((s, i) => {
     const rolls = toolingData.roll.filter(r => r.set === s);
-    const hasIssue = rolls.some(r => r.status === 'หมดอายุ' || r.status === 'มีปัญหา');
-    const hasWarn  = rolls.some(r => r.status === 'ซ่อมบำรุง' || r.status === 'Regrind');
-    const dot = hasIssue ? 'var(--red)' : hasWarn ? 'var(--amber)' : 'var(--green)';
     const active = s === selectedRollSet;
     const esc = s.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
@@ -2903,7 +2900,7 @@ function renderRollSetList() {
                background:${active?'var(--accent-glow)':'transparent'};
                color:${active?'var(--accent)':'var(--text-2)'};font-weight:${active?'700':'400'};
                transition:background .12s;">
-        <span style="width:8px;height:8px;border-radius:50%;background:${dot};flex-shrink:0;"></span>
+        <span style="width:18px;height:18px;border-radius:50%;background:${active?'var(--accent)':'var(--bg-panel)'};color:${active?'#fff':'var(--text-3)'};font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${i+1}</span>
         <span style="flex:1;font-size:13px;">${s}</span>
         <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;">${rolls.length}</span>
       </div>
