@@ -677,6 +677,7 @@ canvas{display:block;}
 .modal-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
 .modal-row.full{grid-template-columns:1fr;}
 .modal-row.three{grid-template-columns:1fr 1fr 1fr;}
+.modal-row.four{grid-template-columns:1fr 1fr 1fr 1fr;}
 
 /* pending pill */
 .pending-row td:first-child{border-left:3px solid var(--amber);}
@@ -2801,15 +2802,31 @@ function stripSizeRollCategory(name) {
 function categoryDropdownHtml(selectedCategory) {
   const opts = SIZE_ROLL_CATEGORIES.map(cat =>
     `<option value="${cat}"${cat === selectedCategory ? ' selected' : ''}>${cat}</option>`).join('');
-  return `<select class="form-select" id="f-set-category" onchange="applySetCategory(this)">
-    <option value="">— เลือกประเภท —</option>${opts}
+  return `<select class="form-select" id="f-set-category" onchange="updateComposedSetName()">
+    <option value="">— เลือก —</option>${opts}
   </select>`;
 }
 
-function applySetCategory(select) {
-  const nameInput = document.getElementById('f-set-name');
-  const base = stripSizeRollCategory(nameInput.value);
-  nameInput.value = select.value ? (base ? base + ' ' + select.value : select.value) : base;
+function parseSizeRollName(name) {
+  const trimmed = (name||'').trim();
+  const m = trimmed.match(/^(GS|GI)\s+(.+?)\s*\(([^)]*)\)\s*(Forming|Sizing|TH)?$/i);
+  if (m) {
+    return { gsgi: m[1].toUpperCase(), size: m[2].trim(), od: m[3].trim(), category: m[4] || '' };
+  }
+  return { gsgi: 'GS', size: stripSizeRollCategory(trimmed), od: '', category: detectSizeRollCategory(trimmed) };
+}
+
+function updateComposedSetName() {
+  const gsgi = (document.getElementById('f-set-gsgi')||{}).value || '';
+  const size = (document.getElementById('f-set-size')||{}).value.trim();
+  const od = (document.getElementById('f-set-od')||{}).value.trim();
+  const cat = (document.getElementById('f-set-category')||{}).value || '';
+  const parts = [];
+  if (gsgi) parts.push(gsgi);
+  if (size) parts.push(size);
+  if (od) parts.push('(' + od + ')');
+  if (cat) parts.push(cat);
+  document.getElementById('f-set-name').value = parts.join(' ');
 }
 
 function colorPreviewHtml(selected) {
@@ -3101,13 +3118,26 @@ function editRoll(idx) {
 function openAddSetModal() {
   document.getElementById('modal-title').textContent = 'เพิ่ม Size Roll ใหม่';
   document.getElementById('modal-body').innerHTML = `
-    <div class="modal-row">
-      <div class="form-group"><label class="form-label">ชื่อ Size Roll</label>
-        <input class="form-input" id="f-set-name" placeholder="เช่น Work Roll Stand 3 — Ø280 mm"></div>
-      <div class="form-group"><label class="form-label">ประเภท</label>
+    <div class="modal-row four">
+      <div class="form-group"><label class="form-label">GS/GI</label>
+        <select class="form-select" id="f-set-gsgi" onchange="updateComposedSetName()">
+          <option value="GS">GS</option>
+          <option value="GI">GI</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Size</label>
+        <input class="form-input" id="f-set-size" placeholder="เช่น 1x1" oninput="updateComposedSetName()"></div>
+      <div class="form-group"><label class="form-label">OD</label>
+        <input class="form-input" id="f-set-od" placeholder="เช่น 23x23" oninput="updateComposedSetName()"></div>
+      <div class="form-group"><label class="form-label">ชุด Roll</label>
         ${categoryDropdownHtml('')}</div>
+    </div>
+    <div class="modal-row full">
+      <div class="form-group"><label class="form-label">ชื่อที่จะบันทึก</label>
+        <input class="form-input" id="f-set-name" readonly style="background:var(--bg-panel);color:var(--text-2);"></div>
     </div>`;
   document.getElementById('modal-overlay').classList.add('open');
+  updateComposedSetName();
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const name = (document.getElementById('f-set-name')||{}).value.trim();
     if (!name) return;
@@ -3128,15 +3158,29 @@ function openAddSetModal() {
 }
 
 function openEditSetModal(oldName) {
+  const parsed = parseSizeRollName(oldName);
   document.getElementById('modal-title').textContent = 'แก้ไข Size Roll';
   document.getElementById('modal-body').innerHTML = `
-    <div class="modal-row">
-      <div class="form-group"><label class="form-label">ชื่อ Size Roll</label>
-        <input class="form-input" id="f-set-name" value="${escapeHtmlAttr(oldName)}"></div>
-      <div class="form-group"><label class="form-label">ประเภท</label>
-        ${categoryDropdownHtml(detectSizeRollCategory(oldName))}</div>
+    <div class="modal-row four">
+      <div class="form-group"><label class="form-label">GS/GI</label>
+        <select class="form-select" id="f-set-gsgi" onchange="updateComposedSetName()">
+          <option value="GS"${parsed.gsgi==='GS'?' selected':''}>GS</option>
+          <option value="GI"${parsed.gsgi==='GI'?' selected':''}>GI</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Size</label>
+        <input class="form-input" id="f-set-size" value="${escapeHtmlAttr(parsed.size)}" oninput="updateComposedSetName()"></div>
+      <div class="form-group"><label class="form-label">OD</label>
+        <input class="form-input" id="f-set-od" value="${escapeHtmlAttr(parsed.od)}" oninput="updateComposedSetName()"></div>
+      <div class="form-group"><label class="form-label">ชุด Roll</label>
+        ${categoryDropdownHtml(parsed.category)}</div>
+    </div>
+    <div class="modal-row full">
+      <div class="form-group"><label class="form-label">ชื่อที่จะบันทึก</label>
+        <input class="form-input" id="f-set-name" readonly style="background:var(--bg-panel);color:var(--text-2);"></div>
     </div>`;
   document.getElementById('modal-overlay').classList.add('open');
+  updateComposedSetName();
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const newName = (document.getElementById('f-set-name')||{}).value.trim();
     if (!newName || newName === oldName) { closeModal(); return; }
