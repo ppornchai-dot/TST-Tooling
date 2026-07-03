@@ -435,6 +435,17 @@ canvas{display:block;}
   border-radius:50%;border:2px solid var(--bg-surface);
 }
 
+/* ─── ROLL DETAIL TABS (underline style) ─────── */
+.roll-detail-tab{
+  padding:10px 4px;margin-right:22px;
+  font-size:13px;font-weight:600;color:var(--text-3);
+  border:none;background:none;cursor:pointer;
+  border-bottom:2px solid transparent;
+  transition:color .12s,border-color .12s;
+}
+.roll-detail-tab:hover{color:var(--text-1);}
+.roll-detail-tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+
 /* ─── REGISTRY TABS ─────────────────────────── */
 .reg-tab-bar{
   display:flex;align-items:center;gap:6px;
@@ -702,6 +713,10 @@ canvas{display:block;}
     </div>
     <div class="nav-section">
       <div class="nav-label">การปฏิบัติงาน</div>
+      <button class="nav-item" onclick="showPage('daily')">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        งานประจำวัน
+      </button>
       <button class="nav-item" onclick="showPage('plan')">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
         แผนงาน
@@ -1021,8 +1036,8 @@ canvas{display:block;}
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--amber);" id="kpi-roll-repair">0</span><span class="reg-kpi-lbl">ซ่อมบำรุง / Regrind</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-roll-expired">0</span><span class="reg-kpi-lbl">หมดอายุ</span></div>
         </div>
-        <div style="display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:start;">
-          <!-- LEFT: set list -->
+        <div style="display:grid;grid-template-columns:210px 250px 1fr;gap:14px;align-items:start;">
+          <!-- COL 1: Size Roll -->
           <div class="card" style="position:sticky;top:70px;">
             <div style="padding:12px 14px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
               <span style="font-size:13px;font-weight:700;">Size Roll</span>
@@ -1031,13 +1046,26 @@ canvas{display:block;}
             <div style="padding:8px;">
               <input type="text" class="form-input" id="roll-set-search" placeholder="ค้นหากลุ่ม..." oninput="renderRollSetList()" style="width:100%;margin-bottom:6px;">
             </div>
-            <div id="roll-set-list" style="max-height:520px;overflow-y:auto;padding:4px 8px 8px;"></div>
+            <div id="roll-set-list" style="max-height:480px;overflow-y:auto;padding:4px 8px 8px;"></div>
           </div>
-          <!-- RIGHT: roll detail -->
+
+          <!-- COL 2: ชุดสี Roll -->
+          <div class="card" style="position:sticky;top:70px;">
+            <div style="padding:12px 14px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
+              <div>
+                <div style="font-size:13px;font-weight:700;">ชุดสี Roll</div>
+                <div style="font-size:11px;color:var(--text-3);margin-top:2px;" id="roll-color-scope">ทุก Size Roll</div>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="openAddColorModal()">+ เพิ่ม</button>
+            </div>
+            <div id="roll-color-list" style="padding:10px;display:flex;flex-direction:column;gap:8px;max-height:480px;overflow-y:auto;"></div>
+          </div>
+
+          <!-- COL 3: roll detail -->
           <div class="card" style="min-width:0;overflow:hidden;">
-            <div style="padding:12px 16px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
+            <div style="padding:12px 16px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
               <div style="display:flex;align-items:center;gap:10px;">
-                <span style="font-size:13px;font-weight:700;" id="roll-detail-title">เลือกกลุ่มจากซ้าย</span>
+                <span style="font-size:13px;font-weight:700;" id="roll-detail-title">Roll ทั้งหมด</span>
                 <span style="font-size:11px;color:var(--text-3);" id="roll-detail-count"></span>
               </div>
               <button class="btn btn-primary btn-sm" id="add-roll-btn" onclick="openModal('roll')">
@@ -1045,15 +1073,39 @@ canvas{display:block;}
                 เพิ่ม Roll
               </button>
             </div>
-            <div class="table-wrap" style="overflow-x:auto;">
-              <table>
-                <thead><tr>
-                  <th>รหัส</th><th>ชื่อ Roll</th><th>เส้นผ่าศูนย์กลาง</th><th>ความกว้าง</th><th>ตำแหน่ง</th><th>รอบการใช้งาน</th><th>แต่งครั้งที่</th><th>เวลาแต่ง (ชม.)</th><th>แต่งล่าสุด</th><th>สถานะ</th><th></th>
-                </tr></thead>
-                <tbody id="tbody-roll"></tbody>
-              </table>
+            <div style="display:flex;gap:4px;padding:0 16px;border-bottom:1px solid var(--border-light);">
+              <button class="roll-detail-tab active" id="rolltab-checklist" onclick="switchRollDetailTab('checklist')">Checklist</button>
+              <button class="roll-detail-tab" id="rolltab-history" onclick="switchRollDetailTab('history')">ประวัติ</button>
             </div>
-            <div class="tbl-footer" id="footer-roll"></div>
+            <div id="rolldetail-checklist">
+              <div style="display:flex;gap:8px;padding:12px 16px 0;flex-wrap:wrap;">
+                <div class="search-bar" style="flex:1;min-width:180px;margin-bottom:0;">
+                  <svg width="13" height="13" fill="none" stroke="var(--text-3)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <input type="text" id="roll-detail-search" placeholder="ค้นหารายการ..." oninput="renderRollTable(1)">
+                </div>
+                <select class="form-select" id="roll-detail-status-filter" style="width:160px;" onchange="renderRollTable(1)">
+                  <option value="">ทุกสถานะ</option>
+                  <option>พร้อมใช้</option>
+                  <option>ใช้งานอยู่</option>
+                  <option>ซ่อมบำรุง</option>
+                  <option>Regrind</option>
+                  <option>หมดอายุ</option>
+                </select>
+              </div>
+              <div class="table-wrap" style="overflow-x:auto;">
+                <table>
+                  <thead><tr>
+                    <th>รหัส</th><th>ชื่อ Roll</th><th>เส้นผ่าศูนย์กลาง</th><th>ความกว้าง</th><th>ตำแหน่ง</th><th>รอบการใช้งาน</th><th>แต่งครั้งที่</th><th>เวลาแต่ง (ชม.)</th><th>แต่งล่าสุด</th><th>สถานะ</th><th></th>
+                  </tr></thead>
+                  <tbody id="tbody-roll"></tbody>
+                </table>
+              </div>
+              <div class="tbl-footer" id="footer-roll"></div>
+            </div>
+            <div id="rolldetail-history" style="display:none;padding:48px 20px;text-align:center;color:var(--text-3);">
+              <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="margin:0 auto 10px;"><polyline points="12 8 12 12 14 14"/><path d="M3.05 11a9 9 0 1 1 .5 4M3 15v-4h4"/></svg>
+              <div style="font-size:13px;">ยังไม่มีประวัติการเปลี่ยนแปลงสำหรับ Roll กลุ่มนี้</div>
+            </div>
           </div>
         </div>
       </div>
@@ -1176,77 +1228,30 @@ canvas{display:block;}
           </div>
         </div>
 
-        <div class="spec-grid">
-          <div class="spec-card">
-            <div class="spec-head">
-              <div class="spec-head-icon" style="background:var(--accent-glow);"><svg width="16" height="16" fill="none" stroke="var(--accent)" stroke-width="2" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="10" ry="4"/><path d="M2 12c0 4 4.5 8 10 8s10-4 10-8"/></svg></div>
-              <div><strong>Work Roll — Forged Steel</strong><div><span>Mill-01 Stand 1 & 2 · Ø300–320 mm</span></div></div>
-            </div>
-            <div class="spec-rows">
-              <div class="spec-row"><span class="key">วัสดุ</span><span class="val">Forged Steel (60 HRC)</span></div>
-              <div class="spec-row"><span class="key">อายุการใช้งานต่อ Regrind</span><span class="val">400–600 ตัน</span></div>
-              <div class="spec-row"><span class="key">จำนวน Regrind สูงสุด</span><span class="val">5 ครั้ง</span></div>
-              <div class="spec-row"><span class="key">ปริมาณ Grind ต่อครั้ง</span><span class="val">0.5–1.0 mm/ด้าน</span></div>
-              <div class="spec-row"><span class="key">เกณฑ์เปลี่ยน (Ø ต่ำสุด)</span><span class="val">Ø290 mm</span></div>
-              <div class="spec-row"><span class="key">Surface Roughness หลัง Grind</span><span class="val">Ra ≤ 0.4 µm</span></div>
-              <div class="spec-row"><span class="key">Runout ที่ยอมรับได้</span><span class="val">≤ 0.02 mm</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ เวลา Regrind (Vendor)</span><span class="val">3–4 วัน</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ เวลาถอด-ติดตั้ง</span><span class="val">4 ชม. / คู่</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ ตรวจสอบหลังติดตั้ง</span><span class="val">1.5 ชม.</span></div>
-            </div>
-          </div>
+        <div class="reg-kpi-row" id="std-kpi-roll"></div>
 
-          <div class="spec-card">
-            <div class="spec-head">
-              <div class="spec-head-icon" style="background:var(--purple-dim);"><svg width="16" height="16" fill="none" stroke="var(--purple)" stroke-width="2" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="10" ry="4"/><path d="M2 12c0 4 4.5 8 10 8s10-4 10-8"/></svg></div>
-              <div><strong>Backup Roll — Cast Iron</strong><div><span>Mill-01 Stand 1 & 2 · Ø650 mm</span></div></div>
+        <div style="display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:start;margin-bottom:14px;">
+          <!-- LEFT: type list -->
+          <div class="card" style="position:sticky;top:70px;">
+            <div style="padding:12px 14px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:13px;font-weight:700;">Size Roll</span>
             </div>
-            <div class="spec-rows">
-              <div class="spec-row"><span class="key">วัสดุ</span><span class="val">Indefinite Chill Cast Iron</span></div>
-              <div class="spec-row"><span class="key">อายุการใช้งานต่อ Regrind</span><span class="val">3,000–5,000 ตัน</span></div>
-              <div class="spec-row"><span class="key">จำนวน Regrind สูงสุด</span><span class="val">3 ครั้ง</span></div>
-              <div class="spec-row"><span class="key">ปริมาณ Grind ต่อครั้ง</span><span class="val">1.0–2.0 mm/ด้าน</span></div>
-              <div class="spec-row"><span class="key">เกณฑ์เปลี่ยน (Ø ต่ำสุด)</span><span class="val">Ø620 mm</span></div>
-              <div class="spec-row"><span class="key">Surface Roughness หลัง Grind</span><span class="val">Ra ≤ 0.8 µm</span></div>
-              <div class="spec-row"><span class="key">Runout ที่ยอมรับได้</span><span class="val">≤ 0.05 mm</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ เวลา Regrind (Vendor)</span><span class="val">5–7 วัน</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ เวลาถอด-ติดตั้ง</span><span class="val">6 ชม. / คู่</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ ตรวจสอบหลังติดตั้ง</span><span class="val">2 ชม.</span></div>
-            </div>
+            <div id="std-list-roll" style="max-height:520px;overflow-y:auto;padding:8px;"></div>
           </div>
-
-          <div class="spec-card">
-            <div class="spec-head">
-              <div class="spec-head-icon" style="background:var(--amber-dim);"><svg width="16" height="16" fill="none" stroke="var(--amber)" stroke-width="2" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="10" ry="4"/><path d="M2 12c0 4 4.5 8 10 8s10-4 10-8"/></svg></div>
-              <div><strong>Edger Roll — Tool Steel D2</strong><div><span>Mill-01 Edger · Ø250 mm</span></div></div>
+          <!-- RIGHT: standard detail table -->
+          <div class="card" style="min-width:0;overflow:hidden;">
+            <div style="padding:12px 16px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;gap:10px;">
+              <div class="spec-head-icon" id="std-detail-icon-roll" style="width:32px;height:32px;border-radius:7px;display:grid;place-items:center;flex-shrink:0;"></div>
+              <div>
+                <div style="font-size:13px;font-weight:700;" id="std-detail-title-roll"></div>
+                <div style="font-size:11px;color:var(--text-3);" id="std-detail-sub-roll"></div>
+              </div>
             </div>
-            <div class="spec-rows">
-              <div class="spec-row"><span class="key">วัสดุ</span><span class="val">Tool Steel D2 (58–62 HRC)</span></div>
-              <div class="spec-row"><span class="key">อายุการใช้งานต่อ Regrind</span><span class="val">800–1,200 ตัน</span></div>
-              <div class="spec-row"><span class="key">จำนวน Regrind สูงสุด</span><span class="val">5 ครั้ง</span></div>
-              <div class="spec-row"><span class="key">Profile Tolerance</span><span class="val">± 0.05 mm</span></div>
-              <div class="spec-row"><span class="key">เกณฑ์เปลี่ยน (Ø ต่ำสุด)</span><span class="val">Ø220 mm</span></div>
-              <div class="spec-row"><span class="key">Runout ที่ยอมรับได้</span><span class="val">≤ 0.03 mm</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ เวลา Regrind (In-house)</span><span class="val">4–6 ชม.</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ เวลาถอด-ติดตั้ง</span><span class="val">2 ชม. / คู่</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ ตรวจสอบหลังติดตั้ง</span><span class="val">1 ชม.</span></div>
-            </div>
-          </div>
-
-          <div class="spec-card">
-            <div class="spec-head">
-              <div class="spec-head-icon" style="background:var(--green-dim);"><svg width="16" height="16" fill="none" stroke="var(--green)" stroke-width="2" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="10" ry="4"/><path d="M2 12c0 4 4.5 8 10 8s10-4 10-8"/></svg></div>
-              <div><strong>Straightener Roll — Forged Steel</strong><div><span>Leveler-01 · Ø180 mm</span></div></div>
-            </div>
-            <div class="spec-rows">
-              <div class="spec-row"><span class="key">วัสดุ</span><span class="val">Forged Steel (55 HRC)</span></div>
-              <div class="spec-row"><span class="key">อายุการใช้งานต่อ Regrind</span><span class="val">1,500–2,000 ตัน</span></div>
-              <div class="spec-row"><span class="key">จำนวน Regrind สูงสุด</span><span class="val">4 ครั้ง</span></div>
-              <div class="spec-row"><span class="key">Surface Roughness หลัง Grind</span><span class="val">Ra ≤ 0.6 µm</span></div>
-              <div class="spec-row"><span class="key">Runout ที่ยอมรับได้</span><span class="val">≤ 0.03 mm</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ เวลา Regrind (Vendor)</span><span class="val">3–5 วัน</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ เวลาถอด-ติดตั้ง (ชุด)</span><span class="val">5 ชม.</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ Alignment หลังติดตั้ง</span><span class="val">2 ชม.</span></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>พารามิเตอร์</th><th style="text-align:right;">ค่ามาตรฐาน</th></tr></thead>
+                <tbody id="std-tbody-roll"></tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -1282,70 +1287,28 @@ canvas{display:block;}
           </div>
         </div>
 
-        <div class="spec-grid">
-          <div class="spec-card">
-            <div class="spec-head">
-              <div class="spec-head-icon" style="background:var(--purple-dim);"><svg width="16" height="16" fill="none" stroke="var(--purple)" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></div>
-              <div><strong>Forming Roll H/V Stand</strong><div><span>SQ Mill-01 · Ø220 mm</span></div></div>
-            </div>
-            <div class="spec-rows">
-              <div class="spec-row"><span class="key">วัสดุ</span><span class="val">Forged Steel (58 HRC)</span></div>
-              <div class="spec-row"><span class="key">อายุต่อ Regrind</span><span class="val">1,000–1,500 ตัน</span></div>
-              <div class="spec-row"><span class="key">จำนวน Regrind สูงสุด</span><span class="val">5 ครั้ง</span></div>
-              <div class="spec-row"><span class="key">Profile Tolerance</span><span class="val">± 0.03 mm</span></div>
-              <div class="spec-row"><span class="key">เกณฑ์เปลี่ยน (Ø ต่ำสุด)</span><span class="val">Ø195 mm</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ Regrind (Vendor)</span><span class="val">3–4 วัน</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ ถอด-ติดตั้ง</span><span class="val">4 ชม. / Stand</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ Alignment หลังเปลี่ยน</span><span class="val">3 ชม.</span></div>
-            </div>
-          </div>
+        <div class="reg-kpi-row" id="std-kpi-rollsq"></div>
 
-          <div class="spec-card">
-            <div class="spec-head">
-              <div class="spec-head-icon" style="background:var(--accent-glow);"><svg width="16" height="16" fill="none" stroke="var(--accent)" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></div>
-              <div><strong>Sizing Roll</strong><div><span>SQ Mill-01 · Ø150 mm · ชุด 40×40 / 50×50</span></div></div>
+        <div style="display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:start;margin-bottom:14px;">
+          <div class="card" style="position:sticky;top:70px;">
+            <div style="padding:12px 14px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:13px;font-weight:700;">ประเภท Roll SQ</span>
             </div>
-            <div class="spec-rows">
-              <div class="spec-row"><span class="key">วัสดุ</span><span class="val">Tool Steel (62 HRC)</span></div>
-              <div class="spec-row"><span class="key">อายุต่อ Regrind</span><span class="val">600–900 ตัน</span></div>
-              <div class="spec-row"><span class="key">จำนวน Regrind สูงสุด</span><span class="val">6 ครั้ง</span></div>
-              <div class="spec-row"><span class="key">Dimensional Tolerance</span><span class="val">± 0.02 mm</span></div>
-              <div class="spec-row"><span class="key">Corner Radius</span><span class="val">R 1.5–3.0 mm</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ Regrind (In-house)</span><span class="val">4–6 ชม.</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ ถอด-ติดตั้ง</span><span class="val">2 ชม. / ชุด</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ ตรวจสอบ Profile</span><span class="val">1 ชม.</span></div>
-            </div>
+            <div id="std-list-rollsq" style="max-height:520px;overflow-y:auto;padding:8px;"></div>
           </div>
-
-          <div class="spec-card">
-            <div class="spec-head">
-              <div class="spec-head-icon" style="background:var(--amber-dim);"><svg width="16" height="16" fill="none" stroke="var(--amber)" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="10"/></svg></div>
-              <div><strong>Guide Roll (Entry/Exit)</strong><div><span>SQ Mill-01 · Ø80 mm · Carbide</span></div></div>
+          <div class="card" style="min-width:0;overflow:hidden;">
+            <div style="padding:12px 16px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;gap:10px;">
+              <div class="spec-head-icon" id="std-detail-icon-rollsq" style="width:32px;height:32px;border-radius:7px;display:grid;place-items:center;flex-shrink:0;"></div>
+              <div>
+                <div style="font-size:13px;font-weight:700;" id="std-detail-title-rollsq"></div>
+                <div style="font-size:11px;color:var(--text-3);" id="std-detail-sub-rollsq"></div>
+              </div>
             </div>
-            <div class="spec-rows">
-              <div class="spec-row"><span class="key">วัสดุ</span><span class="val">Tungsten Carbide</span></div>
-              <div class="spec-row"><span class="key">อายุต่อ Regrind</span><span class="val">2,000–3,000 ตัน</span></div>
-              <div class="spec-row"><span class="key">จำนวน Regrind สูงสุด</span><span class="val">3 ครั้ง</span></div>
-              <div class="spec-row"><span class="key">Bore Tolerance</span><span class="val">H6</span></div>
-              <div class="spec-row"><span class="key">Runout ที่ยอมรับได้</span><span class="val">≤ 0.01 mm</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ เปลี่ยน Guide Roll</span><span class="val">2 ชม. / ชุด</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ Regrind (Vendor)</span><span class="val">5–7 วัน</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ ตรวจสอบหลังเปลี่ยน</span><span class="val">0.5 ชม.</span></div>
-            </div>
-          </div>
-
-          <div class="spec-card">
-            <div class="spec-head">
-              <div class="spec-head-icon" style="background:var(--green-dim);"><svg width="16" height="16" fill="none" stroke="var(--green)" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg></div>
-              <div><strong>Spacer Roll</strong><div><span>SQ Mill-01,02 · Hardened Steel</span></div></div>
-            </div>
-            <div class="spec-rows">
-              <div class="spec-row"><span class="key">วัสดุ</span><span class="val">Hardened Steel (58 HRC)</span></div>
-              <div class="spec-row"><span class="key">Thickness Tolerance</span><span class="val">± 0.01 mm</span></div>
-              <div class="spec-row"><span class="key">Flatness</span><span class="val">≤ 0.005 mm</span></div>
-              <div class="spec-row"><span class="key">อายุการใช้งาน</span><span class="val">ตามสภาพ (ไม่ Regrind)</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ ตรวจสอบ Thickness</span><span class="val">0.5 ชม. / ชุด</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ ทำความสะอาด + ตรวจ</span><span class="val">1 ชม.</span></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>พารามิเตอร์</th><th style="text-align:right;">ค่ามาตรฐาน</th></tr></thead>
+                <tbody id="std-tbody-rollsq"></tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -1380,77 +1343,28 @@ canvas{display:block;}
           </div>
         </div>
 
-        <div class="spec-grid">
-          <div class="spec-card">
-            <div class="spec-head">
-              <div class="spec-head-icon" style="background:var(--amber-dim);"><svg width="16" height="16" fill="none" stroke="var(--amber)" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/></svg></div>
-              <div><strong>Circular Cold Saw Ø710 (HSS-E)</strong><div><span>Cold Saw-01 · Kinkelder</span></div></div>
-            </div>
-            <div class="spec-rows">
-              <div class="spec-row"><span class="key">วัสดุ</span><span class="val">HSS-E (M42 Co8%)</span></div>
-              <div class="spec-row"><span class="key">ความเร็วตัด (Vc)</span><span class="val">25–35 m/min</span></div>
-              <div class="spec-row"><span class="key">รอบหมุน (n)</span><span class="val">11–16 rpm</span></div>
-              <div class="spec-row"><span class="key">Feed (mm/tooth)</span><span class="val">0.08–0.12 mm/t</span></div>
-              <div class="spec-row"><span class="key">อายุต่อ Regrind</span><span class="val">200–300 ตัน</span></div>
-              <div class="spec-row"><span class="key">จำนวน Regrind สูงสุด</span><span class="val">6 ครั้ง</span></div>
-              <div class="spec-row"><span class="key">Grind ต่อครั้ง</span><span class="val">0.15–0.20 mm</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ เปลี่ยนใบเลื่อย</span><span class="val">30 นาที</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ Regrind (Vendor)</span><span class="val">2–3 วัน</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ ตรวจสอบฟัน</span><span class="val">45 นาที</span></div>
-            </div>
-          </div>
+        <div class="reg-kpi-row" id="std-kpi-saw"></div>
 
-          <div class="spec-card">
-            <div class="spec-head">
-              <div class="spec-head-icon" style="background:var(--green-dim);"><svg width="16" height="16" fill="none" stroke="var(--green)" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/></svg></div>
-              <div><strong>Circular Cold Saw Ø630 (Carbide-tipped)</strong><div><span>Cold Saw-02 · WIKUS</span></div></div>
+        <div style="display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:start;margin-bottom:14px;">
+          <div class="card" style="position:sticky;top:70px;">
+            <div style="padding:12px 14px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:13px;font-weight:700;">ประเภทใบเลื่อย</span>
             </div>
-            <div class="spec-rows">
-              <div class="spec-row"><span class="key">วัสดุ</span><span class="val">Steel body + Carbide tips</span></div>
-              <div class="spec-row"><span class="key">ความเร็วตัด (Vc)</span><span class="val">60–80 m/min</span></div>
-              <div class="spec-row"><span class="key">รอบหมุน (n)</span><span class="val">30–40 rpm</span></div>
-              <div class="spec-row"><span class="key">Feed (mm/tooth)</span><span class="val">0.10–0.15 mm/t</span></div>
-              <div class="spec-row"><span class="key">อายุต่อ Regrind</span><span class="val">400–500 ตัน</span></div>
-              <div class="spec-row"><span class="key">จำนวน Regrind สูงสุด</span><span class="val">4 ครั้ง</span></div>
-              <div class="spec-row"><span class="key">น้ำหล่อเย็น</span><span class="val">Cutting Oil (Mist)</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ เปลี่ยนใบเลื่อย</span><span class="val">30 นาที</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ Regrind (Vendor)</span><span class="val">3–4 วัน</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ ตรวจ Tip ก่อนใช้</span><span class="val">20 นาที</span></div>
-            </div>
+            <div id="std-list-saw" style="max-height:520px;overflow-y:auto;padding:8px;"></div>
           </div>
-
-          <div class="spec-card">
-            <div class="spec-head">
-              <div class="spec-head-icon" style="background:var(--accent-glow);"><svg width="16" height="16" fill="none" stroke="var(--accent)" stroke-width="2" viewBox="0 0 24 24"><path d="M3 12h18M3 6l18 6-18 6"/></svg></div>
-              <div><strong>Band Saw Blade 54×1.6 (Bi-Metal)</strong><div><span>Band Saw-01 · LENOX</span></div></div>
+          <div class="card" style="min-width:0;overflow:hidden;">
+            <div style="padding:12px 16px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;gap:10px;">
+              <div class="spec-head-icon" id="std-detail-icon-saw" style="width:32px;height:32px;border-radius:7px;display:grid;place-items:center;flex-shrink:0;"></div>
+              <div>
+                <div style="font-size:13px;font-weight:700;" id="std-detail-title-saw"></div>
+                <div style="font-size:11px;color:var(--text-3);" id="std-detail-sub-saw"></div>
+              </div>
             </div>
-            <div class="spec-rows">
-              <div class="spec-row"><span class="key">วัสดุ</span><span class="val">Bi-Metal HSS + Spring Steel</span></div>
-              <div class="spec-row"><span class="key">TPI</span><span class="val">2/3 (Variable)</span></div>
-              <div class="spec-row"><span class="key">ความเร็วใบ</span><span class="val">50–80 m/min</span></div>
-              <div class="spec-row"><span class="key">Feed Force</span><span class="val">50–120 N</span></div>
-              <div class="spec-row"><span class="key">อายุการใช้งาน</span><span class="val">80–120 ตัน (ทิ้ง)</span></div>
-              <div class="spec-row"><span class="key">ความตึงใบ (Tension)</span><span class="val">25,000–30,000 N</span></div>
-              <div class="spec-row"><span class="key">น้ำหล่อเย็น</span><span class="val">Water Soluble Flood</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ เปลี่ยนใบ Band Saw</span><span class="val">20 นาที</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ ตั้งความตึงใบ</span><span class="val">10 นาที</span></div>
-            </div>
-          </div>
-
-          <div class="spec-card">
-            <div class="spec-head">
-              <div class="spec-head-icon" style="background:var(--red-dim);"><svg width="16" height="16" fill="none" stroke="var(--red)" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/></svg></div>
-              <div><strong>Friction Saw Ø900</strong><div><span>Friction Saw-01 · Carbon Steel</span></div></div>
-            </div>
-            <div class="spec-rows">
-              <div class="spec-row"><span class="key">วัสดุ</span><span class="val">Carbon Steel (45 HRC)</span></div>
-              <div class="spec-row"><span class="key">ความเร็วรอบ</span><span class="val">1,200–1,800 rpm</span></div>
-              <div class="spec-row"><span class="key">ความเร็วผิว</span><span class="val">90–107 m/s</span></div>
-              <div class="spec-row"><span class="key">อายุต่อ Dress</span><span class="val">500–800 ตัน</span></div>
-              <div class="spec-row"><span class="key">จำนวน Dress สูงสุด</span><span class="val">ไม่จำกัด (ถึง Ø850)</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ เปลี่ยนใบ</span><span class="val">45 นาที</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ Dress ใบ (In-house)</span><span class="val">1.5 ชม.</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ Balancing หลังเปลี่ยน</span><span class="val">30 นาที</span></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>พารามิเตอร์</th><th style="text-align:right;">ค่ามาตรฐาน</th></tr></thead>
+                <tbody id="std-tbody-saw"></tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -1485,76 +1399,28 @@ canvas{display:block;}
           </div>
         </div>
 
-        <div class="spec-grid">
-          <div class="spec-card">
-            <div class="spec-head">
-              <div class="spec-head-icon" style="background:var(--red-dim);"><svg width="16" height="16" fill="none" stroke="var(--red)" stroke-width="2" viewBox="0 0 24 24"><line x1="4" y1="12" x2="20" y2="12"/><circle cx="8" cy="12" r="3"/><circle cx="16" cy="12" r="3"/></svg></div>
-              <div><strong>Slitter Knife Ø250 (HSS M2)</strong><div><span>Slitter-01 · Kinkelder / Kennedy</span></div></div>
-            </div>
-            <div class="spec-rows">
-              <div class="spec-row"><span class="key">วัสดุ</span><span class="val">HSS M2 (62–64 HRC)</span></div>
-              <div class="spec-row"><span class="key">ความเร็วตัด (Vc)</span><span class="val">80–120 m/min</span></div>
-              <div class="spec-row"><span class="key">Clearance (% ความหนา)</span><span class="val">5–10%</span></div>
-              <div class="spec-row"><span class="key">Overlap</span><span class="val">0.05–0.15 mm</span></div>
-              <div class="spec-row"><span class="key">อายุต่อ Regrind</span><span class="val">250–350 ตัน</span></div>
-              <div class="spec-row"><span class="key">จำนวน Regrind สูงสุด</span><span class="val">8 ครั้ง</span></div>
-              <div class="spec-row"><span class="key">Grind ต่อครั้ง</span><span class="val">0.10–0.15 mm/ด้าน</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ เปลี่ยนมีด (1 ชุด)</span><span class="val">45 นาที</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ Regrind (In-house)</span><span class="val">3–4 ชม.</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ Setup + Clearance</span><span class="val">2–3 ชม.</span></div>
-            </div>
-          </div>
+        <div class="reg-kpi-row" id="std-kpi-slitter"></div>
 
-          <div class="spec-card">
-            <div class="spec-head">
-              <div class="spec-head-icon" style="background:var(--amber-dim);"><svg width="16" height="16" fill="none" stroke="var(--amber)" stroke-width="2" viewBox="0 0 24 24"><line x1="4" y1="12" x2="20" y2="12"/><circle cx="8" cy="12" r="3"/><circle cx="16" cy="12" r="3"/></svg></div>
-              <div><strong>Slitter Knife Ø200 (HSS M35)</strong><div><span>Slitter-02 · BÖHLER</span></div></div>
+        <div style="display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:start;margin-bottom:14px;">
+          <div class="card" style="position:sticky;top:70px;">
+            <div style="padding:12px 14px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:13px;font-weight:700;">ประเภทมีดสลิตเตอร์</span>
             </div>
-            <div class="spec-rows">
-              <div class="spec-row"><span class="key">วัสดุ</span><span class="val">HSS M35 Co5 (64–66 HRC)</span></div>
-              <div class="spec-row"><span class="key">ความเร็วตัด (Vc)</span><span class="val">80–120 m/min</span></div>
-              <div class="spec-row"><span class="key">Clearance</span><span class="val">5–8%</span></div>
-              <div class="spec-row"><span class="key">Overlap</span><span class="val">0.05–0.10 mm</span></div>
-              <div class="spec-row"><span class="key">อายุต่อ Regrind</span><span class="val">280–380 ตัน</span></div>
-              <div class="spec-row"><span class="key">จำนวน Regrind สูงสุด</span><span class="val">8 ครั้ง</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ เปลี่ยนมีด (1 ชุด)</span><span class="val">40 นาที</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ Regrind (Vendor)</span><span class="val">3–5 วัน</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ Setup + Clearance</span><span class="val">2 ชม.</span></div>
-            </div>
+            <div id="std-list-slitter" style="max-height:520px;overflow-y:auto;padding:8px;"></div>
           </div>
-
-          <div class="spec-card">
-            <div class="spec-head">
-              <div class="spec-head-icon" style="background:var(--green-dim);"><svg width="16" height="16" fill="none" stroke="var(--green)" stroke-width="2" viewBox="0 0 24 24"><line x1="4" y1="12" x2="20" y2="12"/><circle cx="8" cy="12" r="3"/><circle cx="16" cy="12" r="3"/></svg></div>
-              <div><strong>Slitter Knife Ø300 (Carbide-tipped)</strong><div><span>Slitter-03 · Nachi</span></div></div>
+          <div class="card" style="min-width:0;overflow:hidden;">
+            <div style="padding:12px 16px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;gap:10px;">
+              <div class="spec-head-icon" id="std-detail-icon-slitter" style="width:32px;height:32px;border-radius:7px;display:grid;place-items:center;flex-shrink:0;"></div>
+              <div>
+                <div style="font-size:13px;font-weight:700;" id="std-detail-title-slitter"></div>
+                <div style="font-size:11px;color:var(--text-3);" id="std-detail-sub-slitter"></div>
+              </div>
             </div>
-            <div class="spec-rows">
-              <div class="spec-row"><span class="key">วัสดุ</span><span class="val">Steel + Carbide Tips</span></div>
-              <div class="spec-row"><span class="key">ความเร็วตัด (Vc)</span><span class="val">120–180 m/min</span></div>
-              <div class="spec-row"><span class="key">Clearance</span><span class="val">8–12%</span></div>
-              <div class="spec-row"><span class="key">อายุต่อ Regrind</span><span class="val">600–900 ตัน</span></div>
-              <div class="spec-row"><span class="key">จำนวน Regrind สูงสุด</span><span class="val">6 ครั้ง</span></div>
-              <div class="spec-row"><span class="key">Grind ต่อครั้ง</span><span class="val">0.05–0.10 mm</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ เปลี่ยนมีด (1 ชุด)</span><span class="val">1 ชม.</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ Regrind (Vendor)</span><span class="val">5–7 วัน</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ Setup + Clearance</span><span class="val">3 ชม.</span></div>
-            </div>
-          </div>
-
-          <div class="spec-card">
-            <div class="spec-head">
-              <div class="spec-head-icon" style="background:var(--accent-glow);"><svg width="16" height="16" fill="none" stroke="var(--accent)" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="10" width="18" height="4" rx="1"/><line x1="8" y1="6" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="18"/></svg></div>
-              <div><strong>Spacer Ring & Rubber Spacer</strong><div><span>Slitter-01,02,03 · ทุกขนาด</span></div></div>
-            </div>
-            <div class="spec-rows">
-              <div class="spec-row"><span class="key">วัสดุ Spacer Ring</span><span class="val">Tool Steel (58 HRC)</span></div>
-              <div class="spec-row"><span class="key">วัสดุ Rubber Spacer</span><span class="val">Polyurethane (PU)</span></div>
-              <div class="spec-row"><span class="key">Thickness Tolerance</span><span class="val">± 0.005 mm</span></div>
-              <div class="spec-row"><span class="key">Flatness</span><span class="val">≤ 0.003 mm</span></div>
-              <div class="spec-row"><span class="key">Shore Hardness (PU)</span><span class="val">80–90 Shore A</span></div>
-              <div class="spec-row"><span class="key">อายุ Rubber Spacer</span><span class="val">6 เดือน / สภาพ</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ ตรวจ Thickness ชุด</span><span class="val">30 นาที</span></div>
-              <div class="spec-row std-highlight"><span class="key">⏱ เปลี่ยน Rubber Spacer</span><span class="val">1 ชม.</span></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>พารามิเตอร์</th><th style="text-align:right;">ค่ามาตรฐาน</th></tr></thead>
+                <tbody id="std-tbody-slitter"></tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -1576,6 +1442,58 @@ canvas{display:block;}
         </div>
       </div>
 
+    </div>
+
+
+    <!-- ══════════════════════════════════════════
+         PAGE: DAILY TASKS
+    ══════════════════════════════════════════ -->
+    <div class="page" id="page-daily">
+      <div class="section-title">งานประจำวัน</div>
+      <div class="section-sub">เช็คลิสต์งานประจำวันของทีม Tooling — วันที่ 2 ก.ค. 2569</div>
+
+      <div class="kpi-grid">
+        <div class="kpi-card blue">
+          <div class="kpi-icon blue">
+            <svg width="18" height="18" fill="none" stroke="var(--accent)" stroke-width="2" viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          </div>
+          <div class="kpi-label">งานทั้งหมดวันนี้</div>
+          <div class="kpi-value" id="daily-kpi-total">0</div>
+        </div>
+        <div class="kpi-card green">
+          <div class="kpi-icon green">
+            <svg width="18" height="18" fill="none" stroke="var(--green)" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div class="kpi-label">เสร็จแล้ว</div>
+          <div class="kpi-value" id="daily-kpi-done">0</div>
+        </div>
+        <div class="kpi-card amber">
+          <div class="kpi-icon amber">
+            <svg width="18" height="18" fill="none" stroke="var(--amber)" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg>
+          </div>
+          <div class="kpi-label">รอดำเนินการ</div>
+          <div class="kpi-value" id="daily-kpi-pending">0</div>
+        </div>
+        <div class="kpi-card red">
+          <div class="kpi-icon red">
+            <svg width="18" height="18" fill="none" stroke="var(--red)" stroke-width="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/></svg>
+          </div>
+          <div class="kpi-label">เลยเวลา</div>
+          <div class="kpi-value" id="daily-kpi-overdue">0</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">เช็คลิสต์งานวันนี้</span></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th></th><th>เวลา</th><th>งาน</th><th>ประเภท</th><th>Tooling / เครื่องจักร</th><th>ผู้รับผิดชอบ</th><th>สถานะ</th></tr>
+            </thead>
+            <tbody id="tbody-daily"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
 
@@ -1903,9 +1821,41 @@ canvas{display:block;}
       <div class="section-title">ทีมงาน</div>
       <div class="section-sub">บุคลากรฝ่าย Tooling และการมอบหมายงาน</div>
 
+      <!-- GROUP TABS -->
+      <div class="reg-tab-bar">
+        <button class="reg-tab active" onclick="switchTeamTab('all')">
+          <span class="reg-tab-icon" style="background:rgba(74,142,194,.18);color:var(--accent);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </span>
+          ทั้งหมด
+          <span class="reg-tab-count" id="cnt-team-all">5</span>
+        </button>
+        <button class="reg-tab" onclick="switchTeamTab('admin')">
+          <span class="reg-tab-icon" style="background:rgba(217,91,91,.18);color:var(--red);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/></svg>
+          </span>
+          Admin
+          <span class="reg-tab-count" id="cnt-team-admin">0</span>
+        </button>
+        <button class="reg-tab" onclick="switchTeamTab('engineer')">
+          <span class="reg-tab-icon" style="background:rgba(74,142,194,.18);color:var(--accent);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          </span>
+          วิศวกร
+          <span class="reg-tab-count" id="cnt-team-engineer">2</span>
+        </button>
+        <button class="reg-tab" onclick="switchTeamTab('technician')">
+          <span class="reg-tab-icon" style="background:rgba(139,104,212,.18);color:var(--purple);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          </span>
+          ช่าง
+          <span class="reg-tab-count" id="cnt-team-technician">3</span>
+        </button>
+      </div>
+
       <div class="team-grid">
 
-        <div class="team-card">
+        <div class="team-card" data-role="engineer">
           <div class="team-card-top">
             <div class="team-avatar" style="background:var(--accent);">สว</div>
             <div>
@@ -1926,7 +1876,7 @@ canvas{display:block;}
           </div>
         </div>
 
-        <div class="team-card">
+        <div class="team-card" data-role="technician">
           <div class="team-card-top">
             <div class="team-avatar" style="background:var(--amber);">วส</div>
             <div>
@@ -1947,7 +1897,7 @@ canvas{display:block;}
           </div>
         </div>
 
-        <div class="team-card">
+        <div class="team-card" data-role="technician">
           <div class="team-card-top">
             <div class="team-avatar" style="background:var(--purple);">อท</div>
             <div>
@@ -1968,7 +1918,7 @@ canvas{display:block;}
           </div>
         </div>
 
-        <div class="team-card">
+        <div class="team-card" data-role="technician">
           <div class="team-card-top">
             <div class="team-avatar" style="background:var(--green);">ปร</div>
             <div>
@@ -1989,7 +1939,7 @@ canvas{display:block;}
           </div>
         </div>
 
-        <div class="team-card">
+        <div class="team-card" data-role="engineer">
           <div class="team-card-top">
             <div class="team-avatar" style="background:#5B8DD9;">พป</div>
             <div>
@@ -2010,7 +1960,7 @@ canvas{display:block;}
           </div>
         </div>
 
-        <div class="team-card" style="border-style:dashed;border-color:var(--border);background:transparent;display:flex;align-items:center;justify-content:center;min-height:180px;cursor:pointer;" onclick="">
+        <div class="team-card" data-role="add" style="border-style:dashed;border-color:var(--border);background:transparent;display:flex;align-items:center;justify-content:center;min-height:180px;cursor:pointer;" onclick="">
           <div style="text-align:center;color:var(--text-3);">
             <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="margin:0 auto 8px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             <div style="font-size:13px;font-weight:600;">เพิ่มสมาชิก</div>
@@ -2105,6 +2055,7 @@ const PAGE_META = {
   dashboard: { title: 'Dashboard', sub: 'ภาพรวมระบบ Tooling — อัปเดต 30 มิ.ย. 2569' },
   registry:  { title: 'ทะเบียน Tooling', sub: 'รายการเครื่องมือและอุปกรณ์ทั้งหมด 248 รายการ' },
   standard:  { title: 'ข้อมูล Standard', sub: 'พารามิเตอร์การตัดและเกณฑ์มาตรฐาน' },
+  daily:     { title: 'งานประจำวัน', sub: 'เช็คลิสต์งานประจำวันของทีม Tooling — วันที่ 2 ก.ค. 2569' },
   plan:      { title: 'แผนงาน', sub: 'ตารางแผนการบำรุงรักษาและงาน Tooling ประจำปี 2569' },
   history:   { title: 'ประวัติการทำงาน', sub: 'บันทึกการดำเนินงาน 312 รายการ' },
   pending:   { title: 'งานค้าง', sub: 'รายการงานที่ต้องดำเนินการ 7 รายการ' },
@@ -2295,6 +2246,21 @@ function switchRegTab(key) {
   });
   const panel = document.getElementById('regpanel-' + key);
   if (panel) panel.classList.add('active');
+}
+
+function switchTeamTab(role) {
+  document.querySelectorAll('#page-team .reg-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('#page-team .reg-tab').forEach(t => {
+    if (t.getAttribute('onclick') === `switchTeamTab('${role}')`) t.classList.add('active');
+  });
+  document.querySelectorAll('#page-team .team-grid .team-card').forEach(card => {
+    const cardRole = card.dataset.role;
+    if (cardRole === 'add' || role === 'all' || cardRole === role) {
+      card.style.display = '';
+    } else {
+      card.style.display = 'none';
+    }
+  });
 }
 
 // ─── CALENDAR DATA ────────────────────────────────────────────────────────────
@@ -2631,7 +2597,7 @@ function saveModal() {
       width: g('f-width'), position: g('f-position'),
       usage: g('f-usage'), regrind: g('f-regrind'),
       grindTime: g('f-grindtime')||'—', lastService: g('f-service'), status: g('f-status'),
-      set: selectedRollSet || ''
+      color: getRollSetColor(selectedRollSet), set: selectedRollSet || ''
     };
     toolingData.roll.push(newRoll);
     if (newRoll.set) extraRollSets = extraRollSets.filter(s => s !== newRoll.set);
@@ -2686,16 +2652,16 @@ function saveModal() {
 // ─── TOOLING DATA ────────────────────────────────────────────────────────────
 const toolingData = {
   roll: [
-    {id:'RL-0001',name:'Work Roll #1 (Top)',material:'Forged Steel',diameter:'Ø320 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'1,840 ตัน',regrind:'3/5',grindTime:'—',lastService:'10 มิ.ย. 69',status:'พร้อมใช้',set:'Work Roll Stand 1 — Ø320 mm'},
-    {id:'RL-0002',name:'Work Roll #1 (Bot)',material:'Forged Steel',diameter:'Ø320 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'1,840 ตัน',regrind:'3/5',grindTime:'—',lastService:'10 มิ.ย. 69',status:'พร้อมใช้',set:'Work Roll Stand 1 — Ø320 mm'},
-    {id:'RL-0003',name:'Backup Roll #1 (Top)',material:'Cast Iron',diameter:'Ø650 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'12,400 ตัน',regrind:'1/3',grindTime:'—',lastService:'5 มิ.ย. 69',status:'พร้อมใช้',set:'Backup Roll Stand 1 — Ø650 mm'},
-    {id:'RL-0004',name:'Backup Roll #1 (Bot)',material:'Cast Iron',diameter:'Ø650 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'12,400 ตัน',regrind:'1/3',grindTime:'—',lastService:'5 มิ.ย. 69',status:'พร้อมใช้',set:'Backup Roll Stand 1 — Ø650 mm'},
-    {id:'RL-0007',name:'Work Roll #2 (Top)',material:'Forged Steel',diameter:'Ø300 mm',width:'1,200 mm',position:'Mill-01 Stand 2',usage:'980 ตัน',regrind:'2/5',grindTime:'—',lastService:'20 มิ.ย. 69',status:'Regrind',set:'Work Roll Stand 2 — Ø300 mm'},
-    {id:'RL-0008',name:'Work Roll #2 (Bot)',material:'Forged Steel',diameter:'Ø300 mm',width:'1,200 mm',position:'Mill-01 Stand 2',usage:'980 ตัน',regrind:'2/5',grindTime:'—',lastService:'20 มิ.ย. 69',status:'Regrind',set:'Work Roll Stand 2 — Ø300 mm'},
-    {id:'RL-0015',name:'Edger Roll (Left)',material:'Tool Steel D2',diameter:'Ø250 mm',width:'180 mm',position:'Mill-01 Edger',usage:'3,200 ตัน',regrind:'4/5',grindTime:'—',lastService:'1 มิ.ย. 69',status:'หมดอายุ',set:'Edger Roll — Ø250 mm'},
-    {id:'RL-0016',name:'Edger Roll (Right)',material:'Tool Steel D2',diameter:'Ø250 mm',width:'180 mm',position:'Mill-01 Edger',usage:'3,200 ตัน',regrind:'4/5',grindTime:'—',lastService:'1 มิ.ย. 69',status:'หมดอายุ',set:'Edger Roll — Ø250 mm'},
-    {id:'RL-0021',name:'Straightener Roll Set A',material:'Forged Steel',diameter:'Ø180 mm',width:'900 mm',position:'Leveler-01',usage:'5,600 ตัน',regrind:'2/4',grindTime:'—',lastService:'28 พ.ค. 69',status:'ซ่อมบำรุง',set:'Straightener Roll — Ø180 mm'},
-    {id:'RL-0030',name:'Pinch Roll (Entry)',material:'Rubber-coated',diameter:'Ø200 mm',width:'1,100 mm',position:'Mill-02 Entry',usage:'8,100 ตัน',regrind:'—',grindTime:'—',lastService:'15 มิ.ย. 69',status:'ใช้งานอยู่',set:'Pinch Roll — Ø200 mm'}
+    {id:'RL-0001',name:'Work Roll #1 (Top)',material:'Forged Steel',diameter:'Ø320 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'1,840 ตัน',regrind:'3/5',grindTime:'—',lastService:'10 มิ.ย. 69',status:'พร้อมใช้',color:'blue',set:'Work Roll Stand 1 — Ø320 mm'},
+    {id:'RL-0002',name:'Work Roll #1 (Bot)',material:'Forged Steel',diameter:'Ø320 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'1,840 ตัน',regrind:'3/5',grindTime:'—',lastService:'10 มิ.ย. 69',status:'พร้อมใช้',color:'blue',set:'Work Roll Stand 1 — Ø320 mm'},
+    {id:'RL-0003',name:'Backup Roll #1 (Top)',material:'Cast Iron',diameter:'Ø650 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'12,400 ตัน',regrind:'1/3',grindTime:'—',lastService:'5 มิ.ย. 69',status:'พร้อมใช้',color:'yellow',set:'Backup Roll Stand 1 — Ø650 mm'},
+    {id:'RL-0004',name:'Backup Roll #1 (Bot)',material:'Cast Iron',diameter:'Ø650 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'12,400 ตัน',regrind:'1/3',grindTime:'—',lastService:'5 มิ.ย. 69',status:'พร้อมใช้',color:'yellow',set:'Backup Roll Stand 1 — Ø650 mm'},
+    {id:'RL-0007',name:'Work Roll #2 (Top)',material:'Forged Steel',diameter:'Ø300 mm',width:'1,200 mm',position:'Mill-01 Stand 2',usage:'980 ตัน',regrind:'2/5',grindTime:'—',lastService:'20 มิ.ย. 69',status:'Regrind',color:'red',set:'Work Roll Stand 2 — Ø300 mm'},
+    {id:'RL-0008',name:'Work Roll #2 (Bot)',material:'Forged Steel',diameter:'Ø300 mm',width:'1,200 mm',position:'Mill-01 Stand 2',usage:'980 ตัน',regrind:'2/5',grindTime:'—',lastService:'20 มิ.ย. 69',status:'Regrind',color:'red',set:'Work Roll Stand 2 — Ø300 mm'},
+    {id:'RL-0015',name:'Edger Roll (Left)',material:'Tool Steel D2',diameter:'Ø250 mm',width:'180 mm',position:'Mill-01 Edger',usage:'3,200 ตัน',regrind:'4/5',grindTime:'—',lastService:'1 มิ.ย. 69',status:'หมดอายุ',color:'gold',set:'Edger Roll — Ø250 mm'},
+    {id:'RL-0016',name:'Edger Roll (Right)',material:'Tool Steel D2',diameter:'Ø250 mm',width:'180 mm',position:'Mill-01 Edger',usage:'3,200 ตัน',regrind:'4/5',grindTime:'—',lastService:'1 มิ.ย. 69',status:'หมดอายุ',color:'gold',set:'Edger Roll — Ø250 mm'},
+    {id:'RL-0021',name:'Straightener Roll Set A',material:'Forged Steel',diameter:'Ø180 mm',width:'900 mm',position:'Leveler-01',usage:'5,600 ตัน',regrind:'2/4',grindTime:'—',lastService:'28 พ.ค. 69',status:'ซ่อมบำรุง',color:'purple',set:'Straightener Roll — Ø180 mm'},
+    {id:'RL-0030',name:'Pinch Roll (Entry)',material:'Rubber-coated',diameter:'Ø200 mm',width:'1,100 mm',position:'Mill-02 Entry',usage:'8,100 ตัน',regrind:'—',grindTime:'—',lastService:'15 มิ.ย. 69',status:'ใช้งานอยู่',color:'blue',set:'Pinch Roll — Ø200 mm'}
   ],
   sq: [
     {id:'SQ-0001',name:'Guide Roll (Entry) ชุด A',size:'Ø80×120',material:'Carbide',machine:'SQ Mill-01',location:'SQ-A-01',usage:'2,100 ตัน',lastService:'18 มิ.ย. 69',status:'พร้อมใช้'},
@@ -2749,8 +2715,32 @@ function renderFooter(tab, total, shown, page, totalPages) {
     `<span>แสดง ${shown} จาก ${total} รายการ</span><div class="tbl-pages">${btns}</div>`;
 }
 
-let selectedRollSet = null;
+let selectedRollSet = null;    // col1 (Size Roll): null = ทุก Size Roll
 let extraRollSets = [];
+let selectedRollColor = null;  // col2 (ชุดสี Roll): null = ทั้งหมด
+
+let ROLL_COLOR_GROUPS = [
+  {key:'blue',   label:'สีฟ้า',   dot:'#3B82F6'},
+  {key:'yellow', label:'สีเหลือง', dot:'#EAB308'},
+  {key:'red',    label:'สีแดง',   dot:'#C03030'},
+  {key:'gold',   label:'สีทอง',   dot:'#C9A227'},
+  {key:'purple', label:'สีม่วง',   dot:'#5E44B0'},
+];
+let rollColorSeq = 0;
+
+// ชุดสีที่ผูกกับแต่ละ Size Roll — เลือกได้จากหน้า Size Roll แล้วแสดงผลที่หน้า ชุดสี Roll
+let rollSetColors = {
+  'Work Roll Stand 1 — Ø320 mm':   'blue',
+  'Backup Roll Stand 1 — Ø650 mm': 'yellow',
+  'Work Roll Stand 2 — Ø300 mm':   'red',
+  'Edger Roll — Ø250 mm':          'gold',
+  'Straightener Roll — Ø180 mm':   'purple',
+  'Pinch Roll — Ø200 mm':          'blue',
+};
+
+function getRollSetColor(setName) {
+  return rollSetColors[setName] || null;
+}
 
 function getRollSets() {
   const sets = [];
@@ -2759,11 +2749,58 @@ function getRollSets() {
   return sets;
 }
 
+function rollSetScope() {
+  return selectedRollSet ? toolingData.roll.filter(r => r.set === selectedRollSet) : toolingData.roll;
+}
+
+function renderRollColorList() {
+  const el = document.getElementById('roll-color-list');
+  const scopeEl = document.getElementById('roll-color-scope');
+  if (!el) return;
+  if (scopeEl) scopeEl.textContent = selectedRollSet ? ('ขอบเขต: ' + selectedRollSet) : 'ทุก Size Roll';
+
+  const scope = rollSetScope();
+  const cardStyle = active => `display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:8px;cursor:pointer;
+    border:1px solid ${active ? 'var(--accent)' : 'var(--border)'};
+    background:${active ? 'var(--accent-glow)' : 'var(--bg-surface)'};
+    transition:background .12s,border-color .12s;`;
+
+  let html = `<div onclick="selectRollColor(null)" style="${cardStyle(!selectedRollColor)}">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <span style="font-size:13px;font-weight:700;color:${!selectedRollColor?'var(--accent)':'var(--text-1)'};">ทั้งหมด</span>
+      <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;">${scope.length}</span>
+    </div>
+    <span style="font-size:11px;color:var(--text-3);">ทุกสีใน${selectedRollSet ? 'กลุ่มนี้' : 'ระบบ'}</span>
+  </div>`;
+
+  html += ROLL_COLOR_GROUPS.map(g => {
+    const items = scope.filter(r => r.color === g.key);
+    const active = g.key === selectedRollColor;
+    return `<div style="display:flex;align-items:center;gap:6px;">
+      <div onclick="selectRollColor('${g.key}')" style="flex:1;${cardStyle(active)}">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:${active?'var(--accent)':'var(--text-1)'};">
+            <span style="width:8px;height:8px;border-radius:50%;background:${g.dot};flex-shrink:0;"></span>${g.label}
+          </span>
+          <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;">${items.length}</span>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+        <button class="btn btn-ghost btn-sm" style="padding:3px 6px;" onclick="openEditColorModal('${g.key}')" title="แก้ไข">✏️</button>
+        <button class="btn btn-ghost btn-sm" style="padding:3px 6px;color:var(--red);" onclick="deleteColor('${g.key}')" title="ลบ">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = html;
+}
+
 function renderRollSetList() {
-  const q = (document.getElementById('roll-set-search')||{}).value||'';
-  const sets = getRollSets().filter(s => s.toLowerCase().includes(q.toLowerCase()));
   const el = document.getElementById('roll-set-list');
   if (!el) return;
+
+  const q = (document.getElementById('roll-set-search')||{}).value||'';
+  const sets = getRollSets().filter(s => s.toLowerCase().includes(q.toLowerCase()));
   el.innerHTML = sets.map(s => {
     const rolls = toolingData.roll.filter(r => r.set === s);
     const hasIssue = rolls.some(r => r.status === 'หมดอายุ' || r.status === 'มีปัญหา');
@@ -2789,8 +2826,23 @@ function renderRollSetList() {
 
 function selectRollSet(setName) {
   selectedRollSet = setName;
+  selectedRollColor = getRollSetColor(setName);
   renderRollSetList();
+  renderRollColorList();
   renderRollTable(1);
+}
+
+function selectRollColor(key) {
+  selectedRollColor = key;
+  renderRollColorList();
+  renderRollTable(1);
+}
+
+function switchRollDetailTab(tab) {
+  document.getElementById('rolltab-checklist').classList.toggle('active', tab === 'checklist');
+  document.getElementById('rolltab-history').classList.toggle('active', tab === 'history');
+  document.getElementById('rolldetail-checklist').style.display = tab === 'checklist' ? '' : 'none';
+  document.getElementById('rolldetail-history').style.display = tab === 'history' ? '' : 'none';
 }
 
 function updateRollKpi() {
@@ -2804,14 +2856,29 @@ function updateRollKpi() {
 
 function renderRollTable(page) {
   const allData = toolingData.roll;
-  const data = selectedRollSet ? allData.filter(r => r.set === selectedRollSet) : allData;
+  let data = rollSetScope();
+  let title = selectedRollSet;
+
+  if (selectedRollColor) {
+    const g = ROLL_COLOR_GROUPS.find(x => x.key === selectedRollColor);
+    if (g) {
+      data = data.filter(r => r.color === g.key);
+      title = (title ? title + ' · ' : '') + g.label;
+    }
+  }
+
+  const q = ((document.getElementById('roll-detail-search')||{}).value || '').trim().toLowerCase();
+  if (q) data = data.filter(r => r.id.toLowerCase().includes(q) || r.name.toLowerCase().includes(q));
+  const statusFilter = (document.getElementById('roll-detail-status-filter')||{}).value || '';
+  if (statusFilter) data = data.filter(r => r.status === statusFilter);
+
   const start = (page-1)*PAGE_SIZE;
   const rows = data.slice(start, start+PAGE_SIZE);
 
   // update right-panel header
   const titleEl = document.getElementById('roll-detail-title');
   const countEl = document.getElementById('roll-detail-count');
-  if (titleEl) titleEl.textContent = selectedRollSet || 'Roll ทั้งหมด';
+  if (titleEl) titleEl.textContent = title || 'Roll ทั้งหมด';
   if (countEl) countEl.textContent = data.length + ' รายการ';
 
   const html = rows.map(r => {
@@ -2832,13 +2899,14 @@ function renderRollTable(page) {
         <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteRoll(${realIdx})">ลบ</button>
       </td>
     </tr>`;
-  }).join('') || `<tr><td colspan="11" class="empty" style="padding:32px;text-align:center;color:var(--text-3);">เลือกกลุ่ม Roll จากด้านซ้าย</td></tr>`;
+  }).join('') || `<tr><td colspan="11" class="empty" style="padding:32px;text-align:center;color:var(--text-3);">ไม่พบ Roll ตามเงื่อนไขที่เลือก</td></tr>`;
 
   document.getElementById('tbody-roll').innerHTML = html;
   const tp = Math.max(1, Math.ceil(data.length/PAGE_SIZE));
   renderFooter('roll', data.length, rows.length, page, tp);
   updateRollKpi();
   renderRollSetList();
+  renderRollColorList();
 }
 
 function editRoll(idx) {
@@ -2864,7 +2932,7 @@ function editRoll(idx) {
       diameter: g('f-diameter'), width: g('f-width'), position: g('f-position'),
       usage: g('f-usage'), regrind: g('f-regrind'),
       grindTime: g('f-grindtime'), lastService: g('f-service'), status: g('f-status'),
-      set: r.set
+      color: r.color, set: r.set
     };
     renderRollTable(pageState.roll);
     const btn = this;
@@ -2890,7 +2958,10 @@ function openAddSetModal() {
       extraRollSets.push(name);
     }
     selectedRollSet = name;
+    selectedRollColor = getRollSetColor(name);
     renderRollSetList();
+    renderRollColorList();
+    renderRollTable(1);
     const btn = this;
     const orig = btn.innerHTML;
     btn.innerHTML = '✓ เพิ่มแล้ว'; btn.style.background = 'var(--green)';
@@ -2909,9 +2980,16 @@ function openEditSetModal(oldName) {
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const newName = (document.getElementById('f-set-name')||{}).value.trim();
     if (!newName || newName === oldName) { closeModal(); return; }
+
     toolingData.roll.forEach(r => { if (r.set === oldName) r.set = newName; });
-    if (selectedRollSet === oldName) selectedRollSet = newName;
+    extraRollSets = extraRollSets.map(s => s === oldName ? newName : s);
+    const colorKey = getRollSetColor(oldName);
+    delete rollSetColors[oldName];
+    if (colorKey) rollSetColors[newName] = colorKey;
+
+    if (selectedRollSet === oldName) { selectedRollSet = newName; selectedRollColor = colorKey; }
     renderRollSetList();
+    renderRollColorList();
     renderRollTable(pageState.roll);
     const btn = this;
     const orig = btn.innerHTML;
@@ -2928,9 +3006,76 @@ function deleteSet(setName) {
   if (!confirm(msg)) return;
   toolingData.roll = toolingData.roll.filter(r => r.set !== setName);
   extraRollSets = extraRollSets.filter(s => s !== setName);
-  if (selectedRollSet === setName) selectedRollSet = null;
+  delete rollSetColors[setName];
+  if (selectedRollSet === setName) { selectedRollSet = null; selectedRollColor = null; }
   renderRollSetList();
+  renderRollColorList();
   renderRollTable(1);
+}
+
+function openAddColorModal() {
+  document.getElementById('modal-title').textContent = 'เพิ่มชุดสี Roll';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="modal-row">
+      <div class="form-group"><label class="form-label">ชื่อสี</label>
+        <input class="form-input" id="f-color-name" placeholder="เช่น สีเขียว"></div>
+      <div class="form-group"><label class="form-label">สี</label>
+        <input type="color" class="form-input" id="f-color-value" value="#2272B6" style="padding:2px;height:36px;"></div>
+    </div>`;
+  document.getElementById('modal-overlay').classList.add('open');
+  document.querySelector('.modal-footer .btn-primary').onclick = function() {
+    const name = (document.getElementById('f-color-name')||{}).value.trim();
+    const val = (document.getElementById('f-color-value')||{}).value || '#2272B6';
+    if (!name) return;
+    rollColorSeq++;
+    ROLL_COLOR_GROUPS.push({key:'custom'+rollColorSeq, label:name, dot:val});
+    renderRollColorList();
+    const btn = this;
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✓ เพิ่มแล้ว'; btn.style.background = 'var(--green)';
+    setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.onclick = saveModal; closeModal(); }, 800);
+  };
+}
+
+function openEditColorModal(key) {
+  const g = ROLL_COLOR_GROUPS.find(x => x.key === key);
+  if (!g) return;
+  document.getElementById('modal-title').textContent = 'แก้ไขชุดสี Roll';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="modal-row">
+      <div class="form-group"><label class="form-label">ชื่อสี</label>
+        <input class="form-input" id="f-color-name" value="${g.label}"></div>
+      <div class="form-group"><label class="form-label">สี</label>
+        <input type="color" class="form-input" id="f-color-value" value="${g.dot}" style="padding:2px;height:36px;"></div>
+    </div>`;
+  document.getElementById('modal-overlay').classList.add('open');
+  document.querySelector('.modal-footer .btn-primary').onclick = function() {
+    const name = (document.getElementById('f-color-name')||{}).value.trim();
+    const val = (document.getElementById('f-color-value')||{}).value;
+    if (!name) { closeModal(); return; }
+    g.label = name;
+    g.dot = val;
+    renderRollColorList();
+    renderRollTable(pageState.roll);
+    const btn = this;
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✓ บันทึกแล้ว'; btn.style.background = 'var(--green)';
+    setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.onclick = saveModal; closeModal(); }, 800);
+  };
+}
+
+function deleteColor(key) {
+  const g = ROLL_COLOR_GROUPS.find(x => x.key === key);
+  if (!g) return;
+  const count = toolingData.roll.filter(r => r.color === key).length;
+  const msg = count > 0
+    ? `ลบชุดสี "${g.label}" — Roll ${count} ลูกที่ใช้สีนี้จะกลายเป็นไม่ระบุสี ดำเนินการต่อ?`
+    : `ลบชุดสี "${g.label}" ออก?`;
+  if (!confirm(msg)) return;
+  ROLL_COLOR_GROUPS = ROLL_COLOR_GROUPS.filter(x => x.key !== key);
+  if (selectedRollColor === key) selectedRollColor = null;
+  renderRollColorList();
+  renderRollTable(pageState.roll);
 }
 
 function deleteRoll(idx) {
@@ -3017,6 +3162,305 @@ function changePage(tab, page) {
   else if (tab==='saw') renderSawTable(page);
   else if (tab==='slitter') renderSlitterTable(page);
 }
+
+// ─── STANDARD DATA (spec sheet, sidebar + table like ทะเบียน Tooling) ──────────
+const ROLL_ICON = '<ellipse cx="12" cy="12" rx="10" ry="4"/><path d="M2 12c0 4 4.5 8 10 8s10-4 10-8"/>';
+const STANDARD_DATA = {
+  roll: [
+    {name:'Work Roll — Forged Steel', sub:'Mill-01 Stand 1 & 2 · Ø300–320 mm', color:'accent', icon:ROLL_ICON, rows:[
+      {k:'วัสดุ',v:'Forged Steel (60 HRC)'},
+      {k:'อายุการใช้งานต่อ Regrind',v:'400–600 ตัน'},
+      {k:'จำนวน Regrind สูงสุด',v:'5 ครั้ง'},
+      {k:'ปริมาณ Grind ต่อครั้ง',v:'0.5–1.0 mm/ด้าน'},
+      {k:'เกณฑ์เปลี่ยน (Ø ต่ำสุด)',v:'Ø290 mm'},
+      {k:'Surface Roughness หลัง Grind',v:'Ra ≤ 0.4 µm'},
+      {k:'Runout ที่ยอมรับได้',v:'≤ 0.02 mm'},
+      {k:'⏱ เวลา Regrind (Vendor)',v:'3–4 วัน',hl:true},
+      {k:'⏱ เวลาถอด-ติดตั้ง',v:'4 ชม. / คู่',hl:true},
+      {k:'⏱ ตรวจสอบหลังติดตั้ง',v:'1.5 ชม.',hl:true},
+    ]},
+    {name:'Backup Roll — Cast Iron', sub:'Mill-01 Stand 1 & 2 · Ø650 mm', color:'purple', icon:ROLL_ICON, rows:[
+      {k:'วัสดุ',v:'Indefinite Chill Cast Iron'},
+      {k:'อายุการใช้งานต่อ Regrind',v:'3,000–5,000 ตัน'},
+      {k:'จำนวน Regrind สูงสุด',v:'3 ครั้ง'},
+      {k:'ปริมาณ Grind ต่อครั้ง',v:'1.0–2.0 mm/ด้าน'},
+      {k:'เกณฑ์เปลี่ยน (Ø ต่ำสุด)',v:'Ø620 mm'},
+      {k:'Surface Roughness หลัง Grind',v:'Ra ≤ 0.8 µm'},
+      {k:'Runout ที่ยอมรับได้',v:'≤ 0.05 mm'},
+      {k:'⏱ เวลา Regrind (Vendor)',v:'5–7 วัน',hl:true},
+      {k:'⏱ เวลาถอด-ติดตั้ง',v:'6 ชม. / คู่',hl:true},
+      {k:'⏱ ตรวจสอบหลังติดตั้ง',v:'2 ชม.',hl:true},
+    ]},
+    {name:'Edger Roll — Tool Steel D2', sub:'Mill-01 Edger · Ø250 mm', color:'amber', icon:ROLL_ICON, rows:[
+      {k:'วัสดุ',v:'Tool Steel D2 (58–62 HRC)'},
+      {k:'อายุการใช้งานต่อ Regrind',v:'800–1,200 ตัน'},
+      {k:'จำนวน Regrind สูงสุด',v:'5 ครั้ง'},
+      {k:'Profile Tolerance',v:'± 0.05 mm'},
+      {k:'เกณฑ์เปลี่ยน (Ø ต่ำสุด)',v:'Ø220 mm'},
+      {k:'Runout ที่ยอมรับได้',v:'≤ 0.03 mm'},
+      {k:'⏱ เวลา Regrind (In-house)',v:'4–6 ชม.',hl:true},
+      {k:'⏱ เวลาถอด-ติดตั้ง',v:'2 ชม. / คู่',hl:true},
+      {k:'⏱ ตรวจสอบหลังติดตั้ง',v:'1 ชม.',hl:true},
+    ]},
+    {name:'Straightener Roll — Forged Steel', sub:'Leveler-01 · Ø180 mm', color:'green', icon:ROLL_ICON, rows:[
+      {k:'วัสดุ',v:'Forged Steel (55 HRC)'},
+      {k:'อายุการใช้งานต่อ Regrind',v:'1,500–2,000 ตัน'},
+      {k:'จำนวน Regrind สูงสุด',v:'4 ครั้ง'},
+      {k:'Surface Roughness หลัง Grind',v:'Ra ≤ 0.6 µm'},
+      {k:'Runout ที่ยอมรับได้',v:'≤ 0.03 mm'},
+      {k:'⏱ เวลา Regrind (Vendor)',v:'3–5 วัน',hl:true},
+      {k:'⏱ เวลาถอด-ติดตั้ง (ชุด)',v:'5 ชม.',hl:true},
+      {k:'⏱ Alignment หลังติดตั้ง',v:'2 ชม.',hl:true},
+    ]},
+  ],
+  rollsq: [
+    {name:'Forming Roll H/V Stand', sub:'SQ Mill-01 · Ø220 mm', color:'purple', icon:'<rect x="3" y="3" width="18" height="18" rx="2"/>', rows:[
+      {k:'วัสดุ',v:'Forged Steel (58 HRC)'},
+      {k:'อายุต่อ Regrind',v:'1,000–1,500 ตัน'},
+      {k:'จำนวน Regrind สูงสุด',v:'5 ครั้ง'},
+      {k:'Profile Tolerance',v:'± 0.03 mm'},
+      {k:'เกณฑ์เปลี่ยน (Ø ต่ำสุด)',v:'Ø195 mm'},
+      {k:'⏱ Regrind (Vendor)',v:'3–4 วัน',hl:true},
+      {k:'⏱ ถอด-ติดตั้ง',v:'4 ชม. / Stand',hl:true},
+      {k:'⏱ Alignment หลังเปลี่ยน',v:'3 ชม.',hl:true},
+    ]},
+    {name:'Sizing Roll', sub:'SQ Mill-01 · Ø150 mm · ชุด 40×40 / 50×50', color:'accent', icon:'<rect x="3" y="3" width="18" height="18" rx="2"/>', rows:[
+      {k:'วัสดุ',v:'Tool Steel (62 HRC)'},
+      {k:'อายุต่อ Regrind',v:'600–900 ตัน'},
+      {k:'จำนวน Regrind สูงสุด',v:'6 ครั้ง'},
+      {k:'Dimensional Tolerance',v:'± 0.02 mm'},
+      {k:'Corner Radius',v:'R 1.5–3.0 mm'},
+      {k:'⏱ Regrind (In-house)',v:'4–6 ชม.',hl:true},
+      {k:'⏱ ถอด-ติดตั้ง',v:'2 ชม. / ชุด',hl:true},
+      {k:'⏱ ตรวจสอบ Profile',v:'1 ชม.',hl:true},
+    ]},
+    {name:'Guide Roll (Entry/Exit)', sub:'SQ Mill-01 · Ø80 mm · Carbide', color:'amber', icon:'<circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="10"/>', rows:[
+      {k:'วัสดุ',v:'Tungsten Carbide'},
+      {k:'อายุต่อ Regrind',v:'2,000–3,000 ตัน'},
+      {k:'จำนวน Regrind สูงสุด',v:'3 ครั้ง'},
+      {k:'Bore Tolerance',v:'H6'},
+      {k:'Runout ที่ยอมรับได้',v:'≤ 0.01 mm'},
+      {k:'⏱ เปลี่ยน Guide Roll',v:'2 ชม. / ชุด',hl:true},
+      {k:'⏱ Regrind (Vendor)',v:'5–7 วัน',hl:true},
+      {k:'⏱ ตรวจสอบหลังเปลี่ยน',v:'0.5 ชม.',hl:true},
+    ]},
+    {name:'Spacer Roll', sub:'SQ Mill-01,02 · Hardened Steel', color:'green', icon:'<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/>', rows:[
+      {k:'วัสดุ',v:'Hardened Steel (58 HRC)'},
+      {k:'Thickness Tolerance',v:'± 0.01 mm'},
+      {k:'Flatness',v:'≤ 0.005 mm'},
+      {k:'อายุการใช้งาน',v:'ตามสภาพ (ไม่ Regrind)'},
+      {k:'⏱ ตรวจสอบ Thickness',v:'0.5 ชม. / ชุด',hl:true},
+      {k:'⏱ ทำความสะอาด + ตรวจ',v:'1 ชม.',hl:true},
+    ]},
+  ],
+  saw: [
+    {name:'Circular Cold Saw Ø710 (HSS-E)', sub:'Cold Saw-01 · Kinkelder', color:'amber', icon:'<circle cx="12" cy="12" r="9"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/>', rows:[
+      {k:'วัสดุ',v:'HSS-E (M42 Co8%)'},
+      {k:'ความเร็วตัด (Vc)',v:'25–35 m/min'},
+      {k:'รอบหมุน (n)',v:'11–16 rpm'},
+      {k:'Feed (mm/tooth)',v:'0.08–0.12 mm/t'},
+      {k:'อายุต่อ Regrind',v:'200–300 ตัน'},
+      {k:'จำนวน Regrind สูงสุด',v:'6 ครั้ง'},
+      {k:'Grind ต่อครั้ง',v:'0.15–0.20 mm'},
+      {k:'⏱ เปลี่ยนใบเลื่อย',v:'30 นาที',hl:true},
+      {k:'⏱ Regrind (Vendor)',v:'2–3 วัน',hl:true},
+      {k:'⏱ ตรวจสอบฟัน',v:'45 นาที',hl:true},
+    ]},
+    {name:'Circular Cold Saw Ø630 (Carbide-tipped)', sub:'Cold Saw-02 · WIKUS', color:'green', icon:'<circle cx="12" cy="12" r="9"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/>', rows:[
+      {k:'วัสดุ',v:'Steel body + Carbide tips'},
+      {k:'ความเร็วตัด (Vc)',v:'60–80 m/min'},
+      {k:'รอบหมุน (n)',v:'30–40 rpm'},
+      {k:'Feed (mm/tooth)',v:'0.10–0.15 mm/t'},
+      {k:'อายุต่อ Regrind',v:'400–500 ตัน'},
+      {k:'จำนวน Regrind สูงสุด',v:'4 ครั้ง'},
+      {k:'น้ำหล่อเย็น',v:'Cutting Oil (Mist)'},
+      {k:'⏱ เปลี่ยนใบเลื่อย',v:'30 นาที',hl:true},
+      {k:'⏱ Regrind (Vendor)',v:'3–4 วัน',hl:true},
+      {k:'⏱ ตรวจ Tip ก่อนใช้',v:'20 นาที',hl:true},
+    ]},
+    {name:'Band Saw Blade 54×1.6 (Bi-Metal)', sub:'Band Saw-01 · LENOX', color:'accent', icon:'<path d="M3 12h18M3 6l18 6-18 6"/>', rows:[
+      {k:'วัสดุ',v:'Bi-Metal HSS + Spring Steel'},
+      {k:'TPI',v:'2/3 (Variable)'},
+      {k:'ความเร็วใบ',v:'50–80 m/min'},
+      {k:'Feed Force',v:'50–120 N'},
+      {k:'อายุการใช้งาน',v:'80–120 ตัน (ทิ้ง)'},
+      {k:'ความตึงใบ (Tension)',v:'25,000–30,000 N'},
+      {k:'น้ำหล่อเย็น',v:'Water Soluble Flood'},
+      {k:'⏱ เปลี่ยนใบ Band Saw',v:'20 นาที',hl:true},
+      {k:'⏱ ตั้งความตึงใบ',v:'10 นาที',hl:true},
+    ]},
+    {name:'Friction Saw Ø900', sub:'Friction Saw-01 · Carbon Steel', color:'red', icon:'<circle cx="12" cy="12" r="9"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/>', rows:[
+      {k:'วัสดุ',v:'Carbon Steel (45 HRC)'},
+      {k:'ความเร็วรอบ',v:'1,200–1,800 rpm'},
+      {k:'ความเร็วผิว',v:'90–107 m/s'},
+      {k:'อายุต่อ Dress',v:'500–800 ตัน'},
+      {k:'จำนวน Dress สูงสุด',v:'ไม่จำกัด (ถึง Ø850)'},
+      {k:'⏱ เปลี่ยนใบ',v:'45 นาที',hl:true},
+      {k:'⏱ Dress ใบ (In-house)',v:'1.5 ชม.',hl:true},
+      {k:'⏱ Balancing หลังเปลี่ยน',v:'30 นาที',hl:true},
+    ]},
+  ],
+  slitter: [
+    {name:'Slitter Knife Ø250 (HSS M2)', sub:'Slitter-01 · Kinkelder / Kennedy', color:'red', icon:'<line x1="4" y1="12" x2="20" y2="12"/><circle cx="8" cy="12" r="3"/><circle cx="16" cy="12" r="3"/>', rows:[
+      {k:'วัสดุ',v:'HSS M2 (62–64 HRC)'},
+      {k:'ความเร็วตัด (Vc)',v:'80–120 m/min'},
+      {k:'Clearance (% ความหนา)',v:'5–10%'},
+      {k:'Overlap',v:'0.05–0.15 mm'},
+      {k:'อายุต่อ Regrind',v:'250–350 ตัน'},
+      {k:'จำนวน Regrind สูงสุด',v:'8 ครั้ง'},
+      {k:'Grind ต่อครั้ง',v:'0.10–0.15 mm/ด้าน'},
+      {k:'⏱ เปลี่ยนมีด (1 ชุด)',v:'45 นาที',hl:true},
+      {k:'⏱ Regrind (In-house)',v:'3–4 ชม.',hl:true},
+      {k:'⏱ Setup + Clearance',v:'2–3 ชม.',hl:true},
+    ]},
+    {name:'Slitter Knife Ø200 (HSS M35)', sub:'Slitter-02 · BÖHLER', color:'amber', icon:'<line x1="4" y1="12" x2="20" y2="12"/><circle cx="8" cy="12" r="3"/><circle cx="16" cy="12" r="3"/>', rows:[
+      {k:'วัสดุ',v:'HSS M35 Co5 (64–66 HRC)'},
+      {k:'ความเร็วตัด (Vc)',v:'80–120 m/min'},
+      {k:'Clearance',v:'5–8%'},
+      {k:'Overlap',v:'0.05–0.10 mm'},
+      {k:'อายุต่อ Regrind',v:'280–380 ตัน'},
+      {k:'จำนวน Regrind สูงสุด',v:'8 ครั้ง'},
+      {k:'⏱ เปลี่ยนมีด (1 ชุด)',v:'40 นาที',hl:true},
+      {k:'⏱ Regrind (Vendor)',v:'3–5 วัน',hl:true},
+      {k:'⏱ Setup + Clearance',v:'2 ชม.',hl:true},
+    ]},
+    {name:'Slitter Knife Ø300 (Carbide-tipped)', sub:'Slitter-03 · Nachi', color:'green', icon:'<line x1="4" y1="12" x2="20" y2="12"/><circle cx="8" cy="12" r="3"/><circle cx="16" cy="12" r="3"/>', rows:[
+      {k:'วัสดุ',v:'Steel + Carbide Tips'},
+      {k:'ความเร็วตัด (Vc)',v:'120–180 m/min'},
+      {k:'Clearance',v:'8–12%'},
+      {k:'อายุต่อ Regrind',v:'600–900 ตัน'},
+      {k:'จำนวน Regrind สูงสุด',v:'6 ครั้ง'},
+      {k:'Grind ต่อครั้ง',v:'0.05–0.10 mm'},
+      {k:'⏱ เปลี่ยนมีด (1 ชุด)',v:'1 ชม.',hl:true},
+      {k:'⏱ Regrind (Vendor)',v:'5–7 วัน',hl:true},
+      {k:'⏱ Setup + Clearance',v:'3 ชม.',hl:true},
+    ]},
+    {name:'Spacer Ring & Rubber Spacer', sub:'Slitter-01,02,03 · ทุกขนาด', color:'accent', icon:'<rect x="3" y="10" width="18" height="4" rx="1"/><line x1="8" y1="6" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="18"/>', rows:[
+      {k:'วัสดุ Spacer Ring',v:'Tool Steel (58 HRC)'},
+      {k:'วัสดุ Rubber Spacer',v:'Polyurethane (PU)'},
+      {k:'Thickness Tolerance',v:'± 0.005 mm'},
+      {k:'Flatness',v:'≤ 0.003 mm'},
+      {k:'Shore Hardness (PU)',v:'80–90 Shore A'},
+      {k:'อายุ Rubber Spacer',v:'6 เดือน / สภาพ'},
+      {k:'⏱ ตรวจ Thickness ชุด',v:'30 นาที',hl:true},
+      {k:'⏱ เปลี่ยน Rubber Spacer',v:'1 ชม.',hl:true},
+    ]},
+  ],
+};
+
+const STD_COLOR_VAR = {accent:'var(--accent)',purple:'var(--purple)',amber:'var(--amber)',green:'var(--green)',red:'var(--red)'};
+const STD_BG_VAR = {accent:'var(--accent-glow)',purple:'var(--purple-dim)',amber:'var(--amber-dim)',green:'var(--green-dim)',red:'var(--red-dim)'};
+
+let selectedStdIdx = { roll:0, rollsq:0, saw:0, slitter:0 };
+
+function renderStdKpi(tab) {
+  const items = STANDARD_DATA[tab];
+  const totalTypes = items.length;
+  const totalParams = items.reduce((s,it)=>s+it.rows.length,0);
+  const totalTiming = items.reduce((s,it)=>s+it.rows.filter(r=>r.hl).length,0);
+  const el = document.getElementById('std-kpi-'+tab);
+  if (!el) return;
+  el.innerHTML = `
+    <div class="reg-kpi"><span class="reg-kpi-val">${totalTypes}</span><span class="reg-kpi-lbl">ประเภททั้งหมด</span></div>
+    <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--accent);">${totalParams}</span><span class="reg-kpi-lbl">พารามิเตอร์ Standard</span></div>
+    <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--amber);">${totalTiming}</span><span class="reg-kpi-lbl">รายการเวลามาตรฐาน</span></div>
+    <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--text-2);font-size:16px;">30 มิ.ย. 69</span><span class="reg-kpi-lbl">อัปเดตล่าสุด</span></div>`;
+}
+
+function renderStdList(tab) {
+  const el = document.getElementById('std-list-'+tab);
+  if (!el) return;
+  const items = STANDARD_DATA[tab];
+  el.innerHTML = items.map((it,i)=>{
+    const active = i === selectedStdIdx[tab];
+    return `<div onclick="selectStdType('${tab}',${i})"
+      style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:6px;cursor:pointer;margin-bottom:2px;
+             background:${active?'var(--accent-glow)':'transparent'};
+             color:${active?'var(--accent)':'var(--text-2)'};font-weight:${active?'700':'400'};
+             transition:background .12s;">
+      <span style="width:8px;height:8px;border-radius:50%;background:${STD_COLOR_VAR[it.color]};flex-shrink:0;"></span>
+      <span style="flex:1;font-size:13px;">${it.name}</span>
+      <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;">${it.rows.length}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderStdTable(tab) {
+  const it = STANDARD_DATA[tab][selectedStdIdx[tab]];
+  const titleEl = document.getElementById('std-detail-title-'+tab);
+  const subEl = document.getElementById('std-detail-sub-'+tab);
+  const iconEl = document.getElementById('std-detail-icon-'+tab);
+  if (titleEl) titleEl.textContent = it.name;
+  if (subEl) subEl.textContent = it.sub;
+  if (iconEl) {
+    iconEl.style.background = STD_BG_VAR[it.color];
+    iconEl.innerHTML = `<svg width="16" height="16" fill="none" stroke="${STD_COLOR_VAR[it.color]}" stroke-width="2" viewBox="0 0 24 24">${it.icon}</svg>`;
+  }
+  const tbody = document.getElementById('std-tbody-'+tab);
+  if (tbody) tbody.innerHTML = it.rows.map(r => `
+    <tr${r.hl?' style="background:rgba(74,142,194,.06);"':''}>
+      <td${r.hl?' style="color:var(--accent);font-weight:600;"':' class="muted"'}>${r.k}</td>
+      <td style="text-align:right;font-weight:600;">${r.v}</td>
+    </tr>`).join('');
+}
+
+function selectStdType(tab, idx) {
+  selectedStdIdx[tab] = idx;
+  renderStdList(tab);
+  renderStdTable(tab);
+}
+
+['roll','rollsq','saw','slitter'].forEach(tab => {
+  renderStdKpi(tab);
+  renderStdList(tab);
+  renderStdTable(tab);
+});
+
+// ─── DAILY TASKS (งานประจำวัน) ──────────────────────────────────────────────────
+const DAILY_TASKS = [
+  {time:'08:00', task:'ตรวจสอบ Runout Work Roll Stand 1', type:'ตรวจสอบ', ref:'Mill-01 Stand 1', who:'สมชาย ว.', status:'done'},
+  {time:'09:00', task:'ทำความสะอาด + ตรวจ Slitter Knife Ø250', type:'ทำความสะอาด', ref:'Slitter-01', who:'วิรัตน์ ส.', status:'done'},
+  {time:'10:30', task:'ตรวจสอบฟัน Circular Cold Saw Ø710', type:'ตรวจสอบ', ref:'Cold Saw-01', who:'อนุชา ท.', status:'pending'},
+  {time:'11:00', task:'เช็คน้ำหล่อเย็นทุกเครื่อง', type:'PM', ref:'ทุกเครื่อง', who:'ปิยะ ร.', status:'pending'},
+  {time:'11:30', task:'บันทึกอุณหภูมิ Bearing Backup Roll', type:'ตรวจสอบ', ref:'Mill-01 Stand 1', who:'พรชัย ป.', status:'overdue'},
+  {time:'14:00', task:'ตรวจความตึงใบ Band Saw Blade', type:'ตรวจสอบ', ref:'Band Saw-01', who:'วิรัตน์ ส.', status:'pending'},
+  {time:'16:30', task:'เดินตรวจ 5ส พื้นที่ Tooling Room', type:'ตรวจสอบ', ref:'Tooling Room', who:'สมชาย ว.', status:'pending'},
+];
+
+const DAILY_STATUS_META = {
+  done:    {label:'สำเร็จ',      chip:'chip-green'},
+  pending: {label:'รอดำเนินการ', chip:'chip-amber'},
+  overdue: {label:'เลยเวลา',     chip:'chip-red'},
+};
+
+function toggleDailyTask(idx) {
+  DAILY_TASKS[idx].status = DAILY_TASKS[idx].status === 'done' ? 'pending' : 'done';
+  renderDailyTasks();
+}
+
+function renderDailyTasks() {
+  const tbody = document.getElementById('tbody-daily');
+  if (!tbody) return;
+  tbody.innerHTML = DAILY_TASKS.map((t, i) => {
+    const meta = DAILY_STATUS_META[t.status];
+    return `<tr>
+      <td><input type="checkbox" ${t.status==='done'?'checked':''} onchange="toggleDailyTask(${i})" style="width:16px;height:16px;cursor:pointer;"></td>
+      <td class="muted">${t.time}</td>
+      <td><strong>${t.task}</strong></td>
+      <td class="muted">${t.type}</td>
+      <td class="muted">${t.ref}</td>
+      <td class="muted">${t.who}</td>
+      <td><span class="chip ${meta.chip}">${meta.label}</span></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('daily-kpi-total').textContent = DAILY_TASKS.length;
+  document.getElementById('daily-kpi-done').textContent = DAILY_TASKS.filter(t=>t.status==='done').length;
+  document.getElementById('daily-kpi-pending').textContent = DAILY_TASKS.filter(t=>t.status==='pending').length;
+  document.getElementById('daily-kpi-overdue').textContent = DAILY_TASKS.filter(t=>t.status==='overdue').length;
+}
+
+renderDailyTasks();
 
 // Render all tables on load
 renderRollTable(1);
