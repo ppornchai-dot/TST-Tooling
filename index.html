@@ -2785,6 +2785,33 @@ let rollSetColors = {
   'Pinch Roll — Ø200 mm':          'blue',
 };
 
+const SIZE_ROLL_CATEGORIES = ['Forming', 'Sizing', 'TH'];
+
+function detectSizeRollCategory(name) {
+  const trimmed = (name||'').trim();
+  return SIZE_ROLL_CATEGORIES.find(cat => trimmed.toLowerCase().endsWith(cat.toLowerCase())) || '';
+}
+
+function stripSizeRollCategory(name) {
+  const trimmed = (name||'').trim();
+  const cat = detectSizeRollCategory(trimmed);
+  return cat ? trimmed.slice(0, trimmed.length - cat.length).trim() : trimmed;
+}
+
+function categoryDropdownHtml(selectedCategory) {
+  const opts = SIZE_ROLL_CATEGORIES.map(cat =>
+    `<option value="${cat}"${cat === selectedCategory ? ' selected' : ''}>${cat}</option>`).join('');
+  return `<select class="form-select" id="f-set-category" onchange="applySetCategory(this)">
+    <option value="">— เลือกประเภท —</option>${opts}
+  </select>`;
+}
+
+function applySetCategory(select) {
+  const nameInput = document.getElementById('f-set-name');
+  const base = stripSizeRollCategory(nameInput.value);
+  nameInput.value = select.value ? (base ? base + ' ' + select.value : select.value) : base;
+}
+
 function colorPreviewHtml(selected) {
   return `<div id="color-preview-box" style="width:36px;height:36px;border-radius:7px;background:${selected};box-shadow:0 0 0 1px var(--border) inset;"></div>`;
 }
@@ -3074,9 +3101,11 @@ function editRoll(idx) {
 function openAddSetModal() {
   document.getElementById('modal-title').textContent = 'เพิ่ม Size Roll ใหม่';
   document.getElementById('modal-body').innerHTML = `
-    <div class="modal-row full">
+    <div class="modal-row">
       <div class="form-group"><label class="form-label">ชื่อ Size Roll</label>
         <input class="form-input" id="f-set-name" placeholder="เช่น Work Roll Stand 3 — Ø280 mm"></div>
+      <div class="form-group"><label class="form-label">ประเภท</label>
+        ${categoryDropdownHtml('')}</div>
     </div>`;
   document.getElementById('modal-overlay').classList.add('open');
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
@@ -3101,9 +3130,11 @@ function openAddSetModal() {
 function openEditSetModal(oldName) {
   document.getElementById('modal-title').textContent = 'แก้ไข Size Roll';
   document.getElementById('modal-body').innerHTML = `
-    <div class="modal-row full">
+    <div class="modal-row">
       <div class="form-group"><label class="form-label">ชื่อ Size Roll</label>
         <input class="form-input" id="f-set-name" value="${escapeHtmlAttr(oldName)}"></div>
+      <div class="form-group"><label class="form-label">ประเภท</label>
+        ${categoryDropdownHtml(detectSizeRollCategory(oldName))}</div>
     </div>`;
   document.getElementById('modal-overlay').classList.add('open');
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
