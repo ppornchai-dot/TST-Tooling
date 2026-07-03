@@ -2840,8 +2840,9 @@ function renderRollColorList() {
   if (scopeEl) scopeEl.textContent = selectedRollSet ? ('ขอบเขต: ' + selectedRollSet) : 'ทุก Size Roll';
 
   const scope = rollSetScope();
+  const officialColor = selectedRollSet ? getRollSetColor(selectedRollSet) : null;
   const groups = selectedRollSet
-    ? ROLL_COLOR_GROUPS.filter(g => scope.some(r => r.color === g.key))
+    ? ROLL_COLOR_GROUPS.filter(g => g.key === officialColor || scope.some(r => r.color === g.key))
     : ROLL_COLOR_GROUPS;
 
   if (selectedRollColor && !groups.some(g => g.key === selectedRollColor)) {
@@ -3120,8 +3121,17 @@ function openAddColorModal() {
     const val = (document.getElementById('f-color-value')||{}).value || '#2272B6';
     if (!name) return;
     rollColorSeq++;
-    ROLL_COLOR_GROUPS.push({key:'custom'+rollColorSeq, label:name, dot:val});
+    const newKey = 'custom'+rollColorSeq;
+    ROLL_COLOR_GROUPS.push({key:newKey, label:name, dot:val});
+    if (selectedRollSet) {
+      // adding a color while scoped to a group means "use this color for this group"
+      rollSetColors[selectedRollSet] = newKey;
+      toolingData.roll.forEach(r => { if (r.set === selectedRollSet) r.color = newKey; });
+      selectedRollColor = newKey;
+    }
+    renderRollSetList();
     renderRollColorList();
+    renderRollTable(pageState.roll);
     persistState();
     const btn = this;
     const orig = btn.innerHTML;
