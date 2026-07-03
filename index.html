@@ -2807,13 +2807,17 @@ function categoryDropdownHtml(selectedCategory) {
   </select>`;
 }
 
-function parseSizeRollName(name) {
+function strictParseSizeRollName(name) {
   const trimmed = (name||'').trim();
   const m = trimmed.match(/^(GS|GI)\s+(.+?)\s*\(([^)]*)\)\s*(Forming|Sizing|TH)?$/i);
-  if (m) {
-    return { gsgi: m[1].toUpperCase(), size: m[2].trim(), od: m[3].trim(), category: m[4] || '' };
-  }
-  return { gsgi: 'GS', size: stripSizeRollCategory(trimmed), od: '', category: detectSizeRollCategory(trimmed) };
+  if (!m) return null;
+  return { gsgi: m[1].toUpperCase(), size: m[2].trim(), od: m[3].trim(), category: m[4] || '' };
+}
+
+function parseSizeRollName(name) {
+  const trimmed = (name||'').trim();
+  return strictParseSizeRollName(trimmed) ||
+    { gsgi: 'GS', size: stripSizeRollCategory(trimmed), od: '', category: detectSizeRollCategory(trimmed) };
 }
 
 function updateComposedSetName() {
@@ -2969,6 +2973,17 @@ function renderRollColorList() {
   el.innerHTML = html;
 }
 
+function setLabelHtml(s) {
+  const p = strictParseSizeRollName(s);
+  if (!p) return `<span style="flex:1;font-size:13px;">${s}</span>`;
+  return `<span style="flex:1;font-size:13px;display:flex;flex-direction:column;line-height:1.35;">
+    <span>${p.gsgi}</span>
+    <span>${p.size}</span>
+    <span>${p.od ? '(' + p.od + ')' : ''}</span>
+    <span>${p.category}</span>
+  </span>`;
+}
+
 function renderRollSetList() {
   const el = document.getElementById('roll-set-list');
   if (!el) return;
@@ -2986,7 +3001,7 @@ function renderRollSetList() {
                color:${active?'var(--accent)':'var(--text-2)'};font-weight:${active?'700':'400'};
                transition:background .12s;">
         <span style="width:18px;height:18px;border-radius:50%;background:${active?'var(--accent)':'var(--bg-panel)'};color:${active?'#fff':'var(--text-3)'};font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${i+1}</span>
-        <span style="flex:1;font-size:13px;">${s}</span>
+        ${setLabelHtml(s)}
         <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;">${rolls.length}</span>
       </div>
       <button class="btn btn-ghost btn-sm" style="padding:4px 7px;flex-shrink:0;" onclick="openEditSetModal('${esc}')" title="แก้ไข">✏️</button>
