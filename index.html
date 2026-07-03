@@ -2785,21 +2785,14 @@ let rollSetColors = {
   'Pinch Roll — Ø200 mm':          'blue',
 };
 
-const PRESET_ROLL_COLORS = ['#2272B6','#0EA5E9','#14B8A6','#22C55E','#EAB308','#C9A227','#F97316','#C03030','#EC4899','#5E44B0','#64748B','#111827'];
-
-function colorSwatchPickerHtml(selected) {
-  const sel = (selected||'').toLowerCase();
-  return PRESET_ROLL_COLORS.map(c => `<div class="color-swatch-item" data-color="${c}" onclick="pickPresetColor('${c}')"
-    style="width:28px;height:28px;border-radius:7px;cursor:pointer;background:${c};
-    box-shadow:0 0 0 1px var(--border) inset, 0 0 0 2px ${c.toLowerCase()===sel?'var(--text-1)':'transparent'};"></div>`).join('');
+function colorPreviewHtml(selected) {
+  return `<div id="color-preview-box" style="width:36px;height:36px;border-radius:7px;background:${selected};box-shadow:0 0 0 1px var(--border) inset;"></div>`;
 }
 
 function pickPresetColor(hex) {
   document.getElementById('f-color-value').value = hex;
-  document.querySelectorAll('.color-swatch-item').forEach(el => {
-    const active = el.dataset.color.toLowerCase() === hex.toLowerCase();
-    el.style.boxShadow = `0 0 0 1px var(--border) inset, 0 0 0 2px ${active ? 'var(--text-1)' : 'transparent'}`;
-  });
+  const box = document.getElementById('color-preview-box');
+  if (box) box.style.background = hex;
 }
 
 const THAI_COLOR_NAME_MAP = [
@@ -3158,7 +3151,7 @@ function openAddColorModal() {
       <div class="form-group"><label class="form-label">ชื่อสี</label>
         <input class="form-input" id="f-color-name" placeholder="เช่น สีเขียว"></div>
       <div class="form-group"><label class="form-label">สี</label>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;">${colorSwatchPickerHtml('#2272B6')}</div>
+        ${colorPreviewHtml('#2272B6')}
         <input type="hidden" id="f-color-value" value="#2272B6"></div>
     </div>`;
   document.getElementById('modal-overlay').classList.add('open');
@@ -3196,7 +3189,7 @@ function openEditColorModal(key) {
       <div class="form-group"><label class="form-label">ชื่อสี</label>
         <input class="form-input" id="f-color-name" value="${escapeHtmlAttr(g.label)}"></div>
       <div class="form-group"><label class="form-label">สี</label>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;">${colorSwatchPickerHtml(g.dot)}</div>
+        ${colorPreviewHtml(g.dot)}
         <input type="hidden" id="f-color-value" value="${g.dot}"></div>
     </div>`;
   document.getElementById('modal-overlay').classList.add('open');
