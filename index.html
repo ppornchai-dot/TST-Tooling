@@ -2654,6 +2654,8 @@ function saveModal() {
       : toolingData.roll.length;
     const lastPage = Math.ceil(filteredCount / PAGE_SIZE) || 1;
     pageState.roll = lastPage;
+    renderRollSetList();
+    renderRollColorList();
     renderRollTable(lastPage);
   } else if (currentRegTab === 'sq') {
     toolingData.sq.push({
@@ -3417,6 +3419,8 @@ function deleteRoll(idx) {
   toolingData.roll.splice(idx, 1);
   const maxPage = Math.max(1, Math.ceil(toolingData.roll.length / PAGE_SIZE));
   if (pageState.roll > maxPage) pageState.roll = maxPage;
+  renderRollSetList();
+  renderRollColorList();
   renderRollTable(pageState.roll);
   persistState();
 }
