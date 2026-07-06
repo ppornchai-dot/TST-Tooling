@@ -2487,6 +2487,11 @@ const MODAL_FORMS = {
             <option>มีปัญหา</option><option>หมดอายุ</option>
           </select>
         </div>
+      </div>
+      <div class="modal-row full">
+        <div class="form-group"><label class="form-label">สี</label>
+          <select class="form-select" id="f-color"></select>
+        </div>
       </div>`
   },
   sq: {
@@ -2575,11 +2580,26 @@ const MODAL_FORMS = {
 
 let currentRegTab = 'roll';
 
+function populateColorSelect(setName, currentColor) {
+  const sel = document.getElementById('f-color');
+  if (!sel) return;
+  if (!setName) {
+    sel.innerHTML = '<option value="">— เลือก Size Roll ก่อน —</option>';
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  const palette = getSetPalette(setName);
+  sel.innerHTML = '<option value="">— ไม่ระบุ —</option>' + palette.map(c =>
+    `<option value="${c.key}"${c.key === currentColor ? ' selected' : ''}>${c.label}</option>`).join('');
+}
+
 function openModal() {
   const form = MODAL_FORMS[currentRegTab] || MODAL_FORMS.roll;
   document.getElementById('modal-title').textContent = form.title;
   document.getElementById('modal-body').innerHTML = form.fields;
   document.getElementById('modal-overlay').classList.add('open');
+  if (currentRegTab === 'roll') populateColorSelect(selectedRollSet, selectedRollColor);
 }
 
 function closeModal() {
@@ -2645,7 +2665,7 @@ function saveModal() {
       width: g('f-width'), position: g('f-position'),
       usage: g('f-usage'), regrind: g('f-regrind'),
       grindTime: g('f-grindtime')||'—', lastService: g('f-service'), status: g('f-status'),
-      color: selectedRollColor || getRollSetColor(selectedRollSet), set: selectedRollSet || ''
+      color: (document.getElementById('f-color')||{}).value || null, set: selectedRollSet || ''
     };
     toolingData.roll.push(newRoll);
     if (newRoll.set) extraRollSets = extraRollSets.filter(s => s !== newRoll.set);
@@ -2794,16 +2814,6 @@ function getSetPalette(setName) {
   return rollSetPalettes[setName];
 }
 
-// ชุดสีที่ผูกกับแต่ละ Size Roll — เลือกได้จากหน้า Size Roll แล้วแสดงผลที่หน้า ชุดสี Roll
-let rollSetColors = {
-  'Work Roll Stand 1 — Ø320 mm':   'blue',
-  'Backup Roll Stand 1 — Ø650 mm': 'yellow',
-  'Work Roll Stand 2 — Ø300 mm':   'red',
-  'Edger Roll — Ø250 mm':          'gold',
-  'Straightener Roll — Ø180 mm':   'purple',
-  'Pinch Roll — Ø200 mm':          'blue',
-};
-
 const SIZE_ROLL_CATEGORIES = ['Forming', 'Sizing', 'TH'];
 
 function detectSizeRollCategory(name) {
@@ -2949,7 +2959,7 @@ const STORAGE_KEY = 'tstToolingState_v1';
 function persistState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      toolingData, extraRollSets, rollSetPalettes, rollSetColors, rollColorSeq, rollSetMachines
+      toolingData, extraRollSets, rollSetPalettes, rollColorSeq, rollSetMachines
     }));
   } catch (e) { /* localStorage unavailable — edits stay in-memory only */ }
 }
@@ -2966,16 +2976,11 @@ function restoreState() {
     }
     if (Array.isArray(saved.extraRollSets)) extraRollSets = saved.extraRollSets;
     if (saved.rollSetPalettes) rollSetPalettes = saved.rollSetPalettes;
-    if (saved.rollSetColors) rollSetColors = saved.rollSetColors;
     if (saved.rollSetMachines) rollSetMachines = saved.rollSetMachines;
     if (typeof saved.rollColorSeq === 'number') rollColorSeq = saved.rollColorSeq;
   } catch (e) { /* corrupted/old data — fall back to defaults */ }
 }
 restoreState();
-
-function getRollSetColor(setName) {
-  return rollSetColors[setName] || null;
-}
 
 function getRollSets() {
   const sets = [];
@@ -2995,7 +3000,6 @@ function renderRollColorList() {
   if (scopeEl) scopeEl.textContent = selectedRollSet ? ('ขอบเขต: ' + selectedRollSet) : 'ทุก Size Roll';
 
   const scope = rollSetScope();
-  const officialColor = selectedRollSet ? getRollSetColor(selectedRollSet) : null;
   const groups = selectedRollSet ? getSetPalette(selectedRollSet) : [];
 
   if (selectedRollColor && !groups.some(g => g.key === selectedRollColor)) {
@@ -3023,10 +3027,6 @@ function renderRollColorList() {
   html += groups.map(g => {
     const items = scope.filter(r => r.color === g.key);
     const active = g.key === selectedRollColor;
-    const isOfficial = g.key === officialColor;
-    const assignBtn = isOfficial
-      ? `<span style="font-size:10px;color:var(--green);font-weight:700;text-align:center;">✓ ใช้อยู่</span>`
-      : `<button class="btn btn-ghost btn-sm" style="padding:3px 6px;font-size:10px;" onclick="event.stopPropagation();assignColorToSet('${g.key}')" title="ใช้สีนี้กับกลุ่มนี้">ใช้สีนี้</button>`;
     return `<div style="display:flex;align-items:center;gap:6px;">
       <div onclick="selectRollColor('${g.key}')" style="flex:1;${cardStyle(active)}">
         <div style="display:flex;align-items:center;justify-content:space-between;">
@@ -3035,7 +3035,6 @@ function renderRollColorList() {
           </span>
           <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;">${items.length}</span>
         </div>
-        <div onclick="event.stopPropagation()">${assignBtn}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
         <button class="btn btn-ghost btn-sm" style="padding:3px 6px;" onclick="openEditColorModal('${g.key}')" title="แก้ไข">✏️</button>
@@ -3089,7 +3088,7 @@ function renderRollSetList() {
 
 function selectRollSet(setName) {
   selectedRollSet = setName;
-  selectedRollColor = getRollSetColor(setName);
+  selectedRollColor = null;
   renderRollSetList();
   renderRollColorList();
   renderRollTable(1);
@@ -3099,17 +3098,6 @@ function selectRollColor(key) {
   selectedRollColor = key;
   renderRollColorList();
   renderRollTable(1);
-}
-
-function assignColorToSet(key) {
-  if (!selectedRollSet) return;
-  rollSetColors[selectedRollSet] = key;
-  toolingData.roll.forEach(r => { if (r.set === selectedRollSet) r.color = key; });
-  selectedRollColor = key;
-  renderRollSetList();
-  renderRollColorList();
-  renderRollTable(pageState.roll);
-  persistState();
 }
 
 function switchRollDetailTab(tab) {
@@ -3157,9 +3145,11 @@ function renderRollTable(page) {
 
   const html = rows.map(r => {
     const realIdx = allData.indexOf(r);
+    const colorInfo = r.color ? getSetPalette(r.set).find(c => c.key === r.color) : null;
+    const colorDot = colorInfo ? `<span title="${colorInfo.label}" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${colorInfo.dot};margin-right:6px;"></span>` : '';
     return `<tr>
       <td class="muted">${r.id}</td>
-      <td><strong>${r.name}</strong></td>
+      <td><strong>${colorDot}${r.name}</strong></td>
       <td>${r.diameter}</td>
       <td>${r.width}</td>
       <td>${r.position}</td>
@@ -3198,6 +3188,7 @@ function editRoll(idx) {
   document.getElementById('f-grindtime').value = r.grindTime === '—' ? '' : r.grindTime;
   document.getElementById('f-service').value = r.lastService === '—' ? '' : r.lastService;
   document.getElementById('f-status').value = r.status;
+  populateColorSelect(r.set, r.color);
   document.getElementById('modal-overlay').classList.add('open');
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const g = id => (document.getElementById(id)||{}).value||'—';
@@ -3206,7 +3197,7 @@ function editRoll(idx) {
       diameter: g('f-diameter'), width: g('f-width'), position: g('f-position'),
       usage: g('f-usage'), regrind: g('f-regrind'),
       grindTime: g('f-grindtime'), lastService: g('f-service'), status: g('f-status'),
-      color: r.color, set: r.set
+      color: (document.getElementById('f-color')||{}).value || null, set: r.set
     };
     renderRollTable(pageState.roll);
     persistState();
@@ -3249,7 +3240,7 @@ function openAddSetModal() {
     }
     if (machines.length) rollSetMachines[name] = machines; else delete rollSetMachines[name];
     selectedRollSet = name;
-    selectedRollColor = getRollSetColor(name);
+    selectedRollColor = null;
     renderRollSetList();
     renderRollColorList();
     renderRollTable(1);
@@ -3292,12 +3283,9 @@ function openEditSetModal(oldName) {
     if (newName !== oldName) {
       toolingData.roll.forEach(r => { if (r.set === oldName) r.set = newName; });
       extraRollSets = extraRollSets.map(s => s === oldName ? newName : s);
-      const colorKey = getRollSetColor(oldName);
-      delete rollSetColors[oldName];
-      if (colorKey) rollSetColors[newName] = colorKey;
       delete rollSetMachines[oldName];
       if (rollSetPalettes[oldName]) { rollSetPalettes[newName] = rollSetPalettes[oldName]; delete rollSetPalettes[oldName]; }
-      if (selectedRollSet === oldName) { selectedRollSet = newName; selectedRollColor = colorKey; }
+      if (selectedRollSet === oldName) { selectedRollSet = newName; }
     }
     if (machines.length) rollSetMachines[newName] = machines; else delete rollSetMachines[newName];
 
@@ -3320,7 +3308,6 @@ function deleteSet(setName) {
   if (!confirm(msg)) return;
   toolingData.roll = toolingData.roll.filter(r => r.set !== setName);
   extraRollSets = extraRollSets.filter(s => s !== setName);
-  delete rollSetColors[setName];
   delete rollSetMachines[setName];
   delete rollSetPalettes[setName];
   if (selectedRollSet === setName) { selectedRollSet = null; selectedRollColor = null; }
@@ -3350,7 +3337,7 @@ function openAddColorModal() {
     rollColorSeq++;
     const newKey = 'custom'+rollColorSeq;
     getSetPalette(selectedRollSet).push({key:newKey, label:name, dot:val});
-    // เพิ่มสีใหม่เข้าปาเล็ตต์ของกลุ่มนี้เท่านั้น — ไม่กระทบกลุ่มอื่นหรือสี Roll เดิม ต้องกด "ใช้สีนี้" เพื่อกำหนดให้กลุ่มทีหลัง
+    // เพิ่มสีใหม่เข้าปาเล็ตต์ของกลุ่มนี้เท่านั้น — ไม่กระทบกลุ่มอื่น เลือกใช้ได้ตอนเพิ่ม/แก้ไข Roll แต่ละตัว
     renderRollSetList();
     renderRollColorList();
     renderRollTable(pageState.roll);
@@ -3405,7 +3392,6 @@ function deleteColor(key) {
   if (!confirm(msg)) return;
   rollSetPalettes[selectedRollSet] = palette.filter(x => x.key !== key);
   toolingData.roll.forEach(r => { if (r.set === selectedRollSet && r.color === key) r.color = null; });
-  if (rollSetColors[selectedRollSet] === key) delete rollSetColors[selectedRollSet];
   if (selectedRollColor === key) selectedRollColor = null;
   renderRollSetList();
   renderRollColorList();
