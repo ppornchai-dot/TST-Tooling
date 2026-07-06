@@ -1511,14 +1511,101 @@ canvas{display:block;}
 
       <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
         <button class="btn btn-ghost btn-sm">‹ ก่อนหน้า</button>
-        <span style="font-size:13px;font-weight:700;color:var(--text-1);padding:0 8px;">ม.ค. – มิ.ย. 2569</span>
+        <span id="plan-daterange-label" style="font-size:13px;font-weight:700;color:var(--text-1);padding:0 8px;">ม.ค. – มิ.ย. 2569</span>
         <button class="btn btn-ghost btn-sm">ถัดไป ›</button>
         <div style="margin-left:auto;display:flex;gap:6px;">
-          <button class="btn btn-ghost btn-sm" style="color:var(--accent);border-color:var(--accent);">Gantt</button>
-          <button class="btn btn-ghost btn-sm">รายสัปดาห์</button>
+          <button class="btn btn-ghost btn-sm plan-view-btn" data-view="day" data-label="2 ก.ค. 2569" onclick="switchPlanView('day')">รายวัน</button>
+          <button class="btn btn-ghost btn-sm plan-view-btn" data-view="week" data-label="30 มิ.ย. – 6 ก.ค. 2569" onclick="switchPlanView('week')">รายสัปดาห์</button>
+          <button class="btn btn-ghost btn-sm plan-view-btn" data-view="month" data-label="กรกฎาคม 2569" onclick="switchPlanView('month')">รายเดือน</button>
+          <button class="btn btn-ghost btn-sm plan-view-btn" data-view="gantt" data-label="ม.ค. – มิ.ย. 2569" onclick="switchPlanView('gantt')" style="color:var(--accent);border-color:var(--accent);">Gantt</button>
         </div>
       </div>
 
+      <!-- ═══ VIEW: รายวัน ═══ -->
+      <div id="plan-view-day" class="plan-view-panel" style="display:none;">
+        <div class="card">
+          <div class="card-header"><span class="card-title">งานตามแผน — วันที่ 2 ก.ค. 2569</span></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>เวลา</th><th>งาน</th><th>Tooling</th><th>ผู้รับผิดชอบ</th><th>ประเภท</th><th>สถานะ</th></tr></thead>
+              <tbody>
+                <tr><td class="muted">08:00</td><td><strong>PM ชุด Cutting Tool A</strong></td><td>PM-A</td><td>สมชาย ว.</td><td><span class="chip chip-blue">PM</span></td><td><span class="chip chip-blue">กำลังทำ</span></td></tr>
+                <tr><td class="muted">10:30</td><td><strong>Calibrate Gauge ชุด A</strong></td><td>Cal-A</td><td>QC / อนุชา ท.</td><td><span class="chip chip-purple">Calibrate</span></td><td><span class="chip chip-amber">รอดำเนินการ</span></td></tr>
+                <tr><td class="muted">13:00</td><td><strong>ตรวจสอบ Holder & Collet</strong></td><td>ตรวจ</td><td>สมชาย ว.</td><td><span class="chip chip-blue">ตรวจสอบ</span></td><td><span class="chip chip-green">เสร็จแล้ว</span></td></tr>
+                <tr><td class="muted">14:30</td><td><strong>ซ่อม Fixture F-07</strong></td><td>ซ่อม F-07</td><td>ปิยะ ร.</td><td><span class="chip chip-red">ซ่อมแซม</span></td><td><span class="chip chip-blue">กำลังทำ</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ VIEW: รายสัปดาห์ ═══ -->
+      <div id="plan-view-week" class="plan-view-panel" style="display:none;">
+        <div class="card">
+          <div class="card-header"><span class="card-title">งานตามแผน — สัปดาห์ 30 มิ.ย. – 6 ก.ค. 2569</span></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>จันทร์<br><span class="muted" style="font-weight:400;">30 มิ.ย.</span></th>
+                  <th>อังคาร<br><span class="muted" style="font-weight:400;">1 ก.ค.</span></th>
+                  <th>พุธ<br><span class="muted" style="font-weight:400;">2 ก.ค.</span></th>
+                  <th>พฤหัสฯ<br><span class="muted" style="font-weight:400;">3 ก.ค.</span></th>
+                  <th>ศุกร์<br><span class="muted" style="font-weight:400;">4 ก.ค.</span></th>
+                  <th>เสาร์<br><span class="muted" style="font-weight:400;">5 ก.ค.</span></th>
+                  <th>อาทิตย์<br><span class="muted" style="font-weight:400;">6 ก.ค.</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style="vertical-align:top;">
+                  <td><span class="chip chip-blue">ตรวจ</span></td>
+                  <td class="muted">—</td>
+                  <td style="display:flex;flex-direction:column;gap:4px;">
+                    <span class="chip chip-blue">PM-A</span>
+                    <span class="chip chip-purple">Cal-A</span>
+                  </td>
+                  <td class="muted">—</td>
+                  <td><span class="chip chip-red">ซ่อม F-07</span></td>
+                  <td class="muted">—</td>
+                  <td class="muted">—</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ VIEW: รายเดือน ═══ -->
+      <div id="plan-view-month" class="plan-view-panel" style="display:none;">
+        <div class="card">
+          <div class="card-header"><span class="card-title">งานตามแผน — กรกฎาคม 2569</span></div>
+          <div style="padding:14px;display:grid;grid-template-columns:repeat(7,1fr);gap:8px;">
+            <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">จ</div>
+            <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">อ</div>
+            <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">พ</div>
+            <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">พฤ</div>
+            <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">ศ</div>
+            <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">ส</div>
+            <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">อา</div>
+            <div class="muted" style="grid-column:span 2;padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"></div>
+            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">1</strong><div style="margin-top:6px;"><span class="chip chip-green" style="font-size:10px;">PO Q2</span></div></div>
+            <div style="padding:8px;border:1px solid var(--accent);background:var(--accent-glow);border-radius:6px;min-height:70px;"><strong style="font-size:12px;color:var(--accent);">2</strong><div style="margin-top:6px;display:flex;flex-direction:column;gap:4px;"><span class="chip chip-blue" style="font-size:10px;">PM-A</span><span class="chip chip-purple" style="font-size:10px;">Cal-A</span></div></div>
+            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">3</strong></div>
+            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">4</strong><div style="margin-top:6px;"><span class="chip chip-red" style="font-size:10px;">ซ่อม F-07</span></div></div>
+            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">5</strong></div>
+            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">6</strong></div>
+            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">7</strong></div>
+            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">8</strong></div>
+            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">9</strong></div>
+            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">10</strong></div>
+            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">11</strong><div style="margin-top:6px;"><span class="chip chip-amber" style="font-size:10px;">Regrind Lot2</span></div></div>
+            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">12</strong></div>
+            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">13</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="plan-view-gantt" class="plan-view-panel">
       <div class="card">
         <div class="gantt-wrap">
           <div style="min-width:860px;">
@@ -1619,6 +1706,7 @@ canvas{display:block;}
           <span style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;background:var(--purple);border-radius:3px;display:inline-block;"></span>Calibrate</span>
           <span style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;background:var(--red);border-radius:3px;display:inline-block;"></span>ซ่อมแซม</span>
         </div>
+      </div>
       </div>
 
       <div style="margin-top:20px;">
@@ -2081,6 +2169,17 @@ function showPage(id) {
     document.getElementById('page-sub').textContent = m.sub;
   }
   if (id === 'dashboard') initDashboard();
+}
+
+function switchPlanView(mode) {
+  document.querySelectorAll('.plan-view-panel').forEach(p => p.style.display = 'none');
+  document.getElementById('plan-view-' + mode).style.display = '';
+  document.querySelectorAll('.plan-view-btn').forEach(b => {
+    const active = b.getAttribute('data-view') === mode;
+    b.style.color = active ? 'var(--accent)' : '';
+    b.style.borderColor = active ? 'var(--accent)' : '';
+    if (active) document.getElementById('plan-daterange-label').textContent = b.getAttribute('data-label');
+  });
 }
 
 // ─── DASH TAB SWITCHER ────────────────────────────────────────────────────────
