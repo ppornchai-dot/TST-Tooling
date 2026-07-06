@@ -2773,7 +2773,7 @@ let rollSetMachines = {};
 const ROLL_MACHINES = ['P1', 'P2', 'P3', 'P4'];
 const MAX_ROLL_MACHINES = 2;
 
-let ROLL_COLOR_GROUPS = [
+const DEFAULT_ROLL_COLORS = [
   {key:'blue',   label:'สีฟ้า',   dot:'#3B82F6'},
   {key:'yellow', label:'สีเหลือง', dot:'#EAB308'},
   {key:'red',    label:'สีแดง',   dot:'#C03030'},
@@ -2781,6 +2781,16 @@ let ROLL_COLOR_GROUPS = [
   {key:'purple', label:'สีม่วง',   dot:'#5E44B0'},
 ];
 let rollColorSeq = 0;
+
+// ปาเล็ตต์สีของแต่ละ Size Roll แยกกันเป็นอิสระ — เพิ่ม/ลบสีในกลุ่มหนึ่งจะไม่กระทบกลุ่มอื่น
+let rollSetPalettes = {};
+
+function getSetPalette(setName) {
+  if (!rollSetPalettes[setName]) {
+    rollSetPalettes[setName] = DEFAULT_ROLL_COLORS.map(c => ({...c}));
+  }
+  return rollSetPalettes[setName];
+}
 
 // ชุดสีที่ผูกกับแต่ละ Size Roll — เลือกได้จากหน้า Size Roll แล้วแสดงผลที่หน้า ชุดสี Roll
 let rollSetColors = {
@@ -2937,7 +2947,7 @@ const STORAGE_KEY = 'tstToolingState_v1';
 function persistState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      toolingData, extraRollSets, ROLL_COLOR_GROUPS, rollSetColors, rollColorSeq, rollSetMachines
+      toolingData, extraRollSets, rollSetPalettes, rollSetColors, rollColorSeq, rollSetMachines
     }));
   } catch (e) { /* localStorage unavailable — edits stay in-memory only */ }
 }
@@ -2953,7 +2963,7 @@ function restoreState() {
       });
     }
     if (Array.isArray(saved.extraRollSets)) extraRollSets = saved.extraRollSets;
-    if (Array.isArray(saved.ROLL_COLOR_GROUPS)) ROLL_COLOR_GROUPS = saved.ROLL_COLOR_GROUPS;
+    if (saved.rollSetPalettes) rollSetPalettes = saved.rollSetPalettes;
     if (saved.rollSetColors) rollSetColors = saved.rollSetColors;
     if (saved.rollSetMachines) rollSetMachines = saved.rollSetMachines;
     if (typeof saved.rollColorSeq === 'number') rollColorSeq = saved.rollColorSeq;
@@ -2984,10 +2994,15 @@ function renderRollColorList() {
 
   const scope = rollSetScope();
   const officialColor = selectedRollSet ? getRollSetColor(selectedRollSet) : null;
-  const groups = ROLL_COLOR_GROUPS;
+  const groups = selectedRollSet ? getSetPalette(selectedRollSet) : [];
 
   if (selectedRollColor && !groups.some(g => g.key === selectedRollColor)) {
     selectedRollColor = null;
+  }
+
+  if (!selectedRollSet) {
+    el.innerHTML = `<div style="padding:14px;text-align:center;font-size:12px;color:var(--text-3);">เลือก Size Roll ทางซ้ายก่อน เพื่อจัดการชุดสีของกลุ่มนั้น</div>`;
+    return;
   }
 
   const cardStyle = active => `display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:8px;cursor:pointer;
@@ -3006,8 +3021,8 @@ function renderRollColorList() {
   html += groups.map(g => {
     const items = scope.filter(r => r.color === g.key);
     const active = g.key === selectedRollColor;
-    const isOfficial = selectedRollSet && g.key === officialColor;
-    const assignBtn = !selectedRollSet ? '' : isOfficial
+    const isOfficial = g.key === officialColor;
+    const assignBtn = isOfficial
       ? `<span style="font-size:10px;color:var(--green);font-weight:700;text-align:center;">✓ ใช้อยู่</span>`
       : `<button class="btn btn-ghost btn-sm" style="padding:3px 6px;font-size:10px;" onclick="event.stopPropagation();assignColorToSet('${g.key}')" title="ใช้สีนี้กับกลุ่มนี้">ใช้สีนี้</button>`;
     return `<div style="display:flex;align-items:center;gap:6px;">
@@ -3018,7 +3033,7 @@ function renderRollColorList() {
           </span>
           <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;">${items.length}</span>
         </div>
-        ${assignBtn ? `<div onclick="event.stopPropagation()">${assignBtn}</div>` : ''}
+        <div onclick="event.stopPropagation()">${assignBtn}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
         <button class="btn btn-ghost btn-sm" style="padding:3px 6px;" onclick="openEditColorModal('${g.key}')" title="แก้ไข">✏️</button>
@@ -3116,8 +3131,8 @@ function renderRollTable(page) {
   let data = rollSetScope();
   let title = selectedRollSet;
 
-  if (selectedRollColor) {
-    const g = ROLL_COLOR_GROUPS.find(x => x.key === selectedRollColor);
+  if (selectedRollColor && selectedRollSet) {
+    const g = getSetPalette(selectedRollSet).find(x => x.key === selectedRollColor);
     if (g) {
       data = data.filter(r => r.color === g.key);
       title = (title ? title + ' · ' : '') + g.label;
@@ -3279,6 +3294,7 @@ function openEditSetModal(oldName) {
       delete rollSetColors[oldName];
       if (colorKey) rollSetColors[newName] = colorKey;
       delete rollSetMachines[oldName];
+      if (rollSetPalettes[oldName]) { rollSetPalettes[newName] = rollSetPalettes[oldName]; delete rollSetPalettes[oldName]; }
       if (selectedRollSet === oldName) { selectedRollSet = newName; selectedRollColor = colorKey; }
     }
     if (machines.length) rollSetMachines[newName] = machines; else delete rollSetMachines[newName];
@@ -3304,6 +3320,7 @@ function deleteSet(setName) {
   extraRollSets = extraRollSets.filter(s => s !== setName);
   delete rollSetColors[setName];
   delete rollSetMachines[setName];
+  delete rollSetPalettes[setName];
   if (selectedRollSet === setName) { selectedRollSet = null; selectedRollColor = null; }
   renderRollSetList();
   renderRollColorList();
@@ -3312,6 +3329,7 @@ function deleteSet(setName) {
 }
 
 function openAddColorModal() {
+  if (!selectedRollSet) { alert('กรุณาเลือก Size Roll ทางซ้ายก่อน'); return; }
   document.getElementById('modal-title').textContent = 'เพิ่มชุดสี Roll';
   document.getElementById('modal-body').innerHTML = `
     <div class="modal-row">
@@ -3329,8 +3347,8 @@ function openAddColorModal() {
     if (!name) return;
     rollColorSeq++;
     const newKey = 'custom'+rollColorSeq;
-    ROLL_COLOR_GROUPS.push({key:newKey, label:name, dot:val});
-    // เพิ่มสีใหม่เข้าปาเล็ตต์เท่านั้น — ไม่แตะสี Roll เดิม ต้องกด "ใช้สีนี้" เพื่อกำหนดให้กลุ่มทีหลัง
+    getSetPalette(selectedRollSet).push({key:newKey, label:name, dot:val});
+    // เพิ่มสีใหม่เข้าปาเล็ตต์ของกลุ่มนี้เท่านั้น — ไม่กระทบกลุ่มอื่นหรือสี Roll เดิม ต้องกด "ใช้สีนี้" เพื่อกำหนดให้กลุ่มทีหลัง
     renderRollSetList();
     renderRollColorList();
     renderRollTable(pageState.roll);
@@ -3343,7 +3361,8 @@ function openAddColorModal() {
 }
 
 function openEditColorModal(key) {
-  const g = ROLL_COLOR_GROUPS.find(x => x.key === key);
+  if (!selectedRollSet) return;
+  const g = getSetPalette(selectedRollSet).find(x => x.key === key);
   if (!g) return;
   document.getElementById('modal-title').textContent = 'แก้ไขชุดสี Roll';
   document.getElementById('modal-body').innerHTML = `
@@ -3373,15 +3392,20 @@ function openEditColorModal(key) {
 }
 
 function deleteColor(key) {
-  const g = ROLL_COLOR_GROUPS.find(x => x.key === key);
+  if (!selectedRollSet) return;
+  const palette = getSetPalette(selectedRollSet);
+  const g = palette.find(x => x.key === key);
   if (!g) return;
-  const count = toolingData.roll.filter(r => r.color === key).length;
+  const count = rollSetScope().filter(r => r.color === key).length;
   const msg = count > 0
-    ? `ลบชุดสี "${g.label}" — Roll ${count} ลูกที่ใช้สีนี้จะกลายเป็นไม่ระบุสี ดำเนินการต่อ?`
+    ? `ลบชุดสี "${g.label}" — Roll ${count} ลูกในกลุ่มนี้ที่ใช้สีนี้จะกลายเป็นไม่ระบุสี ดำเนินการต่อ?`
     : `ลบชุดสี "${g.label}" ออก?`;
   if (!confirm(msg)) return;
-  ROLL_COLOR_GROUPS = ROLL_COLOR_GROUPS.filter(x => x.key !== key);
+  rollSetPalettes[selectedRollSet] = palette.filter(x => x.key !== key);
+  toolingData.roll.forEach(r => { if (r.set === selectedRollSet && r.color === key) r.color = null; });
+  if (rollSetColors[selectedRollSet] === key) delete rollSetColors[selectedRollSet];
   if (selectedRollColor === key) selectedRollColor = null;
+  renderRollSetList();
   renderRollColorList();
   renderRollTable(pageState.roll);
   persistState();
