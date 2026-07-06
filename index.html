@@ -1061,10 +1061,7 @@ canvas{display:block;}
                 <div style="font-size:13px;font-weight:700;">ชุดสี Roll</div>
                 <div style="font-size:11px;color:var(--text-3);margin-top:2px;" id="roll-color-scope">ทุก Size Roll</div>
               </div>
-              <div style="display:flex;gap:6px;">
-                <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteAllColors()">ลบทั้งหมด</button>
-                <button class="btn btn-primary btn-sm" onclick="openAddColorModal()">+ เพิ่ม</button>
-              </div>
+              <button class="btn btn-primary btn-sm" onclick="openAddColorModal()">+ เพิ่ม</button>
             </div>
             <div id="roll-color-list" style="padding:10px;display:flex;flex-direction:column;gap:8px;max-height:480px;overflow-y:auto;"></div>
           </div>
@@ -3311,18 +3308,6 @@ function deleteSet(setName) {
   renderRollSetList();
   renderRollColorList();
   renderRollTable(1);
-  persistState();
-}
-
-function deleteAllColors() {
-  if (!confirm('ลบชุดสี Roll ทั้งหมดออกจากระบบ? Roll ที่เคยผูกสีไว้จะกลายเป็นไม่ระบุสี — ทำแล้วกู้คืนไม่ได้')) return;
-  ROLL_COLOR_GROUPS = [];
-  rollSetColors = {};
-  selectedRollColor = null;
-  toolingData.roll.forEach(r => { r.color = null; });
-  renderRollSetList();
-  renderRollColorList();
-  renderRollTable(pageState.roll);
   persistState();
 }
 
