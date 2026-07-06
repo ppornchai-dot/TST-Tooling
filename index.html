@@ -678,6 +678,7 @@ canvas{display:block;}
 .modal-row.full{grid-template-columns:1fr;}
 .modal-row.three{grid-template-columns:1fr 1fr 1fr;}
 .modal-row.four{grid-template-columns:1fr 1fr 1fr 1fr;}
+.modal-row.five{grid-template-columns:1fr 1fr 1fr 1fr 1fr;}
 
 /* pending pill */
 .pending-row td:first-child{border-left:3px solid var(--amber);}
@@ -2767,6 +2768,11 @@ let selectedRollSet = null;    // col1 (Size Roll): null = ทุก Size Roll
 let extraRollSets = [];
 let selectedRollColor = null;  // col2 (ชุดสี Roll): null = ทั้งหมด
 
+// เครื่องจักรที่ผูกกับแต่ละ Size Roll — เลือกได้สูงสุด MAX_ROLL_MACHINES เครื่องต่อกลุ่ม
+let rollSetMachines = {};
+const ROLL_MACHINES = ['P1', 'P2', 'P3', 'P4'];
+const MAX_ROLL_MACHINES = 2;
+
 let ROLL_COLOR_GROUPS = [
   {key:'blue',   label:'สีฟ้า',   dot:'#3B82F6'},
   {key:'yellow', label:'สีเหลือง', dot:'#EAB308'},
@@ -2806,6 +2812,53 @@ function categoryDropdownHtml(selectedCategory) {
     <option value="">— เลือก —</option>${opts}
   </select>`;
 }
+
+function machineDropdownHtml(selected) {
+  const sel = Array.isArray(selected) ? selected.filter(m => ROLL_MACHINES.includes(m)) : [];
+  const atMax = sel.length >= MAX_ROLL_MACHINES;
+  const opts = ROLL_MACHINES.map(m => {
+    const checked = sel.includes(m);
+    const disabled = (!checked && atMax) ? ' disabled' : '';
+    return `<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:5px;cursor:pointer;font-size:13px;">
+      <input type="checkbox" value="${m}"${checked ? ' checked' : ''}${disabled} onchange="toggleMachineOption(this)" style="width:14px;height:14px;cursor:pointer;">${m}
+    </label>`;
+  }).join('');
+  return `<div class="machine-ms" style="position:relative;">
+    <input type="hidden" id="f-set-machine" value="${sel.join(',')}">
+    <div class="form-select" id="f-set-machine-toggle" onclick="toggleMachineDropdown(event)" style="display:flex;align-items:center;justify-content:space-between;">
+      <span id="f-set-machine-label">${sel.length ? sel.join(', ') : '— เลือก —'}</span>
+      <span style="opacity:.6;font-size:11px;">▾</span>
+    </div>
+    <div id="f-set-machine-panel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;box-shadow:0 6px 16px rgba(0,0,0,.15);z-index:20;padding:4px;">
+      ${opts}
+      <div style="font-size:10px;color:var(--text-3);padding:4px 10px 2px;">เลือกได้สูงสุด ${MAX_ROLL_MACHINES} เครื่อง</div>
+    </div>
+  </div>`;
+}
+
+function toggleMachineDropdown(ev) {
+  if (ev) ev.stopPropagation();
+  const panel = document.getElementById('f-set-machine-panel');
+  if (!panel) return;
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleMachineOption(checkbox) {
+  const panel = document.getElementById('f-set-machine-panel');
+  if (!panel) return;
+  const boxes = Array.from(panel.querySelectorAll('input[type=checkbox]'));
+  const selected = boxes.filter(b => b.checked).map(b => b.value);
+  boxes.forEach(b => { if (!b.checked) b.disabled = selected.length >= MAX_ROLL_MACHINES; });
+  document.getElementById('f-set-machine').value = selected.join(',');
+  document.getElementById('f-set-machine-label').textContent = selected.length ? selected.join(', ') : '— เลือก —';
+}
+
+document.addEventListener('click', function(e) {
+  const panel = document.getElementById('f-set-machine-panel');
+  if (panel && panel.style.display === 'block' && !e.target.closest('.machine-ms')) {
+    panel.style.display = 'none';
+  }
+});
 
 function strictParseSizeRollName(name) {
   const trimmed = (name||'').trim();
@@ -2884,7 +2937,7 @@ const STORAGE_KEY = 'tstToolingState_v1';
 function persistState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      toolingData, extraRollSets, ROLL_COLOR_GROUPS, rollSetColors, rollColorSeq
+      toolingData, extraRollSets, ROLL_COLOR_GROUPS, rollSetColors, rollColorSeq, rollSetMachines
     }));
   } catch (e) { /* localStorage unavailable — edits stay in-memory only */ }
 }
@@ -2902,6 +2955,7 @@ function restoreState() {
     if (Array.isArray(saved.extraRollSets)) extraRollSets = saved.extraRollSets;
     if (Array.isArray(saved.ROLL_COLOR_GROUPS)) ROLL_COLOR_GROUPS = saved.ROLL_COLOR_GROUPS;
     if (saved.rollSetColors) rollSetColors = saved.rollSetColors;
+    if (saved.rollSetMachines) rollSetMachines = saved.rollSetMachines;
     if (typeof saved.rollColorSeq === 'number') rollColorSeq = saved.rollColorSeq;
   } catch (e) { /* corrupted/old data — fall back to defaults */ }
 }
@@ -2975,12 +3029,15 @@ function renderRollColorList() {
 
 function setLabelHtml(s) {
   const p = strictParseSizeRollName(s);
+  const machines = rollSetMachines[s] || [];
+  const machineLine = machines.length ? `<span style="color:var(--accent);font-weight:600;">${machines.join(' / ')}</span>` : '';
   if (!p) return `<span style="flex:1;font-size:13px;">${s}</span>`;
   return `<span style="flex:1;font-size:13px;display:flex;flex-direction:column;line-height:1.35;">
     <span>${p.gsgi}</span>
     <span>${p.size}</span>
     <span>${p.od ? '(' + p.od + ')' : ''}</span>
     <span>${p.category}</span>
+    ${machineLine}
   </span>`;
 }
 
@@ -3133,7 +3190,7 @@ function editRoll(idx) {
 function openAddSetModal() {
   document.getElementById('modal-title').textContent = 'เพิ่ม Size Roll ใหม่';
   document.getElementById('modal-body').innerHTML = `
-    <div class="modal-row four">
+    <div class="modal-row five">
       <div class="form-group"><label class="form-label">GS/GI</label>
         <select class="form-select" id="f-set-gsgi" onchange="updateComposedSetName()">
           <option value="GS">GS</option>
@@ -3146,6 +3203,8 @@ function openAddSetModal() {
         <input class="form-input" id="f-set-od" placeholder="เช่น 23x23" oninput="updateComposedSetName()"></div>
       <div class="form-group"><label class="form-label">ชุด Roll</label>
         ${categoryDropdownHtml('')}</div>
+      <div class="form-group"><label class="form-label">เครื่องจักร</label>
+        ${machineDropdownHtml([])}</div>
     </div>
     <input type="hidden" id="f-set-name">`;
   document.getElementById('modal-overlay').classList.add('open');
@@ -3153,9 +3212,11 @@ function openAddSetModal() {
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const name = (document.getElementById('f-set-name')||{}).value.trim();
     if (!name) return;
+    const machines = ((document.getElementById('f-set-machine')||{}).value || '').split(',').filter(Boolean);
     if (!getRollSets().includes(name)) {
       extraRollSets.push(name);
     }
+    if (machines.length) rollSetMachines[name] = machines; else delete rollSetMachines[name];
     selectedRollSet = name;
     selectedRollColor = getRollSetColor(name);
     renderRollSetList();
@@ -3173,7 +3234,7 @@ function openEditSetModal(oldName) {
   const parsed = parseSizeRollName(oldName);
   document.getElementById('modal-title').textContent = 'แก้ไข Size Roll';
   document.getElementById('modal-body').innerHTML = `
-    <div class="modal-row four">
+    <div class="modal-row five">
       <div class="form-group"><label class="form-label">GS/GI</label>
         <select class="form-select" id="f-set-gsgi" onchange="updateComposedSetName()">
           <option value="GS"${parsed.gsgi==='GS'?' selected':''}>GS</option>
@@ -3186,21 +3247,28 @@ function openEditSetModal(oldName) {
         <input class="form-input" id="f-set-od" value="${escapeHtmlAttr(parsed.od)}" oninput="updateComposedSetName()"></div>
       <div class="form-group"><label class="form-label">ชุด Roll</label>
         ${categoryDropdownHtml(parsed.category)}</div>
+      <div class="form-group"><label class="form-label">เครื่องจักร</label>
+        ${machineDropdownHtml(rollSetMachines[oldName] || [])}</div>
     </div>
     <input type="hidden" id="f-set-name">`;
   document.getElementById('modal-overlay').classList.add('open');
   updateComposedSetName();
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const newName = (document.getElementById('f-set-name')||{}).value.trim();
-    if (!newName || newName === oldName) { closeModal(); return; }
+    const machines = ((document.getElementById('f-set-machine')||{}).value || '').split(',').filter(Boolean);
+    if (!newName) { closeModal(); return; }
 
-    toolingData.roll.forEach(r => { if (r.set === oldName) r.set = newName; });
-    extraRollSets = extraRollSets.map(s => s === oldName ? newName : s);
-    const colorKey = getRollSetColor(oldName);
-    delete rollSetColors[oldName];
-    if (colorKey) rollSetColors[newName] = colorKey;
+    if (newName !== oldName) {
+      toolingData.roll.forEach(r => { if (r.set === oldName) r.set = newName; });
+      extraRollSets = extraRollSets.map(s => s === oldName ? newName : s);
+      const colorKey = getRollSetColor(oldName);
+      delete rollSetColors[oldName];
+      if (colorKey) rollSetColors[newName] = colorKey;
+      delete rollSetMachines[oldName];
+      if (selectedRollSet === oldName) { selectedRollSet = newName; selectedRollColor = colorKey; }
+    }
+    if (machines.length) rollSetMachines[newName] = machines; else delete rollSetMachines[newName];
 
-    if (selectedRollSet === oldName) { selectedRollSet = newName; selectedRollColor = colorKey; }
     renderRollSetList();
     renderRollColorList();
     renderRollTable(pageState.roll);
@@ -3221,6 +3289,7 @@ function deleteSet(setName) {
   toolingData.roll = toolingData.roll.filter(r => r.set !== setName);
   extraRollSets = extraRollSets.filter(s => s !== setName);
   delete rollSetColors[setName];
+  delete rollSetMachines[setName];
   if (selectedRollSet === setName) { selectedRollSet = null; selectedRollColor = null; }
   renderRollSetList();
   renderRollColorList();
