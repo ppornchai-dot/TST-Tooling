@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ระบบวางแผนงาน Tooling — T Standard Steel</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
@@ -1260,7 +1261,12 @@ canvas{display:block;}
           <button class="btn btn-ghost btn-sm" onclick="prodBlockNav(-1)">‹ ก่อนหน้า</button>
           <span id="prodblock-daterange-label" style="font-size:13px;font-weight:700;color:var(--text-1);padding:0 8px;"></span>
           <button class="btn btn-ghost btn-sm" onclick="prodBlockNav(1)">ถัดไป ›</button>
-          <button class="btn btn-primary btn-sm" style="margin-left:auto;" onclick="openProdProductModal('add')">+ เพิ่มสินค้า</button>
+          <button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="document.getElementById('prodblock-excel-input').click()">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            นำเข้า Excel
+          </button>
+          <input type="file" id="prodblock-excel-input" accept=".xlsx,.xls" style="display:none;" onchange="onProdBlockExcelSelected(event)">
+          <button class="btn btn-primary btn-sm" onclick="openProdProductModal('add')">+ เพิ่มสินค้า</button>
         </div>
         <div class="table-wrap" id="prodblock-table-wrap" style="max-height:640px;overflow:auto;"></div>
         <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:11px;color:var(--text-3);">
@@ -2600,7 +2606,7 @@ let prodBlockCells = {};   // key `${productId}|${dateIso}` => { qty, color: 'no
 let prodBlockPM = {};      // key `${group}|${dateIso}` => true
 let prodBlockSummary = {}; // key `${group}|${dateIso}|${metric}` => value string; metric: pdTime|pmSetup|otherDowntime|planDay
 let prodBlockStartDate = '2026-07-01';
-const PROD_BLOCK_WINDOW_DAYS = 14;
+const PROD_BLOCK_WINDOW_DAYS = 31;
 const PROD_BLOCK_GROUP_COLORS = ['#E4F5EA', '#FFF6DC', '#E7EFFB', '#FBE8F2', '#F1EAFB'];
 const PROD_BLOCK_CELL_COLORS = { red: 'var(--red-dim)', blue: 'var(--accent-glow)', green: 'var(--green-dim)' };
 const PROD_BLOCK_SUMMARY_LABELS = { pdTime: 'PD Time (HR)', pmSetup: 'PM, Setup Roll (HR)', otherDowntime: 'Other Downtime (HR)', planDay: 'Plan/Day' };
@@ -4113,6 +4119,124 @@ function deleteProdProduct(id) {
   prodBlockProducts = prodBlockProducts.filter(x => x.id !== id);
   persistState();
   renderProdBlock();
+}
+
+// ─── PRODUCTION BLOCK — นำเข้าจาก Excel ─────────────────────────────────────
+const PROD_BLOCK_SUMMARY_MATCH = [
+  { re: /pd\s*time/i, metric: 'pdTime' },
+  { re: /pm.*setup|setup.*roll/i, metric: 'pmSetup' },
+  { re: /other\s*downtime/i, metric: 'otherDowntime' },
+  { re: /plan\s*\/?\s*day/i, metric: 'planDay' },
+];
+
+function excelValueToISODate(val) {
+  if (val && Object.prototype.toString.call(val) === '[object Date]' && !isNaN(val.getTime())) {
+    return `${val.getUTCFullYear()}-${String(val.getUTCMonth() + 1).padStart(2, '0')}-${String(val.getUTCDate()).padStart(2, '0')}`;
+  }
+  if (typeof val === 'string') {
+    const m = val.trim().match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (m) {
+      const day = parseInt(m[1], 10), month = parseInt(m[2], 10), year = parseInt(m[3], 10);
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+  }
+  return null;
+}
+
+function findSummaryMetric(label) {
+  const text = String(label || '').trim();
+  if (!text) return null;
+  const match = PROD_BLOCK_SUMMARY_MATCH.find(m => m.re.test(text));
+  return match ? match.metric : null;
+}
+
+function importProdBlockWorkbook(wb) {
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+  if (!rows.length) throw new Error('ไม่พบข้อมูลในไฟล์');
+
+  const headerRow = rows[0];
+  const dateCols = [];
+  for (let c = 0; c < headerRow.length; c++) {
+    const iso = excelValueToISODate(headerRow[c]);
+    if (iso) dateCols.push({ col: c, iso });
+  }
+  if (!dateCols.length) throw new Error('ไม่พบคอลัมน์วันที่ในแถวหัวตาราง (แถวแรกของไฟล์)');
+
+  let productCount = 0, cellCount = 0, summaryCount = 0;
+  let currentGroup = null;
+
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    if (!row || row.every(v => v === '' || v == null)) continue;
+    const colA = row[0], colB = row[1], colC = row[2], colD = row[3], colE = row[4];
+
+    const summaryMetric = findSummaryMetric(colE) || findSummaryMetric(colB);
+    if (summaryMetric && currentGroup) {
+      dateCols.forEach(({ col, iso }) => {
+        const val = row[col];
+        if (val !== '' && val != null) {
+          prodBlockSummary[currentGroup + '|' + iso + '|' + summaryMetric] = String(val);
+          summaryCount++;
+        }
+      });
+      continue;
+    }
+
+    const code = String(colB || '').trim();
+    if (!code) continue;
+
+    const group = String(colA || currentGroup || 'P1').trim();
+    currentGroup = group;
+
+    let product = prodBlockProducts.find(p => p.code === code);
+    if (!product) {
+      prodBlockSeq++;
+      product = { id: 'PB-' + String(prodBlockSeq).padStart(4, '0'), group, code, avgWeight: 0, speed: 0, name: '' };
+      prodBlockProducts.push(product);
+    }
+    product.group = group;
+    product.avgWeight = parseFloat(colC) || product.avgWeight || 0;
+    product.speed = parseFloat(colD) || product.speed || 0;
+    product.name = String(colE || product.name || '').trim();
+    productCount++;
+
+    dateCols.forEach(({ col, iso }) => {
+      const val = row[col];
+      if (val !== '' && val != null && !isNaN(parseFloat(val))) {
+        const existing = prodBlockCells[product.id + '|' + iso];
+        prodBlockCells[product.id + '|' + iso] = { qty: parseFloat(val), color: existing ? existing.color : null };
+        cellCount++;
+      }
+    });
+  }
+
+  return { productCount, cellCount, summaryCount, firstDateIso: dateCols[0].iso };
+}
+
+function onProdBlockExcelSelected(event) {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = '';
+  if (!file) return;
+  if (typeof XLSX === 'undefined') { alert('ไม่สามารถโหลดไลบรารีอ่านไฟล์ Excel ได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วลองใหม่'); return; }
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+      const result = importProdBlockWorkbook(wb);
+      if (result.firstDateIso) {
+        const d = parseISODate(result.firstDateIso);
+        prodBlockStartDate = toISODate(new Date(d.getFullYear(), d.getMonth(), 1));
+      }
+      persistState();
+      renderProdBlock();
+      alert(`นำเข้าสำเร็จ — สินค้า ${result.productCount} แถว, ค่าแผนผลิต ${result.cellCount} ช่อง, ค่าสรุป ${result.summaryCount} ช่อง`);
+    } catch (err) {
+      alert('ไม่สามารถอ่านไฟล์นี้ได้ กรุณาตรวจสอบรูปแบบไฟล์: ' + err.message);
+    }
+  };
+  reader.onerror = function() { alert('อ่านไฟล์ไม่สำเร็จ'); };
+  reader.readAsArrayBuffer(file);
 }
 
 // ─── LOGIN / ROLE-BASED UI (UX only — ไม่ใช่ระบบความปลอดภัยจริง) ─────────────
