@@ -1919,30 +1919,37 @@ canvas{display:block;}
           Admin
           <span class="reg-tab-count" id="cnt-team-admin">0</span>
         </button>
-        <button class="reg-tab" onclick="switchTeamTab('engineer')">
+        <button class="reg-tab" onclick="switchTeamTab('lead')">
           <span class="reg-tab-icon" style="background:rgba(74,142,194,.18);color:var(--accent);">
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
           </span>
-          วิศวกร
-          <span class="reg-tab-count" id="cnt-team-engineer">2</span>
+          หัวหน้า
+          <span class="reg-tab-count" id="cnt-team-lead">2</span>
         </button>
-        <button class="reg-tab" onclick="switchTeamTab('technician')">
+        <button class="reg-tab" onclick="switchTeamTab('cnc')">
           <span class="reg-tab-icon" style="background:rgba(139,104,212,.18);color:var(--purple);">
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
           </span>
-          ช่าง
-          <span class="reg-tab-count" id="cnt-team-technician">3</span>
+          ช่าง CNC
+          <span class="reg-tab-count" id="cnt-team-cnc">2</span>
+        </button>
+        <button class="reg-tab" onclick="switchTeamTab('polish')">
+          <span class="reg-tab-icon" style="background:rgba(232,151,30,.18);color:var(--amber);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2l2.4 7.2H22l-6 4.4 2.3 7.2L12 16.4 5.7 20.8 8 13.6l-6-4.4h7.6z"/></svg>
+          </span>
+          ช่างขัด Roll
+          <span class="reg-tab-count" id="cnt-team-polish">1</span>
         </button>
       </div>
 
       <div class="team-grid">
 
-        <div class="team-card" data-role="engineer">
+        <div class="team-card" data-role="lead">
           <div class="team-card-top">
             <div class="team-avatar" style="background:var(--accent);">สว</div>
             <div>
               <div class="team-name">สมชาย วงษ์ศรี</div>
-              <div class="team-role">วิศวกร Tooling อาวุโส</div>
+              <div class="team-role">หัวหน้าฝ่าย Tooling</div>
               <div style="margin-top:4px;"><span class="chip chip-green" style="font-size:10px;">● พร้อมงาน</span></div>
             </div>
           </div>
@@ -1958,12 +1965,12 @@ canvas{display:block;}
           </div>
         </div>
 
-        <div class="team-card" data-role="technician">
+        <div class="team-card" data-role="polish">
           <div class="team-card-top">
             <div class="team-avatar" style="background:var(--amber);">วส</div>
             <div>
               <div class="team-name">วิรัตน์ สุขสม</div>
-              <div class="team-role">ช่าง Tooling</div>
+              <div class="team-role">ช่างขัด Roll</div>
               <div style="margin-top:4px;"><span class="chip chip-blue" style="font-size:10px;">● กำลังทำงาน</span></div>
             </div>
           </div>
@@ -1979,12 +1986,12 @@ canvas{display:block;}
           </div>
         </div>
 
-        <div class="team-card" data-role="technician">
+        <div class="team-card" data-role="cnc">
           <div class="team-card-top">
             <div class="team-avatar" style="background:var(--purple);">อท</div>
             <div>
               <div class="team-name">อนุชา ทองดี</div>
-              <div class="team-role">ช่าง QC / Calibration</div>
+              <div class="team-role">ช่าง CNC (QC / Calibration)</div>
               <div style="margin-top:4px;"><span class="chip chip-green" style="font-size:10px;">● พร้อมงาน</span></div>
             </div>
           </div>
@@ -2000,12 +2007,12 @@ canvas{display:block;}
           </div>
         </div>
 
-        <div class="team-card" data-role="technician">
+        <div class="team-card" data-role="cnc">
           <div class="team-card-top">
             <div class="team-avatar" style="background:var(--green);">ปร</div>
             <div>
               <div class="team-name">ปิยะ รักษ์ดี</div>
-              <div class="team-role">ช่าง Tooling</div>
+              <div class="team-role">ช่าง CNC</div>
               <div style="margin-top:4px;"><span class="chip chip-amber" style="font-size:10px;">● ลาวันนี้</span></div>
             </div>
           </div>
@@ -2021,12 +2028,12 @@ canvas{display:block;}
           </div>
         </div>
 
-        <div class="team-card" data-role="engineer">
+        <div class="team-card" data-role="lead">
           <div class="team-card-top">
             <div class="team-avatar" style="background:#5B8DD9;">พป</div>
             <div>
               <div class="team-name">พรชัย ป.</div>
-              <div class="team-role">วิศวกร Tooling</div>
+              <div class="team-role">หัวหน้างานวางแผน Tooling</div>
               <div style="margin-top:4px;"><span class="chip chip-green" style="font-size:10px;">● พร้อมงาน</span></div>
             </div>
           </div>
