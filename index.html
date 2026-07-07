@@ -1530,7 +1530,26 @@ canvas{display:block;}
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>เวลา</th><th>งาน</th><th>Tooling</th><th>ผู้รับผิดชอบ</th><th>ประเภท</th><th>สถานะ</th><th>จัดการ</th></tr></thead>
+              <thead>
+                <tr>
+                  <th rowspan="3">ลำดับ</th>
+                  <th rowspan="3">หมายเลขขึ้นงาน</th>
+                  <th rowspan="3">ชื่อขึ้นงาน</th>
+                  <th rowspan="3">รายละเอียดงาน</th>
+                  <th colspan="5" style="text-align:center;">Plan</th>
+                  <th rowspan="3">จัดการ</th>
+                </tr>
+                <tr>
+                  <th rowspan="2">นาที/ชิ้น</th>
+                  <th rowspan="2">จำนวน (ชิ้น)</th>
+                  <th rowspan="2">เวลารวม (ชม.)</th>
+                  <th colspan="2" style="text-align:center;">เวลา</th>
+                </tr>
+                <tr>
+                  <th>เริ่มงาน</th>
+                  <th>ลงงาน</th>
+                </tr>
+              </thead>
               <tbody id="plan-day-tbody"></tbody>
             </table>
           </div>
@@ -2825,24 +2844,18 @@ const toolingData = {
   ]
 };
 
-// ─── PLAN TASKS (หน้าวางแผน — รายวัน/รายสัปดาห์/รายเดือน) ────────────────────
+// ─── PLAN TASKS (หน้าวางแผน — แผนการขึ้นงาน รายวัน/รายสัปดาห์/รายเดือน) ────────
 let planTasks = [
-  {id:'PT-0001',date:'2026-06-30',time:'09:00',title:'ตรวจสอบ Holder & Collet ประจำสัปดาห์',tooling:'ตรวจ',assignee:'สมชาย ว.',type:'ตรวจสอบ',status:'เสร็จแล้ว'},
-  {id:'PT-0002',date:'2026-07-01',time:'11:00',title:'สั่งซื้อ Tooling ประจำไตรมาส Q2',tooling:'PO Q2',assignee:'จัดซื้อ',type:'จัดซื้อ',status:'กำลังทำ'},
-  {id:'PT-0003',date:'2026-07-02',time:'08:00',title:'PM ชุด Cutting Tool A',tooling:'PM-A',assignee:'สมชาย ว.',type:'PM',status:'กำลังทำ'},
-  {id:'PT-0004',date:'2026-07-02',time:'10:30',title:'Calibrate Gauge ชุด A',tooling:'Cal-A',assignee:'QC / อนุชา ท.',type:'Calibrate',status:'รอดำเนินการ'},
-  {id:'PT-0005',date:'2026-07-02',time:'13:00',title:'ตรวจสอบ Holder & Collet',tooling:'ตรวจ',assignee:'สมชาย ว.',type:'ตรวจสอบ',status:'เสร็จแล้ว'},
-  {id:'PT-0006',date:'2026-07-02',time:'14:30',title:'ซ่อม Fixture F-07',tooling:'ซ่อม F-07',assignee:'ปิยะ ร.',type:'ซ่อมแซม',status:'กำลังทำ'},
-  {id:'PT-0007',date:'2026-07-04',time:'09:00',title:'ซ่อม Fixture F-07 (ต่อเนื่อง)',tooling:'ซ่อม F-07',assignee:'ปิยะ ร.',type:'ซ่อมแซม',status:'รอชิ้นส่วน'},
-  {id:'PT-0008',date:'2026-07-11',time:'09:00',title:'Regrind Carbide End Mill (Lot 2)',tooling:'Regrind Lot2',assignee:'วิรัตน์ ส.',type:'Regrind',status:'รอดำเนินการ'},
+  {id:'PT-0001',date:'2026-06-30',jobNumber:'SR22026030',jobName:'GI1x1 (25x25) สีเขียว',workDetail:'Sizing = 10 ลูก',minPerPiece:60,qty:3.00,startTime:'09:00',endTime:'12:00'},
+  {id:'PT-0002',date:'2026-07-01',jobNumber:'SR22026032',jobName:'GI1.5x1.5 (38x38) สีฟ้า',workDetail:'Sizing = 12 ลูก',minPerPiece:65,qty:2.77,startTime:'08:30',endTime:'11:30'},
+  {id:'PT-0003',date:'2026-07-02',jobNumber:'SR22026035',jobName:'GI2x2 (49x49) สีแดง',workDetail:'Sizing = 16 ลูก',minPerPiece:70,qty:2.57,startTime:'08:00',endTime:'10:59'},
+  {id:'PT-0004',date:'2026-07-02',jobNumber:'SR22026035',jobName:'GI2x2 (49x49) สีแดง',workDetail:'TH = 8 ลูก',minPerPiece:55,qty:5.46,startTime:'10:59',endTime:'17:00'},
+  {id:'PT-0005',date:'2026-07-04',jobNumber:'SR22026038',jobName:'GI2.5x2.5 (63x63) สีเหลือง',workDetail:'Sizing = 14 ลูก',minPerPiece:75,qty:3.20,startTime:'08:00',endTime:'12:00'},
+  {id:'PT-0006',date:'2026-07-11',jobNumber:'SR22026042',jobName:'GI3x3 (75x75) สีดำ',workDetail:'TH = 10 ลูก',minPerPiece:80,qty:4.00,startTime:'08:00',endTime:'13:20'},
 ];
-let planTaskSeq = 8;
+let planTaskSeq = 6;
 
-const PLAN_TYPE_CHIP_CLASS = {'PM':'chip-blue','ตรวจสอบ':'chip-blue','Calibrate':'chip-purple','ซ่อมแซม':'chip-red','จัดซื้อ':'chip-green','Regrind':'chip-amber'};
-const PLAN_STATUS_CHIP_CLASS = {'กำลังทำ':'chip-blue','รอดำเนินการ':'chip-amber','เสร็จแล้ว':'chip-green','รอชิ้นส่วน':'chip-amber','ยกเลิก':'chip-red'};
-function planTypeChipClass(t) { return PLAN_TYPE_CHIP_CLASS[t] || 'chip-blue'; }
-function planTaskTypeChip(t) { return `<span class="chip ${planTypeChipClass(t)}">${escapeHtmlAttr(t)}</span>`; }
-function planTaskStatusChip(s) { return `<span class="chip ${PLAN_STATUS_CHIP_CLASS[s]||'chip-blue'}">${escapeHtmlAttr(s)}</span>`; }
+function planHoursTotal(t) { return ((t.minPerPiece||0) * (t.qty||0) / 60).toFixed(2); }
 
 const THAI_MONTHS_ABBR = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
 const THAI_MONTHS_FULL = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
@@ -2903,21 +2916,24 @@ function planNav(dir) {
 function renderPlanDay() {
   const iso = toISODate(planViewDate);
   document.getElementById('plan-daterange-label').textContent = fmtDateThai(planViewDate);
-  document.getElementById('plan-day-title').textContent = 'งานตามแผน — วันที่ ' + fmtDateThai(planViewDate);
-  const tasks = planTasks.filter(t => t.date === iso).sort((a, b) => (a.time||'').localeCompare(b.time||''));
-  document.getElementById('plan-day-tbody').innerHTML = tasks.map(t => `
+  document.getElementById('plan-day-title').textContent = 'แผนการขึ้นงาน — วันที่ ' + fmtDateThai(planViewDate);
+  const tasks = planTasks.filter(t => t.date === iso).sort((a, b) => (a.startTime||'').localeCompare(b.startTime||''));
+  document.getElementById('plan-day-tbody').innerHTML = tasks.map((t, i) => `
     <tr>
-      <td class="muted">${escapeHtmlAttr(t.time || '—')}</td>
-      <td><strong>${escapeHtmlAttr(t.title)}</strong></td>
-      <td>${escapeHtmlAttr(t.tooling)}</td>
-      <td>${escapeHtmlAttr(t.assignee)}</td>
-      <td>${planTaskTypeChip(t.type)}</td>
-      <td>${planTaskStatusChip(t.status)}</td>
+      <td class="muted">${i + 1}</td>
+      <td>${escapeHtmlAttr(t.jobNumber)}</td>
+      <td><strong>${escapeHtmlAttr(t.jobName)}</strong></td>
+      <td>${escapeHtmlAttr(t.workDetail)}</td>
+      <td class="muted" style="text-align:right;">${t.minPerPiece}</td>
+      <td class="muted" style="text-align:right;">${t.qty}</td>
+      <td class="muted" style="text-align:right;">${planHoursTotal(t)}</td>
+      <td class="muted">${escapeHtmlAttr(t.startTime || '—')}</td>
+      <td class="muted">${escapeHtmlAttr(t.endTime || '—')}</td>
       <td style="display:flex;gap:4px;">
         <button class="btn btn-ghost btn-sm" onclick="openPlanTaskModal('edit','${t.id}')">แก้ไข</button>
         <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deletePlanTask('${t.id}')">ลบ</button>
       </td>
-    </tr>`).join('') || `<tr><td colspan="7" style="padding:32px;text-align:center;color:var(--text-3);">ไม่มีงานตามแผนในวันนี้</td></tr>`;
+    </tr>`).join('') || `<tr><td colspan="10" style="padding:32px;text-align:center;color:var(--text-3);">ไม่มีงานตามแผนในวันนี้</td></tr>`;
 }
 
 function renderPlanWeek() {
@@ -2925,7 +2941,7 @@ function renderPlanWeek() {
   const days = Array.from({length: 7}, (_, i) => { const d = new Date(monday); d.setDate(d.getDate() + i); return d; });
   const sunday = days[6];
   document.getElementById('plan-daterange-label').textContent = `${fmtDateThaiShort(monday)} – ${fmtDateThai(sunday)}`;
-  document.getElementById('plan-week-title').textContent = `งานตามแผน — สัปดาห์ ${fmtDateThaiShort(monday)} – ${fmtDateThai(sunday)}`;
+  document.getElementById('plan-week-title').textContent = `แผนการขึ้นงาน — สัปดาห์ ${fmtDateThaiShort(monday)} – ${fmtDateThai(sunday)}`;
 
   document.getElementById('plan-week-thead-row').innerHTML = days.map(d =>
     `<th>${THAI_WEEKDAYS_MON_FIRST[(d.getDay()+6)%7]}<br><span class="muted" style="font-weight:400;">${fmtDateThaiShort(d)}</span></th>`
@@ -2933,10 +2949,10 @@ function renderPlanWeek() {
 
   document.getElementById('plan-week-tbody').innerHTML = days.map(d => {
     const iso = toISODate(d);
-    const tasks = planTasks.filter(t => t.date === iso).sort((a, b) => (a.time||'').localeCompare(b.time||''));
+    const tasks = planTasks.filter(t => t.date === iso).sort((a, b) => (a.startTime||'').localeCompare(b.startTime||''));
     const items = tasks.map(t => `
       <div style="display:flex;align-items:center;gap:4px;">
-        <span class="chip ${planTypeChipClass(t.type)}" style="cursor:pointer;flex:1;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(t.title)}">${escapeHtmlAttr(t.tooling || t.title)}</span>
+        <span class="chip chip-blue" style="cursor:pointer;flex:1;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(t.jobName)} — ${escapeHtmlAttr(t.workDetail)}">${escapeHtmlAttr(t.jobNumber)}</span>
         <button title="ลบ" onclick="deletePlanTask('${t.id}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:11px;padding:0;">✕</button>
       </div>`).join('');
     return `<td style="min-width:110px;">
@@ -2952,7 +2968,7 @@ function renderPlanMonth() {
   const year = planViewDate.getFullYear();
   const month = planViewDate.getMonth();
   document.getElementById('plan-daterange-label').textContent = `${THAI_MONTHS_FULL[month]} ${year + 543}`;
-  document.getElementById('plan-month-title').textContent = `งานตามแผน — ${THAI_MONTHS_FULL[month]} ${year + 543}`;
+  document.getElementById('plan-month-title').textContent = `แผนการขึ้นงาน — ${THAI_MONTHS_FULL[month]} ${year + 543}`;
 
   const firstDay = new Date(year, month, 1);
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -2968,7 +2984,7 @@ function renderPlanMonth() {
     const iso = toISODate(d);
     const tasks = planTasks.filter(t => t.date === iso);
     const chips = tasks.map(t =>
-      `<span class="chip ${planTypeChipClass(t.type)}" style="font-size:10px;cursor:pointer;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(t.title)}">${escapeHtmlAttr(t.tooling || t.title)}</span>`
+      `<span class="chip chip-blue" style="font-size:10px;cursor:pointer;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(t.jobName)} — ${escapeHtmlAttr(t.workDetail)}">${escapeHtmlAttr(t.jobNumber)}</span>`
     ).join('');
     html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -2989,29 +3005,30 @@ function planTaskFormFields() {
   return `
     <div class="modal-row">
       <div class="form-group"><label class="form-label">วันที่</label><input class="form-input" id="pf-date" type="date"></div>
-      <div class="form-group"><label class="form-label">เวลา</label><input class="form-input" id="pf-time" type="time"></div>
+      <div class="form-group"><label class="form-label">หมายเลขขึ้นงาน</label><input class="form-input" id="pf-jobnumber" placeholder="เช่น SR22026035"></div>
     </div>
     <div class="modal-row full">
-      <div class="form-group"><label class="form-label">ชื่องาน</label><input class="form-input" id="pf-title" placeholder="เช่น PM ชุด Cutting Tool A"></div>
+      <div class="form-group"><label class="form-label">ชื่อขึ้นงาน</label><input class="form-input" id="pf-jobname" placeholder="เช่น GI2x2 (49x49) สีแดง"></div>
+    </div>
+    <div class="modal-row full">
+      <div class="form-group"><label class="form-label">รายละเอียดงาน</label><input class="form-input" id="pf-workdetail" placeholder="เช่น Sizing = 16 ลูก"></div>
     </div>
     <div class="modal-row three">
-      <div class="form-group"><label class="form-label">Tooling / เครื่องจักร</label><input class="form-input" id="pf-tooling" placeholder="เช่น PM-A"></div>
-      <div class="form-group"><label class="form-label">ผู้รับผิดชอบ</label><input class="form-input" id="pf-assignee" placeholder="เช่น สมชาย ว."></div>
-      <div class="form-group"><label class="form-label">ประเภท</label>
-        <select class="form-select" id="pf-type">
-          <option>PM</option><option>ตรวจสอบ</option><option>Calibrate</option>
-          <option>ซ่อมแซม</option><option>จัดซื้อ</option><option>Regrind</option>
-        </select>
-      </div>
+      <div class="form-group"><label class="form-label">นาที/ชิ้น</label><input class="form-input" id="pf-minperpiece" type="number" step="0.01" oninput="updatePlanHoursPreview()" placeholder="เช่น 70"></div>
+      <div class="form-group"><label class="form-label">จำนวน (ชิ้น)</label><input class="form-input" id="pf-qty" type="number" step="0.01" oninput="updatePlanHoursPreview()" placeholder="เช่น 2.57"></div>
+      <div class="form-group"><label class="form-label">เวลารวม (ชม.)</label><input class="form-input" id="pf-hours-preview" type="text" disabled></div>
     </div>
-    <div class="modal-row full">
-      <div class="form-group"><label class="form-label">สถานะ</label>
-        <select class="form-select" id="pf-status">
-          <option>รอดำเนินการ</option><option>กำลังทำ</option><option>เสร็จแล้ว</option>
-          <option>รอชิ้นส่วน</option><option>ยกเลิก</option>
-        </select>
-      </div>
+    <div class="modal-row">
+      <div class="form-group"><label class="form-label">เริ่มงาน</label><input class="form-input" id="pf-start" type="time"></div>
+      <div class="form-group"><label class="form-label">ลงงาน</label><input class="form-input" id="pf-end" type="time"></div>
     </div>`;
+}
+
+function updatePlanHoursPreview() {
+  const mpp = parseFloat((document.getElementById('pf-minperpiece')||{}).value) || 0;
+  const qty = parseFloat((document.getElementById('pf-qty')||{}).value) || 0;
+  const el = document.getElementById('pf-hours-preview');
+  if (el) el.value = (mpp * qty / 60).toFixed(2);
 }
 
 function openPlanTaskModal(mode, taskId, presetDate) {
@@ -3019,22 +3036,27 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   document.getElementById('modal-title').textContent = mode === 'edit' ? 'แก้ไขงาน' : 'เพิ่มงานใหม่';
   document.getElementById('modal-body').innerHTML = planTaskFormFields();
   document.getElementById('pf-date').value = task ? task.date : (presetDate || toISODate(planViewDate));
-  document.getElementById('pf-time').value = task ? task.time : '08:00';
-  document.getElementById('pf-title').value = task ? task.title : '';
-  document.getElementById('pf-tooling').value = task ? task.tooling : '';
-  document.getElementById('pf-assignee').value = task ? task.assignee : '';
-  document.getElementById('pf-type').value = task ? task.type : 'PM';
-  document.getElementById('pf-status').value = task ? task.status : 'รอดำเนินการ';
+  document.getElementById('pf-jobnumber').value = task ? task.jobNumber : '';
+  document.getElementById('pf-jobname').value = task ? task.jobName : '';
+  document.getElementById('pf-workdetail').value = task ? task.workDetail : '';
+  document.getElementById('pf-minperpiece').value = task ? task.minPerPiece : '';
+  document.getElementById('pf-qty').value = task ? task.qty : '';
+  document.getElementById('pf-start').value = task ? task.startTime : '08:00';
+  document.getElementById('pf-end').value = task ? task.endTime : '';
+  updatePlanHoursPreview();
   document.getElementById('modal-overlay').classList.add('open');
 
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const g = id => (document.getElementById(id)||{}).value.trim();
-    const date = g('pf-date'), title = g('pf-title');
-    if (!date || !title) { alert('กรุณากรอกวันที่และชื่องาน'); return; }
+    const date = g('pf-date'), jobNumber = g('pf-jobnumber'), jobName = g('pf-jobname');
+    if (!date || !jobNumber || !jobName) { alert('กรุณากรอกวันที่ หมายเลขขึ้นงาน และชื่อขึ้นงาน'); return; }
     const data = {
-      date, time: g('pf-time') || '—', title,
-      tooling: g('pf-tooling') || '—', assignee: g('pf-assignee') || '—',
-      type: g('pf-type'), status: g('pf-status')
+      date, jobNumber, jobName,
+      workDetail: g('pf-workdetail') || '—',
+      minPerPiece: parseFloat(g('pf-minperpiece')) || 0,
+      qty: parseFloat(g('pf-qty')) || 0,
+      startTime: g('pf-start') || '—',
+      endTime: g('pf-end') || '—'
     };
     if (mode === 'edit') {
       Object.assign(task, data);
@@ -3055,7 +3077,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
 function deletePlanTask(taskId) {
   const t = planTasks.find(x => x.id === taskId);
   if (!t) return;
-  if (!confirm('ลบงาน "' + t.title + '" ออกจากแผน?')) return;
+  if (!confirm('ลบงาน "' + t.jobName + ' — ' + t.workDetail + '" ออกจากแผน?')) return;
   planTasks = planTasks.filter(x => x.id !== taskId);
   persistState();
   renderCurrentPlanView();
