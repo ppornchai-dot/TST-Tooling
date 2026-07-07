@@ -2606,7 +2606,7 @@ let prodBlockCells = {};   // key `${productId}|${dateIso}` => { qty, color: 'no
 let prodBlockPM = {};      // key `${group}|${dateIso}` => true
 let prodBlockSummary = {}; // key `${group}|${dateIso}|${metric}` => value string; metric: pdTime|pmSetup|otherDowntime|planDay
 let prodBlockStartDate = '2026-07-01';
-const PROD_BLOCK_WINDOW_DAYS = 31;
+let prodBlockWindowDays = 31; // ขยายอัตโนมัติหลังนำเข้า Excel ให้ครอบคลุมทุกคอลัมน์วันที่ในไฟล์
 const PROD_BLOCK_GROUP_COLORS = ['#E4F5EA', '#FFF6DC', '#E7EFFB', '#FBE8F2', '#F1EAFB'];
 const PROD_BLOCK_CELL_COLORS = { red: 'var(--red-dim)', blue: 'var(--accent-glow)', green: 'var(--green-dim)' };
 const PROD_BLOCK_SUMMARY_LABELS = { pdTime: 'PD Time (HR)', pmSetup: 'PM, Setup Roll (HR)', otherDowntime: 'Other Downtime (HR)', planDay: 'Plan/Day' };
@@ -3128,7 +3128,7 @@ function persistState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       toolingData, extraRollSets, rollSetPalettes, rollColorSeq, rollSetMachines,
       planTasks, planTaskSeq, teamMembers, teamSeq,
-      prodBlockProducts, prodBlockSeq, prodBlockCells, prodBlockPM, prodBlockSummary, prodBlockStartDate
+      prodBlockProducts, prodBlockSeq, prodBlockCells, prodBlockPM, prodBlockSummary, prodBlockStartDate, prodBlockWindowDays
     }));
   } catch (e) { /* localStorage unavailable — edits stay in-memory only */ }
 }
@@ -3157,6 +3157,7 @@ function restoreState() {
     if (saved.prodBlockPM) prodBlockPM = saved.prodBlockPM;
     if (saved.prodBlockSummary) prodBlockSummary = saved.prodBlockSummary;
     if (typeof saved.prodBlockStartDate === 'string') prodBlockStartDate = saved.prodBlockStartDate;
+    if (typeof saved.prodBlockWindowDays === 'number') prodBlockWindowDays = saved.prodBlockWindowDays;
   } catch (e) { /* corrupted/old data — fall back to defaults */ }
 }
 restoreState();
@@ -3904,7 +3905,7 @@ function renderProdBlock() {
   const wrap = document.getElementById('prodblock-table-wrap');
   if (!wrap) return;
   const start = parseISODate(prodBlockStartDate);
-  const dates = Array.from({ length: PROD_BLOCK_WINDOW_DAYS }, (_, i) => { const d = new Date(start); d.setDate(d.getDate() + i); return d; });
+  const dates = Array.from({ length: prodBlockWindowDays }, (_, i) => { const d = new Date(start); d.setDate(d.getDate() + i); return d; });
   const end = dates[dates.length - 1];
   const label = document.getElementById('prodblock-daterange-label');
   if (label) label.textContent = fmtDateSlash(start) + ' – ' + fmtDateSlash(end);
@@ -3975,7 +3976,7 @@ function renderProdBlock() {
 
 function prodBlockNav(dir) {
   const d = parseISODate(prodBlockStartDate);
-  d.setDate(d.getDate() + dir * PROD_BLOCK_WINDOW_DAYS);
+  d.setDate(d.getDate() + dir * prodBlockWindowDays);
   prodBlockStartDate = toISODate(d);
   renderProdBlock();
 }
@@ -4238,7 +4239,8 @@ function importProdBlockWorkbook(wb) {
     });
   }
 
-  return { productCount, cellCount, summaryCount, firstDateIso: dateCols[0].iso };
+  const sortedIsos = dateCols.map(d => d.iso).sort();
+  return { productCount, cellCount, summaryCount, firstDateIso: sortedIsos[0], lastDateIso: sortedIsos[sortedIsos.length - 1] };
 }
 
 function onProdBlockExcelSelected(event) {
@@ -4251,13 +4253,16 @@ function onProdBlockExcelSelected(event) {
     try {
       const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
       const result = importProdBlockWorkbook(wb);
-      if (result.firstDateIso) {
-        const d = parseISODate(result.firstDateIso);
-        prodBlockStartDate = toISODate(new Date(d.getFullYear(), d.getMonth(), 1));
+      if (result.firstDateIso && result.lastDateIso) {
+        const start = parseISODate(result.firstDateIso);
+        const end = parseISODate(result.lastDateIso);
+        const spanDays = Math.round((end - start) / 86400000) + 1;
+        prodBlockStartDate = result.firstDateIso;
+        prodBlockWindowDays = Math.min(Math.max(spanDays, 31), 366);
       }
       persistState();
       renderProdBlock();
-      alert(`นำเข้าสำเร็จ — สินค้า ${result.productCount} แถว, ค่าแผนผลิต ${result.cellCount} ช่อง, ค่าสรุป ${result.summaryCount} ช่อง`);
+      alert(`นำเข้าสำเร็จ — สินค้า ${result.productCount} แถว, ค่าแผนผลิต ${result.cellCount} ช่อง, ค่าสรุป ${result.summaryCount} ช่อง (แสดงตั้งแต่ ${result.firstDateIso} ถึง ${result.lastDateIso})`);
     } catch (err) {
       alert('ไม่สามารถอ่านไฟล์นี้ได้ กรุณาตรวจสอบรูปแบบไฟล์: ' + err.message);
     }
