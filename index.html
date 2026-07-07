@@ -4213,12 +4213,15 @@ function teamOnTimeColor(pct) {
   return 'var(--red)';
 }
 
+const TEAM_ROLE_ORDER = ['admin', 'lead', 'cnc', 'polish'];
+
 function renderTeamGrid() {
   const grid = document.getElementById('team-grid');
   if (!grid) return;
   const val = v => (v === null || v === undefined || v === '') ? '—' : v;
 
-  const cardsHtml = teamMembers.map(m => {
+  const sortedMembers = [...teamMembers].sort((a, b) => TEAM_ROLE_ORDER.indexOf(a.role) - TEAM_ROLE_ORDER.indexOf(b.role));
+  const cardsHtml = sortedMembers.map(m => {
     const st = TEAM_STATUS_META[m.status] || TEAM_STATUS_META.available;
     const skillsHtml = (m.skills || []).map(s => `<span class="skill-tag">${escapeHtmlAttr(s)}</span>`).join('');
     return `<div class="team-card" data-role="${m.role}">
