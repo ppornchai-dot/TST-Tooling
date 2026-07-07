@@ -1533,9 +1533,10 @@ canvas{display:block;}
               <thead>
                 <tr>
                   <th rowspan="3">ลำดับ</th>
-                  <th rowspan="3">หมายเลขขึ้นงาน</th>
-                  <th rowspan="3">ชื่อขึ้นงาน</th>
-                  <th rowspan="3">รายละเอียดงาน</th>
+                  <th rowspan="3">Size Roll</th>
+                  <th rowspan="3">ชุดสี Roll</th>
+                  <th rowspan="3">รหัส</th>
+                  <th rowspan="3">ชื่อ Roll</th>
                   <th colspan="5" style="text-align:center;">Plan</th>
                   <th rowspan="3">จัดการ</th>
                 </tr>
@@ -2846,16 +2847,21 @@ const toolingData = {
 
 // ─── PLAN TASKS (หน้าวางแผน — แผนการขึ้นงาน รายวัน/รายสัปดาห์/รายเดือน) ────────
 let planTasks = [
-  {id:'PT-0001',date:'2026-06-30',jobNumber:'SR22026030',jobName:'GI1x1 (25x25) สีเขียว',workDetail:'Sizing = 10 ลูก',minPerPiece:60,qty:3.00,startTime:'09:00',endTime:'12:00'},
-  {id:'PT-0002',date:'2026-07-01',jobNumber:'SR22026032',jobName:'GI1.5x1.5 (38x38) สีฟ้า',workDetail:'Sizing = 12 ลูก',minPerPiece:65,qty:2.77,startTime:'08:30',endTime:'11:30'},
-  {id:'PT-0003',date:'2026-07-02',jobNumber:'SR22026035',jobName:'GI2x2 (49x49) สีแดง',workDetail:'Sizing = 16 ลูก',minPerPiece:70,qty:2.57,startTime:'08:00',endTime:'10:59'},
-  {id:'PT-0004',date:'2026-07-02',jobNumber:'SR22026035',jobName:'GI2x2 (49x49) สีแดง',workDetail:'TH = 8 ลูก',minPerPiece:55,qty:5.46,startTime:'10:59',endTime:'17:00'},
-  {id:'PT-0005',date:'2026-07-04',jobNumber:'SR22026038',jobName:'GI2.5x2.5 (63x63) สีเหลือง',workDetail:'Sizing = 14 ลูก',minPerPiece:75,qty:3.20,startTime:'08:00',endTime:'12:00'},
-  {id:'PT-0006',date:'2026-07-11',jobNumber:'SR22026042',jobName:'GI3x3 (75x75) สีดำ',workDetail:'TH = 10 ลูก',minPerPiece:80,qty:4.00,startTime:'08:00',endTime:'13:20'},
+  {id:'PT-0001',date:'2026-06-30',rollSet:'Pinch Roll — Ø200 mm',rollColor:'blue',rollId:'RL-0030',rollName:'Pinch Roll (Entry)',minPerPiece:60,qty:3.00,startTime:'09:00',endTime:'12:00'},
+  {id:'PT-0002',date:'2026-07-01',rollSet:'Backup Roll Stand 1 — Ø650 mm',rollColor:'yellow',rollId:'RL-0003',rollName:'Backup Roll #1 (Top)',minPerPiece:65,qty:2.77,startTime:'08:30',endTime:'11:30'},
+  {id:'PT-0003',date:'2026-07-02',rollSet:'Work Roll Stand 1 — Ø320 mm',rollColor:'blue',rollId:'RL-0001',rollName:'Work Roll #1 (Top)',minPerPiece:70,qty:2.57,startTime:'08:00',endTime:'10:59'},
+  {id:'PT-0004',date:'2026-07-02',rollSet:'Work Roll Stand 1 — Ø320 mm',rollColor:'blue',rollId:'RL-0001',rollName:'Work Roll #1 (Top)',minPerPiece:55,qty:5.46,startTime:'10:59',endTime:'17:00'},
+  {id:'PT-0005',date:'2026-07-04',rollSet:'Work Roll Stand 2 — Ø300 mm',rollColor:'red',rollId:'RL-0007',rollName:'Work Roll #2 (Top)',minPerPiece:75,qty:3.20,startTime:'08:00',endTime:'12:00'},
+  {id:'PT-0006',date:'2026-07-11',rollSet:'Edger Roll — Ø250 mm',rollColor:'gold',rollId:'RL-0015',rollName:'Edger Roll (Left)',minPerPiece:80,qty:4.00,startTime:'08:00',endTime:'13:20'},
 ];
 let planTaskSeq = 6;
 
 function planHoursTotal(t) { return ((t.minPerPiece||0) * (t.qty||0) / 60).toFixed(2); }
+function planRollColorLabel(t) {
+  if (!t.rollColor) return '—';
+  const c = getSetPalette(t.rollSet).find(x => x.key === t.rollColor);
+  return c ? c.label : '—';
+}
 
 const THAI_MONTHS_ABBR = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
 const THAI_MONTHS_FULL = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
@@ -2921,9 +2927,10 @@ function renderPlanDay() {
   document.getElementById('plan-day-tbody').innerHTML = tasks.map((t, i) => `
     <tr>
       <td class="muted">${i + 1}</td>
-      <td>${escapeHtmlAttr(t.jobNumber)}</td>
-      <td><strong>${escapeHtmlAttr(t.jobName)}</strong></td>
-      <td>${escapeHtmlAttr(t.workDetail)}</td>
+      <td>${escapeHtmlAttr(t.rollSet)}</td>
+      <td>${escapeHtmlAttr(planRollColorLabel(t))}</td>
+      <td class="muted">${escapeHtmlAttr(t.rollId)}</td>
+      <td><strong>${escapeHtmlAttr(t.rollName)}</strong></td>
       <td class="muted" style="text-align:right;">${t.minPerPiece}</td>
       <td class="muted" style="text-align:right;">${t.qty}</td>
       <td class="muted" style="text-align:right;">${planHoursTotal(t)}</td>
@@ -2933,7 +2940,7 @@ function renderPlanDay() {
         <button class="btn btn-ghost btn-sm" onclick="openPlanTaskModal('edit','${t.id}')">แก้ไข</button>
         <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deletePlanTask('${t.id}')">ลบ</button>
       </td>
-    </tr>`).join('') || `<tr><td colspan="10" style="padding:32px;text-align:center;color:var(--text-3);">ไม่มีงานตามแผนในวันนี้</td></tr>`;
+    </tr>`).join('') || `<tr><td colspan="11" style="padding:32px;text-align:center;color:var(--text-3);">ไม่มีงานตามแผนในวันนี้</td></tr>`;
 }
 
 function renderPlanWeek() {
@@ -2952,7 +2959,7 @@ function renderPlanWeek() {
     const tasks = planTasks.filter(t => t.date === iso).sort((a, b) => (a.startTime||'').localeCompare(b.startTime||''));
     const items = tasks.map(t => `
       <div style="display:flex;align-items:center;gap:4px;">
-        <span class="chip chip-blue" style="cursor:pointer;flex:1;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(t.jobName)} — ${escapeHtmlAttr(t.workDetail)}">${escapeHtmlAttr(t.jobNumber)}</span>
+        <span class="chip chip-blue" style="cursor:pointer;flex:1;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(t.rollId)} — ${escapeHtmlAttr(t.rollName)}">${escapeHtmlAttr(t.rollId)}</span>
         <button title="ลบ" onclick="deletePlanTask('${t.id}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:11px;padding:0;">✕</button>
       </div>`).join('');
     return `<td style="min-width:110px;">
@@ -2984,7 +2991,7 @@ function renderPlanMonth() {
     const iso = toISODate(d);
     const tasks = planTasks.filter(t => t.date === iso);
     const chips = tasks.map(t =>
-      `<span class="chip chip-blue" style="font-size:10px;cursor:pointer;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(t.jobName)} — ${escapeHtmlAttr(t.workDetail)}">${escapeHtmlAttr(t.jobNumber)}</span>`
+      `<span class="chip chip-blue" style="font-size:10px;cursor:pointer;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(t.rollId)} — ${escapeHtmlAttr(t.rollName)}">${escapeHtmlAttr(t.rollId)}</span>`
     ).join('');
     html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -3003,15 +3010,23 @@ function addPlanTaskForCurrentDay() {
 
 function planTaskFormFields() {
   return `
-    <div class="modal-row">
+    <div class="modal-row full">
       <div class="form-group"><label class="form-label">วันที่</label><input class="form-input" id="pf-date" type="date"></div>
-      <div class="form-group"><label class="form-label">หมายเลขขึ้นงาน</label><input class="form-input" id="pf-jobnumber" placeholder="เช่น SR22026035"></div>
     </div>
-    <div class="modal-row full">
-      <div class="form-group"><label class="form-label">ชื่อขึ้นงาน</label><input class="form-input" id="pf-jobname" placeholder="เช่น GI2x2 (49x49) สีแดง"></div>
+    <div class="modal-row three">
+      <div class="form-group"><label class="form-label">Size Roll</label>
+        <select class="form-select" id="pf-rollset" onchange="onPlanRollSetChange()"></select>
+      </div>
+      <div class="form-group"><label class="form-label">ชุดสี Roll</label>
+        <select class="form-select" id="pf-rollcolor" onchange="onPlanRollColorChange()"></select>
+      </div>
+      <div class="form-group"><label class="form-label">Roll</label>
+        <select class="form-select" id="pf-rollpick" onchange="onPlanRollPickChange()"></select>
+      </div>
     </div>
-    <div class="modal-row full">
-      <div class="form-group"><label class="form-label">รายละเอียดงาน</label><input class="form-input" id="pf-workdetail" placeholder="เช่น Sizing = 16 ลูก"></div>
+    <div class="modal-row">
+      <div class="form-group"><label class="form-label">รหัส</label><input class="form-input" id="pf-rollid" disabled></div>
+      <div class="form-group"><label class="form-label">ชื่อ Roll</label><input class="form-input" id="pf-rollname" disabled></div>
     </div>
     <div class="modal-row three">
       <div class="form-group"><label class="form-label">นาที/ชิ้น</label><input class="form-input" id="pf-minperpiece" type="number" step="0.01" oninput="updatePlanHoursPreview()" placeholder="เช่น 70"></div>
@@ -3031,14 +3046,76 @@ function updatePlanHoursPreview() {
   if (el) el.value = (mpp * qty / 60).toFixed(2);
 }
 
+function populatePlanRollSetSelect(selectedSet) {
+  const sel = document.getElementById('pf-rollset');
+  if (!sel) return;
+  const sets = getRollSets();
+  sel.innerHTML = '<option value="">— เลือก Size Roll —</option>' +
+    sets.map(s => `<option value="${escapeHtmlAttr(s)}"${s === selectedSet ? ' selected' : ''}>${escapeHtmlAttr(s)}</option>`).join('');
+}
+
+function populatePlanRollColorSelect(setName, selectedColor) {
+  const sel = document.getElementById('pf-rollcolor');
+  if (!sel) return;
+  if (!setName) {
+    sel.innerHTML = '<option value="">— เลือก Size Roll ก่อน —</option>';
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  const palette = getSetPalette(setName);
+  sel.innerHTML = '<option value="">— ทั้งหมด —</option>' +
+    palette.map(c => `<option value="${c.key}"${c.key === selectedColor ? ' selected' : ''}>${c.label}</option>`).join('');
+}
+
+function populatePlanRollPickSelect(setName, colorKey, selectedRollId) {
+  const sel = document.getElementById('pf-rollpick');
+  if (!sel) return;
+  if (!setName) {
+    sel.innerHTML = '<option value="">— เลือก Size Roll ก่อน —</option>';
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  let rolls = toolingData.roll.filter(r => r.set === setName);
+  if (colorKey) rolls = rolls.filter(r => r.color === colorKey);
+  sel.innerHTML = '<option value="">— เลือก Roll —</option>' +
+    rolls.map(r => `<option value="${r.id}"${r.id === selectedRollId ? ' selected' : ''}>${r.id} — ${escapeHtmlAttr(r.name)}</option>`).join('');
+}
+
+function fillPlanRollReadonly(rollId) {
+  const r = toolingData.roll.find(x => x.id === rollId);
+  document.getElementById('pf-rollid').value = r ? r.id : '';
+  document.getElementById('pf-rollname').value = r ? r.name : '';
+}
+
+function onPlanRollSetChange() {
+  const setName = document.getElementById('pf-rollset').value;
+  populatePlanRollColorSelect(setName, null);
+  populatePlanRollPickSelect(setName, null, null);
+  fillPlanRollReadonly(null);
+}
+
+function onPlanRollColorChange() {
+  const setName = document.getElementById('pf-rollset').value;
+  const colorKey = document.getElementById('pf-rollcolor').value;
+  populatePlanRollPickSelect(setName, colorKey, null);
+  fillPlanRollReadonly(null);
+}
+
+function onPlanRollPickChange() {
+  fillPlanRollReadonly(document.getElementById('pf-rollpick').value);
+}
+
 function openPlanTaskModal(mode, taskId, presetDate) {
   const task = mode === 'edit' ? planTasks.find(t => t.id === taskId) : null;
   document.getElementById('modal-title').textContent = mode === 'edit' ? 'แก้ไขงาน' : 'เพิ่มงานใหม่';
   document.getElementById('modal-body').innerHTML = planTaskFormFields();
   document.getElementById('pf-date').value = task ? task.date : (presetDate || toISODate(planViewDate));
-  document.getElementById('pf-jobnumber').value = task ? task.jobNumber : '';
-  document.getElementById('pf-jobname').value = task ? task.jobName : '';
-  document.getElementById('pf-workdetail').value = task ? task.workDetail : '';
+  populatePlanRollSetSelect(task ? task.rollSet : null);
+  populatePlanRollColorSelect(task ? task.rollSet : null, task ? task.rollColor : null);
+  populatePlanRollPickSelect(task ? task.rollSet : null, task ? task.rollColor : null, task ? task.rollId : null);
+  fillPlanRollReadonly(task ? task.rollId : null);
   document.getElementById('pf-minperpiece').value = task ? task.minPerPiece : '';
   document.getElementById('pf-qty').value = task ? task.qty : '';
   document.getElementById('pf-start').value = task ? task.startTime : '08:00';
@@ -3048,11 +3125,12 @@ function openPlanTaskModal(mode, taskId, presetDate) {
 
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const g = id => (document.getElementById(id)||{}).value.trim();
-    const date = g('pf-date'), jobNumber = g('pf-jobnumber'), jobName = g('pf-jobname');
-    if (!date || !jobNumber || !jobName) { alert('กรุณากรอกวันที่ หมายเลขขึ้นงาน และชื่อขึ้นงาน'); return; }
+    const date = g('pf-date');
+    const rollId = g('pf-rollpick');
+    const roll = toolingData.roll.find(r => r.id === rollId);
+    if (!date || !roll) { alert('กรุณาเลือกวันที่และ Roll ให้ครบถ้วน'); return; }
     const data = {
-      date, jobNumber, jobName,
-      workDetail: g('pf-workdetail') || '—',
+      date, rollSet: roll.set, rollColor: roll.color || null, rollId: roll.id, rollName: roll.name,
       minPerPiece: parseFloat(g('pf-minperpiece')) || 0,
       qty: parseFloat(g('pf-qty')) || 0,
       startTime: g('pf-start') || '—',
@@ -3077,7 +3155,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
 function deletePlanTask(taskId) {
   const t = planTasks.find(x => x.id === taskId);
   if (!t) return;
-  if (!confirm('ลบงาน "' + t.jobName + ' — ' + t.workDetail + '" ออกจากแผน?')) return;
+  if (!confirm('ลบงาน "' + t.rollId + ' — ' + t.rollName + '" ออกจากแผน?')) return;
   planTasks = planTasks.filter(x => x.id !== taskId);
   persistState();
   renderCurrentPlanView();
