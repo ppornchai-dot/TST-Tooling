@@ -803,14 +803,6 @@ canvas{display:block;}
       <div class="topbar-sub" id="page-sub">ภาพรวมระบบ Tooling — อัปเดต 30 มิ.ย. 2569</div>
     </div>
     <div class="topbar-actions">
-      <button class="btn btn-ghost btn-sm" id="export-btn">
-        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Export
-      </button>
-      <button class="btn btn-primary btn-sm" id="add-btn">
-        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        เพิ่มใหม่
-      </button>
       <div id="admin-view-select-wrap" style="display:none;align-items:center;">
         <select class="form-select" id="admin-view-select" onchange="onAdminViewChange()" style="padding:6px 10px;font-size:12px;" title="ดูหน้าจอในมุมมองของสมาชิกทีมคนอื่น">
         </select>
@@ -1184,6 +1176,10 @@ canvas{display:block;}
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);">3</span><span class="reg-kpi-lbl">หมดอายุ</span></div>
         </div>
         <div class="card">
+          <div class="card-header">
+            <span class="card-title">รายการ SQ</span>
+            <button class="btn btn-primary btn-sm" onclick="openModal()">+ เพิ่ม SQ</button>
+          </div>
           <div class="table-wrap">
             <table>
               <thead><tr>
@@ -1206,6 +1202,10 @@ canvas{display:block;}
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);">3</span><span class="reg-kpi-lbl">หมดอายุ</span></div>
         </div>
         <div class="card">
+          <div class="card-header">
+            <span class="card-title">รายการใบเลื่อย</span>
+            <button class="btn btn-primary btn-sm" onclick="openModal()">+ เพิ่มใบเลื่อย</button>
+          </div>
           <div class="table-wrap">
             <table>
               <thead><tr>
@@ -1228,6 +1228,10 @@ canvas{display:block;}
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);">7</span><span class="reg-kpi-lbl">หมดอายุ</span></div>
         </div>
         <div class="card">
+          <div class="card-header">
+            <span class="card-title">รายการมีดสลิตเตอร์</span>
+            <button class="btn btn-primary btn-sm" onclick="openModal()">+ เพิ่มมีดสลิตเตอร์</button>
+          </div>
           <div class="table-wrap">
             <table>
               <thead><tr>
@@ -4187,16 +4191,6 @@ renderRollTable(1);
 renderSqTable(1);
 renderSawTable(1);
 renderSlitterTable(1);
-
-// Wire up the Add button
-document.getElementById('add-btn').addEventListener('click', function() {
-  if (currentPage === 'plan') {
-    if (currentPlanView === 'gantt') switchPlanView('day');
-    openPlanTaskModal('add', null, toISODate(planViewDate));
-  } else {
-    openModal();
-  }
-});
 
 // Track active reg tab for modal context
 const origSwitchRegTab = switchRegTab;
