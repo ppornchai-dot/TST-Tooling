@@ -811,6 +811,10 @@ canvas{display:block;}
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         เพิ่มใหม่
       </button>
+      <div id="admin-view-select-wrap" style="display:none;align-items:center;">
+        <select class="form-select" id="admin-view-select" onchange="onAdminViewChange()" style="padding:6px 10px;font-size:12px;" title="ดูหน้าจอในมุมมองของสมาชิกทีมคนอื่น">
+        </select>
+      </div>
       <div class="topbar-user" id="topbar-user">
         <div class="topbar-user-avatar" id="topbar-user-avatar"></div>
         <div>
@@ -4358,8 +4362,20 @@ function renderLoginOptions() {
   });
 }
 
+let adminViewAsName = null; // Admin-only: preview the UI as another team member, without actually switching login
+
+function effectiveRole() {
+  if (!currentUser) return null;
+  if (currentUser.role === 'admin' && adminViewAsName) {
+    const target = collectLoginUsers().find(u => u.name === adminViewAsName);
+    if (target) return target.role;
+  }
+  return currentUser.role;
+}
+
 function loginAs(user) {
   currentUser = user;
+  adminViewAsName = null;
   try { localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(currentUser)); } catch (e) { /* localStorage unavailable */ }
   document.getElementById('login-overlay').classList.add('hidden');
   applyRoleUI();
@@ -4368,22 +4384,50 @@ function loginAs(user) {
 
 function logoutUser() {
   currentUser = null;
+  adminViewAsName = null;
   try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch (e) { /* localStorage unavailable */ }
   renderLoginOptions();
   document.getElementById('login-overlay').classList.remove('hidden');
 }
 
+function renderAdminViewSelect() {
+  const sel = document.getElementById('admin-view-select');
+  if (!sel) return;
+  const others = collectLoginUsers().filter(u => u.name !== currentUser.name);
+  sel.innerHTML = '<option value="">👁 ดูเป็นตัวเอง (Admin)</option>' +
+    others.map(u => `<option value="${escapeHtmlAttr(u.name)}"${u.name === adminViewAsName ? ' selected' : ''}>👁 ดูเป็น: ${escapeHtmlAttr(u.name)} (${escapeHtmlAttr(roleLabel(u.role))})</option>`).join('');
+}
+
+function onAdminViewChange() {
+  const sel = document.getElementById('admin-view-select');
+  adminViewAsName = sel.value || null;
+  applyRoleUI();
+}
+
 function applyRoleUI() {
   if (!currentUser) return;
+  const role = effectiveRole();
 
   document.getElementById('topbar-user-avatar').textContent = currentUser.initials || currentUser.name.slice(0, 2);
   document.getElementById('topbar-user-avatar').style.background = currentUser.avatarBg || roleColor(currentUser.role);
   document.getElementById('topbar-user-name').textContent = currentUser.name;
-  document.getElementById('topbar-user-role').textContent = roleLabel(currentUser.role);
+  document.getElementById('topbar-user-role').textContent = adminViewAsName
+    ? `Admin · มุมมอง: ${roleLabel(role)}`
+    : roleLabel(currentUser.role);
+
+  const viewSelectWrap = document.getElementById('admin-view-select-wrap');
+  if (viewSelectWrap) {
+    if (currentUser.role === 'admin') {
+      viewSelectWrap.style.display = 'flex';
+      renderAdminViewSelect();
+    } else {
+      viewSelectWrap.style.display = 'none';
+    }
+  }
 
   document.querySelectorAll('.nav-item[data-roles]').forEach(btn => {
     const allowed = btn.getAttribute('data-roles').split(',');
-    btn.style.display = allowed.includes(currentUser.role) ? '' : 'none';
+    btn.style.display = allowed.includes(role) ? '' : 'none';
   });
 
   const activeNav = document.querySelector('.nav-item.active');
@@ -4394,10 +4438,10 @@ function applyRoleUI() {
   const cncTabBtn = document.querySelector('.plan-worktype-btn[data-worktype="cnc"]');
   const polishTabBtn = document.querySelector('.plan-worktype-btn[data-worktype="polish"]');
   if (cncTabBtn && polishTabBtn) {
-    if (currentUser.role === 'cnc') {
+    if (role === 'cnc') {
       cncTabBtn.style.display = ''; polishTabBtn.style.display = 'none';
       switchPlanWorkType('cnc');
-    } else if (currentUser.role === 'polish') {
+    } else if (role === 'polish') {
       cncTabBtn.style.display = 'none'; polishTabBtn.style.display = '';
       switchPlanWorkType('polish');
     } else {
