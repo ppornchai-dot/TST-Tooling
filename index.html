@@ -683,9 +683,55 @@ canvas{display:block;}
 /* pending pill */
 .pending-row td:first-child{border-left:3px solid var(--amber);}
 .overdue-row td:first-child{border-left:3px solid var(--red);}
+
+/* ─── LOGIN OVERLAY ─────────────────────────────────────────────────────── */
+#login-overlay{
+  position:fixed;inset:0;z-index:1000;
+  background:var(--bg-base);
+  display:flex;align-items:center;justify-content:center;
+  padding:24px;
+}
+#login-overlay.hidden{display:none;}
+.login-card{
+  background:var(--bg-surface);border:1px solid var(--border-light);border-radius:12px;
+  padding:32px;max-width:640px;width:100%;box-shadow:0 8px 32px rgba(22,32,48,0.10);
+}
+.login-header{text-align:center;margin-bottom:24px;}
+.login-header .logo-mark{margin:0 auto 12px;}
+.login-header h1{font-size:18px;font-weight:800;color:var(--text-1);}
+.login-header p{font-size:13px;color:var(--text-3);margin-top:4px;}
+.login-user-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;}
+.login-user-btn{
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  padding:16px 12px;border:1px solid var(--border-light);border-radius:10px;
+  background:var(--bg-surface);cursor:pointer;transition:border-color .12s,background .12s;
+  font-family:inherit;
+}
+.login-user-btn:hover{border-color:var(--accent);background:var(--accent-glow);}
+.login-user-avatar{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:15px;}
+.login-user-name{font-size:13px;font-weight:700;color:var(--text-1);text-align:center;}
+.login-user-role{font-size:11px;color:var(--text-3);text-align:center;}
+
+/* topbar user chip */
+.topbar-user{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;border:1px solid var(--border-light);border-radius:20px;background:var(--bg-surface);}
+.topbar-user-avatar{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:11px;flex-shrink:0;}
+.topbar-user-name{font-size:12px;font-weight:700;color:var(--text-1);line-height:1.2;}
+.topbar-user-role{font-size:10px;color:var(--text-3);line-height:1.2;}
 </style>
 </head>
 <body>
+
+<!-- ══ LOGIN OVERLAY ══ -->
+<div id="login-overlay" class="hidden">
+  <div class="login-card">
+    <div class="login-header">
+      <div class="logo-mark" style="width:40px;height:40px;border-radius:8px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;">TS</div>
+      <h1>เข้าสู่ระบบ TST Tooling</h1>
+      <p>เลือกชื่อของคุณเพื่อเข้าใช้งาน — หน้าจอที่แสดงจะปรับตามหน้าที่การทำงาน</p>
+    </div>
+    <div class="login-user-grid" id="login-user-grid"></div>
+  </div>
+</div>
 
 <!-- SIDEBAR -->
 <nav class="sidebar">
@@ -707,7 +753,7 @@ canvas{display:block;}
     </div>
     <div class="nav-section">
       <div class="nav-label">จัดการข้อมูล</div>
-      <button class="nav-item" onclick="showPage('registry')">
+      <button class="nav-item" data-roles="admin,lead" onclick="showPage('registry')">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         ทะเบียน Tooling
       </button>
@@ -738,7 +784,7 @@ canvas{display:block;}
     </div>
     <div class="nav-section">
       <div class="nav-label">บุคลากร</div>
-      <button class="nav-item" onclick="showPage('team')">
+      <button class="nav-item" data-roles="admin,lead" onclick="showPage('team')">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         ทีมงาน
       </button>
@@ -765,6 +811,16 @@ canvas{display:block;}
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         เพิ่มใหม่
       </button>
+      <div class="topbar-user" id="topbar-user">
+        <div class="topbar-user-avatar" id="topbar-user-avatar"></div>
+        <div>
+          <div class="topbar-user-name" id="topbar-user-name"></div>
+          <div class="topbar-user-role" id="topbar-user-role"></div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="logoutUser()" title="ออกจากระบบ" style="padding:3px 8px;margin-left:4px;">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -4239,6 +4295,110 @@ window.switchRegTab = function(key) {
   currentRegTab = key;
   origSwitchRegTab(key);
 };
+
+// ─── LOGIN / ROLE-BASED UI (UX only — ไม่ใช่ระบบความปลอดภัยจริง) ─────────────
+const AUTH_STORAGE_KEY = 'tstCurrentUser';
+let currentUser = null;
+
+const ROLE_LABELS = { admin: 'Admin', lead: 'หัวหน้า', cnc: 'ช่าง CNC', polish: 'ช่างขัด Roll' };
+const ROLE_COLORS = { admin: 'var(--red)', lead: 'var(--accent)', cnc: 'var(--purple)', polish: 'var(--amber)' };
+function roleLabel(role) { return ROLE_LABELS[role] || role; }
+function roleColor(role) { return ROLE_COLORS[role] || 'var(--accent)'; }
+
+function collectLoginUsers() {
+  const cards = document.querySelectorAll('#page-team .team-grid .team-card[data-role]');
+  const users = [];
+  cards.forEach(card => {
+    const role = card.dataset.role;
+    if (role === 'add') return;
+    const nameEl = card.querySelector('.team-name');
+    const avatarEl = card.querySelector('.team-avatar');
+    if (!nameEl) return;
+    users.push({
+      name: nameEl.textContent.trim(),
+      role,
+      initials: avatarEl ? avatarEl.textContent.trim() : nameEl.textContent.trim().slice(0, 2),
+      avatarBg: avatarEl ? avatarEl.style.background : ''
+    });
+  });
+  return users;
+}
+
+function renderLoginOptions() {
+  const grid = document.getElementById('login-user-grid');
+  const users = collectLoginUsers();
+  grid.innerHTML = users.map((u, i) => `
+    <button class="login-user-btn" data-idx="${i}">
+      <div class="login-user-avatar" style="background:${u.avatarBg || roleColor(u.role)};">${escapeHtmlAttr(u.initials)}</div>
+      <div class="login-user-name">${escapeHtmlAttr(u.name)}</div>
+      <div class="login-user-role">${escapeHtmlAttr(roleLabel(u.role))}</div>
+    </button>`).join('');
+  grid.querySelectorAll('.login-user-btn').forEach((btn, i) => {
+    btn.addEventListener('click', () => loginAs(users[i]));
+  });
+}
+
+function loginAs(user) {
+  currentUser = user;
+  try { localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(currentUser)); } catch (e) { /* localStorage unavailable */ }
+  document.getElementById('login-overlay').classList.add('hidden');
+  applyRoleUI();
+  showPage('dashboard');
+}
+
+function logoutUser() {
+  currentUser = null;
+  try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch (e) { /* localStorage unavailable */ }
+  renderLoginOptions();
+  document.getElementById('login-overlay').classList.remove('hidden');
+}
+
+function applyRoleUI() {
+  if (!currentUser) return;
+
+  document.getElementById('topbar-user-avatar').textContent = currentUser.initials || currentUser.name.slice(0, 2);
+  document.getElementById('topbar-user-avatar').style.background = currentUser.avatarBg || roleColor(currentUser.role);
+  document.getElementById('topbar-user-name').textContent = currentUser.name;
+  document.getElementById('topbar-user-role').textContent = roleLabel(currentUser.role);
+
+  document.querySelectorAll('.nav-item[data-roles]').forEach(btn => {
+    const allowed = btn.getAttribute('data-roles').split(',');
+    btn.style.display = allowed.includes(currentUser.role) ? '' : 'none';
+  });
+
+  const activeNav = document.querySelector('.nav-item.active');
+  if (activeNav && activeNav.hasAttribute('data-roles') && activeNav.style.display === 'none') {
+    showPage('dashboard');
+  }
+
+  const cncTabBtn = document.querySelector('.plan-worktype-btn[data-worktype="cnc"]');
+  const polishTabBtn = document.querySelector('.plan-worktype-btn[data-worktype="polish"]');
+  if (cncTabBtn && polishTabBtn) {
+    if (currentUser.role === 'cnc') {
+      cncTabBtn.style.display = ''; polishTabBtn.style.display = 'none';
+      switchPlanWorkType('cnc');
+    } else if (currentUser.role === 'polish') {
+      cncTabBtn.style.display = 'none'; polishTabBtn.style.display = '';
+      switchPlanWorkType('polish');
+    } else {
+      cncTabBtn.style.display = ''; polishTabBtn.style.display = '';
+    }
+  }
+}
+
+function initAuth() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) || 'null'); } catch (e) { /* corrupted — treat as logged out */ }
+  if (saved && saved.name && saved.role) {
+    currentUser = saved;
+    document.getElementById('login-overlay').classList.add('hidden');
+    applyRoleUI();
+  } else {
+    renderLoginOptions();
+    document.getElementById('login-overlay').classList.remove('hidden');
+  }
+}
+initAuth();
 </script>
 </body>
 </html>
