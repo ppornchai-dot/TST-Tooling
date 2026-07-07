@@ -4150,6 +4150,22 @@ function findSummaryMetric(label) {
   return match ? match.metric : null;
 }
 
+const PROD_BLOCK_HEADER_MATCH = {
+  code:   ['product code', 'productcode', 'code'],
+  weight: ['นน.เฉลี่ย', 'นน.', 'นน', 'weight'],
+  speed:  ['speed', 'peed'],
+  name:   ['productname', 'product name', 'name'],
+};
+
+function findColByHeaderMatch(headerRow, patterns) {
+  for (let c = 0; c < headerRow.length; c++) {
+    const text = String(headerRow[c] || '').trim().toLowerCase();
+    if (!text) continue;
+    if (patterns.some(p => text.includes(p))) return c;
+  }
+  return -1;
+}
+
 function importProdBlockWorkbook(wb) {
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
@@ -4163,15 +4179,26 @@ function importProdBlockWorkbook(wb) {
   }
   if (!dateCols.length) throw new Error('ไม่พบคอลัมน์วันที่ในแถวหัวตาราง (แถวแรกของไฟล์)');
 
+  // จับคู่คอลัมน์ตามข้อความหัวตาราง แทนตำแหน่งตายตัว เผื่อไฟล์แต่ละอันเรียงคอลัมน์ไม่เหมือนกัน
+  const colGroup = 0;
+  const colCode = findColByHeaderMatch(headerRow, PROD_BLOCK_HEADER_MATCH.code);
+  const colWeight = findColByHeaderMatch(headerRow, PROD_BLOCK_HEADER_MATCH.weight);
+  const colSpeed = findColByHeaderMatch(headerRow, PROD_BLOCK_HEADER_MATCH.speed);
+  const colName = findColByHeaderMatch(headerRow, PROD_BLOCK_HEADER_MATCH.name);
+  const finalColCode = colCode !== -1 ? colCode : 1;
+  const finalColWeight = colWeight !== -1 ? colWeight : 2;
+  const finalColSpeed = colSpeed !== -1 ? colSpeed : 3;
+  const finalColName = colName !== -1 ? colName : 4;
+
   let productCount = 0, cellCount = 0, summaryCount = 0;
   let currentGroup = null;
 
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r];
     if (!row || row.every(v => v === '' || v == null)) continue;
-    const colA = row[0], colB = row[1], colC = row[2], colD = row[3], colE = row[4];
+    const colACell = row[colGroup], colCodeCell = row[finalColCode], colWeightCell = row[finalColWeight], colSpeedCell = row[finalColSpeed], colNameCell = row[finalColName];
 
-    const summaryMetric = findSummaryMetric(colE) || findSummaryMetric(colB);
+    const summaryMetric = findSummaryMetric(colNameCell) || findSummaryMetric(colCodeCell);
     if (summaryMetric && currentGroup) {
       dateCols.forEach(({ col, iso }) => {
         const val = row[col];
@@ -4183,10 +4210,10 @@ function importProdBlockWorkbook(wb) {
       continue;
     }
 
-    const code = String(colB || '').trim();
+    const code = String(colCodeCell || '').trim();
     if (!code) continue;
 
-    const group = String(colA || currentGroup || 'P1').trim();
+    const group = String(colACell || currentGroup || 'P1').trim();
     currentGroup = group;
 
     let product = prodBlockProducts.find(p => p.code === code);
@@ -4196,9 +4223,9 @@ function importProdBlockWorkbook(wb) {
       prodBlockProducts.push(product);
     }
     product.group = group;
-    product.avgWeight = parseFloat(colC) || product.avgWeight || 0;
-    product.speed = parseFloat(colD) || product.speed || 0;
-    product.name = String(colE || product.name || '').trim();
+    product.avgWeight = parseFloat(colWeightCell) || product.avgWeight || 0;
+    product.speed = parseFloat(colSpeedCell) || product.speed || 0;
+    product.name = String(colNameCell || product.name || '').trim();
     productCount++;
 
     dateCols.forEach(({ col, iso }) => {
