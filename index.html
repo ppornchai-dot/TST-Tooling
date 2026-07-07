@@ -1510,30 +1510,28 @@ canvas{display:block;}
       <div class="section-sub">ตารางแผนการบำรุงรักษาและงาน Tooling ประจำปี 2569</div>
 
       <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
-        <button class="btn btn-ghost btn-sm">‹ ก่อนหน้า</button>
+        <button class="btn btn-ghost btn-sm" onclick="planNav(-1)">‹ ก่อนหน้า</button>
         <span id="plan-daterange-label" style="font-size:13px;font-weight:700;color:var(--text-1);padding:0 8px;">ม.ค. – มิ.ย. 2569</span>
-        <button class="btn btn-ghost btn-sm">ถัดไป ›</button>
+        <button class="btn btn-ghost btn-sm" onclick="planNav(1)">ถัดไป ›</button>
         <div style="margin-left:auto;display:flex;gap:6px;">
-          <button class="btn btn-ghost btn-sm plan-view-btn" data-view="day" data-label="2 ก.ค. 2569" onclick="switchPlanView('day')">รายวัน</button>
-          <button class="btn btn-ghost btn-sm plan-view-btn" data-view="week" data-label="30 มิ.ย. – 6 ก.ค. 2569" onclick="switchPlanView('week')">รายสัปดาห์</button>
-          <button class="btn btn-ghost btn-sm plan-view-btn" data-view="month" data-label="กรกฎาคม 2569" onclick="switchPlanView('month')">รายเดือน</button>
-          <button class="btn btn-ghost btn-sm plan-view-btn" data-view="gantt" data-label="ม.ค. – มิ.ย. 2569" onclick="switchPlanView('gantt')" style="color:var(--accent);border-color:var(--accent);">Gantt</button>
+          <button class="btn btn-ghost btn-sm plan-view-btn" data-view="day" onclick="switchPlanView('day')">รายวัน</button>
+          <button class="btn btn-ghost btn-sm plan-view-btn" data-view="week" onclick="switchPlanView('week')">รายสัปดาห์</button>
+          <button class="btn btn-ghost btn-sm plan-view-btn" data-view="month" onclick="switchPlanView('month')">รายเดือน</button>
+          <button class="btn btn-ghost btn-sm plan-view-btn" data-view="gantt" onclick="switchPlanView('gantt')" style="color:var(--accent);border-color:var(--accent);">Gantt</button>
         </div>
       </div>
 
       <!-- ═══ VIEW: รายวัน ═══ -->
       <div id="plan-view-day" class="plan-view-panel" style="display:none;">
         <div class="card">
-          <div class="card-header"><span class="card-title">งานตามแผน — วันที่ 2 ก.ค. 2569</span></div>
+          <div class="card-header">
+            <span class="card-title" id="plan-day-title">งานตามแผน — วันที่ 2 ก.ค. 2569</span>
+            <button class="btn btn-primary btn-sm" onclick="addPlanTaskForCurrentDay()">+ เพิ่มงาน</button>
+          </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>เวลา</th><th>งาน</th><th>Tooling</th><th>ผู้รับผิดชอบ</th><th>ประเภท</th><th>สถานะ</th></tr></thead>
-              <tbody>
-                <tr><td class="muted">08:00</td><td><strong>PM ชุด Cutting Tool A</strong></td><td>PM-A</td><td>สมชาย ว.</td><td><span class="chip chip-blue">PM</span></td><td><span class="chip chip-blue">กำลังทำ</span></td></tr>
-                <tr><td class="muted">10:30</td><td><strong>Calibrate Gauge ชุด A</strong></td><td>Cal-A</td><td>QC / อนุชา ท.</td><td><span class="chip chip-purple">Calibrate</span></td><td><span class="chip chip-amber">รอดำเนินการ</span></td></tr>
-                <tr><td class="muted">13:00</td><td><strong>ตรวจสอบ Holder & Collet</strong></td><td>ตรวจ</td><td>สมชาย ว.</td><td><span class="chip chip-blue">ตรวจสอบ</span></td><td><span class="chip chip-green">เสร็จแล้ว</span></td></tr>
-                <tr><td class="muted">14:30</td><td><strong>ซ่อม Fixture F-07</strong></td><td>ซ่อม F-07</td><td>ปิยะ ร.</td><td><span class="chip chip-red">ซ่อมแซม</span></td><td><span class="chip chip-blue">กำลังทำ</span></td></tr>
-              </tbody>
+              <thead><tr><th>เวลา</th><th>งาน</th><th>Tooling</th><th>ผู้รับผิดชอบ</th><th>ประเภท</th><th>สถานะ</th><th>จัดการ</th></tr></thead>
+              <tbody id="plan-day-tbody"></tbody>
             </table>
           </div>
         </div>
@@ -1542,33 +1540,14 @@ canvas{display:block;}
       <!-- ═══ VIEW: รายสัปดาห์ ═══ -->
       <div id="plan-view-week" class="plan-view-panel" style="display:none;">
         <div class="card">
-          <div class="card-header"><span class="card-title">งานตามแผน — สัปดาห์ 30 มิ.ย. – 6 ก.ค. 2569</span></div>
+          <div class="card-header"><span class="card-title" id="plan-week-title">งานตามแผน — สัปดาห์ 30 มิ.ย. – 6 ก.ค. 2569</span></div>
           <div class="table-wrap">
             <table>
               <thead>
-                <tr>
-                  <th>จันทร์<br><span class="muted" style="font-weight:400;">30 มิ.ย.</span></th>
-                  <th>อังคาร<br><span class="muted" style="font-weight:400;">1 ก.ค.</span></th>
-                  <th>พุธ<br><span class="muted" style="font-weight:400;">2 ก.ค.</span></th>
-                  <th>พฤหัสฯ<br><span class="muted" style="font-weight:400;">3 ก.ค.</span></th>
-                  <th>ศุกร์<br><span class="muted" style="font-weight:400;">4 ก.ค.</span></th>
-                  <th>เสาร์<br><span class="muted" style="font-weight:400;">5 ก.ค.</span></th>
-                  <th>อาทิตย์<br><span class="muted" style="font-weight:400;">6 ก.ค.</span></th>
-                </tr>
+                <tr id="plan-week-thead-row"></tr>
               </thead>
               <tbody>
-                <tr style="vertical-align:top;">
-                  <td><span class="chip chip-blue">ตรวจ</span></td>
-                  <td class="muted">—</td>
-                  <td style="display:flex;flex-direction:column;gap:4px;">
-                    <span class="chip chip-blue">PM-A</span>
-                    <span class="chip chip-purple">Cal-A</span>
-                  </td>
-                  <td class="muted">—</td>
-                  <td><span class="chip chip-red">ซ่อม F-07</span></td>
-                  <td class="muted">—</td>
-                  <td class="muted">—</td>
-                </tr>
+                <tr id="plan-week-tbody" style="vertical-align:top;"></tr>
               </tbody>
             </table>
           </div>
@@ -1578,8 +1557,8 @@ canvas{display:block;}
       <!-- ═══ VIEW: รายเดือน ═══ -->
       <div id="plan-view-month" class="plan-view-panel" style="display:none;">
         <div class="card">
-          <div class="card-header"><span class="card-title">งานตามแผน — กรกฎาคม 2569</span></div>
-          <div style="padding:14px;display:grid;grid-template-columns:repeat(7,1fr);gap:8px;">
+          <div class="card-header"><span class="card-title" id="plan-month-title">งานตามแผน — กรกฎาคม 2569</span></div>
+          <div style="padding:14px 14px 0;display:grid;grid-template-columns:repeat(7,1fr);gap:8px;">
             <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">จ</div>
             <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">อ</div>
             <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">พ</div>
@@ -1587,21 +1566,8 @@ canvas{display:block;}
             <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">ศ</div>
             <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">ส</div>
             <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">อา</div>
-            <div class="muted" style="grid-column:span 2;padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"></div>
-            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">1</strong><div style="margin-top:6px;"><span class="chip chip-green" style="font-size:10px;">PO Q2</span></div></div>
-            <div style="padding:8px;border:1px solid var(--accent);background:var(--accent-glow);border-radius:6px;min-height:70px;"><strong style="font-size:12px;color:var(--accent);">2</strong><div style="margin-top:6px;display:flex;flex-direction:column;gap:4px;"><span class="chip chip-blue" style="font-size:10px;">PM-A</span><span class="chip chip-purple" style="font-size:10px;">Cal-A</span></div></div>
-            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">3</strong></div>
-            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">4</strong><div style="margin-top:6px;"><span class="chip chip-red" style="font-size:10px;">ซ่อม F-07</span></div></div>
-            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">5</strong></div>
-            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">6</strong></div>
-            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">7</strong></div>
-            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">8</strong></div>
-            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">9</strong></div>
-            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">10</strong></div>
-            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">11</strong><div style="margin-top:6px;"><span class="chip chip-amber" style="font-size:10px;">Regrind Lot2</span></div></div>
-            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">12</strong></div>
-            <div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"><strong style="font-size:12px;">13</strong></div>
           </div>
+          <div id="plan-month-grid" style="padding:8px 14px 14px;display:grid;grid-template-columns:repeat(7,1fr);gap:8px;"></div>
         </div>
       </div>
 
@@ -2144,6 +2110,7 @@ const C_TEXT   = '#6A8AA4';
 const C_TEXT2  = '#3A5870';
 
 // ─── NAVIGATION ───────────────────────────────────────────────────────────────
+let currentPage = 'dashboard';
 const PAGE_META = {
   dashboard: { title: 'Dashboard', sub: 'ภาพรวมระบบ Tooling — อัปเดต 30 มิ.ย. 2569' },
   registry:  { title: 'ทะเบียน Tooling', sub: 'รายการเครื่องมือและอุปกรณ์ทั้งหมด 248 รายการ' },
@@ -2168,18 +2135,8 @@ function showPage(id) {
     document.getElementById('page-title').textContent = m.title;
     document.getElementById('page-sub').textContent = m.sub;
   }
+  currentPage = id;
   if (id === 'dashboard') initDashboard();
-}
-
-function switchPlanView(mode) {
-  document.querySelectorAll('.plan-view-panel').forEach(p => p.style.display = 'none');
-  document.getElementById('plan-view-' + mode).style.display = '';
-  document.querySelectorAll('.plan-view-btn').forEach(b => {
-    const active = b.getAttribute('data-view') === mode;
-    b.style.color = active ? 'var(--accent)' : '';
-    b.style.borderColor = active ? 'var(--accent)' : '';
-    if (active) document.getElementById('plan-daterange-label').textContent = b.getAttribute('data-label');
-  });
 }
 
 // ─── DASH TAB SWITCHER ────────────────────────────────────────────────────────
@@ -2868,6 +2825,242 @@ const toolingData = {
   ]
 };
 
+// ─── PLAN TASKS (หน้าวางแผน — รายวัน/รายสัปดาห์/รายเดือน) ────────────────────
+let planTasks = [
+  {id:'PT-0001',date:'2026-06-30',time:'09:00',title:'ตรวจสอบ Holder & Collet ประจำสัปดาห์',tooling:'ตรวจ',assignee:'สมชาย ว.',type:'ตรวจสอบ',status:'เสร็จแล้ว'},
+  {id:'PT-0002',date:'2026-07-01',time:'11:00',title:'สั่งซื้อ Tooling ประจำไตรมาส Q2',tooling:'PO Q2',assignee:'จัดซื้อ',type:'จัดซื้อ',status:'กำลังทำ'},
+  {id:'PT-0003',date:'2026-07-02',time:'08:00',title:'PM ชุด Cutting Tool A',tooling:'PM-A',assignee:'สมชาย ว.',type:'PM',status:'กำลังทำ'},
+  {id:'PT-0004',date:'2026-07-02',time:'10:30',title:'Calibrate Gauge ชุด A',tooling:'Cal-A',assignee:'QC / อนุชา ท.',type:'Calibrate',status:'รอดำเนินการ'},
+  {id:'PT-0005',date:'2026-07-02',time:'13:00',title:'ตรวจสอบ Holder & Collet',tooling:'ตรวจ',assignee:'สมชาย ว.',type:'ตรวจสอบ',status:'เสร็จแล้ว'},
+  {id:'PT-0006',date:'2026-07-02',time:'14:30',title:'ซ่อม Fixture F-07',tooling:'ซ่อม F-07',assignee:'ปิยะ ร.',type:'ซ่อมแซม',status:'กำลังทำ'},
+  {id:'PT-0007',date:'2026-07-04',time:'09:00',title:'ซ่อม Fixture F-07 (ต่อเนื่อง)',tooling:'ซ่อม F-07',assignee:'ปิยะ ร.',type:'ซ่อมแซม',status:'รอชิ้นส่วน'},
+  {id:'PT-0008',date:'2026-07-11',time:'09:00',title:'Regrind Carbide End Mill (Lot 2)',tooling:'Regrind Lot2',assignee:'วิรัตน์ ส.',type:'Regrind',status:'รอดำเนินการ'},
+];
+let planTaskSeq = 8;
+
+const PLAN_TYPE_CHIP_CLASS = {'PM':'chip-blue','ตรวจสอบ':'chip-blue','Calibrate':'chip-purple','ซ่อมแซม':'chip-red','จัดซื้อ':'chip-green','Regrind':'chip-amber'};
+const PLAN_STATUS_CHIP_CLASS = {'กำลังทำ':'chip-blue','รอดำเนินการ':'chip-amber','เสร็จแล้ว':'chip-green','รอชิ้นส่วน':'chip-amber','ยกเลิก':'chip-red'};
+function planTypeChipClass(t) { return PLAN_TYPE_CHIP_CLASS[t] || 'chip-blue'; }
+function planTaskTypeChip(t) { return `<span class="chip ${planTypeChipClass(t)}">${escapeHtmlAttr(t)}</span>`; }
+function planTaskStatusChip(s) { return `<span class="chip ${PLAN_STATUS_CHIP_CLASS[s]||'chip-blue'}">${escapeHtmlAttr(s)}</span>`; }
+
+const THAI_MONTHS_ABBR = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+const THAI_MONTHS_FULL = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+const THAI_WEEKDAYS_MON_FIRST = ['จันทร์','อังคาร','พุธ','พฤหัสฯ','ศุกร์','เสาร์','อาทิตย์'];
+
+function toISODate(d) {
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
+function parseISODate(s) {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+function fmtDateThai(d) { return `${d.getDate()} ${THAI_MONTHS_ABBR[d.getMonth()]} ${d.getFullYear() + 543}`; }
+function fmtDateThaiShort(d) { return `${d.getDate()} ${THAI_MONTHS_ABBR[d.getMonth()]}`; }
+function getMonday(d) {
+  const date = new Date(d);
+  const day = date.getDay();
+  date.setDate(date.getDate() + (day === 0 ? -6 : 1 - day));
+  return date;
+}
+
+let currentPlanView = 'gantt';
+let planViewDate = parseISODate('2026-07-02');
+
+function renderCurrentPlanView() {
+  if (currentPlanView === 'day') renderPlanDay();
+  else if (currentPlanView === 'week') renderPlanWeek();
+  else if (currentPlanView === 'month') renderPlanMonth();
+}
+
+function switchPlanView(mode) {
+  currentPlanView = mode;
+  document.querySelectorAll('.plan-view-panel').forEach(p => p.style.display = 'none');
+  document.getElementById('plan-view-' + mode).style.display = '';
+  document.querySelectorAll('.plan-view-btn').forEach(b => {
+    const active = b.getAttribute('data-view') === mode;
+    b.style.color = active ? 'var(--accent)' : '';
+    b.style.borderColor = active ? 'var(--accent)' : '';
+  });
+  if (mode === 'gantt') {
+    document.getElementById('plan-daterange-label').textContent = 'ม.ค. – มิ.ย. 2569';
+  } else {
+    renderCurrentPlanView();
+  }
+}
+
+function planNav(dir) {
+  if (currentPlanView === 'gantt') return;
+  const d = new Date(planViewDate);
+  if (currentPlanView === 'day') d.setDate(d.getDate() + dir);
+  else if (currentPlanView === 'week') d.setDate(d.getDate() + dir * 7);
+  else if (currentPlanView === 'month') d.setMonth(d.getMonth() + dir);
+  planViewDate = d;
+  renderCurrentPlanView();
+}
+
+function renderPlanDay() {
+  const iso = toISODate(planViewDate);
+  document.getElementById('plan-daterange-label').textContent = fmtDateThai(planViewDate);
+  document.getElementById('plan-day-title').textContent = 'งานตามแผน — วันที่ ' + fmtDateThai(planViewDate);
+  const tasks = planTasks.filter(t => t.date === iso).sort((a, b) => (a.time||'').localeCompare(b.time||''));
+  document.getElementById('plan-day-tbody').innerHTML = tasks.map(t => `
+    <tr>
+      <td class="muted">${escapeHtmlAttr(t.time || '—')}</td>
+      <td><strong>${escapeHtmlAttr(t.title)}</strong></td>
+      <td>${escapeHtmlAttr(t.tooling)}</td>
+      <td>${escapeHtmlAttr(t.assignee)}</td>
+      <td>${planTaskTypeChip(t.type)}</td>
+      <td>${planTaskStatusChip(t.status)}</td>
+      <td style="display:flex;gap:4px;">
+        <button class="btn btn-ghost btn-sm" onclick="openPlanTaskModal('edit','${t.id}')">แก้ไข</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deletePlanTask('${t.id}')">ลบ</button>
+      </td>
+    </tr>`).join('') || `<tr><td colspan="7" style="padding:32px;text-align:center;color:var(--text-3);">ไม่มีงานตามแผนในวันนี้</td></tr>`;
+}
+
+function renderPlanWeek() {
+  const monday = getMonday(planViewDate);
+  const days = Array.from({length: 7}, (_, i) => { const d = new Date(monday); d.setDate(d.getDate() + i); return d; });
+  const sunday = days[6];
+  document.getElementById('plan-daterange-label').textContent = `${fmtDateThaiShort(monday)} – ${fmtDateThai(sunday)}`;
+  document.getElementById('plan-week-title').textContent = `งานตามแผน — สัปดาห์ ${fmtDateThaiShort(monday)} – ${fmtDateThai(sunday)}`;
+
+  document.getElementById('plan-week-thead-row').innerHTML = days.map(d =>
+    `<th>${THAI_WEEKDAYS_MON_FIRST[(d.getDay()+6)%7]}<br><span class="muted" style="font-weight:400;">${fmtDateThaiShort(d)}</span></th>`
+  ).join('');
+
+  document.getElementById('plan-week-tbody').innerHTML = days.map(d => {
+    const iso = toISODate(d);
+    const tasks = planTasks.filter(t => t.date === iso).sort((a, b) => (a.time||'').localeCompare(b.time||''));
+    const items = tasks.map(t => `
+      <div style="display:flex;align-items:center;gap:4px;">
+        <span class="chip ${planTypeChipClass(t.type)}" style="cursor:pointer;flex:1;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(t.title)}">${escapeHtmlAttr(t.tooling || t.title)}</span>
+        <button title="ลบ" onclick="deletePlanTask('${t.id}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:11px;padding:0;">✕</button>
+      </div>`).join('');
+    return `<td style="min-width:110px;">
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        ${items || '<span class="muted">—</span>'}
+        <button class="btn btn-ghost btn-sm" style="padding:2px 6px;font-size:11px;" onclick="openPlanTaskModal('add', null, '${iso}')">+ เพิ่ม</button>
+      </div>
+    </td>`;
+  }).join('');
+}
+
+function renderPlanMonth() {
+  const year = planViewDate.getFullYear();
+  const month = planViewDate.getMonth();
+  document.getElementById('plan-daterange-label').textContent = `${THAI_MONTHS_FULL[month]} ${year + 543}`;
+  document.getElementById('plan-month-title').textContent = `งานตามแผน — ${THAI_MONTHS_FULL[month]} ${year + 543}`;
+
+  const firstDay = new Date(year, month, 1);
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstWeekday = firstDay.getDay();
+  const leadingBlanks = firstWeekday === 0 ? 6 : firstWeekday - 1;
+
+  let html = '';
+  for (let i = 0; i < leadingBlanks; i++) {
+    html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"></div>`;
+  }
+  for (let day = 1; day <= daysInMonth; day++) {
+    const d = new Date(year, month, day);
+    const iso = toISODate(d);
+    const tasks = planTasks.filter(t => t.date === iso);
+    const chips = tasks.map(t =>
+      `<span class="chip ${planTypeChipClass(t.type)}" style="font-size:10px;cursor:pointer;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(t.title)}">${escapeHtmlAttr(t.tooling || t.title)}</span>`
+    ).join('');
+    html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <strong style="font-size:12px;">${day}</strong>
+        <button title="เพิ่มงาน" onclick="openPlanTaskModal('add', null, '${iso}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:13px;line-height:1;padding:0;">+</button>
+      </div>
+      <div style="margin-top:6px;display:flex;flex-direction:column;gap:4px;">${chips}</div>
+    </div>`;
+  }
+  document.getElementById('plan-month-grid').innerHTML = html;
+}
+
+function addPlanTaskForCurrentDay() {
+  openPlanTaskModal('add', null, toISODate(planViewDate));
+}
+
+function planTaskFormFields() {
+  return `
+    <div class="modal-row">
+      <div class="form-group"><label class="form-label">วันที่</label><input class="form-input" id="pf-date" type="date"></div>
+      <div class="form-group"><label class="form-label">เวลา</label><input class="form-input" id="pf-time" type="time"></div>
+    </div>
+    <div class="modal-row full">
+      <div class="form-group"><label class="form-label">ชื่องาน</label><input class="form-input" id="pf-title" placeholder="เช่น PM ชุด Cutting Tool A"></div>
+    </div>
+    <div class="modal-row three">
+      <div class="form-group"><label class="form-label">Tooling / เครื่องจักร</label><input class="form-input" id="pf-tooling" placeholder="เช่น PM-A"></div>
+      <div class="form-group"><label class="form-label">ผู้รับผิดชอบ</label><input class="form-input" id="pf-assignee" placeholder="เช่น สมชาย ว."></div>
+      <div class="form-group"><label class="form-label">ประเภท</label>
+        <select class="form-select" id="pf-type">
+          <option>PM</option><option>ตรวจสอบ</option><option>Calibrate</option>
+          <option>ซ่อมแซม</option><option>จัดซื้อ</option><option>Regrind</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-row full">
+      <div class="form-group"><label class="form-label">สถานะ</label>
+        <select class="form-select" id="pf-status">
+          <option>รอดำเนินการ</option><option>กำลังทำ</option><option>เสร็จแล้ว</option>
+          <option>รอชิ้นส่วน</option><option>ยกเลิก</option>
+        </select>
+      </div>
+    </div>`;
+}
+
+function openPlanTaskModal(mode, taskId, presetDate) {
+  const task = mode === 'edit' ? planTasks.find(t => t.id === taskId) : null;
+  document.getElementById('modal-title').textContent = mode === 'edit' ? 'แก้ไขงาน' : 'เพิ่มงานใหม่';
+  document.getElementById('modal-body').innerHTML = planTaskFormFields();
+  document.getElementById('pf-date').value = task ? task.date : (presetDate || toISODate(planViewDate));
+  document.getElementById('pf-time').value = task ? task.time : '08:00';
+  document.getElementById('pf-title').value = task ? task.title : '';
+  document.getElementById('pf-tooling').value = task ? task.tooling : '';
+  document.getElementById('pf-assignee').value = task ? task.assignee : '';
+  document.getElementById('pf-type').value = task ? task.type : 'PM';
+  document.getElementById('pf-status').value = task ? task.status : 'รอดำเนินการ';
+  document.getElementById('modal-overlay').classList.add('open');
+
+  document.querySelector('.modal-footer .btn-primary').onclick = function() {
+    const g = id => (document.getElementById(id)||{}).value.trim();
+    const date = g('pf-date'), title = g('pf-title');
+    if (!date || !title) { alert('กรุณากรอกวันที่และชื่องาน'); return; }
+    const data = {
+      date, time: g('pf-time') || '—', title,
+      tooling: g('pf-tooling') || '—', assignee: g('pf-assignee') || '—',
+      type: g('pf-type'), status: g('pf-status')
+    };
+    if (mode === 'edit') {
+      Object.assign(task, data);
+    } else {
+      planTaskSeq++;
+      planTasks.push({ id: 'PT-' + String(planTaskSeq).padStart(4, '0'), ...data });
+    }
+    persistState();
+    renderCurrentPlanView();
+    const btn = this;
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✓ บันทึกแล้ว';
+    btn.style.background = 'var(--green)';
+    setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.onclick = saveModal; closeModal(); }, 700);
+  };
+}
+
+function deletePlanTask(taskId) {
+  const t = planTasks.find(x => x.id === taskId);
+  if (!t) return;
+  if (!confirm('ลบงาน "' + t.title + '" ออกจากแผน?')) return;
+  planTasks = planTasks.filter(x => x.id !== taskId);
+  persistState();
+  renderCurrentPlanView();
+}
+
 const PAGE_SIZE = 10;
 const pageState = { roll: 1, sq: 1, saw: 1, slitter: 1 };
 
@@ -3058,7 +3251,8 @@ const STORAGE_KEY = 'tstToolingState_v1';
 function persistState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      toolingData, extraRollSets, rollSetPalettes, rollColorSeq, rollSetMachines
+      toolingData, extraRollSets, rollSetPalettes, rollColorSeq, rollSetMachines,
+      planTasks, planTaskSeq
     }));
   } catch (e) { /* localStorage unavailable — edits stay in-memory only */ }
 }
@@ -3077,6 +3271,8 @@ function restoreState() {
     if (saved.rollSetPalettes) rollSetPalettes = saved.rollSetPalettes;
     if (saved.rollSetMachines) rollSetMachines = saved.rollSetMachines;
     if (typeof saved.rollColorSeq === 'number') rollColorSeq = saved.rollColorSeq;
+    if (Array.isArray(saved.planTasks)) planTasks = saved.planTasks;
+    if (typeof saved.planTaskSeq === 'number') planTaskSeq = saved.planTaskSeq;
   } catch (e) { /* corrupted/old data — fall back to defaults */ }
 }
 restoreState();
@@ -3892,7 +4088,14 @@ renderSawTable(1);
 renderSlitterTable(1);
 
 // Wire up the Add button
-document.getElementById('add-btn').addEventListener('click', openModal);
+document.getElementById('add-btn').addEventListener('click', function() {
+  if (currentPage === 'plan') {
+    if (currentPlanView === 'gantt') switchPlanView('day');
+    openPlanTaskModal('add', null, toISODate(planViewDate));
+  } else {
+    openModal();
+  }
+});
 
 // Track active reg tab for modal context
 const origSwitchRegTab = switchRegTab;
