@@ -1100,7 +1100,7 @@ canvas{display:block;}
               <div class="table-wrap" style="overflow-x:auto;">
                 <table>
                   <thead><tr>
-                    <th>รหัส</th><th>ชื่อ Roll</th><th>เส้นผ่าศูนย์กลาง</th><th>ความกว้าง</th><th>ตำแหน่ง</th><th>รอบการใช้งาน</th><th>แต่งครั้งที่</th><th>เวลาแต่ง (ชม.)</th><th>แต่งล่าสุด</th><th>สถานะ</th><th></th>
+                    <th>รหัส</th><th>ชื่อ Roll</th><th>เส้นผ่าศูนย์กลาง</th><th>ความกว้าง</th><th>ตำแหน่ง</th><th>รอบการใช้งาน</th><th>แต่งครั้งที่</th><th>เวลาแต่ง (นาที)</th><th>แต่งล่าสุด</th><th>สถานะ</th><th></th>
                   </tr></thead>
                   <tbody id="tbody-roll"></tbody>
                 </table>
@@ -1541,7 +1541,7 @@ canvas{display:block;}
                   <th rowspan="3">จัดการ</th>
                 </tr>
                 <tr>
-                  <th rowspan="2">เวลาแต่ง Roll (ชม.)</th>
+                  <th rowspan="2">เวลาแต่ง Roll (นาที)</th>
                   <th colspan="2" style="text-align:center;">เวลา</th>
                 </tr>
                 <tr>
@@ -2552,7 +2552,7 @@ const MODAL_FORMS = {
         <div class="form-group"><label class="form-label">แต่งครั้งที่ / สูงสุด</label><input class="form-input" id="f-regrind" placeholder="เช่น 0/5"></div>
       </div>
       <div class="modal-row">
-        <div class="form-group"><label class="form-label">เวลาแต่ง (ชม.)</label><input class="form-input" id="f-grindtime" type="number" placeholder="เช่น 4"></div>
+        <div class="form-group"><label class="form-label">เวลาแต่ง (นาที)</label><input class="form-input" id="f-grindtime" type="number" placeholder="เช่น 15"></div>
         <div class="form-group"><label class="form-label">แต่งล่าสุด</label><input class="form-input" id="f-service" type="date"></div>
         <div class="form-group"><label class="form-label">สถานะ</label>
           <select class="form-select" id="f-status">
@@ -3028,7 +3028,7 @@ function planTaskFormFields() {
       <div class="form-group"><label class="form-label">ชื่อ Roll</label><input class="form-input" id="pf-rollname" disabled></div>
     </div>
     <div class="modal-row">
-      <div class="form-group"><label class="form-label">เวลาแต่ง Roll (ชม.) — จากทะเบียน Tooling</label><input class="form-input" id="pf-grindtime" type="text" disabled></div>
+      <div class="form-group"><label class="form-label">เวลาแต่ง Roll (นาที) — จากทะเบียน Tooling</label><input class="form-input" id="pf-grindtime" type="text" disabled></div>
     </div>
     <div class="modal-row">
       <div class="form-group"><label class="form-label">เริ่มงาน</label><input class="form-input" id="pf-start" type="time"></div>
