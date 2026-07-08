@@ -2617,9 +2617,11 @@ let prodBlockProducts = [
   { id:'PB-0008', group:'P2', code:'0SQG15.1200', avgWeight:6.99,  speed:8.5, name:'แป็บสี่เหลี่ยม GS 1 1/2"x1.2x6 ม. ขาวชมพู' },
 ];
 let prodBlockSeq = 8;
-let prodBlockCells = {};   // key `${productId}|${dateIso}` => { qty, color: 'none'|'red'|'blue'|'green' }
+let prodBlockCells = {};   // key `${productId}|${dateIso}` => { qty, color: 'none'|'red'|'blue'|'green' } — legacy/Excel-imported entries
 let prodBlockPM = {};      // key `${group}|${dateIso}` => true
 let prodBlockSummary = {}; // key `${group}|${dateIso}|${metric}` => value string; metric: pdTime|pmSetup|otherDowntime|planDay
+let prodBlockEntries = []; // { id, machine, startDate, days, forming:{set,color}, sizing:{set,color}, th:{set,color}, qty, lotColor } — manually added Roll-change entries (Forming/Sizing/TH ดึงจากทะเบียน Tooling)
+let prodBlockEntrySeq = 0;
 let prodBlockActiveMachine = 'P1';
 let prodBlockViewMonth = '2026-07-01'; // วันที่ 1 ของเดือนที่กำลังดู — ใช้แค่ปี/เดือน
 const PROD_BLOCK_CELL_COLORS = { red: 'var(--red-dim)', blue: 'var(--accent-glow)', green: 'var(--green-dim)' };
@@ -3141,7 +3143,8 @@ function persistState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       toolingData, extraRollSets, rollSetPalettes, rollColorSeq, rollSetMachines,
       planTasks, planTaskSeq, teamMembers, teamSeq,
-      prodBlockProducts, prodBlockSeq, prodBlockCells, prodBlockPM, prodBlockSummary, prodBlockActiveMachine, prodBlockViewMonth
+      prodBlockProducts, prodBlockSeq, prodBlockCells, prodBlockPM, prodBlockSummary,
+      prodBlockEntries, prodBlockEntrySeq, prodBlockActiveMachine, prodBlockViewMonth
     }));
   } catch (e) { /* localStorage unavailable — edits stay in-memory only */ }
 }
@@ -3169,6 +3172,8 @@ function restoreState() {
     if (saved.prodBlockCells) prodBlockCells = saved.prodBlockCells;
     if (saved.prodBlockPM) prodBlockPM = saved.prodBlockPM;
     if (saved.prodBlockSummary) prodBlockSummary = saved.prodBlockSummary;
+    if (Array.isArray(saved.prodBlockEntries)) prodBlockEntries = saved.prodBlockEntries;
+    if (typeof saved.prodBlockEntrySeq === 'number') prodBlockEntrySeq = saved.prodBlockEntrySeq;
     if (typeof saved.prodBlockActiveMachine === 'string') prodBlockActiveMachine = saved.prodBlockActiveMachine;
     if (typeof saved.prodBlockViewMonth === 'string') prodBlockViewMonth = saved.prodBlockViewMonth;
   } catch (e) { /* corrupted/old data — fall back to defaults */ }
@@ -3943,6 +3948,18 @@ function renderProdBlockCalendar() {
   const firstWeekday = firstDay.getDay();
   const leadingBlanks = firstWeekday === 0 ? 6 : firstWeekday - 1;
 
+  // กระจายรายการเปลี่ยน Roll (prodBlockEntries) ของเครื่องนี้ออกเป็นรายวันตาม startDate+days
+  const entriesByDate = {};
+  prodBlockEntries.filter(e => e.machine === machine).forEach(e => {
+    const start = parseISODate(e.startDate);
+    for (let i = 0; i < e.days; i++) {
+      const dd = new Date(start);
+      dd.setDate(dd.getDate() + i);
+      const dIso = toISODate(dd);
+      (entriesByDate[dIso] = entriesByDate[dIso] || []).push(e);
+    }
+  });
+
   let html = '';
   for (let i = 0; i < leadingBlanks; i++) {
     html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:96px;"></div>`;
@@ -3960,22 +3977,37 @@ function renderProdBlockCalendar() {
     if (isPM) {
       bodyHtml = `<div style="margin-top:12px;text-align:center;font-weight:700;font-size:11px;">PM<br>หยุดทั้งเครื่อง</div>`;
     } else {
-      const entries = prodBlockProducts
+      const legacy = prodBlockProducts
         .filter(p => p.group === machine)
         .map(p => ({ product: p, cell: prodBlockCells[p.id + '|' + iso] }))
         .filter(x => x.cell && (x.cell.qty != null || x.cell.color));
-      const chips = entries.map(({ product, cell }) => {
+      const legacyChips = legacy.map(({ product, cell }) => {
         const chipClass = cell.color === 'red' ? 'chip-red' : cell.color === 'blue' ? 'chip-blue' : cell.color === 'green' ? 'chip-green' : 'chip-purple';
         const qtyLabel = cell.qty != null ? ' · ' + cell.qty : '';
         return `<span class="chip ${chipClass}" style="font-size:10px;cursor:pointer;" onclick="openProdCellModal('${product.id}','${iso}')" title="${escapeHtmlAttr(product.code)} — ${escapeHtmlAttr(product.name)}">${escapeHtmlAttr(product.code)}${qtyLabel}</span>`;
-      }).join('');
-      bodyHtml = `<div style="margin-top:6px;display:flex;flex-direction:column;gap:4px;">${chips}</div>`;
+      });
+      const entryChips = (entriesByDate[iso] || []).map(e => {
+        const parts = [];
+        if (e.forming.set) parts.push('F:' + escapeHtmlAttr(stripSizeRollCategory(e.forming.set)));
+        if (e.sizing.set) parts.push('S:' + escapeHtmlAttr(stripSizeRollCategory(e.sizing.set)));
+        if (e.th.set) parts.push('TH:' + escapeHtmlAttr(stripSizeRollCategory(e.th.set)));
+        const label = parts.length ? parts.join(' / ') : 'รายการ';
+        const chipClass = e.lotColor === 'red' ? 'chip-red' : e.lotColor === 'blue' ? 'chip-blue' : e.lotColor === 'green' ? 'chip-green' : 'chip-amber';
+        const qtyLabel = e.qty != null ? ' · ' + e.qty : '';
+        const titleParts = [
+          e.forming.set ? 'Forming: ' + e.forming.set + (e.forming.color ? ' (' + e.forming.color + ')' : '') : '',
+          e.sizing.set ? 'Sizing: ' + e.sizing.set + (e.sizing.color ? ' (' + e.sizing.color + ')' : '') : '',
+          e.th.set ? 'TH: ' + e.th.set + (e.th.color ? ' (' + e.th.color + ')' : '') : '',
+        ].filter(Boolean).join(' | ');
+        return `<span class="chip ${chipClass}" style="font-size:10px;cursor:pointer;" onclick="openProdEntryModal('${e.id}')" title="${escapeHtmlAttr(titleParts)}">${label}${qtyLabel}</span>`;
+      });
+      bodyHtml = `<div style="margin-top:6px;display:flex;flex-direction:column;gap:4px;">${legacyChips.concat(entryChips).join('')}</div>`;
     }
 
     html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:96px;background:${cellBg};color:${textColor};">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <strong style="font-size:12px;">${day}</strong>
-        <button title="เพิ่ม Size Roll" onclick="openProdDayAddModal('${machine}','${iso}')" style="border:none;background:none;color:${isPM ? '#fff' : 'var(--text-3)'};cursor:pointer;font-size:13px;line-height:1;padding:0;">+</button>
+        <button title="เพิ่มรายการ" onclick="openProdDayAddModal('${machine}','${iso}')" style="border:none;background:none;color:${isPM ? '#fff' : 'var(--text-3)'};cursor:pointer;font-size:13px;line-height:1;padding:0;">+</button>
       </div>
       ${bodyHtml}
     </div>`;
@@ -4046,46 +4078,92 @@ function openProdCellModal(productId, dateIso) {
   };
 }
 
-function prodDayAddFormFields(machine) {
-  const products = prodBlockProducts.filter(p => p.group === machine);
-  const options = products.map(p => `<option value="${p.id}">${escapeHtmlAttr(p.code)} — ${escapeHtmlAttr(p.name)}</option>`).join('');
+// Size Roll แต่ละหมวด (Forming/Sizing/TH) ดึงจากทะเบียน Tooling — เฉพาะ Set ที่ผูกไว้กับเครื่องนี้ (rollSetMachines)
+function getRollSetsFor(machine, category) {
+  return getRollSets().filter(s => detectSizeRollCategory(s) === category && (rollSetMachines[s] || []).includes(machine));
+}
+
+function prodEntryCategoryFieldHtml(prefix, category, machine, selectedSet, selectedColor) {
+  const sets = getRollSetsFor(machine, category);
+  const setOptions = sets.map(s => `<option value="${escapeHtmlAttr(s)}"${s === selectedSet ? ' selected' : ''}>${escapeHtmlAttr(s)}</option>`).join('');
+  const palette = selectedSet ? getSetPalette(selectedSet) : [];
+  const colorOptions = palette.map(c => `<option value="${c.key}"${c.key === selectedColor ? ' selected' : ''}>${escapeHtmlAttr(c.label)}</option>`).join('');
   return `
-    <div class="modal-row full">
-      <div class="form-group"><label class="form-label">Size Roll (Product Code)</label>
-        <select class="form-select" id="pda-product">
-          <option value="">— เลือก Size Roll —</option>
-          ${options}
-        </select>
-      </div>
-      ${!products.length ? `<div style="font-size:11px;color:var(--text-3);margin-top:4px;">เครื่อง ${escapeHtmlAttr(machine)} ยังไม่มี Size Roll — กดปุ่ม "+ เพิ่ม Size Roll" ด้านบนก่อน</div>` : ''}
-    </div>
     <div class="modal-row">
-      <div class="form-group"><label class="form-label">จำนวน (ชิ้น)</label><input class="form-input" id="pda-qty" type="number"></div>
-      <div class="form-group"><label class="form-label">สีล็อต</label>
-        <select class="form-select" id="pda-color">
-          <option value="none">— ไม่มีสี —</option>
-          <option value="red">แดง</option>
-          <option value="blue">น้ำเงิน</option>
-          <option value="green">เขียว</option>
+      <div class="form-group"><label class="form-label">${category}</label>
+        <select class="form-select" id="pda-${prefix}-set" onchange="onProdEntrySetChange('${prefix}')">
+          <option value="">— ไม่ใช้ —</option>
+          ${setOptions}
+        </select>
+        ${!sets.length ? `<div style="font-size:10px;color:var(--text-3);margin-top:4px;">ไม่มี Size Roll หมวด ${category} ที่ผูกกับเครื่อง ${escapeHtmlAttr(machine)} ในทะเบียน Tooling</div>` : ''}
+      </div>
+      <div class="form-group"><label class="form-label">ชุดสี Roll</label>
+        <select class="form-select" id="pda-${prefix}-color"${!selectedSet ? ' disabled' : ''}>
+          <option value="">— ทั้งหมด —</option>
+          ${colorOptions}
         </select>
       </div>
-    </div>
-    <div class="modal-row full">
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
-        <input type="checkbox" id="pda-pm" style="width:16px;height:16px;">
-        ตั้งเป็นวันหยุด PM สำหรับเครื่อง ${escapeHtmlAttr(machine)} ทั้งเครื่อง (วันนี้)
-      </label>
     </div>`;
 }
 
+function onProdEntrySetChange(prefix) {
+  const setSel = document.getElementById('pda-' + prefix + '-set');
+  const colorSel = document.getElementById('pda-' + prefix + '-color');
+  const setName = setSel.value;
+  if (!setName) {
+    colorSel.innerHTML = '<option value="">— ทั้งหมด —</option>';
+    colorSel.disabled = true;
+    return;
+  }
+  colorSel.disabled = false;
+  const palette = getSetPalette(setName);
+  colorSel.innerHTML = '<option value="">— ทั้งหมด —</option>' + palette.map(c => `<option value="${c.key}">${escapeHtmlAttr(c.label)}</option>`).join('');
+}
+
+function prodDayAddFormFields(machine, entry) {
+  const days = entry ? entry.days : 1;
+  const qty = entry && entry.qty != null ? entry.qty : '';
+  const lotColor = entry && entry.lotColor ? entry.lotColor : 'none';
+  return `
+    ${prodEntryCategoryFieldHtml('forming', 'Forming', machine, entry ? entry.forming.set : '', entry ? entry.forming.color : '')}
+    ${prodEntryCategoryFieldHtml('sizing', 'Sizing', machine, entry ? entry.sizing.set : '', entry ? entry.sizing.color : '')}
+    ${prodEntryCategoryFieldHtml('th', 'TH', machine, entry ? entry.th.set : '', entry ? entry.th.color : '')}
+    <div class="modal-row three">
+      <div class="form-group"><label class="form-label">จำนวนวัน</label><input class="form-input" id="pda-days" type="number" min="1" value="${days}"></div>
+      <div class="form-group"><label class="form-label">จำนวน (ชิ้น)</label><input class="form-input" id="pda-qty" type="number" value="${qty}"></div>
+      <div class="form-group"><label class="form-label">สีล็อต</label>
+        <select class="form-select" id="pda-color">
+          <option value="none"${lotColor === 'none' ? ' selected' : ''}>— ไม่มีสี —</option>
+          <option value="red"${lotColor === 'red' ? ' selected' : ''}>แดง</option>
+          <option value="blue"${lotColor === 'blue' ? ' selected' : ''}>น้ำเงิน</option>
+          <option value="green"${lotColor === 'green' ? ' selected' : ''}>เขียว</option>
+        </select>
+      </div>
+    </div>
+    ${!entry ? `
+    <div class="modal-row full">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" id="pda-pm" style="width:16px;height:16px;">
+        ตั้งเป็นวันหยุด PM สำหรับเครื่อง ${escapeHtmlAttr(machine)} ทั้งเครื่อง (ตามจำนวนวันด้านบน)
+      </label>
+    </div>` : `
+    <div class="modal-row full" style="text-align:right;">
+      <button type="button" class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteProdEntry('${entry.id}')">ลบรายการนี้</button>
+    </div>`}`;
+}
+
+function readProdEntryCategoryField(prefix) {
+  const setName = document.getElementById('pda-' + prefix + '-set').value;
+  const color = document.getElementById('pda-' + prefix + '-color').value;
+  return { set: setName || null, color: setName && color ? color : null };
+}
+
 function openProdDayAddModal(machine, dateIso) {
-  document.getElementById('modal-title').textContent = 'เพิ่ม Size Roll — เครื่อง ' + machine + ' — ' + dateIso;
-  document.getElementById('modal-body').innerHTML = prodDayAddFormFields(machine);
+  document.getElementById('modal-title').textContent = 'เพิ่มรายการ — เครื่อง ' + machine + ' — ' + dateIso;
+  document.getElementById('modal-body').innerHTML = prodDayAddFormFields(machine, null);
   document.getElementById('modal-overlay').classList.add('open');
 
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
-    const pmKey = machine + '|' + dateIso;
-    const pm = document.getElementById('pda-pm').checked;
     const btn = this;
     const finish = () => {
       persistState();
@@ -4095,18 +4173,68 @@ function openProdDayAddModal(machine, dateIso) {
       btn.style.background = 'var(--green)';
       setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.onclick = saveModal; closeModal(); }, 700);
     };
+    const days = Math.max(1, parseInt(document.getElementById('pda-days').value, 10) || 1);
+    const pm = document.getElementById('pda-pm').checked;
     if (pm) {
-      prodBlockPM[pmKey] = true;
+      const start = parseISODate(dateIso);
+      for (let i = 0; i < days; i++) {
+        const dd = new Date(start);
+        dd.setDate(dd.getDate() + i);
+        prodBlockPM[machine + '|' + toISODate(dd)] = true;
+      }
       finish();
       return;
     }
-    const productId = document.getElementById('pda-product').value;
-    if (!productId) { alert('กรุณาเลือก Size Roll หรือเลือกตั้งเป็นวันหยุด PM'); return; }
+    const forming = readProdEntryCategoryField('forming');
+    const sizing = readProdEntryCategoryField('sizing');
+    const th = readProdEntryCategoryField('th');
+    if (!forming.set && !sizing.set && !th.set) { alert('กรุณาเลือก Size Roll อย่างน้อย 1 หมวด (Forming/Sizing/TH) หรือเลือกตั้งเป็นวันหยุด PM'); return; }
     const qtyStr = document.getElementById('pda-qty').value.trim();
-    const color = document.getElementById('pda-color').value;
-    prodBlockCells[productId + '|' + dateIso] = { qty: qtyStr === '' ? null : parseFloat(qtyStr), color: color === 'none' ? null : color };
+    const lotColor = document.getElementById('pda-color').value;
+    prodBlockEntrySeq++;
+    prodBlockEntries.push({
+      id: 'PE-' + String(prodBlockEntrySeq).padStart(4, '0'),
+      machine, startDate: dateIso, days,
+      forming, sizing, th,
+      qty: qtyStr === '' ? null : parseFloat(qtyStr),
+      lotColor: lotColor === 'none' ? null : lotColor,
+    });
     finish();
   };
+}
+
+function openProdEntryModal(entryId) {
+  const entry = prodBlockEntries.find(e => e.id === entryId);
+  if (!entry) return;
+  document.getElementById('modal-title').textContent = 'แก้ไขรายการ — เครื่อง ' + entry.machine + ' — ' + entry.startDate;
+  document.getElementById('modal-body').innerHTML = prodDayAddFormFields(entry.machine, entry);
+  document.getElementById('modal-overlay').classList.add('open');
+
+  document.querySelector('.modal-footer .btn-primary').onclick = function() {
+    entry.days = Math.max(1, parseInt(document.getElementById('pda-days').value, 10) || 1);
+    entry.forming = readProdEntryCategoryField('forming');
+    entry.sizing = readProdEntryCategoryField('sizing');
+    entry.th = readProdEntryCategoryField('th');
+    const qtyStr = document.getElementById('pda-qty').value.trim();
+    entry.qty = qtyStr === '' ? null : parseFloat(qtyStr);
+    const lotColor = document.getElementById('pda-color').value;
+    entry.lotColor = lotColor === 'none' ? null : lotColor;
+    persistState();
+    renderProdBlock();
+    const btn = this;
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✓ บันทึกแล้ว';
+    btn.style.background = 'var(--green)';
+    setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.onclick = saveModal; closeModal(); }, 700);
+  };
+}
+
+function deleteProdEntry(entryId) {
+  if (!confirm('ลบรายการนี้ออกจากปฏิทิน?')) return;
+  prodBlockEntries = prodBlockEntries.filter(e => e.id !== entryId);
+  persistState();
+  renderProdBlock();
+  closeModal();
 }
 
 function prodProductFormFields() {
