@@ -3907,7 +3907,7 @@ function deleteTeamMember(id) {
 
 // ─── PRODUCTION BLOCK ───────────────────────────────────────────────────────
 function fmtDateSlash(d) { return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`; }
-function isWeekend(d) { const wd = d.getDay(); return wd === 0 || wd === 6; }
+function isDayOff(d) { return d.getDay() === 0; } // ทำงาน จ-ส หยุดเฉพาะวันอาทิตย์
 
 function switchProdBlockMachine(machine) {
   prodBlockActiveMachine = machine;
@@ -3969,8 +3969,8 @@ function renderProdBlockCalendar() {
     const iso = toISODate(d);
     const pmKey = machine + '|' + iso;
     const isPM = !!prodBlockPM[pmKey];
-    const wk = isWeekend(d);
-    const cellBg = isPM ? '#D6409F' : (wk ? '#FDF3D8' : '');
+    const dayOff = isDayOff(d);
+    const cellBg = isPM ? '#D6409F' : (dayOff ? '#FDF3D8' : '');
     const textColor = isPM ? '#fff' : 'var(--text-1)';
 
     let bodyHtml;
