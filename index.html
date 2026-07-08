@@ -1291,29 +1291,6 @@ canvas{display:block;}
           </div>
           <div id="prodblock-month-grid" style="padding:8px 14px 14px;display:grid;grid-template-columns:repeat(7,1fr);gap:8px;"></div>
         </div>
-
-        <div style="display:flex;gap:16px;flex-wrap:wrap;margin:12px 0;font-size:11px;color:var(--text-3);">
-          <span style="display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;background:var(--red-dim);border:1px solid var(--red);border-radius:3px;display:inline-block;"></span>ล็อตสีแดง</span>
-          <span style="display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;background:var(--accent-glow);border:1px solid var(--accent);border-radius:3px;display:inline-block;"></span>ล็อตสีน้ำเงิน</span>
-          <span style="display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;background:var(--green-dim);border:1px solid var(--green);border-radius:3px;display:inline-block;"></span>ล็อตสีเขียว</span>
-          <span style="display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;background:#D6409F;border-radius:3px;display:inline-block;"></span>PM (หยุดทั้งเครื่อง)</span>
-          <span style="display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;background:#FDF3D8;border:1px solid var(--border);border-radius:3px;display:inline-block;"></span>เสาร์-อาทิตย์</span>
-        </div>
-
-        <div class="card" style="margin-top:16px;">
-          <div class="card-header"><span class="card-title" id="prodblock-products-title">Size Roll ของเครื่องนี้</span></div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Product Code</th><th>นน.เฉลี่ย</th><th>Speed/min</th><th style="text-align:left;">Productname</th><th>จัดการ</th></tr></thead>
-              <tbody id="prodblock-products-tbody"></tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="card" style="margin-top:16px;">
-          <div class="card-header"><span class="card-title">สรุปประจำเดือน</span></div>
-          <div class="table-wrap" id="prodblock-summary-wrap"></div>
-        </div>
       </div>
 
     </div>
@@ -2646,7 +2623,6 @@ let prodBlockSummary = {}; // key `${group}|${dateIso}|${metric}` => value strin
 let prodBlockActiveMachine = 'P1';
 let prodBlockViewMonth = '2026-07-01'; // วันที่ 1 ของเดือนที่กำลังดู — ใช้แค่ปี/เดือน
 const PROD_BLOCK_CELL_COLORS = { red: 'var(--red-dim)', blue: 'var(--accent-glow)', green: 'var(--green-dim)' };
-const PROD_BLOCK_SUMMARY_LABELS = { pdTime: 'PD Time (HR)', pmSetup: 'PM, Setup Roll (HR)', otherDowntime: 'Other Downtime (HR)', planDay: 'Plan/Day' };
 
 const PLAN_WORKTYPE_META = {
   cnc:    { label: 'แผนงาน CNC', field: 'grindTime', metricLabel: 'เวลาแต่ง Roll (นาที)' },
@@ -3961,8 +3937,6 @@ function renderProdBlockCalendar() {
   if (label) label.textContent = `${THAI_MONTHS_FULL[month]} ${year + 543}`;
   const title = document.getElementById('prodblock-month-title');
   if (title) title.textContent = `Production Block — เครื่อง ${machine} — ${THAI_MONTHS_FULL[month]} ${year + 543}`;
-  const productsTitle = document.getElementById('prodblock-products-title');
-  if (productsTitle) productsTitle.textContent = `Size Roll ของเครื่อง ${machine}`;
 
   const firstDay = new Date(year, month, 1);
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -4009,53 +3983,9 @@ function renderProdBlockCalendar() {
   grid.innerHTML = html;
 }
 
-function renderProdBlockProductsTable() {
-  const tbody = document.getElementById('prodblock-products-tbody');
-  if (!tbody) return;
-  const products = prodBlockProducts.filter(p => p.group === prodBlockActiveMachine);
-  tbody.innerHTML = products.length ? products.map(p => `
-    <tr>
-      <td class="muted">${escapeHtmlAttr(p.code)}</td>
-      <td style="text-align:right;">${p.avgWeight}</td>
-      <td style="text-align:right;">${p.speed}</td>
-      <td style="text-align:left;">${escapeHtmlAttr(p.name)}</td>
-      <td style="white-space:nowrap;">
-        <button class="btn btn-ghost btn-sm" onclick="openProdProductModal('edit','${p.id}')">แก้ไข</button>
-        <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteProdProduct('${p.id}')">ลบ</button>
-      </td>
-    </tr>`).join('') : `<tr><td colspan="5" class="muted" style="text-align:center;padding:16px;">ยังไม่มี Size Roll ในเครื่อง ${escapeHtmlAttr(prodBlockActiveMachine)}</td></tr>`;
-}
-
-function renderProdBlockSummaryTable() {
-  const wrap = document.getElementById('prodblock-summary-wrap');
-  if (!wrap) return;
-  const machine = prodBlockActiveMachine;
-  const viewDate = parseISODate(prodBlockViewMonth);
-  const year = viewDate.getFullYear();
-  const month = viewDate.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-  let html = '<table style="border-collapse:collapse;min-width:600px;"><thead><tr><th style="min-width:180px;text-align:left;">รายการ</th>';
-  for (let day = 1; day <= daysInMonth; day++) html += `<th style="min-width:40px;">${day}</th>`;
-  html += '</tr></thead><tbody>';
-  ['pdTime', 'pmSetup', 'otherDowntime', 'planDay'].forEach(metric => {
-    html += `<tr><td style="text-align:left;font-weight:700;">${PROD_BLOCK_SUMMARY_LABELS[metric]}</td>`;
-    for (let day = 1; day <= daysInMonth; day++) {
-      const iso = toISODate(new Date(year, month, day));
-      const val = prodBlockSummary[machine + '|' + iso + '|' + metric];
-      html += `<td style="text-align:center;cursor:pointer;" onclick="openProdSummaryModal('${machine}','${iso}','${metric}')">${val !== undefined && val !== '' ? escapeHtmlAttr(val) : '—'}</td>`;
-    }
-    html += '</tr>';
-  });
-  html += '</tbody></table>';
-  wrap.innerHTML = html;
-}
-
 function renderProdBlock() {
   renderProdBlockTabs();
   renderProdBlockCalendar();
-  renderProdBlockProductsTable();
-  renderProdBlockSummaryTable();
 }
 
 function prodCellFormFields() {
@@ -4179,29 +4109,6 @@ function openProdDayAddModal(machine, dateIso) {
   };
 }
 
-function openProdSummaryModal(group, dateIso, metric) {
-  const key = group + '|' + dateIso + '|' + metric;
-  document.getElementById('modal-title').textContent = PROD_BLOCK_SUMMARY_LABELS[metric] + ' — ' + group + ' — ' + dateIso;
-  document.getElementById('modal-body').innerHTML = `
-    <div class="modal-row full">
-      <div class="form-group"><label class="form-label">${escapeHtmlAttr(PROD_BLOCK_SUMMARY_LABELS[metric])}</label><input class="form-input" id="ps-val" placeholder="เช่น 7.5 หรือ 85.0%"></div>
-    </div>`;
-  document.getElementById('ps-val').value = prodBlockSummary[key] != null ? prodBlockSummary[key] : '';
-  document.getElementById('modal-overlay').classList.add('open');
-
-  document.querySelector('.modal-footer .btn-primary').onclick = function() {
-    const val = document.getElementById('ps-val').value.trim();
-    if (val === '') { delete prodBlockSummary[key]; } else { prodBlockSummary[key] = val; }
-    persistState();
-    renderProdBlock();
-    const btn = this;
-    const orig = btn.innerHTML;
-    btn.innerHTML = '✓ บันทึกแล้ว';
-    btn.style.background = 'var(--green)';
-    setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.onclick = saveModal; closeModal(); }, 700);
-  };
-}
-
 function prodProductFormFields() {
   const groupOptions = ROLL_MACHINES.map(m => `<option value="${m}">${m}</option>`).join('');
   return `
@@ -4254,15 +4161,6 @@ function openProdProductModal(mode, id) {
     btn.style.background = 'var(--green)';
     setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.onclick = saveModal; closeModal(); }, 700);
   };
-}
-
-function deleteProdProduct(id) {
-  const p = prodBlockProducts.find(x => x.id === id);
-  if (!p) return;
-  if (!confirm('ลบสินค้า "' + p.code + ' — ' + p.name + '" ออกจากตาราง?')) return;
-  prodBlockProducts = prodBlockProducts.filter(x => x.id !== id);
-  persistState();
-  renderProdBlock();
 }
 
 // ─── PRODUCTION BLOCK — นำเข้าจาก Excel ─────────────────────────────────────
