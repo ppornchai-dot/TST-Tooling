@@ -3984,7 +3984,11 @@ function renderProdBlockCalendar() {
       const legacyChips = legacy.map(({ product, cell }) => {
         const chipClass = cell.color === 'red' ? 'chip-red' : cell.color === 'blue' ? 'chip-blue' : cell.color === 'green' ? 'chip-green' : 'chip-purple';
         const qtyLabel = cell.qty != null ? ' · ' + cell.qty : '';
-        return `<span class="chip ${chipClass}" style="font-size:10px;cursor:pointer;" onclick="openProdCellModal('${product.id}','${iso}')" title="${escapeHtmlAttr(product.code)} — ${escapeHtmlAttr(product.name)}">${escapeHtmlAttr(product.code)}${qtyLabel}</span>`;
+        return `<span class="chip ${chipClass}" style="font-size:10px;" title="${escapeHtmlAttr(product.code)} — ${escapeHtmlAttr(product.name)}">
+          <span style="cursor:pointer;" onclick="openProdCellModal('${product.id}','${iso}')">${escapeHtmlAttr(product.code)}${qtyLabel}</span>
+          <button type="button" title="แก้ไข" onclick="openProdCellModal('${product.id}','${iso}')" style="border:none;background:none;color:inherit;cursor:pointer;padding:0;font-size:10px;line-height:1;">✎</button>
+          <button type="button" title="ลบ" onclick="deleteProdCell('${product.id}','${iso}')" style="border:none;background:none;color:inherit;cursor:pointer;padding:0;font-size:10px;line-height:1;">✕</button>
+        </span>`;
       });
       const entryChips = (entriesByDate[iso] || []).map(e => {
         const parts = [];
@@ -3999,7 +4003,11 @@ function renderProdBlockCalendar() {
           e.sizing.set ? 'Sizing: ' + e.sizing.set + (e.sizing.color ? ' (' + e.sizing.color + ')' : '') : '',
           e.th.set ? 'TH: ' + e.th.set + (e.th.color ? ' (' + e.th.color + ')' : '') : '',
         ].filter(Boolean).join(' | ');
-        return `<span class="chip ${chipClass}" style="font-size:10px;cursor:pointer;" onclick="openProdEntryModal('${e.id}')" title="${escapeHtmlAttr(titleParts)}">${label}${qtyLabel}</span>`;
+        return `<span class="chip ${chipClass}" style="font-size:10px;" title="${escapeHtmlAttr(titleParts)}">
+          <span style="cursor:pointer;" onclick="openProdEntryModal('${e.id}')">${label}${qtyLabel}</span>
+          <button type="button" title="แก้ไข" onclick="openProdEntryModal('${e.id}')" style="border:none;background:none;color:inherit;cursor:pointer;padding:0;font-size:10px;line-height:1;">✎</button>
+          <button type="button" title="ลบ" onclick="deleteProdEntry('${e.id}')" style="border:none;background:none;color:inherit;cursor:pointer;padding:0;font-size:10px;line-height:1;">✕</button>
+        </span>`;
       });
       bodyHtml = `<div style="margin-top:6px;display:flex;flex-direction:column;gap:4px;">${legacyChips.concat(entryChips).join('')}</div>`;
     }
@@ -4076,6 +4084,15 @@ function openProdCellModal(productId, dateIso) {
     btn.style.background = 'var(--green)';
     setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.onclick = saveModal; closeModal(); }, 700);
   };
+}
+
+function deleteProdCell(productId, dateIso) {
+  const product = prodBlockProducts.find(p => p.id === productId);
+  const label = product ? product.code : productId;
+  if (!confirm('ลบรายการ "' + label + '" วันที่ ' + dateIso + ' ออกจากปฏิทิน?')) return;
+  delete prodBlockCells[productId + '|' + dateIso];
+  persistState();
+  renderProdBlock();
 }
 
 // Size Roll แต่ละหมวด (Forming/Sizing/TH) ดึงจากทะเบียน Tooling — เฉพาะ Set ที่ผูกไว้กับเครื่องนี้ (rollSetMachines)
