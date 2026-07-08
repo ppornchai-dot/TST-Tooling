@@ -3975,7 +3975,13 @@ function renderProdBlockCalendar() {
 
     let bodyHtml;
     if (isPM) {
-      bodyHtml = `<div style="margin-top:12px;text-align:center;font-weight:700;font-size:11px;">PM<br>หยุดทั้งเครื่อง</div>`;
+      bodyHtml = `<div style="margin-top:10px;text-align:center;font-weight:700;font-size:11px;">
+        PM<br>หยุดทั้งเครื่อง
+        <div style="margin-top:6px;display:flex;justify-content:center;gap:10px;">
+          <button type="button" title="แก้ไข" onclick="openProdDayAddModal('${machine}','${iso}')" style="border:none;background:none;color:#fff;cursor:pointer;padding:0;font-size:12px;line-height:1;">✎</button>
+          <button type="button" title="ยกเลิก PM" onclick="deleteProdPM('${machine}','${iso}')" style="border:none;background:none;color:#fff;cursor:pointer;padding:0;font-size:12px;line-height:1;">✕</button>
+        </div>
+      </div>`;
     } else {
       const legacy = prodBlockProducts
         .filter(p => p.group === machine)
@@ -4137,7 +4143,7 @@ function onProdEntrySetChange(prefix) {
   colorSel.innerHTML = '<option value="">— ทั้งหมด —</option>' + palette.map(c => `<option value="${c.key}">${escapeHtmlAttr(c.label)}</option>`).join('');
 }
 
-function prodDayAddFormFields(machine, entry) {
+function prodDayAddFormFields(machine, entry, pmChecked, dateIso) {
   const days = entry ? entry.days : 1;
   const qty = entry && entry.qty != null ? entry.qty : '';
   const lotColor = entry && entry.lotColor ? entry.lotColor : 'none';
@@ -4160,10 +4166,14 @@ function prodDayAddFormFields(machine, entry) {
     ${!entry ? `
     <div class="modal-row full">
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
-        <input type="checkbox" id="pda-pm" style="width:16px;height:16px;">
+        <input type="checkbox" id="pda-pm"${pmChecked ? ' checked' : ''} style="width:16px;height:16px;">
         ตั้งเป็นวันหยุด PM สำหรับเครื่อง ${escapeHtmlAttr(machine)} ทั้งเครื่อง (ตามจำนวนวันด้านบน)
       </label>
-    </div>` : `
+    </div>
+    ${pmChecked ? `
+    <div class="modal-row full" style="text-align:right;">
+      <button type="button" class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteProdPM('${escapeHtmlAttr(machine)}','${dateIso}')">ยกเลิกวันหยุด PM วันนี้</button>
+    </div>` : ''}` : `
     <div class="modal-row full" style="text-align:right;">
       <button type="button" class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteProdEntry('${entry.id}')">ลบรายการนี้</button>
     </div>`}`;
@@ -4176,8 +4186,10 @@ function readProdEntryCategoryField(prefix) {
 }
 
 function openProdDayAddModal(machine, dateIso) {
-  document.getElementById('modal-title').textContent = 'เพิ่มรายการ — เครื่อง ' + machine + ' — ' + dateIso;
-  document.getElementById('modal-body').innerHTML = prodDayAddFormFields(machine, null);
+  const pmKeyToday = machine + '|' + dateIso;
+  const wasPM = !!prodBlockPM[pmKeyToday];
+  document.getElementById('modal-title').textContent = (wasPM ? 'แก้ไขวันหยุด PM' : 'เพิ่มรายการ') + ' — เครื่อง ' + machine + ' — ' + dateIso;
+  document.getElementById('modal-body').innerHTML = prodDayAddFormFields(machine, null, wasPM, dateIso);
   document.getElementById('modal-overlay').classList.add('open');
 
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
@@ -4202,10 +4214,15 @@ function openProdDayAddModal(machine, dateIso) {
       finish();
       return;
     }
+    if (wasPM) delete prodBlockPM[pmKeyToday];
     const forming = readProdEntryCategoryField('forming');
     const sizing = readProdEntryCategoryField('sizing');
     const th = readProdEntryCategoryField('th');
-    if (!forming.set && !sizing.set && !th.set) { alert('กรุณาเลือก Size Roll อย่างน้อย 1 หมวด (Forming/Sizing/TH) หรือเลือกตั้งเป็นวันหยุด PM'); return; }
+    if (!forming.set && !sizing.set && !th.set) {
+      if (wasPM) { finish(); return; } // ยกเลิก PM เฉยๆ โดยไม่ได้เพิ่มรายการใหม่ ถือว่าบันทึกสำเร็จ
+      alert('กรุณาเลือก Size Roll อย่างน้อย 1 หมวด (Forming/Sizing/TH) หรือเลือกตั้งเป็นวันหยุด PM');
+      return;
+    }
     const qtyStr = document.getElementById('pda-qty').value.trim();
     const lotColor = document.getElementById('pda-color').value;
     prodBlockEntrySeq++;
@@ -4218,6 +4235,14 @@ function openProdDayAddModal(machine, dateIso) {
     });
     finish();
   };
+}
+
+function deleteProdPM(machine, dateIso) {
+  if (!confirm('ยกเลิกวันหยุด PM ของเครื่อง ' + machine + ' วันที่ ' + dateIso + '?')) return;
+  delete prodBlockPM[machine + '|' + dateIso];
+  persistState();
+  renderProdBlock();
+  closeModal();
 }
 
 function openProdEntryModal(entryId) {
