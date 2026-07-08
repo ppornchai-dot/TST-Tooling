@@ -563,6 +563,8 @@ canvas{display:block;}
   border-bottom:1px solid var(--border-light);
   padding:6px 7px 7px;
   min-height:88px;
+  min-width:0;
+  overflow:hidden;
   vertical-align:top;
   background:var(--bg-surface);
   cursor:pointer;
@@ -584,12 +586,12 @@ canvas{display:block;}
   font-size:12px;font-weight:700;color:var(--text-2);
   margin-bottom:5px;width:22px;height:22px;display:grid;place-items:center;
 }
-.cal-events{display:flex;flex-direction:column;gap:2px;}
+.cal-events{display:flex;flex-direction:column;gap:2px;min-width:0;}
 .cal-event{
   display:flex;align-items:center;gap:4px;
   padding:2px 5px;border-radius:3px;
   font-size:10px;font-weight:600;white-space:nowrap;
-  overflow:hidden;text-overflow:ellipsis;max-width:100%;
+  overflow:hidden;text-overflow:ellipsis;max-width:100%;width:100%;box-sizing:border-box;
   line-height:1.4;
 }
 .cal-event.ev-done   {background:rgba(43,181,122,.18);color:#3DD68C;}
