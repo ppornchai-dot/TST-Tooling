@@ -1810,19 +1810,25 @@ function toolingStatusCounts(items) {
   const expired = items.filter(r => r.status === 'หมดอายุ' || r.status === 'มีปัญหา').length;
   return { ready, repair, expired, total: items.length };
 }
-function goToToolingRegistry(key) {
-  showPage('registry');
-  switchRegTab(key);
+let toolingStatusExpandedKey = null;
+function toggleToolingStatusRow(key) {
+  toolingStatusExpandedKey = (toolingStatusExpandedKey === key) ? null : key;
+  renderToolingStatusTable();
 }
 function renderToolingStatusTable() {
   const tbody = document.getElementById('tbl-tooling-status');
   if (!tbody) return;
   tbody.innerHTML = TOOLING_STATUS_CATEGORIES.map(cat => {
-    const { ready, repair, expired, total } = toolingStatusCounts(toolingData[cat.key]);
+    const items = toolingData[cat.key];
+    const { ready, repair, expired, total } = toolingStatusCounts(items);
     const pct = total ? Math.round(ready / total * 100) : 0;
     const pctCol = pct >= 85 ? C_GREEN : pct >= 60 ? C_AMBER : C_RED;
-    return `<tr style="cursor:pointer;" onclick="goToToolingRegistry('${cat.key}')" title="ดูรายการ ${escapeHtmlAttr(cat.name)} ในทะเบียน Tooling">
-      <td style="color:var(--text-1);font-weight:600;">${cat.name}</td>
+    const expanded = toolingStatusExpandedKey === cat.key;
+
+    const row = `<tr style="cursor:pointer;" onclick="toggleToolingStatusRow('${cat.key}')" title="ดูรายการ ${escapeHtmlAttr(cat.name)}">
+      <td style="color:var(--text-1);font-weight:600;">
+        <span style="display:inline-block;width:14px;color:var(--text-3);transition:transform .15s;transform:rotate(${expanded ? 90 : 0}deg);">▸</span>${cat.name}
+      </td>
       <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${C_GREEN};">${ready}</td>
       <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${C_AMBER};">${repair}</td>
       <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${C_RED};">${expired}</td>
@@ -1836,6 +1842,20 @@ function renderToolingStatusTable() {
         </div>
       </td>
     </tr>`;
+
+    const detailRow = !expanded ? '' : `<tr>
+      <td colspan="6" style="background:var(--bg-panel);padding:12px 16px;">
+        ${items.length ? `<div style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto;">
+          ${items.map(it => `<div style="display:flex;align-items:center;gap:12px;padding:6px 10px;background:var(--bg-surface);border-radius:6px;">
+            <span style="font-size:12px;color:var(--text-3);min-width:70px;">${escapeHtmlAttr(it.id)}</span>
+            <span style="font-size:13px;color:var(--text-1);flex:1;">${escapeHtmlAttr(it.name)}</span>
+            ${statusChip(it.status)}
+          </div>`).join('')}
+        </div>` : `<div style="text-align:center;color:var(--text-3);font-size:12px;padding:8px;">ไม่มีรายการ</div>`}
+      </td>
+    </tr>`;
+
+    return row + detailRow;
   }).join('');
 }
 
