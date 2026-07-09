@@ -2833,8 +2833,8 @@ function planTaskFormFields() {
       <div class="form-group"><label class="form-label" id="pf-plantime-label">เวลาแต่ง Roll (นาที) — จากทะเบียน Tooling</label><input class="form-input" id="pf-plantime" type="text" disabled></div>
     </div>
     <div class="modal-row">
-      <div class="form-group"><label class="form-label">เริ่มงาน</label><input class="form-input" id="pf-start" type="time"></div>
-      <div class="form-group"><label class="form-label">จบงาน</label><input class="form-input" id="pf-end" type="time"></div>
+      <div class="form-group"><label class="form-label">เริ่มงาน</label><input class="form-input" id="pf-start" type="time" onchange="updatePlanEndTime()"></div>
+      <div class="form-group"><label class="form-label">จบงาน — คำนวณให้อัตโนมัติจากเวลารวม</label><input class="form-input" id="pf-end" type="time"></div>
     </div>`;
 }
 
@@ -2875,6 +2875,25 @@ function fillPlanRollReadonly(setName, colorKey) {
   document.getElementById('pf-rollid').value = rolls.length ? (rolls.length + ' ตัว') : (setName ? 'ไม่พบ Roll ตามเงื่อนไขนี้' : '');
   document.getElementById('pf-rollname').value = rolls.map(r => r.name).join(', ');
   document.getElementById('pf-plantime').value = rolls.length ? String(total) : '';
+  updatePlanEndTime();
+}
+
+// รวมเวลาทำงาน (นาที) จากเวลาแต่ง/ขัด Roll ทั้งหมด แล้วคำนวณ "จบงาน" จาก "เริ่มงาน" ให้อัตโนมัติ
+function computePlanEndTime(startTime, totalMinutes) {
+  if (!startTime || !totalMinutes) return '';
+  const [h, m] = startTime.split(':').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return '';
+  const totalM = h * 60 + m + Math.round(totalMinutes);
+  const eh = Math.floor(totalM / 60) % 24;
+  const em = totalM % 60;
+  return String(eh).padStart(2, '0') + ':' + String(em).padStart(2, '0');
+}
+
+function updatePlanEndTime() {
+  const start = (document.getElementById('pf-start') || {}).value;
+  const total = parseFloat((document.getElementById('pf-plantime') || {}).value) || 0;
+  const endEl = document.getElementById('pf-end');
+  if (endEl) endEl.value = computePlanEndTime(start, total);
 }
 
 function onPlanRollSetChange() {
@@ -2898,11 +2917,11 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   const planTimeLabel = document.getElementById('pf-plantime-label');
   if (planTimeLabel) planTimeLabel.textContent = PLAN_WORKTYPE_META[workType].metricLabel + ' — จากทะเบียน Tooling';
   document.getElementById('pf-date').value = task ? task.date : (presetDate || toISODate(planViewDate));
+  document.getElementById('pf-start').value = task ? task.startTime : '08:00';
   populatePlanRollSetSelect(task ? task.rollSet : null);
   populatePlanRollColorSelect(task ? task.rollSet : null, task ? task.rollColor : null);
-  fillPlanRollReadonly(task ? task.rollSet : null, task ? task.rollColor : null);
-  document.getElementById('pf-start').value = task ? task.startTime : '08:00';
-  document.getElementById('pf-end').value = task ? task.endTime : '';
+  fillPlanRollReadonly(task ? task.rollSet : null, task ? task.rollColor : null); // คำนวณ "จบงาน" ให้อัตโนมัติในตัว
+  if (task) document.getElementById('pf-end').value = task.endTime; // แก้ไขงานเดิม — คงเวลาจบที่บันทึกไว้ ไม่ทับด้วยค่าคำนวณใหม่
   document.getElementById('modal-overlay').classList.add('open');
 
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
