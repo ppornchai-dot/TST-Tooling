@@ -3185,6 +3185,16 @@ function restoreState() {
 }
 restoreState();
 
+// migration: เติมสมาชิก "ช่างเครื่อง" ให้บราวเซอร์ที่มีข้อมูลทีมเดิม (ก่อนเพิ่ม role นี้) อยู่แล้ว
+(function seedOperatorTeamMembers() {
+  if (teamMembers.some(m => m.role === 'operator')) return;
+  ['P1', 'P2', 'P3', 'P4'].forEach(p => {
+    teamSeq++;
+    teamMembers.push({ id: 'TM-' + String(teamSeq).padStart(4, '0'), name: 'ช่างเครื่อง ' + p, role: 'operator', roleLabel: 'ช่างเครื่อง', avatarInitials: p, avatarColor: 'var(--green)', status: 'available', monthTasks: 0, pendingTasks: 0, onTimePct: null, skills: [] });
+  });
+  persistState();
+})();
+
 function getRollSets() {
   const sets = [];
   toolingData.roll.forEach(r => { if (r.set && !sets.includes(r.set)) sets.push(r.set); });
