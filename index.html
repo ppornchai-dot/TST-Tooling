@@ -2997,7 +2997,8 @@ function setRollSetStatus(setName, status) {
 
 // สถานะความพร้อมใช้งานของแต่ละ "ชุดสี Roll" — คีย์แยกตาม Size Roll + สี เพราะสีเป็นอิสระต่อกลุ่ม
 let rollColorStatus = {};
-function getRollColorStatus(colorKey) { return rollColorStatus[selectedRollSet + '|' + colorKey] || 'ready'; }
+function rollColorStatusFor(setName, colorKey) { return rollColorStatus[setName + '|' + colorKey] || 'ready'; }
+function getRollColorStatus(colorKey) { return rollColorStatusFor(selectedRollSet, colorKey); }
 function setRollColorStatus(colorKey, status) {
   if (!selectedRollSet) return;
   const k = selectedRollSet + '|' + colorKey;
@@ -4223,15 +4224,15 @@ function deleteProdCell(productId, dateIso) {
   renderProdBlock();
 }
 
-// Size Roll แต่ละหมวด (Forming/Sizing/TH) ดึงจากทะเบียน Tooling — เฉพาะ Set ที่ผูกไว้กับเครื่องนี้ (rollSetMachines)
+// Size Roll แต่ละหมวด (Forming/Sizing/TH) ดึงจากทะเบียน Tooling — เฉพาะ Set ที่ผูกไว้กับเครื่องนี้ (rollSetMachines) และสถานะพร้อมใช้งาน
 function getRollSetsFor(machine, category) {
-  return getRollSets().filter(s => detectSizeRollCategory(s) === category && (rollSetMachines[s] || []).includes(machine));
+  return getRollSets().filter(s => detectSizeRollCategory(s) === category && (rollSetMachines[s] || []).includes(machine) && getRollSetStatus(s) !== 'not-ready');
 }
 
 function prodEntryCategoryFieldHtml(prefix, category, machine, selectedSet, selectedColor) {
   const sets = getRollSetsFor(machine, category);
   const setOptions = sets.map(s => `<option value="${escapeHtmlAttr(s)}"${s === selectedSet ? ' selected' : ''}>${escapeHtmlAttr(s)}</option>`).join('');
-  const palette = selectedSet ? getSetPalette(selectedSet) : [];
+  const palette = selectedSet ? getSetPalette(selectedSet).filter(c => rollColorStatusFor(selectedSet, c.key) !== 'not-ready') : [];
   const colorOptions = palette.map(c => `<option value="${c.key}"${c.key === selectedColor ? ' selected' : ''}>${escapeHtmlAttr(c.label)}</option>`).join('');
   return `
     <div class="modal-row">
@@ -4261,7 +4262,7 @@ function onProdEntrySetChange(prefix) {
     return;
   }
   colorSel.disabled = false;
-  const palette = getSetPalette(setName);
+  const palette = getSetPalette(setName).filter(c => rollColorStatusFor(setName, c.key) !== 'not-ready');
   colorSel.innerHTML = '<option value="">— ทั้งหมด —</option>' + palette.map(c => `<option value="${c.key}">${escapeHtmlAttr(c.label)}</option>`).join('');
 }
 
