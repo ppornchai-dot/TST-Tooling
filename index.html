@@ -382,28 +382,6 @@ tbody td.muted{color:var(--text-2);}
 /* ─── CANVAS CHARTS ──────────────────────────── */
 canvas{display:block;}
 
-/* ─── DASH TABS ─────────────────────────────── */
-.dash-tabs{
-  display:flex;gap:2px;
-  background:var(--bg-panel);
-  border-radius:6px;
-  padding:3px;
-}
-.dash-tab{
-  padding:5px 16px;border-radius:4px;
-  font-size:12px;font-weight:600;cursor:pointer;
-  border:none;background:transparent;
-  color:var(--text-3);transition:background .15s,color .15s;
-}
-.dash-tab.active{
-  background:var(--bg-surface);
-  color:var(--text-1);
-  box-shadow:0 1px 3px rgba(0,0,0,.3);
-}
-.dash-tab:hover:not(.active){color:var(--text-2);}
-.dash-panel{display:none;}
-.dash-panel.active{display:block;}
-
 .legend-dot{
   display:inline-flex;align-items:center;gap:5px;
   font-size:11px;color:var(--text-3);
@@ -892,95 +870,6 @@ canvas{display:block;}
             </thead>
             <tbody id="tbl-tooling-status"></tbody>
           </table>
-        </div>
-      </div>
-
-      <!-- BREAKDOWN TABS -->
-      <div class="card" style="margin-bottom:18px;">
-        <div class="card-header" style="padding-bottom:0;border-bottom:none;flex-wrap:wrap;gap:8px;">
-          <span class="card-title" style="font-size:14px;">สถานะงาน — แบ่งตาม</span>
-          <div class="dash-tabs">
-            <button class="dash-tab active" onclick="switchDashTab('dept')">รายแผนก</button>
-            <button class="dash-tab" onclick="switchDashTab('machine')">รายเครื่อง</button>
-            <button class="dash-tab" onclick="switchDashTab('person')">รายบุคคล</button>
-          </div>
-          <div style="margin-left:auto;display:flex;align-items:center;gap:14px;">
-            <span class="legend-dot" style="--c:var(--green);">งานสำเร็จ</span>
-            <span class="legend-dot" style="--c:var(--amber);">งานค้าง</span>
-            <span class="legend-dot" style="--c:var(--red);">งานตกแผน</span>
-          </div>
-        </div>
-
-        <!-- TAB: DEPT -->
-        <div class="dash-panel active" id="dash-dept">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;">
-            <div style="padding:20px 20px 20px 20px;border-right:1px solid var(--border-light);">
-              <canvas id="chart-dept" width="420" height="260"></canvas>
-            </div>
-            <div style="overflow-x:auto;">
-              <table>
-                <thead>
-                  <tr>
-                    <th>แผนก</th>
-                    <th style="text-align:right;color:var(--green);">สำเร็จ</th>
-                    <th style="text-align:right;color:var(--amber);">ค้าง</th>
-                    <th style="text-align:right;color:var(--red);">ตกแผน</th>
-                    <th>รวม</th>
-                    <th>% สำเร็จ</th>
-                  </tr>
-                </thead>
-                <tbody id="tbl-dept"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <!-- TAB: MACHINE -->
-        <div class="dash-panel" id="dash-machine">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;">
-            <div style="padding:20px;border-right:1px solid var(--border-light);">
-              <canvas id="chart-machine" width="420" height="260"></canvas>
-            </div>
-            <div style="overflow-x:auto;">
-              <table>
-                <thead>
-                  <tr>
-                    <th>เครื่องจักร</th>
-                    <th style="text-align:right;color:var(--green);">สำเร็จ</th>
-                    <th style="text-align:right;color:var(--amber);">ค้าง</th>
-                    <th style="text-align:right;color:var(--red);">ตกแผน</th>
-                    <th>รวม</th>
-                    <th>% สำเร็จ</th>
-                  </tr>
-                </thead>
-                <tbody id="tbl-machine"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <!-- TAB: PERSON -->
-        <div class="dash-panel" id="dash-person">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;">
-            <div style="padding:20px;border-right:1px solid var(--border-light);">
-              <canvas id="chart-person" width="420" height="260"></canvas>
-            </div>
-            <div style="overflow-x:auto;">
-              <table>
-                <thead>
-                  <tr>
-                    <th>ชื่อ-ตำแหน่ง</th>
-                    <th style="text-align:right;color:var(--green);">สำเร็จ</th>
-                    <th style="text-align:right;color:var(--amber);">ค้าง</th>
-                    <th style="text-align:right;color:var(--red);">ตกแผน</th>
-                    <th>รวม</th>
-                    <th>% สำเร็จ</th>
-                  </tr>
-                </thead>
-                <tbody id="tbl-person"></tbody>
-              </table>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -1868,37 +1757,9 @@ canvas{display:block;}
 
 <script>
 // ─── DATA ─────────────────────────────────────────────────────────────────────
-const DATA = {
-  dept: [
-    { name: 'แผนกกลึง CNC',       done: 28, pending: 4, overdue: 2 },
-    { name: 'แผนกกัด / Milling',  done: 22, pending: 5, overdue: 3 },
-    { name: 'แผนกเจาะ / Drilling',done: 14, pending: 3, overdue: 1 },
-    { name: 'แผนก QC',             done: 12, pending: 2, overdue: 0 },
-    { name: 'แผนก Maintenance',    done: 8,  pending: 2, overdue: 1 },
-  ],
-  machine: [
-    { name: 'CNC-01 Mazak QT',     done: 18, pending: 3, overdue: 2 },
-    { name: 'CNC-02 Fanuc 0i',     done: 15, pending: 2, overdue: 1 },
-    { name: 'VMC-01 Haas VF2',     done: 14, pending: 3, overdue: 2 },
-    { name: 'VMC-02 Okuma MB46V',  done: 12, pending: 2, overdue: 1 },
-    { name: 'Drill-01 Radial',     done: 11, pending: 3, overdue: 0 },
-    { name: 'Grinder-01 Jung',     done: 14, pending: 3, overdue: 1 },
-  ],
-  person: [
-    { name: 'สมชาย วงษ์ศรี',      sub: 'วิศวกร Tooling อาวุโส', done: 24, pending: 2, overdue: 1 },
-    { name: 'วิรัตน์ สุขสม',      sub: 'ช่าง Tooling',           done: 18, pending: 3, overdue: 2 },
-    { name: 'อนุชา ทองดี',        sub: 'ช่าง QC / Calibration', done: 15, pending: 1, overdue: 0 },
-    { name: 'ปิยะ รักษ์ดี',       sub: 'ช่าง Tooling',           done: 20, pending: 1, overdue: 1 },
-    { name: 'พรชัย ป.',            sub: 'วิศวกร Tooling',         done: 7,  pending: 9, overdue: 3 },
-  ],
-};
-
 const C_GREEN  = '#2BB57A';
 const C_AMBER  = '#E8971E';
 const C_RED    = '#D95B5B';
-const C_GRID   = '#C0D0DF';
-const C_TEXT   = '#6A8AA4';
-const C_TEXT2  = '#3A5870';
 
 // ─── NAVIGATION ───────────────────────────────────────────────────────────────
 let currentPage = 'dashboard';
@@ -1930,149 +1791,10 @@ function showPage(id) {
   if (id === 'dashboard') initDashboard();
 }
 
-// ─── DASH TAB SWITCHER ────────────────────────────────────────────────────────
-let currentTab = 'dept';
-function switchDashTab(tab) {
-  currentTab = tab;
-  document.querySelectorAll('.dash-tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.dash-panel').forEach(p => p.classList.remove('active'));
-  event.currentTarget.classList.add('active');
-  document.getElementById('dash-' + tab).classList.add('active');
-  setTimeout(() => drawBreakdownChart(tab), 10);
-  buildTable(tab);
-}
-
 function initDashboard() {
-  drawBreakdownChart('dept');
-  buildTable('dept');
   renderToolingStatusTable();
   renderCal();
   renderCalDetail(null);
-}
-
-// ─── STACKED HORIZONTAL BAR CHART ────────────────────────────────────────────
-function drawBreakdownChart(key) {
-  const rows = DATA[key];
-  const canvasId = 'chart-' + key;
-  const c = document.getElementById(canvasId);
-  if (!c) return;
-
-  // Auto-size canvas height to data
-  const ROW_H = 38;
-  const PAD = { t: 10, r: 24, b: 28, l: key === 'person' ? 130 : key === 'machine' ? 150 : 130 };
-  const W = c.clientWidth || c.width;
-  const H = PAD.t + rows.length * ROW_H + PAD.b + 24;
-  c.width = W;
-  c.height = H;
-
-  const ctx = c.getContext('2d');
-  ctx.clearRect(0, 0, W, H);
-
-  const gW = W - PAD.l - PAD.r;
-  const maxTotal = Math.max(...rows.map(r => r.done + r.pending + r.overdue));
-  const scale = gW / (maxTotal * 1.05);
-
-  // Grid lines at nice intervals
-  const step = maxTotal > 40 ? 10 : maxTotal > 20 ? 5 : 5;
-  for (let v = 0; v <= maxTotal + step; v += step) {
-    const x = PAD.l + v * scale;
-    if (x > W - PAD.r + 1) break;
-    ctx.strokeStyle = C_GRID;
-    ctx.lineWidth = 1;
-    ctx.setLineDash([3, 4]);
-    ctx.beginPath(); ctx.moveTo(x, PAD.t); ctx.lineTo(x, H - PAD.b); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = C_TEXT;
-    ctx.font = '10px system-ui';
-    ctx.textAlign = 'center';
-    ctx.fillText(v, x, H - PAD.b + 12);
-  }
-
-  rows.forEach((r, i) => {
-    const y = PAD.t + i * ROW_H + ROW_H * 0.15;
-    const bh = ROW_H * 0.55;
-    let x = PAD.l;
-
-    // Label
-    ctx.fillStyle = C_TEXT2;
-    ctx.font = `600 11px system-ui`;
-    ctx.textAlign = 'right';
-    const label = r.name.length > 18 ? r.name.slice(0, 17) + '…' : r.name;
-    ctx.fillText(label, PAD.l - 8, y + bh / 2 + 4);
-
-    // Segments
-    const segs = [
-      { v: r.done,    col: C_GREEN },
-      { v: r.pending, col: C_AMBER },
-      { v: r.overdue, col: C_RED   },
-    ];
-    segs.forEach(({ v, col }) => {
-      if (!v) return;
-      const sw = v * scale;
-      ctx.fillStyle = col;
-      ctx.beginPath();
-      ctx.roundRect(x, y, sw, bh, 2);
-      ctx.fill();
-      // Value label inside segment if wide enough
-      if (sw > 18) {
-        ctx.fillStyle = 'rgba(255,255,255,0.85)';
-        ctx.font = 'bold 10px system-ui';
-        ctx.textAlign = 'center';
-        ctx.fillText(v, x + sw / 2, y + bh / 2 + 4);
-      }
-      x += sw + 2;
-    });
-
-    // Total label
-    const total = r.done + r.pending + r.overdue;
-    ctx.fillStyle = C_TEXT;
-    ctx.font = '10px system-ui';
-    ctx.textAlign = 'left';
-    ctx.fillText(total, x + 4, y + bh / 2 + 4);
-  });
-
-  // Legend at bottom
-  const legends = [['งานสำเร็จ', C_GREEN], ['งานค้าง', C_AMBER], ['งานตกแผน', C_RED]];
-  let lx = PAD.l;
-  legends.forEach(([lbl, col]) => {
-    ctx.fillStyle = col;
-    ctx.fillRect(lx, H - 14, 9, 9);
-    ctx.fillStyle = C_TEXT;
-    ctx.font = '10px system-ui';
-    ctx.textAlign = 'left';
-    ctx.fillText(lbl, lx + 12, H - 6);
-    lx += 80;
-  });
-}
-
-// ─── TABLE BUILDER ────────────────────────────────────────────────────────────
-function buildTable(key) {
-  const rows = DATA[key];
-  const tbody = document.getElementById('tbl-' + key);
-  if (!tbody) return;
-  tbody.innerHTML = rows.map(r => {
-    const total = r.done + r.pending + r.overdue;
-    const pct = Math.round(r.done / total * 100);
-    const pctCol = pct >= 85 ? C_GREEN : pct >= 60 ? C_AMBER : C_RED;
-    const nameCell = r.sub
-      ? `<td><strong style="color:var(--text-1);">${r.name}</strong><div style="font-size:11px;color:var(--text-3);">${r.sub}</div></td>`
-      : `<td style="color:var(--text-1);font-weight:600;">${r.name}</td>`;
-    return `<tr>
-      ${nameCell}
-      <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${C_GREEN};">${r.done}</td>
-      <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${C_AMBER};">${r.pending}</td>
-      <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${C_RED};">${r.overdue}</td>
-      <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--text-2);">${total}</td>
-      <td>
-        <div style="display:flex;align-items:center;gap:7px;">
-          <div style="width:54px;background:var(--bg-panel);border-radius:4px;height:6px;overflow:hidden;">
-            <div style="height:100%;width:${pct}%;background:${pctCol};border-radius:4px;"></div>
-          </div>
-          <span style="font-size:12px;font-weight:700;color:${pctCol};font-variant-numeric:tabular-nums;">${pct}%</span>
-        </div>
-      </td>
-    </tr>`;
-  }).join('');
 }
 
 // ─── DASHBOARD: สถานะ Tooling (Roll / Roll SQ / ใบเลื่อย / มีดสลิตเตอร์) ──────
