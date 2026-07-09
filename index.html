@@ -2735,7 +2735,7 @@ function renderPlanDay() {
       <td>${escapeHtmlAttr(planRollColorLabel(t))}</td>
       <td class="muted">${escapeHtmlAttr(t.rollId)}</td>
       <td><strong>${escapeHtmlAttr(t.rollName)}</strong></td>
-      <td class="muted" style="text-align:right;">${escapeHtmlAttr(planMetricTime(t.rollId))}</td>
+      <td class="muted" style="text-align:right;">${escapeHtmlAttr(t.totalTime != null ? String(t.totalTime) : planMetricTime(t.rollId))}</td>
       <td class="muted">${escapeHtmlAttr(t.startTime || '—')}</td>
       <td class="muted">${escapeHtmlAttr(t.endTime || '—')}</td>
       <td style="display:flex;gap:4px;">
@@ -2817,20 +2817,17 @@ function planTaskFormFields() {
     <div class="modal-row full">
       <div class="form-group"><label class="form-label">วันที่</label><input class="form-input" id="pf-date" type="date"></div>
     </div>
-    <div class="modal-row three">
+    <div class="modal-row">
       <div class="form-group"><label class="form-label">Size Roll</label>
         <select class="form-select" id="pf-rollset" onchange="onPlanRollSetChange()"></select>
       </div>
       <div class="form-group"><label class="form-label">ชุดสี Roll</label>
         <select class="form-select" id="pf-rollcolor" onchange="onPlanRollColorChange()"></select>
       </div>
-      <div class="form-group"><label class="form-label">Roll</label>
-        <select class="form-select" id="pf-rollpick" onchange="onPlanRollPickChange()"></select>
-      </div>
     </div>
     <div class="modal-row">
-      <div class="form-group"><label class="form-label">รหัส</label><input class="form-input" id="pf-rollid" disabled></div>
-      <div class="form-group"><label class="form-label">ชื่อ Roll</label><input class="form-input" id="pf-rollname" disabled></div>
+      <div class="form-group"><label class="form-label">จำนวน Roll ที่พบ</label><input class="form-input" id="pf-rollid" disabled></div>
+      <div class="form-group"><label class="form-label">รายชื่อ Roll — ดึงมาทั้งหมดอัตโนมัติ</label><input class="form-input" id="pf-rollname" disabled></div>
     </div>
     <div class="modal-row">
       <div class="form-group"><label class="form-label" id="pf-plantime-label">เวลาแต่ง Roll (นาที) — จากทะเบียน Tooling</label><input class="form-input" id="pf-plantime" type="text" disabled></div>
@@ -2863,44 +2860,33 @@ function populatePlanRollColorSelect(setName, selectedColor) {
     palette.map(c => `<option value="${c.key}"${c.key === selectedColor ? ' selected' : ''}>${c.label}</option>`).join('');
 }
 
-function populatePlanRollPickSelect(setName, colorKey, selectedRollId) {
-  const sel = document.getElementById('pf-rollpick');
-  if (!sel) return;
-  if (!setName) {
-    sel.innerHTML = '<option value="">— เลือก Size Roll ก่อน —</option>';
-    sel.disabled = true;
-    return;
-  }
-  sel.disabled = false;
-  // ดึง Roll ทั้งหมดของ Size Roll ชุดนี้มาให้เลือกเสมอ ไม่กรองตามชุดสีที่เลือกไว้ (กันกรณี Roll ยังไม่ได้ระบุสีในทะเบียน Tooling)
-  const rolls = toolingData.roll.filter(r => r.set === setName);
-  sel.innerHTML = '<option value="">— เลือก Roll —</option>' +
-    rolls.map(r => `<option value="${r.id}"${r.id === selectedRollId ? ' selected' : ''}>${r.id} — ${escapeHtmlAttr(r.name)}</option>`).join('');
+// ดึง Roll ทั้งหมดของ Size Roll ชุดนี้ที่ตรงกับชุดสีที่เลือก (ไม่เลือกสี = ทุกสีในกลุ่มนี้)
+function getMatchingRollsForPlan(setName, colorKey) {
+  if (!setName) return [];
+  let rolls = toolingData.roll.filter(r => r.set === setName);
+  if (colorKey) rolls = rolls.filter(r => r.color === colorKey);
+  return rolls;
 }
 
-function fillPlanRollReadonly(rollId) {
-  const r = toolingData.roll.find(x => x.id === rollId);
-  document.getElementById('pf-rollid').value = r ? r.id : '';
-  document.getElementById('pf-rollname').value = r ? r.name : '';
-  document.getElementById('pf-plantime').value = r ? planMetricTime(r.id) : '';
+function fillPlanRollReadonly(setName, colorKey) {
+  const rolls = getMatchingRollsForPlan(setName, colorKey);
+  const field = PLAN_WORKTYPE_META[currentPlanWorkType].field;
+  const total = rolls.reduce((sum, r) => sum + (parseFloat(r[field]) || 0), 0);
+  document.getElementById('pf-rollid').value = rolls.length ? (rolls.length + ' ตัว') : (setName ? 'ไม่พบ Roll ตามเงื่อนไขนี้' : '');
+  document.getElementById('pf-rollname').value = rolls.map(r => r.name).join(', ');
+  document.getElementById('pf-plantime').value = rolls.length ? String(total) : '';
 }
 
 function onPlanRollSetChange() {
   const setName = document.getElementById('pf-rollset').value;
   populatePlanRollColorSelect(setName, null);
-  populatePlanRollPickSelect(setName, null, null);
-  fillPlanRollReadonly(null);
+  fillPlanRollReadonly(setName, null);
 }
 
 function onPlanRollColorChange() {
   const setName = document.getElementById('pf-rollset').value;
   const colorKey = document.getElementById('pf-rollcolor').value;
-  populatePlanRollPickSelect(setName, colorKey, null);
-  fillPlanRollReadonly(null);
-}
-
-function onPlanRollPickChange() {
-  fillPlanRollReadonly(document.getElementById('pf-rollpick').value);
+  fillPlanRollReadonly(setName, colorKey);
 }
 
 function openPlanTaskModal(mode, taskId, presetDate) {
@@ -2914,8 +2900,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   document.getElementById('pf-date').value = task ? task.date : (presetDate || toISODate(planViewDate));
   populatePlanRollSetSelect(task ? task.rollSet : null);
   populatePlanRollColorSelect(task ? task.rollSet : null, task ? task.rollColor : null);
-  populatePlanRollPickSelect(task ? task.rollSet : null, task ? task.rollColor : null, task ? task.rollId : null);
-  fillPlanRollReadonly(task ? task.rollId : null);
+  fillPlanRollReadonly(task ? task.rollSet : null, task ? task.rollColor : null);
   document.getElementById('pf-start').value = task ? task.startTime : '08:00';
   document.getElementById('pf-end').value = task ? task.endTime : '';
   document.getElementById('modal-overlay').classList.add('open');
@@ -2923,11 +2908,18 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const g = id => (document.getElementById(id)||{}).value.trim();
     const date = g('pf-date');
-    const rollId = g('pf-rollpick');
-    const roll = toolingData.roll.find(r => r.id === rollId);
-    if (!date || !roll) { alert('กรุณาเลือกวันที่และ Roll ให้ครบถ้วน'); return; }
+    const setName = document.getElementById('pf-rollset').value;
+    const colorKey = document.getElementById('pf-rollcolor').value;
+    const rolls = getMatchingRollsForPlan(setName, colorKey);
+    if (!date || !setName || !rolls.length) { alert('กรุณาเลือกวันที่ และ Size Roll ที่มี Roll อยู่จริงให้ครบถ้วน'); return; }
+    const field = PLAN_WORKTYPE_META[workType].field;
+    const totalTime = rolls.reduce((sum, r) => sum + (parseFloat(r[field]) || 0), 0);
     const data = {
-      date, rollSet: roll.set, rollColor: roll.color || null, rollId: roll.id, rollName: roll.name,
+      date, rollSet: setName, rollColor: colorKey || null,
+      rollIds: rolls.map(r => r.id),
+      rollId: rolls.length + ' Roll',
+      rollName: rolls.map(r => r.name).join(', '),
+      totalTime,
       startTime: g('pf-start') || '—',
       endTime: g('pf-end') || '—'
     };
