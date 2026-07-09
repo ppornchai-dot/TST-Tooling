@@ -1751,7 +1751,7 @@ canvas{display:block;}
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           </span>
           ทั้งหมด
-          <span class="reg-tab-count" id="cnt-team-all">6</span>
+          <span class="reg-tab-count" id="cnt-team-all">10</span>
         </button>
         <button class="reg-tab" onclick="switchTeamTab('admin')">
           <span class="reg-tab-icon" style="background:rgba(217,91,91,.18);color:var(--red);">
@@ -1780,6 +1780,13 @@ canvas{display:block;}
           </span>
           ช่างขัด Roll
           <span class="reg-tab-count" id="cnt-team-polish">1</span>
+        </button>
+        <button class="reg-tab" onclick="switchTeamTab('operator')">
+          <span class="reg-tab-icon" style="background:rgba(21,128,80,.18);color:var(--green);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          </span>
+          ช่างเครื่อง
+          <span class="reg-tab-count" id="cnt-team-operator">4</span>
         </button>
       </div>
 
@@ -2597,8 +2604,12 @@ let teamMembers = [
   { id:'TM-0004', name:'ปิยะ รักษ์ดี', role:'cnc', roleLabel:'ช่าง CNC', avatarInitials:'ปร', avatarColor:'var(--green)', status:'leave', monthTasks:20, pendingTasks:1, onTimePct:92, skills:['Fixture Repair','Welding','Lathe'] },
   { id:'TM-0005', name:'พรชัย ป.', role:'lead', roleLabel:'หัวหน้างานวางแผน Tooling', avatarInitials:'พป', avatarColor:'#5B8DD9', status:'available', monthTasks:30, pendingTasks:0, onTimePct:100, skills:['Planning','CAD/CAM','Standard'] },
   { id:'TM-0006', name:'แอดมิน ระบบ', role:'admin', roleLabel:'Admin', avatarInitials:'AD', avatarColor:'var(--red)', status:'available', monthTasks:null, pendingTasks:null, onTimePct:null, skills:['User Management','System Settings'] },
+  { id:'TM-0007', name:'ช่างเครื่อง P1', role:'operator', roleLabel:'ช่างเครื่อง', avatarInitials:'P1', avatarColor:'var(--green)', status:'available', monthTasks:0, pendingTasks:0, onTimePct:null, skills:[] },
+  { id:'TM-0008', name:'ช่างเครื่อง P2', role:'operator', roleLabel:'ช่างเครื่อง', avatarInitials:'P2', avatarColor:'var(--green)', status:'available', monthTasks:0, pendingTasks:0, onTimePct:null, skills:[] },
+  { id:'TM-0009', name:'ช่างเครื่อง P3', role:'operator', roleLabel:'ช่างเครื่อง', avatarInitials:'P3', avatarColor:'var(--green)', status:'available', monthTasks:0, pendingTasks:0, onTimePct:null, skills:[] },
+  { id:'TM-0010', name:'ช่างเครื่อง P4', role:'operator', roleLabel:'ช่างเครื่อง', avatarInitials:'P4', avatarColor:'var(--green)', status:'available', monthTasks:0, pendingTasks:0, onTimePct:null, skills:[] },
 ];
-let teamSeq = 6;
+let teamSeq = 10;
 
 // ─── PRODUCTION BLOCK (ข้อมูล Standard — ตารางวางแผนการผลิตตาม Roll) ─────────
 let prodBlockProducts = [
@@ -3748,7 +3759,7 @@ function teamOnTimeColor(pct) {
   return 'var(--red)';
 }
 
-const TEAM_ROLE_ORDER = ['admin', 'lead', 'cnc', 'polish'];
+const TEAM_ROLE_ORDER = ['admin', 'lead', 'cnc', 'polish', 'operator'];
 
 function renderTeamGrid() {
   const grid = document.getElementById('team-grid');
@@ -3797,7 +3808,7 @@ function renderTeamGrid() {
 }
 
 function updateTeamCounts() {
-  const counts = { all: teamMembers.length, admin: 0, lead: 0, cnc: 0, polish: 0 };
+  const counts = { all: teamMembers.length, admin: 0, lead: 0, cnc: 0, polish: 0, operator: 0 };
   teamMembers.forEach(m => { if (counts[m.role] !== undefined) counts[m.role]++; });
   Object.keys(counts).forEach(k => {
     const el = document.getElementById('cnt-team-' + k);
@@ -3817,6 +3828,7 @@ function teamMemberFormFields() {
           <option value="lead">หัวหน้า</option>
           <option value="cnc">ช่าง CNC</option>
           <option value="polish">ช่างขัด Roll</option>
+          <option value="operator">ช่างเครื่อง</option>
         </select>
       </div>
       <div class="form-group"><label class="form-label">ตำแหน่ง/รายละเอียด</label><input class="form-input" id="tf-rolelabel" placeholder="เช่น หัวหน้าฝ่าย Tooling"></div>
@@ -4525,8 +4537,8 @@ function onProdBlockExcelSelected(event) {
 const AUTH_STORAGE_KEY = 'tstCurrentUser';
 let currentUser = null;
 
-const ROLE_LABELS = { admin: 'Admin', lead: 'หัวหน้า', cnc: 'ช่าง CNC', polish: 'ช่างขัด Roll' };
-const ROLE_COLORS = { admin: 'var(--red)', lead: 'var(--accent)', cnc: 'var(--purple)', polish: 'var(--amber)' };
+const ROLE_LABELS = { admin: 'Admin', lead: 'หัวหน้า', cnc: 'ช่าง CNC', polish: 'ช่างขัด Roll', operator: 'ช่างเครื่อง' };
+const ROLE_COLORS = { admin: 'var(--red)', lead: 'var(--accent)', cnc: 'var(--purple)', polish: 'var(--amber)', operator: 'var(--green)' };
 function roleLabel(role) { return ROLE_LABELS[role] || role; }
 function roleColor(role) { return ROLE_COLORS[role] || 'var(--accent)'; }
 
