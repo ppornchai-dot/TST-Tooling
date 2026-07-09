@@ -2995,6 +2995,17 @@ function setRollSetStatus(setName, status) {
   renderRollSetList();
 }
 
+// สถานะความพร้อมใช้งานของแต่ละ "ชุดสี Roll" — คีย์แยกตาม Size Roll + สี เพราะสีเป็นอิสระต่อกลุ่ม
+let rollColorStatus = {};
+function getRollColorStatus(colorKey) { return rollColorStatus[selectedRollSet + '|' + colorKey] || 'ready'; }
+function setRollColorStatus(colorKey, status) {
+  if (!selectedRollSet) return;
+  const k = selectedRollSet + '|' + colorKey;
+  if (status === 'ready') delete rollColorStatus[k]; else rollColorStatus[k] = status;
+  persistState();
+  renderRollColorList();
+}
+
 const DEFAULT_ROLL_COLORS = [
   {key:'blue',   label:'สีฟ้า',   dot:'#3B82F6'},
   {key:'yellow', label:'สีเหลือง', dot:'#EAB308'},
@@ -3159,7 +3170,7 @@ const STORAGE_KEY = 'tstToolingState_v1';
 function persistState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      toolingData, extraRollSets, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus,
+      toolingData, extraRollSets, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus,
       planTasks, planTaskSeq, teamMembers, teamSeq,
       prodBlockProducts, prodBlockSeq, prodBlockCells, prodBlockPM, prodBlockSummary,
       prodBlockEntries, prodBlockEntrySeq, prodBlockActiveMachine, prodBlockViewMonth
@@ -3181,6 +3192,7 @@ function restoreState() {
     if (saved.rollSetPalettes) rollSetPalettes = saved.rollSetPalettes;
     if (saved.rollSetMachines) rollSetMachines = saved.rollSetMachines;
     if (saved.rollSetStatus) rollSetStatus = saved.rollSetStatus;
+    if (saved.rollColorStatus) rollColorStatus = saved.rollColorStatus;
     if (typeof saved.rollColorSeq === 'number') rollColorSeq = saved.rollColorSeq;
     if (Array.isArray(saved.planTasks)) planTasks = saved.planTasks;
     if (typeof saved.planTaskSeq === 'number') planTaskSeq = saved.planTaskSeq;
@@ -3254,18 +3266,30 @@ function renderRollColorList() {
   html += groups.map(g => {
     const items = scope.filter(r => r.color === g.key);
     const active = g.key === selectedRollColor;
-    return `<div style="display:flex;align-items:center;gap:6px;">
-      <div onclick="selectRollColor('${g.key}')" style="flex:1;${cardStyle(active)}">
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-          <span style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:${active?'var(--accent)':'var(--text-1)'};">
-            <span style="width:8px;height:8px;border-radius:50%;background:${g.dot};flex-shrink:0;"></span>${g.label}
-          </span>
-          <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;">${items.length}</span>
+    const st = getRollColorStatus(g.key);
+    const stMeta = ROLL_SET_STATUS_META[st];
+    return `<div style="margin-bottom:4px;">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div onclick="selectRollColor('${g.key}')" style="flex:1;${cardStyle(active)}">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:${active?'var(--accent)':'var(--text-1)'};">
+              <span style="width:8px;height:8px;border-radius:50%;background:${g.dot};flex-shrink:0;"></span>${g.label}
+            </span>
+            <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;">${items.length}</span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+          <button class="btn btn-ghost btn-sm" style="padding:3px 6px;" onclick="openEditColorModal('${g.key}')" title="แก้ไข">✏️</button>
+          <button class="btn btn-ghost btn-sm" style="padding:3px 6px;color:var(--red);" onclick="deleteColor('${g.key}')" title="ลบ">✕</button>
         </div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
-        <button class="btn btn-ghost btn-sm" style="padding:3px 6px;" onclick="openEditColorModal('${g.key}')" title="แก้ไข">✏️</button>
-        <button class="btn btn-ghost btn-sm" style="padding:3px 6px;color:var(--red);" onclick="deleteColor('${g.key}')" title="ลบ">✕</button>
+      <div style="padding-left:2px;margin-top:4px;">
+        <select class="form-select" style="width:auto;padding:2px 8px;font-size:11px;font-weight:700;border-radius:6px;
+          background:${stMeta.bg};color:${stMeta.color};border:1px solid ${stMeta.color};"
+          onchange="setRollColorStatus('${g.key}', this.value)" title="สถานะความพร้อมใช้งานของชุดสีนี้">
+          <option value="ready"${st==='ready'?' selected':''}>● พร้อมใช้งาน</option>
+          <option value="not-ready"${st==='not-ready'?' selected':''}>● ไม่พร้อมใช้งาน</option>
+        </select>
       </div>
     </div>`;
   }).join('');
@@ -3527,6 +3551,10 @@ function openEditSetModal(oldName) {
       delete rollSetMachines[oldName];
       if (rollSetPalettes[oldName]) { rollSetPalettes[newName] = rollSetPalettes[oldName]; delete rollSetPalettes[oldName]; }
       if (rollSetStatus[oldName]) { rollSetStatus[newName] = rollSetStatus[oldName]; delete rollSetStatus[oldName]; }
+      Object.keys(rollColorStatus).filter(k => k.startsWith(oldName + '|')).forEach(k => {
+        rollColorStatus[newName + k.slice(oldName.length)] = rollColorStatus[k];
+        delete rollColorStatus[k];
+      });
       if (selectedRollSet === oldName) { selectedRollSet = newName; }
     }
     if (machines.length) rollSetMachines[newName] = machines; else delete rollSetMachines[newName];
@@ -3553,6 +3581,7 @@ function deleteSet(setName) {
   delete rollSetMachines[setName];
   delete rollSetPalettes[setName];
   delete rollSetStatus[setName];
+  Object.keys(rollColorStatus).filter(k => k.startsWith(setName + '|')).forEach(k => delete rollColorStatus[k]);
   if (selectedRollSet === setName) { selectedRollSet = null; selectedRollColor = null; }
   renderRollSetList();
   renderRollColorList();
@@ -3635,6 +3664,7 @@ function deleteColor(key) {
   if (!confirm(msg)) return;
   rollSetPalettes[selectedRollSet] = palette.filter(x => x.key !== key);
   toolingData.roll.forEach(r => { if (r.set === selectedRollSet && r.color === key) r.color = null; });
+  delete rollColorStatus[selectedRollSet + '|' + key];
   if (selectedRollColor === key) selectedRollColor = null;
   renderRollSetList();
   renderRollColorList();
