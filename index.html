@@ -2921,7 +2921,8 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   populatePlanRollSetSelect(task ? task.rollSet : null);
   populatePlanRollColorSelect(task ? task.rollSet : null, task ? task.rollColor : null);
   fillPlanRollReadonly(task ? task.rollSet : null, task ? task.rollColor : null); // คำนวณ "จบงาน" ให้อัตโนมัติในตัว
-  if (task) document.getElementById('pf-end').value = task.endTime; // แก้ไขงานเดิม — คงเวลาจบที่บันทึกไว้ ไม่ทับด้วยค่าคำนวณใหม่
+  // แก้ไขงานเดิม — คงเวลาจบที่บันทึกไว้ถ้ามีค่าจริง (HH:MM) ไม่ทับด้วยค่าคำนวณใหม่ แต่ถ้าเดิมว่าง/เป็น "—" ให้ใช้ค่าที่คำนวณอัตโนมัติแทน
+  if (task && task.endTime && task.endTime.includes(':')) document.getElementById('pf-end').value = task.endTime;
   document.getElementById('modal-overlay').classList.add('open');
 
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
@@ -2933,14 +2934,17 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     if (!date || !setName || !rolls.length) { alert('กรุณาเลือกวันที่ และ Size Roll ที่มี Roll อยู่จริงให้ครบถ้วน'); return; }
     const field = PLAN_WORKTYPE_META[workType].field;
     const totalTime = rolls.reduce((sum, r) => sum + (parseFloat(r[field]) || 0), 0);
+    const startTime = g('pf-start');
+    // คำนวณเวลาจบงานซ้ำตรงนี้เสมอ กันกรณีช่อง "จบงาน" บนหน้าจอยังไม่ทันอัปเดตตามค่าล่าสุด
+    const endTime = g('pf-end') || computePlanEndTime(startTime, totalTime);
     const data = {
       date, rollSet: setName, rollColor: colorKey || null,
       rollIds: rolls.map(r => r.id),
       rollId: rolls.length + ' Roll',
       rollName: rolls.map(r => r.name).join(', '),
       totalTime,
-      startTime: g('pf-start') || '—',
-      endTime: g('pf-end') || '—'
+      startTime: startTime || '—',
+      endTime: endTime || '—'
     };
     if (mode === 'edit') {
       Object.assign(task, data);
