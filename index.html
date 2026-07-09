@@ -2029,9 +2029,6 @@ function renderCalDetail(sel) {
     ${items}`;
 }
 
-// ─── INIT ─────────────────────────────────────────────────────────────────────
-initDashboard();
-renderCal();
 </script>
 <!-- ══ MODAL: เพิ่ม Tooling ══ -->
 <div class="modal-overlay" id="modal-overlay" onclick="closeModalOutside(event)">
@@ -3024,6 +3021,10 @@ restoreState();
   });
   persistState();
 })();
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+// เรียกหลัง restoreState() เสมอ เพื่อให้ Dashboard แสดงข้อมูลที่กู้คืนจาก localStorage ได้ถูกต้อง
+initDashboard();
 
 function getRollSets() {
   const sets = [];
