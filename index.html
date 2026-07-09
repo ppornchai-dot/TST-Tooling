@@ -2872,8 +2872,8 @@ function populatePlanRollPickSelect(setName, colorKey, selectedRollId) {
     return;
   }
   sel.disabled = false;
-  let rolls = toolingData.roll.filter(r => r.set === setName);
-  if (colorKey) rolls = rolls.filter(r => r.color === colorKey);
+  // ดึง Roll ทั้งหมดของ Size Roll ชุดนี้มาให้เลือกเสมอ ไม่กรองตามชุดสีที่เลือกไว้ (กันกรณี Roll ยังไม่ได้ระบุสีในทะเบียน Tooling)
+  const rolls = toolingData.roll.filter(r => r.set === setName);
   sel.innerHTML = '<option value="">— เลือก Roll —</option>' +
     rolls.map(r => `<option value="${r.id}"${r.id === selectedRollId ? ' selected' : ''}>${r.id} — ${escapeHtmlAttr(r.name)}</option>`).join('');
 }
