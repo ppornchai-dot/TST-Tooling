@@ -4244,12 +4244,26 @@ function prodEntryCategoryFieldHtml(prefix, category, machine, selectedSet, sele
         ${!sets.length ? `<div style="font-size:10px;color:var(--text-3);margin-top:4px;">ไม่มี Size Roll หมวด ${category} ที่ผูกกับเครื่อง ${escapeHtmlAttr(machine)} ในทะเบียน Tooling</div>` : ''}
       </div>
       <div class="form-group"><label class="form-label">ชุดสี Roll</label>
-        <select class="form-select" id="pda-${prefix}-color"${!selectedSet ? ' disabled' : ''}>
+        <select class="form-select" id="pda-${prefix}-color"${!selectedSet ? ' disabled' : ''} onchange="onProdEntryColorChange('${prefix}')">
           <option value="">— ทั้งหมด —</option>
           ${colorOptions}
         </select>
       </div>
     </div>`;
+}
+
+// จำนวน Roll ทั้งหมดในทะเบียน Tooling ที่ตรงกับ Size Roll + ชุดสี ที่เลือก (ไม่ระบุสี = รวมทุกสีของ Set นั้น)
+function countRollsFor(setName, colorKey) {
+  if (!setName) return 0;
+  return toolingData.roll.filter(r => r.set === setName && (!colorKey || r.color === colorKey)).length;
+}
+
+function fillProdEntryQtyFromRoll(prefix) {
+  const setSel = document.getElementById('pda-' + prefix + '-set');
+  const colorSel = document.getElementById('pda-' + prefix + '-color');
+  const qtyEl = document.getElementById('pda-qty');
+  if (!setSel.value || !qtyEl) return;
+  qtyEl.value = countRollsFor(setSel.value, colorSel.value || null);
 }
 
 function onProdEntrySetChange(prefix) {
@@ -4264,6 +4278,11 @@ function onProdEntrySetChange(prefix) {
   colorSel.disabled = false;
   const palette = getSetPalette(setName).filter(c => rollColorStatusFor(setName, c.key) !== 'not-ready');
   colorSel.innerHTML = '<option value="">— ทั้งหมด —</option>' + palette.map(c => `<option value="${c.key}">${escapeHtmlAttr(c.label)}</option>`).join('');
+  fillProdEntryQtyFromRoll(prefix);
+}
+
+function onProdEntryColorChange(prefix) {
+  fillProdEntryQtyFromRoll(prefix);
 }
 
 function prodDayAddFormFields(machine, entry, pmChecked, dateIso) {
