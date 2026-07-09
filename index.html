@@ -4007,12 +4007,15 @@ function renderProdBlockCalendar() {
   // กระจายรายการเปลี่ยน Roll (prodBlockEntries) ของเครื่องนี้ออกเป็นรายวันตาม startDate+days
   const entriesByDate = {};
   prodBlockEntries.filter(e => e.machine === machine).forEach(e => {
-    const start = parseISODate(e.startDate);
-    for (let i = 0; i < e.days; i++) {
-      const dd = new Date(start);
-      dd.setDate(dd.getDate() + i);
-      const dIso = toISODate(dd);
-      (entriesByDate[dIso] = entriesByDate[dIso] || []).push(e);
+    const cursor = parseISODate(e.startDate);
+    let counted = 0;
+    while (counted < e.days) {
+      if (cursor.getDay() !== 0) { // ข้ามวันอาทิตย์ ไม่นับรวมเป็นวันทำงาน
+        const dIso = toISODate(cursor);
+        (entriesByDate[dIso] = entriesByDate[dIso] || []).push(e);
+        counted++;
+      }
+      cursor.setDate(cursor.getDate() + 1);
     }
   });
 
