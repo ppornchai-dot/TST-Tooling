@@ -1810,6 +1810,10 @@ function toolingStatusCounts(items) {
   const expired = items.filter(r => r.status === 'หมดอายุ' || r.status === 'มีปัญหา').length;
   return { ready, repair, expired, total: items.length };
 }
+function goToToolingRegistry(key) {
+  showPage('registry');
+  switchRegTab(key);
+}
 function renderToolingStatusTable() {
   const tbody = document.getElementById('tbl-tooling-status');
   if (!tbody) return;
@@ -1817,7 +1821,7 @@ function renderToolingStatusTable() {
     const { ready, repair, expired, total } = toolingStatusCounts(toolingData[cat.key]);
     const pct = total ? Math.round(ready / total * 100) : 0;
     const pctCol = pct >= 85 ? C_GREEN : pct >= 60 ? C_AMBER : C_RED;
-    return `<tr>
+    return `<tr style="cursor:pointer;" onclick="goToToolingRegistry('${cat.key}')" title="ดูรายการ ${escapeHtmlAttr(cat.name)} ในทะเบียน Tooling">
       <td style="color:var(--text-1);font-weight:600;">${cat.name}</td>
       <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${C_GREEN};">${ready}</td>
       <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${C_AMBER};">${repair}</td>
