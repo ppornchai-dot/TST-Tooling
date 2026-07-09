@@ -868,6 +868,33 @@ canvas{display:block;}
         </div>
       </div>
 
+      <!-- TOOLING STATUS -->
+      <div class="card" style="margin-bottom:18px;">
+        <div class="card-header">
+          <span class="card-title">สถานะ Tooling</span>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:14px;">
+            <span class="legend-dot" style="--c:var(--green);">พร้อมใช้</span>
+            <span class="legend-dot" style="--c:var(--amber);">ซ่อมบำรุง</span>
+            <span class="legend-dot" style="--c:var(--red);">หมดอายุ</span>
+          </div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>ประเภท Tooling</th>
+                <th style="text-align:right;color:var(--green);">พร้อมใช้</th>
+                <th style="text-align:right;color:var(--amber);">ซ่อมบำรุง</th>
+                <th style="text-align:right;color:var(--red);">หมดอายุ</th>
+                <th>รวม</th>
+                <th>% พร้อมใช้</th>
+              </tr>
+            </thead>
+            <tbody id="tbl-tooling-status"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- BREAKDOWN TABS -->
       <div class="card" style="margin-bottom:18px;">
         <div class="card-header" style="padding-bottom:0;border-bottom:none;flex-wrap:wrap;gap:8px;">
@@ -1918,6 +1945,7 @@ function switchDashTab(tab) {
 function initDashboard() {
   drawBreakdownChart('dept');
   buildTable('dept');
+  renderToolingStatusTable();
   renderCal();
   renderCalDetail(null);
 }
@@ -2034,6 +2062,44 @@ function buildTable(key) {
       <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${C_GREEN};">${r.done}</td>
       <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${C_AMBER};">${r.pending}</td>
       <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${C_RED};">${r.overdue}</td>
+      <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--text-2);">${total}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:7px;">
+          <div style="width:54px;background:var(--bg-panel);border-radius:4px;height:6px;overflow:hidden;">
+            <div style="height:100%;width:${pct}%;background:${pctCol};border-radius:4px;"></div>
+          </div>
+          <span style="font-size:12px;font-weight:700;color:${pctCol};font-variant-numeric:tabular-nums;">${pct}%</span>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── DASHBOARD: สถานะ Tooling (Roll / Roll SQ / ใบเลื่อย / มีดสลิตเตอร์) ──────
+const TOOLING_STATUS_CATEGORIES = [
+  { key: 'roll',    name: 'Roll' },
+  { key: 'sq',      name: 'Roll SQ' },
+  { key: 'saw',     name: 'ใบเลื่อย' },
+  { key: 'slitter', name: 'มีดสลิตเตอร์' },
+];
+function toolingStatusCounts(items) {
+  const ready = items.filter(r => r.status === 'พร้อมใช้' || r.status === 'ใช้งานอยู่').length;
+  const repair = items.filter(r => r.status === 'ซ่อมบำรุง' || r.status === 'Regrind').length;
+  const expired = items.filter(r => r.status === 'หมดอายุ' || r.status === 'มีปัญหา').length;
+  return { ready, repair, expired, total: items.length };
+}
+function renderToolingStatusTable() {
+  const tbody = document.getElementById('tbl-tooling-status');
+  if (!tbody) return;
+  tbody.innerHTML = TOOLING_STATUS_CATEGORIES.map(cat => {
+    const { ready, repair, expired, total } = toolingStatusCounts(toolingData[cat.key]);
+    const pct = total ? Math.round(ready / total * 100) : 0;
+    const pctCol = pct >= 85 ? C_GREEN : pct >= 60 ? C_AMBER : C_RED;
+    return `<tr>
+      <td style="color:var(--text-1);font-weight:600;">${cat.name}</td>
+      <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${C_GREEN};">${ready}</td>
+      <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${C_AMBER};">${repair}</td>
+      <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${C_RED};">${expired}</td>
       <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--text-2);">${total}</td>
       <td>
         <div style="display:flex;align-items:center;gap:7px;">
