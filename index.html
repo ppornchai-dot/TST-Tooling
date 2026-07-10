@@ -3549,6 +3549,8 @@ function openAddSetModal() {
       const afterIdx = selectedRollSet ? rollSetOrder.indexOf(selectedRollSet) : -1;
       if (afterIdx >= 0) rollSetOrder.splice(afterIdx + 1, 0, name);
       else rollSetOrder.push(name);
+      // Size Roll ที่เพิ่งสร้างใหม่ให้เริ่มด้วยชุดสีว่างเปล่า ไม่ auto-สร้าง 5 สีเริ่มต้นให้เหมือน Set เก่า — ผู้ใช้กด "+ เพิ่ม" เองภายหลัง
+      rollSetPalettes[name] = [];
     }
     if (machines.length) rollSetMachines[name] = machines; else delete rollSetMachines[name];
     selectedRollSet = name;
