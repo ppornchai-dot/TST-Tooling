@@ -163,6 +163,31 @@ body{
 .plan-view-btn:hover{color:var(--text-1);background:var(--bg-hover);}
 .plan-view-btn.active{background:var(--accent);color:#fff;}
 .plan-view-btn.active:hover{background:var(--accent);color:#fff;}
+/* ปฏิทินป๊อปอัพเลือกวันที่ในหน้าวางแผน — ทำเองแทน input[type=date] เพื่อทำจุดบอกวันที่มีแผนงานแล้วได้ */
+.plan-date-popup{
+  position:absolute;top:100%;left:0;margin-top:6px;z-index:200;width:230px;
+  background:var(--bg-surface);border:1px solid var(--border);border-radius:8px;
+  box-shadow:0 8px 24px rgba(0,0,0,.18);padding:10px;
+}
+.plan-date-popup-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:12px;font-weight:700;color:var(--text-1);}
+.plan-date-popup-nav button{border:none;background:transparent;cursor:pointer;color:var(--text-2);font-size:13px;padding:2px 7px;border-radius:4px;}
+.plan-date-popup-nav button:hover{background:var(--bg-hover);}
+.plan-date-popup-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;}
+.plan-date-popup-dow{font-size:10px;color:var(--text-3);text-align:center;font-weight:700;padding-bottom:4px;}
+.plan-date-popup-day{position:relative;text-align:center;font-size:12px;padding:5px 0;border-radius:5px;cursor:pointer;color:var(--text-1);}
+.plan-date-popup-day:hover{background:var(--bg-hover);}
+.plan-date-popup-day.other-month{color:var(--text-3);opacity:.4;cursor:default;}
+.plan-date-popup-day.today{outline:1px solid var(--accent);outline-offset:-1px;}
+.plan-date-popup-day.selected{background:var(--accent);color:#fff;font-weight:700;}
+.plan-date-popup-day.has-plan::after{
+  content:'';position:absolute;bottom:2px;left:50%;transform:translateX(-50%);
+  width:4px;height:4px;border-radius:50%;background:var(--amber);
+}
+.plan-date-popup-day.selected.has-plan::after{background:#fff;}
+.plan-date-popup-footer{display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light);}
+.plan-date-popup-footer button{border:none;background:transparent;color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;}
+.plan-date-popup-legend{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-3);}
+.plan-date-popup-legend span{width:4px;height:4px;border-radius:50%;background:var(--amber);display:inline-block;}
 
 .content{flex:1;padding:24px;}
 
@@ -1293,11 +1318,13 @@ canvas{display:block;}
 
       <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
         <button class="btn btn-ghost btn-sm" onclick="planNav(-1)">‹ ก่อนหน้า</button>
-        <span onclick="openPlanDatePicker()" title="คลิกเพื่อเลือกวันที่" style="padding:0 8px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">
-          <span aria-hidden="true">📅</span>
-          <span id="plan-daterange-label" style="font-size:13px;font-weight:700;color:var(--text-1);">ม.ค. – มิ.ย. 2569</span>
-        </span>
-        <input type="date" id="plan-date-input" onchange="onPlanDateInputChange(this.value)" style="position:absolute;width:0;height:0;border:none;opacity:0;pointer-events:none;">
+        <div style="position:relative;display:inline-flex;">
+          <span id="plan-daterange-trigger" onclick="openPlanDatePicker()" title="คลิกเพื่อเลือกวันที่" style="padding:0 8px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">
+            <span aria-hidden="true">📅</span>
+            <span id="plan-daterange-label" style="font-size:13px;font-weight:700;color:var(--text-1);">ม.ค. – มิ.ย. 2569</span>
+          </span>
+          <div id="plan-date-popup" class="plan-date-popup" style="display:none;"></div>
+        </div>
         <button class="btn btn-ghost btn-sm" onclick="planNav(1)">ถัดไป ›</button>
         <div class="plan-view-group" style="margin-left:auto;">
           <button class="plan-view-btn" data-view="day" onclick="switchPlanView('day')">รายวัน</button>
@@ -2597,19 +2624,96 @@ function planNav(dir) {
   renderCurrentPlanView();
 }
 
-// คลิกที่ป้ายวันที่ (📅 ...) เพื่อเปิดปฏิทินของเบราว์เซอร์ให้เลือกวันได้เลย — ใช้ไม่ได้ในมุมมอง Gantt เพราะไม่ได้อิงวันที่เดียว
+// คลิกที่ป้ายวันที่ (📅 ...) เพื่อเปิดปฏิทินป๊อปอัพเลือกวันได้เลย — ใช้ไม่ได้ในมุมมอง Gantt เพราะไม่ได้อิงวันที่เดียว
+// ทำปฏิทินเองแทน input[type=date] ของเบราว์เซอร์ เพื่อทำจุดสีบอกวันที่มีแผนงานอยู่แล้ว (native date picker ทำแบบนี้ไม่ได้)
+let planDatePopupMonth = null;
 function openPlanDatePicker() {
   if (currentPlanView === 'gantt') return;
-  const input = document.getElementById('plan-date-input');
-  input.value = toISODate(planViewDate);
-  if (input.showPicker) input.showPicker();
-  else input.focus();
+  planDatePopupMonth = new Date(planViewDate.getFullYear(), planViewDate.getMonth(), 1);
+  renderPlanDatePopup();
+  document.getElementById('plan-date-popup').style.display = '';
 }
-function onPlanDateInputChange(value) {
-  if (!value) return;
-  planViewDate = parseISODate(value);
+function closePlanDatePicker() {
+  const el = document.getElementById('plan-date-popup');
+  if (el) el.style.display = 'none';
+}
+function planDatePopupNav(dir) {
+  planDatePopupMonth = new Date(planDatePopupMonth.getFullYear(), planDatePopupMonth.getMonth() + dir, 1);
+  renderPlanDatePopup();
+}
+function pickPlanDate(iso) {
+  planViewDate = parseISODate(iso);
+  closePlanDatePicker();
   renderCurrentPlanView();
 }
+function planDateGoToday() {
+  const t = new Date();
+  planViewDate = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+  closePlanDatePicker();
+  renderCurrentPlanView();
+}
+// วันที่ (iso) ที่มีแผนงานอยู่แล้วของประเภทงานที่กำลังดู (CNC/ขัด Roll) — ใช้ทำจุดสีในปฏิทินป๊อปอัพ
+function planDatesWithTasks() {
+  const set = new Set();
+  planTasks.forEach(t => { if (t.workType === currentPlanWorkType) set.add(t.date); });
+  return set;
+}
+function renderPlanDatePopup() {
+  const el = document.getElementById('plan-date-popup');
+  if (!el) return;
+  const year = planDatePopupMonth.getFullYear();
+  const month = planDatePopupMonth.getMonth();
+  const plannedDates = planDatesWithTasks();
+  const todayIso = toISODate(new Date());
+  const selectedIso = toISODate(planViewDate);
+
+  const firstWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+  let cells = '';
+  for (let i = 0; i < firstWeekday; i++) {
+    cells += `<div class="plan-date-popup-day other-month">${daysInPrevMonth - firstWeekday + i + 1}</div>`;
+  }
+  for (let day = 1; day <= daysInMonth; day++) {
+    const iso = toISODate(new Date(year, month, day));
+    const classes = ['plan-date-popup-day'];
+    if (iso === todayIso) classes.push('today');
+    if (iso === selectedIso) classes.push('selected');
+    if (plannedDates.has(iso)) classes.push('has-plan');
+    cells += `<div class="${classes.join(' ')}" onclick="pickPlanDate('${iso}')" title="${plannedDates.has(iso) ? 'มีแผนงานแล้ว' : ''}">${day}</div>`;
+  }
+  const totalCells = firstWeekday + daysInMonth;
+  const remainder = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
+  for (let i = 1; i <= remainder; i++) {
+    cells += `<div class="plan-date-popup-day other-month">${i}</div>`;
+  }
+
+  el.innerHTML = `
+    <div class="plan-date-popup-header">
+      <span>${THAI_MONTHS_FULL[month]} ${year + 543}</span>
+      <div class="plan-date-popup-nav">
+        <button type="button" onclick="planDatePopupNav(-1)">‹</button>
+        <button type="button" onclick="planDatePopupNav(1)">›</button>
+      </div>
+    </div>
+    <div class="plan-date-popup-grid">
+      ${TH_DOW.map(d => `<div class="plan-date-popup-dow">${d}</div>`).join('')}
+      ${cells}
+    </div>
+    <div class="plan-date-popup-footer">
+      <div class="plan-date-popup-legend"><span></span>มีแผนงานแล้ว</div>
+      <button type="button" onclick="planDateGoToday()">วันนี้</button>
+    </div>
+  `;
+}
+document.addEventListener('click', function(ev) {
+  const popup = document.getElementById('plan-date-popup');
+  const trigger = document.getElementById('plan-daterange-trigger');
+  if (!popup || popup.style.display === 'none') return;
+  if (popup.contains(ev.target) || (trigger && trigger.contains(ev.target))) return;
+  closePlanDatePicker();
+});
 
 function renderPlanDay() {
   const iso = toISODate(planViewDate);
