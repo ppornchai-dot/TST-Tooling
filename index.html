@@ -3953,13 +3953,21 @@ function prodBlockEntryChipHtml(e, isFirst, isLast, rowStart, rowEnd) {
   const radiusL = isFirst ? '4px' : '0';
   const radiusR = isLast ? '4px' : '0';
 
+  // เชื่อมแถบให้ต่อเนื่องข้ามขอบวัน — บวมออกไปกินระยะ padding (7px) + เส้นขอบ (1px) ของ .cal-cell
+  // ฝั่งที่ยังไม่ใช่จุดเริ่ม/จบของแถบในแถวนี้ (ไม่ใช่ rowStart/rowEnd) ให้บวมออก ฝั่งที่เป็นหัว-ท้ายจริงหรือมีลูกศรคั่นแถวไม่ต้องบวม
+  const bleedL = !rowStart;
+  const bleedR = !rowEnd;
+  const marginL = bleedL ? -7 : 0;
+  const marginR = bleedR ? -8 : 0;
+
   const labelHtml = rowStart
     ? `<span class="cal-bar-label" onclick="openProdEntryModal('${e.id}')">${label}${qtyLabel}</span>
        <button type="button" title="แก้ไข" onclick="openProdEntryModal('${e.id}')" class="cal-bar-btn">✎</button>
        <button type="button" title="ลบ" onclick="deleteProdEntry('${e.id}')" class="cal-bar-btn">✕</button>`
     : `<span class="cal-bar-label" onclick="openProdEntryModal('${e.id}')">&nbsp;</span>`;
 
-  return `<div class="cal-bar" style="background:${bg};color:${fg};border-radius:${radiusL} ${radiusR} ${radiusR} ${radiusL};" title="${escapeHtmlAttr(titleParts)}">
+  return `<div class="cal-bar" style="background:${bg};color:${fg};border-radius:${radiusL} ${radiusR} ${radiusR} ${radiusL};
+    margin-left:${marginL}px;margin-right:${marginR}px;width:calc(100% - ${marginL + marginR}px);" title="${escapeHtmlAttr(titleParts)}">
     ${leftArrow ? '<span class="cal-bar-arrow">‹</span>' : ''}
     ${labelHtml}
     ${rightArrow ? '<span class="cal-bar-arrow">›</span>' : ''}
