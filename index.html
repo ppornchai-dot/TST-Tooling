@@ -1293,7 +1293,11 @@ canvas{display:block;}
 
       <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
         <button class="btn btn-ghost btn-sm" onclick="planNav(-1)">‹ ก่อนหน้า</button>
-        <span id="plan-daterange-label" style="font-size:13px;font-weight:700;color:var(--text-1);padding:0 8px;">ม.ค. – มิ.ย. 2569</span>
+        <span onclick="openPlanDatePicker()" title="คลิกเพื่อเลือกวันที่" style="padding:0 8px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">
+          <span aria-hidden="true">📅</span>
+          <span id="plan-daterange-label" style="font-size:13px;font-weight:700;color:var(--text-1);">ม.ค. – มิ.ย. 2569</span>
+        </span>
+        <input type="date" id="plan-date-input" onchange="onPlanDateInputChange(this.value)" style="position:absolute;width:0;height:0;border:none;opacity:0;pointer-events:none;">
         <button class="btn btn-ghost btn-sm" onclick="planNav(1)">ถัดไป ›</button>
         <div class="plan-view-group" style="margin-left:auto;">
           <button class="plan-view-btn" data-view="day" onclick="switchPlanView('day')">รายวัน</button>
@@ -2590,6 +2594,20 @@ function planNav(dir) {
   else if (currentPlanView === 'week') d.setDate(d.getDate() + dir * 7);
   else if (currentPlanView === 'month') d.setMonth(d.getMonth() + dir);
   planViewDate = d;
+  renderCurrentPlanView();
+}
+
+// คลิกที่ป้ายวันที่ (📅 ...) เพื่อเปิดปฏิทินของเบราว์เซอร์ให้เลือกวันได้เลย — ใช้ไม่ได้ในมุมมอง Gantt เพราะไม่ได้อิงวันที่เดียว
+function openPlanDatePicker() {
+  if (currentPlanView === 'gantt') return;
+  const input = document.getElementById('plan-date-input');
+  input.value = toISODate(planViewDate);
+  if (input.showPicker) input.showPicker();
+  else input.focus();
+}
+function onPlanDateInputChange(value) {
+  if (!value) return;
+  planViewDate = parseISODate(value);
   renderCurrentPlanView();
 }
 
