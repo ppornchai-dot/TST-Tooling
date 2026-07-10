@@ -2173,17 +2173,15 @@ const MODAL_FORMS = {
   roll: {
     title: 'เพิ่ม Roll ใหม่',
     fields: `
-      <div class="modal-row three">
+      <div class="modal-row">
         <div class="form-group"><label class="form-label">Size</label><input class="form-input" id="f-id" placeholder="เช่น RL-0031"></div>
         <div class="form-group"><label class="form-label">ชื่อ Roll</label><input class="form-input" id="f-name" placeholder="เช่น Work Roll #3 (Top)"></div>
-        <div class="form-group"><label class="form-label">วัสดุ</label><input class="form-input" id="f-material" placeholder="เช่น Forged Steel"></div>
       </div>
       <div class="modal-row">
         <div class="form-group"><label class="form-label">เส้นผ่าศูนย์กลาง</label><input class="form-input" id="f-diameter" placeholder="เช่น Ø320 mm"></div>
         <div class="form-group"><label class="form-label">ความกว้าง</label><input class="form-input" id="f-width" placeholder="เช่น 1,200 mm"></div>
       </div>
-      <div class="modal-row three">
-        <div class="form-group"><label class="form-label">ตำแหน่ง</label><input class="form-input" id="f-position" placeholder="เช่น Mill-01 Stand 1"></div>
+      <div class="modal-row">
         <div class="form-group"><label class="form-label">รอบการใช้งาน (ตัน)</label><input class="form-input" id="f-usage" placeholder="เช่น 0 ตัน"></div>
         <div class="form-group"><label class="form-label">แต่งครั้งที่ / สูงสุด</label><input class="form-input" id="f-regrind" placeholder="เช่น 0/5"></div>
       </div>
@@ -2372,8 +2370,8 @@ function saveModal() {
     const g = id => (document.getElementById(id)||{}).value||'—';
     const newRoll = {
       id: g('f-id')||'RL-NEW', name: g('f-name')||'(ไม่มีชื่อ)',
-      material: g('f-material'), diameter: g('f-diameter'),
-      width: g('f-width'), position: g('f-position'),
+      material: '—', diameter: g('f-diameter'),
+      width: g('f-width'), position: '—',
       usage: g('f-usage'), regrind: g('f-regrind'),
       grindTime: g('f-grindtime')||'—', polishTime: g('f-polishtime')||'—', lastService: g('f-service'), status: g('f-status'),
       color: (document.getElementById('f-color')||{}).value || null, set: selectedRollSet || ''
@@ -3456,10 +3454,8 @@ function editRoll(idx) {
   document.getElementById('modal-body').innerHTML = MODAL_FORMS.roll.fields;
   document.getElementById('f-id').value = r.id;
   document.getElementById('f-name').value = r.name;
-  document.getElementById('f-material').value = r.material === '—' ? '' : r.material;
   document.getElementById('f-diameter').value = r.diameter === '—' ? '' : r.diameter;
   document.getElementById('f-width').value = r.width === '—' ? '' : r.width;
-  document.getElementById('f-position').value = r.position === '—' ? '' : r.position;
   document.getElementById('f-usage').value = r.usage === '—' ? '' : r.usage;
   document.getElementById('f-regrind').value = r.regrind === '—' ? '' : r.regrind;
   document.getElementById('f-grindtime').value = r.grindTime === '—' ? '' : r.grindTime;
@@ -3471,8 +3467,8 @@ function editRoll(idx) {
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const g = id => (document.getElementById(id)||{}).value||'—';
     toolingData.roll[idx] = {
-      id: g('f-id'), name: g('f-name'), material: g('f-material'),
-      diameter: g('f-diameter'), width: g('f-width'), position: g('f-position'),
+      id: g('f-id'), name: g('f-name'), material: r.material,
+      diameter: g('f-diameter'), width: g('f-width'), position: r.position,
       usage: g('f-usage'), regrind: g('f-regrind'),
       grindTime: g('f-grindtime'), polishTime: g('f-polishtime'), lastService: g('f-service'), status: g('f-status'),
       color: (document.getElementById('f-color')||{}).value || null, set: r.set
