@@ -153,6 +153,16 @@ body{
 .btn-ghost{background:transparent;color:var(--text-2);border:1px solid var(--border);}
 .btn-ghost:hover{background:var(--bg-hover);color:var(--text-1);}
 .btn-sm{padding:5px 10px;font-size:12px;}
+/* กลุ่มปุ่มสลับมุมมองหน้าวางแผน (รายวัน/รายสัปดาห์/รายเดือน/Gantt) — segmented control ให้เห็นปุ่มที่เลือกอยู่ชัดเจน */
+.plan-view-group{display:flex;gap:2px;background:var(--bg-panel);padding:3px;border-radius:8px;}
+.plan-view-btn{
+  border:none;background:transparent;color:var(--text-3);
+  padding:6px 14px;font-size:12px;font-weight:700;border-radius:6px;
+  cursor:pointer;transition:background .12s,color .12s;
+}
+.plan-view-btn:hover{color:var(--text-1);background:var(--bg-hover);}
+.plan-view-btn.active{background:var(--accent);color:#fff;}
+.plan-view-btn.active:hover{background:var(--accent);color:#fff;}
 
 .content{flex:1;padding:24px;}
 
@@ -1285,11 +1295,11 @@ canvas{display:block;}
         <button class="btn btn-ghost btn-sm" onclick="planNav(-1)">‹ ก่อนหน้า</button>
         <span id="plan-daterange-label" style="font-size:13px;font-weight:700;color:var(--text-1);padding:0 8px;">ม.ค. – มิ.ย. 2569</span>
         <button class="btn btn-ghost btn-sm" onclick="planNav(1)">ถัดไป ›</button>
-        <div style="margin-left:auto;display:flex;gap:6px;">
-          <button class="btn btn-ghost btn-sm plan-view-btn" data-view="day" onclick="switchPlanView('day')">รายวัน</button>
-          <button class="btn btn-ghost btn-sm plan-view-btn" data-view="week" onclick="switchPlanView('week')">รายสัปดาห์</button>
-          <button class="btn btn-ghost btn-sm plan-view-btn" data-view="month" onclick="switchPlanView('month')">รายเดือน</button>
-          <button class="btn btn-ghost btn-sm plan-view-btn" data-view="gantt" onclick="switchPlanView('gantt')" style="color:var(--accent);border-color:var(--accent);">Gantt</button>
+        <div class="plan-view-group" style="margin-left:auto;">
+          <button class="plan-view-btn" data-view="day" onclick="switchPlanView('day')">รายวัน</button>
+          <button class="plan-view-btn" data-view="week" onclick="switchPlanView('week')">รายสัปดาห์</button>
+          <button class="plan-view-btn" data-view="month" onclick="switchPlanView('month')">รายเดือน</button>
+          <button class="plan-view-btn active" data-view="gantt" onclick="switchPlanView('gantt')">Gantt</button>
         </div>
       </div>
 
@@ -2564,9 +2574,7 @@ function switchPlanView(mode) {
   document.querySelectorAll('.plan-view-panel').forEach(p => p.style.display = 'none');
   document.getElementById('plan-view-' + mode).style.display = '';
   document.querySelectorAll('.plan-view-btn').forEach(b => {
-    const active = b.getAttribute('data-view') === mode;
-    b.style.color = active ? 'var(--accent)' : '';
-    b.style.borderColor = active ? 'var(--accent)' : '';
+    b.classList.toggle('active', b.getAttribute('data-view') === mode);
   });
   if (mode === 'gantt') {
     document.getElementById('plan-daterange-label').textContent = 'ม.ค. – มิ.ย. 2569';
