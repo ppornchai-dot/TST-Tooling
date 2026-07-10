@@ -2379,7 +2379,9 @@ function saveModal() {
       width: g('f-width'), position: '—',
       usage: g('f-usage'), regrind: g('f-regrind'),
       grindTime: g('f-grindtime')||'—', polishTime: g('f-polishtime')||'—', lastService: g('f-service'), status: g('f-status'),
-      color: (document.getElementById('f-color')||{}).value || null, set: selectedRollSet || ''
+      // ถ้ากำลังเลือกดูชุดสีใดชุดสีหนึ่งอยู่ (ไม่ใช่ "ทั้งหมด"/"ไม่ระบุสี") ให้ Roll ใหม่ได้สีนั้นไปเลย ไม่ต้องพึ่งค่าที่เลือกไว้ใน dropdown
+      color: (selectedRollColor && selectedRollColor !== NO_COLOR_KEY) ? selectedRollColor : ((document.getElementById('f-color')||{}).value || null),
+      set: selectedRollSet || ''
     };
     toolingData.roll.push(newRoll);
     if (newRoll.set) extraRollSets = extraRollSets.filter(s => s !== newRoll.set);
