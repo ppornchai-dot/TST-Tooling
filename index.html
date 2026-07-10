@@ -2318,6 +2318,11 @@ function closeModal() {
   modal.style.left = '';
   modal.style.top = '';
   modal.style.margin = '';
+  // ฟังก์ชันแก้ไขต่างๆ (editRoll ฯลฯ) จะสลับปุ่ม "บันทึก" ให้ผูกกับ handler เฉพาะของแถวนั้นชั่วคราว
+  // ถ้าปิดโมดัลด้วยปุ่มยกเลิก/คลิกนอกกรอบโดยไม่ได้กดบันทึก handler เดิมจะค้างอยู่ ทำให้ครั้งถัดไปที่กด "+ เพิ่ม"
+  // ไปทับ (แก้ไข) ข้อมูลแถวเก่าแทนที่จะเพิ่มแถวใหม่ — reset กลับเป็น saveModal ทุกครั้งที่ปิดโมดัลกันไว้
+  const btn = document.querySelector('.modal-footer .btn-primary');
+  if (btn) btn.onclick = saveModal;
 }
 
 function closeModalOutside(e) {
