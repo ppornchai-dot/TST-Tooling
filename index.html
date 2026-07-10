@@ -3010,8 +3010,14 @@ const ROLL_SET_STATUS_META = {
 function getRollSetStatus(setName) { return rollSetStatus[setName] || 'ready'; }
 function setRollSetStatus(setName, status) {
   if (status === 'ready') delete rollSetStatus[setName]; else rollSetStatus[setName] = status;
+  // เปลี่ยนสถานะของ Size Roll ทั้งกลุ่มแล้ว ให้ทุกชุดสีในกลุ่มนี้เปลี่ยนสถานะตามไปด้วยอัตโนมัติ
+  getSetPalette(setName).forEach(c => {
+    const k = setName + '|' + c.key;
+    if (status === 'ready') delete rollColorStatus[k]; else rollColorStatus[k] = status;
+  });
   persistState();
   renderRollSetList();
+  renderRollColorList();
 }
 
 // สถานะความพร้อมใช้งานของแต่ละ "ชุดสี Roll" — คีย์แยกตาม Size Roll + สี เพราะสีเป็นอิสระต่อกลุ่ม
