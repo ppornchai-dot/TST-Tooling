@@ -3912,6 +3912,24 @@ const PROD_BLOCK_BAR_COLORS = {
   green: { bg: 'var(--green-dim)',  fg: 'var(--green)' },
   amber: { bg: 'var(--amber-dim)',  fg: 'var(--amber)' },
 };
+// ชุดสีสำรองสำหรับ auto-assign ต่อ entry (ใช้เมื่อผู้ใช้ไม่ได้เลือกสีเอง) — ให้แต่ละงานดูต่างกันชัดเจน
+const PROD_BLOCK_AUTO_PALETTE = [
+  { bg: 'rgba(184,114,0,0.14)',  fg: '#B87200' }, // amber
+  { bg: 'rgba(34,114,182,0.14)', fg: '#2272B6' }, // blue
+  { bg: 'rgba(21,128,80,0.14)',  fg: '#158050' }, // green
+  { bg: 'rgba(192,48,48,0.14)',  fg: '#C03030' }, // red
+  { bg: 'rgba(94,68,176,0.14)',  fg: '#5E44B0' }, // purple
+  { bg: 'rgba(14,124,134,0.14)', fg: '#0E7C86' }, // teal
+  { bg: 'rgba(194,65,12,0.14)',  fg: '#C2410C' }, // orange
+  { bg: 'rgba(190,24,93,0.14)',  fg: '#BE185D' }, // pink
+  { bg: 'rgba(101,120,10,0.14)', fg: '#65780A' }, // olive
+  { bg: 'rgba(15,98,254,0.14)',  fg: '#0F62FE' }, // indigo
+];
+function prodBlockAutoColor(id) {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  return PROD_BLOCK_AUTO_PALETTE[hash % PROD_BLOCK_AUTO_PALETTE.length];
+}
 // แถบงานของ 1 entry ในวันเดียว — isFirst/isLast คือวันแรก/วันสุดท้ายจริงของ entry นี้ทั้งหมด
 // rowStart/rowEnd คือวันแรก/วันสุดท้ายของ "แถบ" ในแถวสัปดาห์นี้ (จันทร์/เสาร์ หรือ isFirst/isLast)
 // ถ้า rowStart แต่ไม่ใช่ isFirst แปลว่าแถบต่อเนื่องมาจากแถวก่อนหน้า → แสดงลูกศร ‹ เช่นเดียวกับ rowEnd/isLast → ›
@@ -3922,8 +3940,8 @@ function prodBlockEntryChipHtml(e, isFirst, isLast, rowStart, rowEnd) {
   if (e.th.set) parts.push('TH:' + escapeHtmlAttr(stripSizeRollCategory(e.th.set)));
   const label = parts.length ? parts.join(' / ') : 'รายการ';
   const qtyLabel = e.qty != null ? ' · ' + e.qty : '';
-  const colorKey = ['red','blue','green'].includes(e.lotColor) ? e.lotColor : 'amber';
-  const { bg, fg } = PROD_BLOCK_BAR_COLORS[colorKey];
+  const manualColorKey = ['red','blue','green'].includes(e.lotColor) ? e.lotColor : null;
+  const { bg, fg } = manualColorKey ? PROD_BLOCK_BAR_COLORS[manualColorKey] : prodBlockAutoColor(e.id);
   const titleParts = [
     e.forming.set ? 'Forming: ' + e.forming.set + (e.forming.color ? ' (' + e.forming.color + ')' : '') : '',
     e.sizing.set ? 'Sizing: ' + e.sizing.set + (e.sizing.color ? ' (' + e.sizing.color + ')' : '') : '',
