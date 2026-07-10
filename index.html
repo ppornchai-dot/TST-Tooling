@@ -3026,6 +3026,8 @@ const DEFAULT_ROLL_COLORS = [
   {key:'purple', label:'สีม่วง',   dot:'#5E44B0'},
 ];
 let rollColorSeq = 0;
+// คีย์พิเศษสำหรับ Roll ที่ยังไม่ได้ระบุสี (r.color เป็น null/ว่าง) — ให้กรอง/นับแยกออกมาได้ ไม่ใช่หายไปเงียบๆ จากทุกชิปสี
+const NO_COLOR_KEY = '__none__';
 
 // ปาเล็ตต์สีของแต่ละ Size Roll แยกกันเป็นอิสระ — เพิ่ม/ลบสีในกลุ่มหนึ่งจะไม่กระทบกลุ่มอื่น
 let rollSetPalettes = {};
@@ -3256,8 +3258,9 @@ function renderRollColorList() {
 
   const scope = rollSetScope();
   const groups = selectedRollSet ? getSetPalette(selectedRollSet) : [];
+  const noColorCount = scope.filter(r => !r.color).length;
 
-  if (selectedRollColor && !groups.some(g => g.key === selectedRollColor)) {
+  if (selectedRollColor && selectedRollColor !== NO_COLOR_KEY && !groups.some(g => g.key === selectedRollColor)) {
     selectedRollColor = null;
   }
 
@@ -3309,6 +3312,19 @@ function renderRollColorList() {
       </div>
     </div>`;
   }).join('');
+
+  if (noColorCount > 0) {
+    const activeNoColor = selectedRollColor === NO_COLOR_KEY;
+    html += `<div onclick="selectRollColor('${NO_COLOR_KEY}')" style="${cardStyle(activeNoColor)}margin-top:2px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <span style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:${activeNoColor?'var(--accent)':'var(--text-1)'};">
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--text-3);flex-shrink:0;"></span>ไม่ระบุสี
+        </span>
+        <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;">${noColorCount}</span>
+      </div>
+      <span style="font-size:11px;color:var(--text-3);">Roll ที่ยังไม่ได้กำหนดสี ใน${selectedRollSet ? 'กลุ่มนี้' : 'ระบบ'}</span>
+    </div>`;
+  }
 
   el.innerHTML = html;
 }
@@ -3400,7 +3416,10 @@ function renderRollTable(page) {
   let data = rollSetScope();
   let title = selectedRollSet;
 
-  if (selectedRollColor && selectedRollSet) {
+  if (selectedRollColor === NO_COLOR_KEY && selectedRollSet) {
+    data = data.filter(r => !r.color);
+    title = (title ? title + ' · ' : '') + 'ไม่ระบุสี';
+  } else if (selectedRollColor && selectedRollSet) {
     const g = getSetPalette(selectedRollSet).find(x => x.key === selectedRollColor);
     if (g) {
       data = data.filter(r => r.color === g.key);
