@@ -2990,6 +2990,12 @@ let selectedRollSet = null;    // col1 (Size Roll): null = ทุก Size Roll
 let extraRollSets = [];
 let selectedRollColor = null;  // col2 (ชุดสี Roll): null = ทั้งหมด
 
+// ลำดับการแสดง Size Roll ในคอลัมน์ที่ 1 — เก็บแยกจาก extraRollSets เพื่อให้แทรก Set ใหม่ต่อจาก Set ที่เลือกอยู่ได้ แทนที่จะต่อท้ายสุดเสมอ
+let rollSetOrder = [];
+function ensureRollSetOrder(sets) {
+  sets.forEach(s => { if (!rollSetOrder.includes(s)) rollSetOrder.push(s); });
+}
+
 // เครื่องจักรที่ผูกกับแต่ละ Size Roll — เลือกได้สูงสุด MAX_ROLL_MACHINES เครื่องต่อกลุ่ม
 let rollSetMachines = {};
 const ROLL_MACHINES = ['P1', 'P2', 'P3', 'P4'];
@@ -3186,7 +3192,7 @@ const STORAGE_KEY = 'tstToolingState_v1';
 function persistState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      toolingData, extraRollSets, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus,
+      toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus,
       planTasks, planTaskSeq, teamMembers, teamSeq,
       prodBlockProducts, prodBlockSeq, prodBlockCells, prodBlockPM, prodBlockSummary,
       prodBlockEntries, prodBlockEntrySeq, prodBlockActiveMachine, prodBlockViewMonth
@@ -3205,6 +3211,7 @@ function restoreState() {
       });
     }
     if (Array.isArray(saved.extraRollSets)) extraRollSets = saved.extraRollSets;
+    if (Array.isArray(saved.rollSetOrder)) rollSetOrder = saved.rollSetOrder;
     if (saved.rollSetPalettes) rollSetPalettes = saved.rollSetPalettes;
     if (saved.rollSetMachines) rollSetMachines = saved.rollSetMachines;
     if (saved.rollSetStatus) rollSetStatus = saved.rollSetStatus;
@@ -3245,7 +3252,8 @@ function getRollSets() {
   const sets = [];
   toolingData.roll.forEach(r => { if (r.set && !sets.includes(r.set)) sets.push(r.set); });
   extraRollSets.forEach(s => { if (!sets.includes(s)) sets.push(s); });
-  return sets;
+  ensureRollSetOrder(sets);
+  return rollSetOrder.filter(s => sets.includes(s));
 }
 
 function rollSetScope() {
@@ -3537,6 +3545,10 @@ function openAddSetModal() {
     const machines = ((document.getElementById('f-set-machine')||{}).value || '').split(',').filter(Boolean);
     if (!getRollSets().includes(name)) {
       extraRollSets.push(name);
+      // แทรก Set ใหม่ต่อจาก Set ที่กำลังเลือกอยู่ในลิสต์ แทนที่จะต่อท้ายสุดเสมอ
+      const afterIdx = selectedRollSet ? rollSetOrder.indexOf(selectedRollSet) : -1;
+      if (afterIdx >= 0) rollSetOrder.splice(afterIdx + 1, 0, name);
+      else rollSetOrder.push(name);
     }
     if (machines.length) rollSetMachines[name] = machines; else delete rollSetMachines[name];
     selectedRollSet = name;
@@ -3583,6 +3595,7 @@ function openEditSetModal(oldName) {
     if (newName !== oldName) {
       toolingData.roll.forEach(r => { if (r.set === oldName) r.set = newName; });
       extraRollSets = extraRollSets.map(s => s === oldName ? newName : s);
+      rollSetOrder = rollSetOrder.map(s => s === oldName ? newName : s);
       delete rollSetMachines[oldName];
       if (rollSetPalettes[oldName]) { rollSetPalettes[newName] = rollSetPalettes[oldName]; delete rollSetPalettes[oldName]; }
       if (rollSetStatus[oldName]) { rollSetStatus[newName] = rollSetStatus[oldName]; delete rollSetStatus[oldName]; }
@@ -3613,6 +3626,7 @@ function deleteSet(setName) {
   if (!confirm(msg)) return;
   toolingData.roll = toolingData.roll.filter(r => r.set !== setName);
   extraRollSets = extraRollSets.filter(s => s !== setName);
+  rollSetOrder = rollSetOrder.filter(s => s !== setName);
   delete rollSetMachines[setName];
   delete rollSetPalettes[setName];
   delete rollSetStatus[setName];
