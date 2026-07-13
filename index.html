@@ -2026,18 +2026,16 @@ function renderToolingStatusDetail(catKey, items) {
           <span style="font-size:11px;color:var(--text-3);">0 รายการ</span>
         </div>`;
       }
-      return `<div style="display:flex;flex-direction:column;gap:6px;padding:8px 10px;background:var(--bg-surface);border-radius:6px;">
-        <div style="display:flex;align-items:center;gap:12px;">
-          <span style="font-size:13px;color:var(--text-1);flex:1;display:flex;align-items:center;gap:8px;">
-            ${g.dot ? `<span style="width:8px;height:8px;border-radius:50%;background:${g.dot};flex-shrink:0;"></span>` : ''}
-            <span style="font-weight:600;">${escapeHtmlAttr(g.setName)}</span>
-            <span style="color:var(--text-3);">·</span>
-            <span>${escapeHtmlAttr(g.colorLabel)}</span>
-          </span>
-          <span style="font-size:11px;color:var(--text-3);">${g.items.length} รายการ</span>
-          ${rollStatusBar(g.items)}
-        </div>
+      return `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:8px 10px;background:var(--bg-surface);border-radius:6px;">
+        <span style="font-size:13px;color:var(--text-1);display:flex;align-items:center;gap:8px;">
+          ${g.dot ? `<span style="width:8px;height:8px;border-radius:50%;background:${g.dot};flex-shrink:0;"></span>` : ''}
+          <span style="font-weight:600;">${escapeHtmlAttr(g.setName)}</span>
+          <span style="color:var(--text-3);">·</span>
+          <span>${escapeHtmlAttr(g.colorLabel)}</span>
+        </span>
         ${statusBadges(rollStatusBreakdown(g.items))}
+        <span style="font-size:11px;color:var(--text-3);margin-left:auto;">${g.items.length} รายการ</span>
+        ${rollStatusBar(g.items)}
       </div>`;
     }).join('')}
   </div>`;
