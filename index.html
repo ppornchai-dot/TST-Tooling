@@ -906,9 +906,7 @@ canvas{display:block;}
             <thead>
               <tr>
                 <th>ประเภท Tooling</th>
-                <th style="text-align:right;color:var(--green);">พร้อมใช้</th>
-                <th style="text-align:right;color:var(--amber);">ซ่อมบำรุง</th>
-                <th style="text-align:right;color:var(--red);">หมดอายุ</th>
+                <th>สถานะ</th>
                 <th>รวม</th>
                 <th>% พร้อมใช้</th>
               </tr>
@@ -1053,11 +1051,13 @@ canvas{display:block;}
 
       <!-- ── TAB: ROLL ── -->
       <div class="reg-panel active" id="regpanel-roll">
-        <div class="reg-kpi-row" id="roll-kpi-row">
+        <div class="reg-kpi-row" id="roll-kpi-row" style="grid-template-columns:repeat(3,1fr);">
           <div class="reg-kpi"><span class="reg-kpi-val" id="kpi-roll-total">0</span><span class="reg-kpi-lbl">รายการทั้งหมด</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--green);" id="kpi-roll-ready">0</span><span class="reg-kpi-lbl">พร้อมใช้</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--amber);" id="kpi-roll-repair">0</span><span class="reg-kpi-lbl">ซ่อมบำรุง / Regrind</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-roll-expired">0</span><span class="reg-kpi-lbl">หมดอายุ</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--accent);" id="kpi-roll-inuse">0</span><span class="reg-kpi-lbl">กำลังใช้งาน</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--green);" id="kpi-roll-ready">0</span><span class="reg-kpi-lbl">พร้อมใช้งาน</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--amber);" id="kpi-roll-dress">0</span><span class="reg-kpi-lbl">แต่ง Roll</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--purple);" id="kpi-roll-polish">0</span><span class="reg-kpi-lbl">ขัด Roll</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-roll-expired">0</span><span class="reg-kpi-lbl">อายุ</span></div>
         </div>
         <div style="display:grid;grid-template-columns:210px 250px 1fr;gap:14px;align-items:start;">
           <!-- COL 1: Size Roll -->
@@ -1108,11 +1108,11 @@ canvas{display:block;}
                 </div>
                 <select class="form-select" id="roll-detail-status-filter" style="width:160px;" onchange="renderRollTable(1)">
                   <option value="">ทุกสถานะ</option>
-                  <option>พร้อมใช้</option>
-                  <option>ใช้งานอยู่</option>
-                  <option>ซ่อมบำรุง</option>
-                  <option>Regrind</option>
-                  <option>หมดอายุ</option>
+                  <option>กำลังใช้งาน</option>
+                  <option>พร้อมใช้งาน</option>
+                  <option>แต่ง Roll</option>
+                  <option>ขัด Roll</option>
+                  <option>อายุ</option>
                 </select>
               </div>
               <div class="table-wrap" style="overflow-x:auto;">
@@ -1811,6 +1811,54 @@ canvas{display:block;}
 const C_GREEN  = '#2BB57A';
 const C_AMBER  = '#E8971E';
 const C_RED    = '#D95B5B';
+const C_BLUE   = '#2272B6';
+const C_PURPLE = '#5E44B0';
+
+// ลำดับ/สี ของ 5 สถานะ Roll (เฉพาะหมวด Roll เท่านั้น) — ใช้ทำแถบ+ป้ายสถานะแบบแยกสีในหน้า Dashboard
+const ROLL_STATUS_STEPS = [
+  { keys: ['กำลังใช้งาน', 'ใช้งานอยู่'], label: 'กำลังใช้งาน', color: C_BLUE,   cls: 'chip-blue' },
+  { keys: ['พร้อมใช้งาน', 'พร้อมใช้'],   label: 'พร้อมใช้งาน', color: C_GREEN,  cls: 'chip-green' },
+  { keys: ['แต่ง Roll', 'Regrind'],      label: 'แต่ง Roll',   color: C_AMBER,  cls: 'chip-amber' },
+  { keys: ['ขัด Roll', 'ซ่อมบำรุง'],     label: 'ขัด Roll',    color: C_PURPLE, cls: 'chip-purple' },
+  { keys: ['อายุ', 'หมดอายุ', 'มีปัญหา'], label: 'อายุ',        color: C_RED,    cls: 'chip-red' },
+];
+// หมวดอื่น (Roll SQ / ใบเลื่อย / มีดสลิตเตอร์) ยังใช้ 3 สถานะรวมแบบเดิม
+function otherStatusSteps(items) {
+  const { ready, repair, expired } = toolingStatusCounts(items);
+  return [
+    { label: 'พร้อมใช้',   color: C_GREEN, cls: 'chip-green', count: ready },
+    { label: 'ซ่อมบำรุง',  color: C_AMBER, cls: 'chip-amber', count: repair },
+    { label: 'หมดอายุ',    color: C_RED,   cls: 'chip-red',   count: expired },
+  ];
+}
+function rollStatusBreakdown(items) {
+  return ROLL_STATUS_STEPS.map(step => ({
+    label: step.label, color: step.color, cls: step.cls,
+    count: items.filter(r => step.keys.includes(r.status)).length,
+  }));
+}
+function statusStepsFor(catKey, items) {
+  return catKey === 'roll' ? rollStatusBreakdown(items) : otherStatusSteps(items);
+}
+// ป้ายจำนวนต่อสถานะ (badge สีตามสถานะ) — ใช้แทนคอลัมน์ตัวเลข 3 คอลัมน์เดิมในตาราง Dashboard
+function statusBadges(steps) {
+  const shown = steps.filter(s => s.count);
+  if (!shown.length) return `<span style="color:var(--text-3);font-size:12px;">—</span>`;
+  return `<div style="display:flex;flex-wrap:wrap;gap:5px;">${shown.map(s =>
+    `<span class="chip ${s.cls}">${s.count} ${escapeHtmlAttr(s.label)}</span>`).join('')}</div>`;
+}
+// แถบสัดส่วนสถานะแบบแยกสี — ใช้กับแถวสรุป/กลุ่มย่อยของหมวด Roll
+function rollStatusBar(items) {
+  const total = items.length;
+  const steps = rollStatusBreakdown(items);
+  const title = steps.filter(s => s.count).map(s => `${s.label}: ${s.count}`).join(' · ') || 'ไม่มีรายการ';
+  const segments = total ? steps.filter(s => s.count).map(s =>
+    `<div style="height:100%;width:${s.count/total*100}%;background:${s.color};" title="${escapeHtmlAttr(s.label)}: ${s.count}"></div>`).join('') : '';
+  return `<div style="display:flex;align-items:center;gap:7px;" title="${escapeHtmlAttr(title)}">
+    <div style="width:54px;background:var(--bg-panel);border-radius:4px;height:6px;overflow:hidden;display:flex;">${segments}</div>
+    <span style="font-size:11px;color:var(--text-3);white-space:nowrap;">${steps.filter(s=>s.count).map(s=>`<span style="color:${s.color};font-weight:700;">${s.count}</span>`).join(' ')}</span>
+  </div>`;
+}
 
 // ─── NAVIGATION ───────────────────────────────────────────────────────────────
 let currentPage = 'dashboard';
@@ -1856,9 +1904,9 @@ const TOOLING_STATUS_CATEGORIES = [
   { key: 'slitter', name: 'มีดสลิตเตอร์' },
 ];
 function toolingStatusCounts(items) {
-  const ready = items.filter(r => r.status === 'พร้อมใช้' || r.status === 'ใช้งานอยู่').length;
-  const repair = items.filter(r => r.status === 'ซ่อมบำรุง' || r.status === 'Regrind').length;
-  const expired = items.filter(r => r.status === 'หมดอายุ' || r.status === 'มีปัญหา').length;
+  const ready = items.filter(r => r.status === 'พร้อมใช้' || r.status === 'ใช้งานอยู่' || r.status === 'พร้อมใช้งาน' || r.status === 'กำลังใช้งาน').length;
+  const repair = items.filter(r => r.status === 'ซ่อมบำรุง' || r.status === 'Regrind' || r.status === 'แต่ง Roll' || r.status === 'ขัด Roll').length;
+  const expired = items.filter(r => r.status === 'หมดอายุ' || r.status === 'มีปัญหา' || r.status === 'อายุ').length;
   return { ready, repair, expired, total: items.length };
 }
 let toolingStatusExpandedKey = null;
@@ -1880,22 +1928,20 @@ function renderToolingStatusTable() {
       <td style="color:var(--text-1);font-weight:600;">
         <span style="display:inline-block;width:14px;color:var(--text-3);transition:transform .15s;transform:rotate(${expanded ? 90 : 0}deg);">▸</span>${cat.name}
       </td>
-      <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${C_GREEN};">${ready}</td>
-      <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${C_AMBER};">${repair}</td>
-      <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${C_RED};">${expired}</td>
+      <td>${statusBadges(statusStepsFor(cat.key, items))}</td>
       <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--text-2);">${total}</td>
       <td>
-        <div style="display:flex;align-items:center;gap:7px;">
+        ${cat.key === 'roll' ? rollStatusBar(items) : `<div style="display:flex;align-items:center;gap:7px;">
           <div style="width:54px;background:var(--bg-panel);border-radius:4px;height:6px;overflow:hidden;">
             <div style="height:100%;width:${pct}%;background:${pctCol};border-radius:4px;"></div>
           </div>
           <span style="font-size:12px;font-weight:700;color:${pctCol};font-variant-numeric:tabular-nums;">${pct}%</span>
-        </div>
+        </div>`}
       </td>
     </tr>`;
 
     const detailRow = !expanded ? '' : `<tr>
-      <td colspan="6" style="background:var(--bg-panel);padding:12px 16px;">
+      <td colspan="4" style="background:var(--bg-panel);padding:12px 16px;">
         ${renderToolingStatusDetail(cat.key, items)}
       </td>
     </tr>`;
@@ -1937,9 +1983,6 @@ function renderToolingStatusDetail(catKey, items) {
 
   return `<div style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto;">
     ${groups.map(g => {
-      const { ready, total } = toolingStatusCounts(g.items);
-      const gPct = total ? Math.round(ready / total * 100) : 0;
-      const gCol = gPct >= 85 ? C_GREEN : gPct >= 60 ? C_AMBER : C_RED;
       return `<div style="display:flex;align-items:center;gap:12px;padding:6px 10px;background:var(--bg-surface);border-radius:6px;">
         <span style="font-size:13px;color:var(--text-1);flex:1;display:flex;align-items:center;gap:8px;">
           ${g.dot ? `<span style="width:8px;height:8px;border-radius:50%;background:${g.dot};flex-shrink:0;"></span>` : ''}
@@ -1948,7 +1991,7 @@ function renderToolingStatusDetail(catKey, items) {
           <span>${escapeHtmlAttr(g.colorLabel)}</span>
         </span>
         <span style="font-size:11px;color:var(--text-3);">${g.items.length} รายการ</span>
-        <span style="font-size:12px;font-weight:700;color:${gCol};">${gPct}% พร้อมใช้</span>
+        ${rollStatusBar(g.items)}
       </div>`;
     }).join('')}
   </div>`;
@@ -2193,9 +2236,9 @@ const MODAL_FORMS = {
       <div class="modal-row">
         <div class="form-group"><label class="form-label">สถานะ</label>
           <select class="form-select" id="f-status">
-            <option>พร้อมใช้</option><option>ใช้งานอยู่</option>
-            <option>ซ่อมบำรุง</option><option>Regrind</option>
-            <option>มีปัญหา</option><option>หมดอายุ</option>
+            <option>กำลังใช้งาน</option><option>พร้อมใช้งาน</option>
+            <option>แต่ง Roll</option><option>ขัด Roll</option>
+            <option>อายุ</option>
           </select>
         </div>
         <div class="form-group"><label class="form-label">สี</label>
@@ -2439,16 +2482,16 @@ function saveModal() {
 // ─── TOOLING DATA ────────────────────────────────────────────────────────────
 const toolingData = {
   roll: [
-    {id:'RL-0001',name:'Work Roll #1 (Top)',material:'Forged Steel',diameter:'Ø320 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'1,840 ตัน',regrind:'3/5',grindTime:'4',polishTime:'20',lastService:'10 มิ.ย. 69',status:'พร้อมใช้',color:'blue',set:'Work Roll Stand 1 — Ø320 mm'},
-    {id:'RL-0002',name:'Work Roll #1 (Bot)',material:'Forged Steel',diameter:'Ø320 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'1,840 ตัน',regrind:'3/5',grindTime:'4',polishTime:'20',lastService:'10 มิ.ย. 69',status:'พร้อมใช้',color:'blue',set:'Work Roll Stand 1 — Ø320 mm'},
-    {id:'RL-0003',name:'Backup Roll #1 (Top)',material:'Cast Iron',diameter:'Ø650 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'12,400 ตัน',regrind:'1/3',grindTime:'6',polishTime:'30',lastService:'5 มิ.ย. 69',status:'พร้อมใช้',color:'yellow',set:'Backup Roll Stand 1 — Ø650 mm'},
-    {id:'RL-0004',name:'Backup Roll #1 (Bot)',material:'Cast Iron',diameter:'Ø650 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'12,400 ตัน',regrind:'1/3',grindTime:'6',polishTime:'30',lastService:'5 มิ.ย. 69',status:'พร้อมใช้',color:'yellow',set:'Backup Roll Stand 1 — Ø650 mm'},
-    {id:'RL-0007',name:'Work Roll #2 (Top)',material:'Forged Steel',diameter:'Ø300 mm',width:'1,200 mm',position:'Mill-01 Stand 2',usage:'980 ตัน',regrind:'2/5',grindTime:'5',polishTime:'25',lastService:'20 มิ.ย. 69',status:'Regrind',color:'red',set:'Work Roll Stand 2 — Ø300 mm'},
-    {id:'RL-0008',name:'Work Roll #2 (Bot)',material:'Forged Steel',diameter:'Ø300 mm',width:'1,200 mm',position:'Mill-01 Stand 2',usage:'980 ตัน',regrind:'2/5',grindTime:'5',polishTime:'25',lastService:'20 มิ.ย. 69',status:'Regrind',color:'red',set:'Work Roll Stand 2 — Ø300 mm'},
-    {id:'RL-0015',name:'Edger Roll (Left)',material:'Tool Steel D2',diameter:'Ø250 mm',width:'180 mm',position:'Mill-01 Edger',usage:'3,200 ตัน',regrind:'4/5',grindTime:'3',polishTime:'15',lastService:'1 มิ.ย. 69',status:'หมดอายุ',color:'gold',set:'Edger Roll — Ø250 mm'},
-    {id:'RL-0016',name:'Edger Roll (Right)',material:'Tool Steel D2',diameter:'Ø250 mm',width:'180 mm',position:'Mill-01 Edger',usage:'3,200 ตัน',regrind:'4/5',grindTime:'3',polishTime:'15',lastService:'1 มิ.ย. 69',status:'หมดอายุ',color:'gold',set:'Edger Roll — Ø250 mm'},
-    {id:'RL-0021',name:'Straightener Roll Set A',material:'Forged Steel',diameter:'Ø180 mm',width:'900 mm',position:'Leveler-01',usage:'5,600 ตัน',regrind:'2/4',grindTime:'4.5',polishTime:'22',lastService:'28 พ.ค. 69',status:'ซ่อมบำรุง',color:'purple',set:'Straightener Roll — Ø180 mm'},
-    {id:'RL-0030',name:'Pinch Roll (Entry)',material:'Rubber-coated',diameter:'Ø200 mm',width:'1,100 mm',position:'Mill-02 Entry',usage:'8,100 ตัน',regrind:'—',grindTime:'3.5',polishTime:'18',lastService:'15 มิ.ย. 69',status:'ใช้งานอยู่',color:'blue',set:'Pinch Roll — Ø200 mm'}
+    {id:'RL-0001',name:'Work Roll #1 (Top)',material:'Forged Steel',diameter:'Ø320 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'1,840 ตัน',regrind:'3/5',grindTime:'4',polishTime:'20',lastService:'10 มิ.ย. 69',status:'พร้อมใช้งาน',color:'blue',set:'Work Roll Stand 1 — Ø320 mm'},
+    {id:'RL-0002',name:'Work Roll #1 (Bot)',material:'Forged Steel',diameter:'Ø320 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'1,840 ตัน',regrind:'3/5',grindTime:'4',polishTime:'20',lastService:'10 มิ.ย. 69',status:'พร้อมใช้งาน',color:'blue',set:'Work Roll Stand 1 — Ø320 mm'},
+    {id:'RL-0003',name:'Backup Roll #1 (Top)',material:'Cast Iron',diameter:'Ø650 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'12,400 ตัน',regrind:'1/3',grindTime:'6',polishTime:'30',lastService:'5 มิ.ย. 69',status:'พร้อมใช้งาน',color:'yellow',set:'Backup Roll Stand 1 — Ø650 mm'},
+    {id:'RL-0004',name:'Backup Roll #1 (Bot)',material:'Cast Iron',diameter:'Ø650 mm',width:'1,200 mm',position:'Mill-01 Stand 1',usage:'12,400 ตัน',regrind:'1/3',grindTime:'6',polishTime:'30',lastService:'5 มิ.ย. 69',status:'พร้อมใช้งาน',color:'yellow',set:'Backup Roll Stand 1 — Ø650 mm'},
+    {id:'RL-0007',name:'Work Roll #2 (Top)',material:'Forged Steel',diameter:'Ø300 mm',width:'1,200 mm',position:'Mill-01 Stand 2',usage:'980 ตัน',regrind:'2/5',grindTime:'5',polishTime:'25',lastService:'20 มิ.ย. 69',status:'แต่ง Roll',color:'red',set:'Work Roll Stand 2 — Ø300 mm'},
+    {id:'RL-0008',name:'Work Roll #2 (Bot)',material:'Forged Steel',diameter:'Ø300 mm',width:'1,200 mm',position:'Mill-01 Stand 2',usage:'980 ตัน',regrind:'2/5',grindTime:'5',polishTime:'25',lastService:'20 มิ.ย. 69',status:'แต่ง Roll',color:'red',set:'Work Roll Stand 2 — Ø300 mm'},
+    {id:'RL-0015',name:'Edger Roll (Left)',material:'Tool Steel D2',diameter:'Ø250 mm',width:'180 mm',position:'Mill-01 Edger',usage:'3,200 ตัน',regrind:'4/5',grindTime:'3',polishTime:'15',lastService:'1 มิ.ย. 69',status:'อายุ',color:'gold',set:'Edger Roll — Ø250 mm'},
+    {id:'RL-0016',name:'Edger Roll (Right)',material:'Tool Steel D2',diameter:'Ø250 mm',width:'180 mm',position:'Mill-01 Edger',usage:'3,200 ตัน',regrind:'4/5',grindTime:'3',polishTime:'15',lastService:'1 มิ.ย. 69',status:'อายุ',color:'gold',set:'Edger Roll — Ø250 mm'},
+    {id:'RL-0021',name:'Straightener Roll Set A',material:'Forged Steel',diameter:'Ø180 mm',width:'900 mm',position:'Leveler-01',usage:'5,600 ตัน',regrind:'2/4',grindTime:'4.5',polishTime:'22',lastService:'28 พ.ค. 69',status:'ขัด Roll',color:'purple',set:'Straightener Roll — Ø180 mm'},
+    {id:'RL-0030',name:'Pinch Roll (Entry)',material:'Rubber-coated',diameter:'Ø200 mm',width:'1,100 mm',position:'Mill-02 Entry',usage:'8,100 ตัน',regrind:'—',grindTime:'3.5',polishTime:'18',lastService:'15 มิ.ย. 69',status:'กำลังใช้งาน',color:'blue',set:'Pinch Roll — Ø200 mm'}
   ],
   sq: [
     {id:'SQ-0001',name:'Guide Roll (Entry) ชุด A',size:'Ø80×120',material:'Carbide',machine:'SQ Mill-01',location:'SQ-A-01',usage:'2,100 ตัน',lastService:'18 มิ.ย. 69',status:'พร้อมใช้'},
@@ -2973,7 +3016,8 @@ const PAGE_SIZE = 10;
 const pageState = { roll: 1, sq: 1, saw: 1, slitter: 1 };
 
 function statusChip(s) {
-  const map = {'พร้อมใช้':'chip-green','ใช้งานอยู่':'chip-blue','ซ่อมบำรุง':'chip-amber','Regrind':'chip-amber','ใกล้หมดอายุ':'chip-amber','มีปัญหา':'chip-amber','หมดอายุ':'chip-red'};
+  const map = {'พร้อมใช้':'chip-green','ใช้งานอยู่':'chip-blue','ซ่อมบำรุง':'chip-amber','Regrind':'chip-amber','ใกล้หมดอายุ':'chip-amber','มีปัญหา':'chip-amber','หมดอายุ':'chip-red',
+    'กำลังใช้งาน':'chip-blue','พร้อมใช้งาน':'chip-green','แต่ง Roll':'chip-amber','ขัด Roll':'chip-purple','อายุ':'chip-red'};
   return `<span class="chip ${map[s]||'chip-blue'}">${s}</span>`;
 }
 
@@ -3421,9 +3465,11 @@ function switchRollDetailTab(tab) {
 function updateRollKpi() {
   const d = toolingData.roll;
   document.getElementById('kpi-roll-total').textContent = d.length;
-  document.getElementById('kpi-roll-ready').textContent = d.filter(r=>r.status==='พร้อมใช้'||r.status==='ใช้งานอยู่').length;
-  document.getElementById('kpi-roll-repair').textContent = d.filter(r=>r.status==='ซ่อมบำรุง'||r.status==='Regrind').length;
-  document.getElementById('kpi-roll-expired').textContent = d.filter(r=>r.status==='หมดอายุ'||r.status==='มีปัญหา').length;
+  document.getElementById('kpi-roll-inuse').textContent = d.filter(r=>r.status==='กำลังใช้งาน'||r.status==='ใช้งานอยู่').length;
+  document.getElementById('kpi-roll-ready').textContent = d.filter(r=>r.status==='พร้อมใช้งาน'||r.status==='พร้อมใช้').length;
+  document.getElementById('kpi-roll-dress').textContent = d.filter(r=>r.status==='แต่ง Roll'||r.status==='Regrind').length;
+  document.getElementById('kpi-roll-polish').textContent = d.filter(r=>r.status==='ขัด Roll'||r.status==='ซ่อมบำรุง').length;
+  document.getElementById('kpi-roll-expired').textContent = d.filter(r=>r.status==='อายุ'||r.status==='หมดอายุ'||r.status==='มีปัญหา').length;
   document.getElementById('cnt-roll').textContent = d.length;
 }
 
