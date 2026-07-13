@@ -283,6 +283,12 @@ tbody td.muted{color:var(--text-2);}
 .chip-blue::before{background:var(--accent);}
 .chip-purple{background:var(--purple-dim);color:var(--purple);}
 .chip-purple::before{background:var(--purple);}
+.chip-cyan{background:rgba(14,155,181,0.10);color:#0E9BB5;}
+.chip-cyan::before{background:#0E9BB5;}
+.chip-brown{background:rgba(169,117,43,0.10);color:#A9752B;}
+.chip-brown::before{background:#A9752B;}
+.chip-pink{background:rgba(194,70,158,0.10);color:#C2469E;}
+.chip-pink::before{background:#C2469E;}
 
 /* ─── PRIORITY ────────────────────────────────── */
 .prio{
@@ -1055,8 +1061,11 @@ canvas{display:block;}
           <div class="reg-kpi"><span class="reg-kpi-val" id="kpi-roll-total">0</span><span class="reg-kpi-lbl">รายการทั้งหมด</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--accent);" id="kpi-roll-inuse">0</span><span class="reg-kpi-lbl">กำลังใช้งาน</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--green);" id="kpi-roll-ready">0</span><span class="reg-kpi-lbl">พร้อมใช้งาน</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:#0E9BB5;" id="kpi-roll-waiting">0</span><span class="reg-kpi-lbl">รอใช้งาน</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--amber);" id="kpi-roll-dress">0</span><span class="reg-kpi-lbl">แต่ง Roll</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:#A9752B;" id="kpi-roll-waitdress">0</span><span class="reg-kpi-lbl">รอแต่ง</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--purple);" id="kpi-roll-polish">0</span><span class="reg-kpi-lbl">ขัด Roll</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:#C2469E;" id="kpi-roll-waitpolish">0</span><span class="reg-kpi-lbl">รอขัด</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-roll-expired">0</span><span class="reg-kpi-lbl">อายุ</span></div>
         </div>
         <div style="display:grid;grid-template-columns:210px 250px 1fr;gap:14px;align-items:start;">
@@ -1110,8 +1119,11 @@ canvas{display:block;}
                   <option value="">ทุกสถานะ</option>
                   <option>กำลังใช้งาน</option>
                   <option>พร้อมใช้งาน</option>
+                  <option>รอใช้งาน</option>
                   <option>แต่ง Roll</option>
+                  <option>รอแต่ง</option>
                   <option>ขัด Roll</option>
+                  <option>รอขัด</option>
                   <option>อายุ</option>
                 </select>
               </div>
@@ -1813,13 +1825,20 @@ const C_AMBER  = '#E8971E';
 const C_RED    = '#D95B5B';
 const C_BLUE   = '#2272B6';
 const C_PURPLE = '#5E44B0';
+const C_CYAN   = '#0E9BB5';
+const C_BROWN  = '#A9752B';
+const C_PINK   = '#C2469E';
 
-// ลำดับ/สี ของ 5 สถานะ Roll (เฉพาะหมวด Roll เท่านั้น) — ใช้ทำแถบ+ป้ายสถานะแบบแยกสีในหน้า Dashboard
+// ลำดับ/สี ของ 8 สถานะ Roll (เฉพาะหมวด Roll เท่านั้น) — ใช้ทำแถบ+ป้ายสถานะแบบแยกสีในหน้า Dashboard
+// รอใช้งาน/รอแต่ง/รอขัด คือคิวที่เกิดจากการซิงก์กับ Production Block อัตโนมัติ (ดู syncRollStatusWithProdBlock)
 const ROLL_STATUS_STEPS = [
   { keys: ['กำลังใช้งาน', 'ใช้งานอยู่'], label: 'กำลังใช้งาน', color: C_BLUE,   cls: 'chip-blue' },
   { keys: ['พร้อมใช้งาน', 'พร้อมใช้'],   label: 'พร้อมใช้งาน', color: C_GREEN,  cls: 'chip-green' },
+  { keys: ['รอใช้งาน'],                  label: 'รอใช้งาน',    color: C_CYAN,   cls: 'chip-cyan' },
   { keys: ['แต่ง Roll', 'Regrind'],      label: 'แต่ง Roll',   color: C_AMBER,  cls: 'chip-amber' },
+  { keys: ['รอแต่ง'],                    label: 'รอแต่ง',      color: C_BROWN,  cls: 'chip-brown' },
   { keys: ['ขัด Roll', 'ซ่อมบำรุง'],     label: 'ขัด Roll',    color: C_PURPLE, cls: 'chip-purple' },
+  { keys: ['รอขัด'],                     label: 'รอขัด',       color: C_PINK,   cls: 'chip-pink' },
   { keys: ['อายุ', 'หมดอายุ', 'มีปัญหา'], label: 'อายุ',        color: C_RED,    cls: 'chip-red' },
 ];
 // หมวดอื่น (Roll SQ / ใบเลื่อย / มีดสลิตเตอร์) ยังใช้ 3 สถานะรวมแบบเดิม
@@ -1877,6 +1896,7 @@ const PAGE_META = {
 };
 
 function showPage(id) {
+  syncRollStatusWithProdBlock();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
@@ -1908,7 +1928,7 @@ const TOOLING_STATUS_CATEGORIES = [
 ];
 function toolingStatusCounts(items) {
   const ready = items.filter(r => r.status === 'พร้อมใช้' || r.status === 'ใช้งานอยู่' || r.status === 'พร้อมใช้งาน' || r.status === 'กำลังใช้งาน').length;
-  const repair = items.filter(r => r.status === 'ซ่อมบำรุง' || r.status === 'Regrind' || r.status === 'แต่ง Roll' || r.status === 'ขัด Roll').length;
+  const repair = items.filter(r => ['ซ่อมบำรุง', 'Regrind', 'แต่ง Roll', 'ขัด Roll', 'รอใช้งาน', 'รอแต่ง', 'รอขัด'].includes(r.status)).length;
   const expired = items.filter(r => r.status === 'หมดอายุ' || r.status === 'มีปัญหา' || r.status === 'อายุ').length;
   return { ready, repair, expired, total: items.length };
 }
@@ -2240,7 +2260,9 @@ const MODAL_FORMS = {
         <div class="form-group"><label class="form-label">สถานะ</label>
           <select class="form-select" id="f-status">
             <option>กำลังใช้งาน</option><option>พร้อมใช้งาน</option>
-            <option>แต่ง Roll</option><option>ขัด Roll</option>
+            <option>รอใช้งาน</option>
+            <option>แต่ง Roll</option><option>รอแต่ง</option>
+            <option>ขัด Roll</option><option>รอขัด</option>
             <option>อายุ</option>
           </select>
         </div>
@@ -2585,6 +2607,54 @@ let prodBlockEntries = []; // { id, machine, startDate, days, forming:{set,color
 let prodBlockEntrySeq = 0;
 let prodBlockActiveMachine = 'P1';
 let prodBlockViewMonth = '2026-07-01'; // วันที่ 1 ของเดือนที่กำลังดู — ใช้แค่ปี/เดือน
+
+// ─── ซิงก์สถานะ Roll กับตารางวางแผน Production Block ────────────────────────
+// เมื่อ Roll set/สี ใดถูกวางแผน (Forming/Sizing/TH) ในวันนี้ ให้ปรับสถานะอัตโนมัติ:
+//  - พร้อมใช้งาน (ว่าง) ในวันที่วางแผน → กำลังใช้งาน
+//  - มีสถานะอื่นอยู่ก่อน (แต่ง Roll/ขัด Roll/อายุ ฯลฯ) ในวันที่วางแผน → รอใช้งาน (คิว รอเพราะตัวจริงยังไม่ว่าง)
+//  - พ้นช่วงวันที่วางแผนแล้ว (ที่ระบบเป็นผู้ตั้งสถานะให้เอง) → รอแต่ง (ค่าเริ่มต้นหลังใช้งาน ผู้ใช้ปรับเป็น "รอขัด" เองได้ภายหลังถ้าจำเป็น)
+// ใช้ r._prodSched เป็น marker ว่าสถานะปัจจุบันเป็นผลจากระบบ ไม่ใช่คนแก้เอง — การแก้ไข Roll ผ่านฟอร์ม "แก้ไข Roll"
+// จะสร้าง object สถานะใหม่ทั้งก้อนโดยไม่มี _prodSched ติดมา จึงล้าง marker นี้ให้อัตโนมัติเมื่อผู้ใช้ตั้งสถานะเอง
+const PROD_SCHED_NOT_FREE_STATUSES = ['แต่ง Roll', 'รอแต่ง', 'ขัด Roll', 'รอขัด', 'อายุ', 'Regrind', 'ซ่อมบำรุง', 'หมดอายุ', 'มีปัญหา'];
+const PROD_SCHED_READY_STATUSES = ['พร้อมใช้งาน', 'พร้อมใช้'];
+function prodBlockEntryDates(e) {
+  const dates = [];
+  const cursor = parseISODate(e.startDate);
+  let counted = 0;
+  while (counted < e.days) {
+    if (cursor.getDay() !== 0) { dates.push(toISODate(cursor)); counted++; }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
+}
+function syncRollStatusWithProdBlock() {
+  const todayIso = toISODate(new Date());
+  const scheduledToday = new Map(); // key `${set}|${color||''}` => entry id ที่วางแผนไว้ "วันนี้"
+  prodBlockEntries.forEach(e => {
+    if (!prodBlockEntryDates(e).includes(todayIso)) return;
+    ['forming', 'sizing', 'th'].forEach(cat => {
+      const ref = e[cat];
+      if (ref && ref.set) scheduledToday.set(ref.set + '|' + (ref.color || ''), e.id);
+    });
+  });
+
+  toolingData.roll.forEach(r => {
+    if (!r.set) return;
+    const entryId = scheduledToday.get(r.set + '|' + (r.color || '')) || scheduledToday.get(r.set + '|');
+    if (entryId) {
+      if (PROD_SCHED_READY_STATUSES.includes(r.status)) {
+        r.status = 'กำลังใช้งาน'; r._prodSched = entryId;
+      } else if (PROD_SCHED_NOT_FREE_STATUSES.includes(r.status)) {
+        r.status = 'รอใช้งาน'; r._prodSched = entryId;
+      } else if (r.status === 'กำลังใช้งาน' || r.status === 'รอใช้งาน') {
+        r._prodSched = entryId; // ยังอยู่ในช่วงวางแผนต่อเนื่อง อัปเดตอ้างอิง entry ล่าสุด
+      }
+    } else if (r._prodSched) {
+      r.status = 'รอแต่ง';
+      delete r._prodSched;
+    }
+  });
+}
 
 const PLAN_WORKTYPE_META = {
   cnc:    { label: 'แผนงาน CNC', field: 'grindTime', metricLabel: 'เวลาแต่ง Roll (นาที)' },
@@ -3020,7 +3090,8 @@ const pageState = { roll: 1, sq: 1, saw: 1, slitter: 1 };
 
 function statusChip(s) {
   const map = {'พร้อมใช้':'chip-green','ใช้งานอยู่':'chip-blue','ซ่อมบำรุง':'chip-amber','Regrind':'chip-amber','ใกล้หมดอายุ':'chip-amber','มีปัญหา':'chip-amber','หมดอายุ':'chip-red',
-    'กำลังใช้งาน':'chip-blue','พร้อมใช้งาน':'chip-green','แต่ง Roll':'chip-amber','ขัด Roll':'chip-purple','อายุ':'chip-red'};
+    'กำลังใช้งาน':'chip-blue','พร้อมใช้งาน':'chip-green','แต่ง Roll':'chip-amber','ขัด Roll':'chip-purple','อายุ':'chip-red',
+    'รอใช้งาน':'chip-cyan','รอแต่ง':'chip-brown','รอขัด':'chip-pink'};
   return `<span class="chip ${map[s]||'chip-blue'}">${s}</span>`;
 }
 
@@ -3286,6 +3357,7 @@ function restoreState() {
   } catch (e) { /* corrupted/old data — fall back to defaults */ }
 }
 restoreState();
+syncRollStatusWithProdBlock();
 
 // migration: เติมสมาชิก "ช่างเครื่อง" ให้บราวเซอร์ที่มีข้อมูลทีมเดิม (ก่อนเพิ่ม role นี้) อยู่แล้ว
 (function seedOperatorTeamMembers() {
@@ -3470,8 +3542,11 @@ function updateRollKpi() {
   document.getElementById('kpi-roll-total').textContent = d.length;
   document.getElementById('kpi-roll-inuse').textContent = d.filter(r=>r.status==='กำลังใช้งาน'||r.status==='ใช้งานอยู่').length;
   document.getElementById('kpi-roll-ready').textContent = d.filter(r=>r.status==='พร้อมใช้งาน'||r.status==='พร้อมใช้').length;
+  document.getElementById('kpi-roll-waiting').textContent = d.filter(r=>r.status==='รอใช้งาน').length;
   document.getElementById('kpi-roll-dress').textContent = d.filter(r=>r.status==='แต่ง Roll'||r.status==='Regrind').length;
+  document.getElementById('kpi-roll-waitdress').textContent = d.filter(r=>r.status==='รอแต่ง').length;
   document.getElementById('kpi-roll-polish').textContent = d.filter(r=>r.status==='ขัด Roll'||r.status==='ซ่อมบำรุง').length;
+  document.getElementById('kpi-roll-waitpolish').textContent = d.filter(r=>r.status==='รอขัด').length;
   document.getElementById('kpi-roll-expired').textContent = d.filter(r=>r.status==='อายุ'||r.status==='หมดอายุ'||r.status==='มีปัญหา').length;
   document.getElementById('cnt-roll').textContent = d.length;
 }
@@ -4312,6 +4387,7 @@ function renderProdBlockCalendar() {
 }
 
 function renderProdBlock() {
+  syncRollStatusWithProdBlock();
   renderProdBlockTabs();
   renderProdBlockCalendar();
 }
