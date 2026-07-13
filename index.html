@@ -1847,16 +1847,19 @@ function statusBadges(steps) {
   return `<div style="display:flex;flex-wrap:wrap;gap:5px;">${shown.map(s =>
     `<span class="chip ${s.cls}">${s.count} ${escapeHtmlAttr(s.label)}</span>`).join('')}</div>`;
 }
-// แถบสัดส่วนสถานะแบบแยกสี — ใช้กับแถวสรุป/กลุ่มย่อยของหมวด Roll
+// แถบสัดส่วนสถานะแบบแยกสี — ใช้กับแถวสรุป/กลุ่มย่อยของหมวด Roll พร้อม % พร้อมใช้จริง (ไม่ใช่ตัวเลขจำนวนดิบ)
 function rollStatusBar(items) {
   const total = items.length;
   const steps = rollStatusBreakdown(items);
+  const { ready } = toolingStatusCounts(items);
+  const pct = total ? Math.round(ready / total * 100) : 0;
+  const pctCol = pct >= 85 ? C_GREEN : pct >= 60 ? C_AMBER : C_RED;
   const title = steps.filter(s => s.count).map(s => `${s.label}: ${s.count}`).join(' · ') || 'ไม่มีรายการ';
   const segments = total ? steps.filter(s => s.count).map(s =>
     `<div style="height:100%;width:${s.count/total*100}%;background:${s.color};" title="${escapeHtmlAttr(s.label)}: ${s.count}"></div>`).join('') : '';
   return `<div style="display:flex;align-items:center;gap:7px;" title="${escapeHtmlAttr(title)}">
     <div style="width:54px;background:var(--bg-panel);border-radius:4px;height:6px;overflow:hidden;display:flex;">${segments}</div>
-    <span style="font-size:11px;color:var(--text-3);white-space:nowrap;">${steps.filter(s=>s.count).map(s=>`<span style="color:${s.color};font-weight:700;">${s.count}</span>`).join(' ')}</span>
+    <span style="font-size:12px;font-weight:700;color:${pctCol};font-variant-numeric:tabular-nums;">${pct}%</span>
   </div>`;
 }
 
