@@ -1082,6 +1082,7 @@ canvas{display:block;}
             </div>
             <div style="padding:8px;">
               <input type="text" class="form-input" id="roll-set-search" placeholder="ค้นหากลุ่ม..." oninput="renderRollSetList()" style="width:100%;margin-bottom:6px;">
+              <button class="btn btn-ghost btn-sm" style="width:100%;" onclick="openRollTemplateModal()" title="คัดลอกรายชื่อ Roll จาก Size Roll กลุ่มอื่นที่มีอยู่แล้ว มาสร้างเป็นรายการเปล่าในกลุ่มที่เลือก">⧉ สร้างจากเทมเพลต</button>
             </div>
             <div id="roll-set-list" style="max-height:480px;overflow-y:auto;padding:4px 8px 8px;"></div>
           </div>
@@ -3845,6 +3846,94 @@ function deleteSet(setName) {
   renderRollColorList();
   renderRollTable(1);
   persistState();
+}
+
+// ─── สร้างรายการ Roll จากเทมเพลต — คัดลอกแค่ "ชื่อ Roll" จาก Set ต้นแบบที่มีอยู่แล้ว ไปสร้างเป็นแถวเปล่าในกลุ่มปลายทาง ───
+// ข้อมูลอื่นๆ (เส้นผ่าศูนย์กลาง/ความหนา/ตำแหน่ง ฯลฯ) ผู้ใช้กรอกเองทีหลัง — ข้ามชื่อที่มีอยู่แล้วในกลุ่มปลายทางเพื่อไม่ทับของเดิม
+function openRollTemplateModal() {
+  const setsWithRolls = getRollSets().filter(s => toolingData.roll.some(r => r.set === s));
+  if (!setsWithRolls.length) { alert('ยังไม่มี Size Roll กลุ่มไหนมีรายการ Roll อยู่ ให้ใช้เป็นเทมเพลตได้'); return; }
+  document.getElementById('modal-title').textContent = 'สร้างรายการ Roll จากเทมเพลต';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="modal-row full">
+      <div class="form-group"><label class="form-label">Set ต้นแบบ (คัดลอกชื่อ Roll จากที่นี่)</label>
+        <select class="form-select" id="tmpl-source" onchange="renderTemplateTargets()">
+          ${setsWithRolls.map(s => `<option value="${escapeHtmlAttr(s)}">${escapeHtmlAttr(s)} (${toolingData.roll.filter(r=>r.set===s).length} รายการ)</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="modal-row full">
+      <div class="form-group"><label class="form-label">สร้างให้กับ Set ปลายทาง</label>
+        <div id="tmpl-targets" style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:6px;"></div>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--text-3);">จะเพิ่มเฉพาะชื่อ Roll ที่ยังไม่มีอยู่ในกลุ่มปลายทางแต่ละกลุ่ม ข้อมูลอื่นๆ (เส้นผ่าศูนย์กลาง ความหนา ฯลฯ) จะเว้นว่างไว้ให้กรอกเอง</div>`;
+  document.getElementById('modal-overlay').classList.add('open');
+  renderTemplateTargets();
+  document.querySelector('.modal-footer .btn-primary').onclick = generateRollTemplate;
+}
+
+function renderTemplateTargets() {
+  const source = (document.getElementById('tmpl-source')||{}).value;
+  const el = document.getElementById('tmpl-targets');
+  if (!el) return;
+  if (!source) { el.innerHTML = ''; return; }
+  const sourceCat = parseSizeRollName(source).category;
+  const others = getRollSets().filter(s => s !== source);
+  if (!others.length) { el.innerHTML = `<div style="font-size:12px;color:var(--text-3);padding:6px;">ไม่มี Set อื่นให้เลือก</div>`; return; }
+  const sameCat = others.filter(s => sourceCat && parseSizeRollName(s).category === sourceCat);
+  const diffCat = others.filter(s => !sameCat.includes(s));
+  const rowHtml = (s, checked) => {
+    const cnt = toolingData.roll.filter(r => r.set === s).length;
+    return `<label style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:5px;cursor:pointer;font-size:12px;">
+      <input type="checkbox" class="tmpl-target-cb" value="${escapeHtmlAttr(s)}"${checked ? ' checked' : ''} style="width:14px;height:14px;flex-shrink:0;">
+      <span style="flex:1;">${escapeHtmlAttr(s)}</span>
+      <span style="color:var(--text-3);">${cnt} รายการ</span>
+    </label>`;
+  };
+  el.innerHTML =
+    (sameCat.length ? sameCat.map(s => rowHtml(s, true)).join('') : '') +
+    (diffCat.length ? `<div style="font-size:10px;color:var(--text-3);margin:6px 0 2px;padding:0 6px;">หมวดอื่น</div>` + diffCat.map(s => rowHtml(s, false)).join('') : '');
+}
+
+function generateRollTemplate() {
+  const source = (document.getElementById('tmpl-source')||{}).value;
+  if (!source) return;
+  const targets = Array.from(document.querySelectorAll('.tmpl-target-cb:checked')).map(cb => cb.value);
+  if (!targets.length) { alert('กรุณาเลือก Set ปลายทางอย่างน้อย 1 กลุ่ม'); return; }
+
+  const seenNames = new Set();
+  const templateNames = [];
+  toolingData.roll.filter(r => r.set === source).forEach(r => {
+    if (!seenNames.has(r.name)) { seenNames.add(r.name); templateNames.push(r.name); }
+  });
+
+  let addedCount = 0;
+  targets.forEach(target => {
+    const existingNames = new Set(toolingData.roll.filter(r => r.set === target).map(r => r.name));
+    const od = parseSizeRollName(target).od || '—';
+    templateNames.forEach(name => {
+      if (existingNames.has(name)) return;
+      toolingData.roll.push({
+        id: od, name, material: '—', diameter: '—', width: '—', position: '—',
+        usage: '—', regrind: '—', grindTime: '—', polishTime: '—', lastService: '—',
+        status: 'รอใช้งาน', color: null, set: target
+      });
+      existingNames.add(name);
+      addedCount++;
+    });
+  });
+
+  renderRollSetList();
+  renderRollColorList();
+  renderRollTable(pageState.roll || 1);
+  persistState();
+
+  const btn = document.querySelector('.modal-footer .btn-primary');
+  const orig = btn.innerHTML;
+  btn.innerHTML = '✓ สร้างแล้ว ' + addedCount + ' รายการ';
+  btn.style.background = 'var(--green)';
+  setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.onclick = saveModal; closeModal(); }, 1200);
 }
 
 function openAddColorModal() {
