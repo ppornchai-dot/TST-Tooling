@@ -1138,7 +1138,7 @@ canvas{display:block;}
               <div class="table-wrap" style="overflow-x:auto;">
                 <table>
                   <thead><tr>
-                    <th>Size</th><th>ชื่อ Roll</th><th>เส้นผ่าศูนย์กลาง</th><th>ความหนา</th><th>ตำแหน่ง</th><th>รอบการใช้งาน</th><th>แต่งครั้งที่</th><th>เวลาแต่ง Roll (นาที)</th><th>เวลาขัด Roll (นาที)</th><th>แต่งล่าสุด</th><th>สถานะ</th><th></th>
+                    <th>Size</th><th>ชื่อ Roll</th><th>เส้นผ่าศูนย์กลาง</th><th>ความหนา</th><th>รอบการใช้งาน</th><th>แต่งครั้งที่</th><th>เวลาแต่ง Roll (นาที)</th><th>เวลาขัด Roll (นาที)</th><th>แต่งล่าสุด</th><th>สถานะ</th><th></th>
                   </tr></thead>
                   <tbody id="tbody-roll"></tbody>
                 </table>
@@ -3704,7 +3704,6 @@ function renderRollTable(page) {
       <td><strong>${colorDot}${r.name}</strong></td>
       <td>${r.diameter}</td>
       <td>${r.width}</td>
-      <td>${r.position}</td>
       <td class="muted">${r.usage}</td>
       <td class="muted">${r.regrind}</td>
       <td class="muted">${r.grindTime||'—'}</td>
@@ -3716,7 +3715,7 @@ function renderRollTable(page) {
         <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteRoll(${realIdx})">ลบ</button>
       </td>
     </tr>`;
-  }).join('') || `<tr><td colspan="12" class="empty" style="padding:32px;text-align:center;color:var(--text-3);">ไม่พบ Roll ตามเงื่อนไขที่เลือก</td></tr>`;
+  }).join('') || `<tr><td colspan="11" class="empty" style="padding:32px;text-align:center;color:var(--text-3);">ไม่พบ Roll ตามเงื่อนไขที่เลือก</td></tr>`;
 
   document.getElementById('tbody-roll').innerHTML = html;
   const tp = Math.max(1, Math.ceil(data.length/PAGE_SIZE));
