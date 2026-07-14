@@ -3894,7 +3894,7 @@ function openRollTemplateModal() {
         <div id="tmpl-targets" style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:6px;"></div>
       </div>
     </div>
-    <div style="font-size:11px;color:var(--text-3);">จะเพิ่มเฉพาะชื่อ Roll ที่ยังไม่มีอยู่ในกลุ่มปลายทางแต่ละกลุ่ม ข้อมูลอื่นๆ (เส้นผ่าศูนย์กลาง ความหนา ฯลฯ) จะเว้นว่างไว้ให้กรอกเอง</div>`;
+    <div style="font-size:11px;color:var(--text-3);">จะเพิ่มเฉพาะชื่อ Roll ที่ยังไม่มีอยู่ในกลุ่มปลายทางแต่ละกลุ่ม ข้อมูลอื่นๆ (เส้นผ่าศูนย์กลาง ความหนา ฯลฯ) จะเว้นว่างไว้ให้กรอกเอง — ถ้ากลุ่มปลายทางมีการเพิ่มชุดสีไว้แล้ว จะสร้างรายการครบชุดแยกให้ทุกสีที่มี แต่ถ้ายังไม่มีชุดสีจะสร้างเป็นรายการไม่ระบุสีตามปกติ</div>`;
   document.getElementById('modal-overlay').classList.add('open');
   renderTemplateTargets();
   document.querySelector('.modal-footer .btn-primary').onclick = generateRollTemplate;
@@ -3937,17 +3937,24 @@ function generateRollTemplate() {
 
   let addedCount = 0;
   targets.forEach(target => {
-    const existingNames = new Set(toolingData.roll.filter(r => r.set === target).map(r => r.name));
     const od = parseSizeRollName(target).od || '—';
-    templateNames.forEach(name => {
-      if (existingNames.has(name)) return;
-      toolingData.roll.push({
-        id: od, name, material: '—', diameter: '—', width: '—', position: '—',
-        usage: '—', regrind: '—', grindTime: '—', polishTime: '—', lastService: '—',
-        status: 'รอใช้งาน', color: null, set: target
+    // ถ้ากลุ่มปลายทางมีการเพิ่มชุดสีไว้แล้ว (ดูจาก rollSetPalettes ตรงๆ ไม่เรียก getSetPalette เพราะฟังก์ชันนั้นจะ auto-สร้างชุดสีเริ่มต้นให้ทันทีที่เรียก)
+    // ให้สร้างรายการครบชุดแยกไปตามแต่ละสีที่มีอยู่จริง — ถ้ายังไม่มีการเพิ่มชุดสีเลย ให้สร้างเป็นรายการไม่ระบุสีตามเดิม
+    const palette = rollSetPalettes[target];
+    const colorKeys = (palette && palette.length) ? palette.map(c => c.key) : [null];
+    const existingCombos = new Set(toolingData.roll.filter(r => r.set === target).map(r => r.name + '|' + (r.color || '')));
+    colorKeys.forEach(colorKey => {
+      templateNames.forEach(name => {
+        const combo = name + '|' + (colorKey || '');
+        if (existingCombos.has(combo)) return;
+        toolingData.roll.push({
+          id: od, name, material: '—', diameter: '—', width: '—', position: '—',
+          usage: '—', regrind: '—', grindTime: '—', polishTime: '—', lastService: '—',
+          status: 'รอใช้งาน', color: colorKey, set: target
+        });
+        existingCombos.add(combo);
+        addedCount++;
       });
-      existingNames.add(name);
-      addedCount++;
     });
   });
 
