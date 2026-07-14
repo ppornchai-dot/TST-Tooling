@@ -291,6 +291,8 @@ tbody tr.roll-row-selected:hover{background:var(--accent-glow);}
 .chip-brown::before{background:#A9752B;}
 .chip-pink{background:rgba(194,70,158,0.10);color:#C2469E;}
 .chip-pink::before{background:#C2469E;}
+.chip-gray{background:rgba(107,114,128,0.10);color:#6B7280;}
+.chip-gray::before{background:#6B7280;}
 
 /* ─── PRIORITY ────────────────────────────────── */
 .prio{
@@ -1059,7 +1061,7 @@ canvas{display:block;}
 
       <!-- ── TAB: ROLL ── -->
       <div class="reg-panel active" id="regpanel-roll">
-        <div class="reg-kpi-row" id="roll-kpi-row" style="grid-template-columns:repeat(3,1fr);">
+        <div class="reg-kpi-row" id="roll-kpi-row" style="grid-template-columns:repeat(5,1fr);">
           <div class="reg-kpi"><span class="reg-kpi-val" id="kpi-roll-total">0</span><span class="reg-kpi-lbl">รายการทั้งหมด</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--accent);" id="kpi-roll-inuse">0</span><span class="reg-kpi-lbl">กำลังใช้งาน</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--green);" id="kpi-roll-ready">0</span><span class="reg-kpi-lbl">พร้อมใช้งาน</span></div>
@@ -1068,6 +1070,7 @@ canvas{display:block;}
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:#A9752B;" id="kpi-roll-waitdress">0</span><span class="reg-kpi-lbl">รอแต่ง</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--purple);" id="kpi-roll-polish">0</span><span class="reg-kpi-lbl">ขัด Roll</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:#C2469E;" id="kpi-roll-waitpolish">0</span><span class="reg-kpi-lbl">รอขัด</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:#6B7280;" id="kpi-roll-noroll">0</span><span class="reg-kpi-lbl">ไม่มีลูกรีด</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-roll-expired">0</span><span class="reg-kpi-lbl">อายุ</span></div>
         </div>
         <div style="display:grid;grid-template-columns:210px 250px 1fr;gap:14px;align-items:start;">
@@ -1128,6 +1131,7 @@ canvas{display:block;}
                   <option>ขัด Roll</option>
                   <option>รอขัด</option>
                   <option>อายุ</option>
+                  <option>ไม่มีลูกรีด</option>
                 </select>
               </div>
               <div class="table-wrap" style="overflow-x:auto;">
@@ -1831,6 +1835,7 @@ const C_PURPLE = '#5E44B0';
 const C_CYAN   = '#0E9BB5';
 const C_BROWN  = '#A9752B';
 const C_PINK   = '#C2469E';
+const C_GRAY   = '#6B7280';
 
 // ลำดับ/สี ของ 8 สถานะ Roll (เฉพาะหมวด Roll เท่านั้น) — ใช้ทำแถบ+ป้ายสถานะแบบแยกสีในหน้า Dashboard
 // รอใช้งาน/รอแต่ง/รอขัด คือคิวที่เกิดจากการซิงก์กับ Production Block อัตโนมัติ (ดู syncRollStatusWithProdBlock)
@@ -1843,6 +1848,7 @@ const ROLL_STATUS_STEPS = [
   { keys: ['ขัด Roll', 'ซ่อมบำรุง'],     label: 'ขัด Roll',    color: C_PURPLE, cls: 'chip-purple' },
   { keys: ['รอขัด'],                     label: 'รอขัด',       color: C_PINK,   cls: 'chip-pink' },
   { keys: ['อายุ', 'หมดอายุ', 'มีปัญหา'], label: 'อายุ',        color: C_RED,    cls: 'chip-red' },
+  { keys: ['ไม่มีลูกรีด'],               label: 'ไม่มีลูกรีด', color: C_GRAY,   cls: 'chip-gray' },
 ];
 // หมวดอื่น (Roll SQ / ใบเลื่อย / มีดสลิตเตอร์) ยังใช้ 3 สถานะรวมแบบเดิม
 function otherStatusSteps(items) {
@@ -2287,7 +2293,7 @@ const MODAL_FORMS = {
             <option>รอใช้งาน</option>
             <option>แต่ง Roll</option><option>รอแต่ง</option>
             <option>ขัด Roll</option><option>รอขัด</option>
-            <option>อายุ</option>
+            <option>อายุ</option><option>ไม่มีลูกรีด</option>
           </select>
         </div>
         <div class="form-group"><label class="form-label">สี</label>
@@ -3133,7 +3139,7 @@ const pageState = { roll: 1, sq: 1, saw: 1, slitter: 1 };
 function statusChip(s) {
   const map = {'พร้อมใช้':'chip-green','ใช้งานอยู่':'chip-blue','ซ่อมบำรุง':'chip-amber','Regrind':'chip-amber','ใกล้หมดอายุ':'chip-amber','มีปัญหา':'chip-amber','หมดอายุ':'chip-red',
     'กำลังใช้งาน':'chip-blue','พร้อมใช้งาน':'chip-green','แต่ง Roll':'chip-amber','ขัด Roll':'chip-purple','อายุ':'chip-red',
-    'รอใช้งาน':'chip-cyan','รอแต่ง':'chip-brown','รอขัด':'chip-pink'};
+    'รอใช้งาน':'chip-cyan','รอแต่ง':'chip-brown','รอขัด':'chip-pink','ไม่มีลูกรีด':'chip-gray'};
   return `<span class="chip ${map[s]||'chip-blue'}">${s}</span>`;
 }
 
@@ -3594,6 +3600,7 @@ function updateRollKpi() {
   document.getElementById('kpi-roll-waitdress').textContent = d.filter(r=>r.status==='รอแต่ง').length;
   document.getElementById('kpi-roll-polish').textContent = d.filter(r=>r.status==='ขัด Roll'||r.status==='ซ่อมบำรุง').length;
   document.getElementById('kpi-roll-waitpolish').textContent = d.filter(r=>r.status==='รอขัด').length;
+  document.getElementById('kpi-roll-noroll').textContent = d.filter(r=>r.status==='ไม่มีลูกรีด').length;
   document.getElementById('kpi-roll-expired').textContent = d.filter(r=>r.status==='อายุ'||r.status==='หมดอายุ'||r.status==='มีปัญหา').length;
   document.getElementById('cnt-roll').textContent = d.length;
 }
