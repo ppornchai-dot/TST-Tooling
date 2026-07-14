@@ -3516,16 +3516,15 @@ function renderRollColorList() {
   el.innerHTML = html;
 }
 
+// รวม GS/GI + ขนาด + OD ไว้บรรทัดเดียว และตัดบรรทัด "หมวด" (Forming/Sizing/TH) ออก เพราะซ้ำกับหัวข้อหมวดที่คั่นไว้ให้แล้วในรายการ — เหลือแค่ชื่อ + เครื่องจักร (ถ้ามี) ให้อ่านง่ายและประหยัดพื้นที่แนวตั้ง
 function setLabelHtml(s) {
   const p = strictParseSizeRollName(s);
   const machines = rollSetMachines[s] || [];
-  const machineLine = machines.length ? `<span style="color:var(--accent);font-weight:600;">${machines.join(' / ')}</span>` : '';
+  const machineLine = machines.length ? `<span style="font-size:11px;color:var(--accent);font-weight:600;">${machines.join(' / ')}</span>` : '';
   if (!p) return `<span style="flex:1;font-size:13px;">${s}</span>`;
-  return `<span style="flex:1;font-size:13px;display:flex;flex-direction:column;line-height:1.35;">
-    <span>${p.gsgi}</span>
-    <span>${p.size}</span>
-    <span>${p.od ? '(' + p.od + ')' : ''}</span>
-    <span>${p.category}</span>
+  const title = [p.gsgi, p.size, p.od ? '(' + p.od + ')' : ''].filter(Boolean).join(' ');
+  return `<span style="flex:1;font-size:13px;display:flex;flex-direction:column;gap:2px;line-height:1.3;">
+    <span style="font-weight:700;">${title}</span>
     ${machineLine}
   </span>`;
 }
