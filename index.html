@@ -3561,11 +3561,16 @@ function rollSetCardHtml(s, num) {
     </div>`;
 }
 
-function rollSetSectionHeaderHtml(label, count) {
-  return `<div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;
-    padding:10px 4px 6px;margin-top:4px;border-bottom:1px solid var(--border-light);margin-bottom:6px;
+// สีประจำหมวด — ใช้แยก Forming/Sizing/TH ให้เห็นต่างกันชัดๆ ตั้งแต่หัวข้อคั่นหมวด ไม่ปนกับสี accent ที่ใช้บอกกลุ่มที่กำลังเลือกอยู่
+const ROLL_SET_SECTION_COLORS = { Forming: C_BLUE, Sizing: C_AMBER, TH: C_PURPLE };
+
+function rollSetSectionHeaderHtml(label, count, color) {
+  const c = color || 'var(--text-3)';
+  return `<div style="font-size:11px;font-weight:800;color:${c};text-transform:uppercase;letter-spacing:.05em;
+    padding:10px 4px 6px;margin-top:4px;border-bottom:2px solid ${c};margin-bottom:6px;
     display:flex;align-items:center;justify-content:space-between;">
-    <span>${label}</span><span style="font-weight:600;">${count}</span>
+    <span style="display:flex;align-items:center;gap:6px;"><span style="width:7px;height:7px;border-radius:50%;background:${c};flex-shrink:0;"></span>${label}</span>
+    <span style="font-weight:600;">${count}</span>
   </div>`;
 }
 
@@ -3591,7 +3596,7 @@ function renderRollSetList() {
   ].filter(([, list]) => list.length);
 
   el.innerHTML = sections.map(([label, list]) =>
-    rollSetSectionHeaderHtml(label, list.length) + list.map((s, i) => rollSetCardHtml(s, i + 1)).join('')
+    rollSetSectionHeaderHtml(label, list.length, ROLL_SET_SECTION_COLORS[label]) + list.map((s, i) => rollSetCardHtml(s, i + 1)).join('')
   ).join('');
 }
 
