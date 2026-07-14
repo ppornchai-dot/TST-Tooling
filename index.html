@@ -3530,26 +3530,21 @@ function setLabelHtml(s) {
   </span>`;
 }
 
-function renderRollSetList() {
-  const el = document.getElementById('roll-set-list');
-  if (!el) return;
-
-  const q = (document.getElementById('roll-set-search')||{}).value||'';
-  const sets = getRollSets().filter(s => s.toLowerCase().includes(q.toLowerCase()));
-  el.innerHTML = sets.map((s, i) => {
-    const rolls = toolingData.roll.filter(r => r.set === s);
-    const active = s === selectedRollSet;
-    const esc = s.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const st = getRollSetStatus(s);
-    const stMeta = ROLL_SET_STATUS_META[st];
-    return `<div style="margin-bottom:6px;">
+// การ์ด Size Roll 1 กลุ่ม — แยกออกมาเป็นฟังก์ชันย่อยเพื่อใช้ซ้ำได้ทั้งตอนแสดงแบบแบ่งหมวด (Forming/Sizing/TH) และหมวด "อื่นๆ"
+function rollSetCardHtml(s, num) {
+  const rolls = toolingData.roll.filter(r => r.set === s);
+  const active = s === selectedRollSet;
+  const esc = s.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const st = getRollSetStatus(s);
+  const stMeta = ROLL_SET_STATUS_META[st];
+  return `<div style="margin-bottom:6px;">
       <div style="display:flex;align-items:center;gap:6px;">
         <div onclick="selectRollSet('${esc}')"
           style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:6px;cursor:pointer;flex:1;
                  background:${active?'var(--accent-glow)':'transparent'};
                  color:${active?'var(--accent)':'var(--text-2)'};font-weight:${active?'700':'400'};
                  transition:background .12s;">
-          <span style="width:18px;height:18px;border-radius:50%;background:${active?'var(--accent)':'var(--bg-panel)'};color:${active?'#fff':'var(--text-3)'};font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${i+1}</span>
+          <span style="width:18px;height:18px;border-radius:50%;background:${active?'var(--accent)':'var(--bg-panel)'};color:${active?'#fff':'var(--text-3)'};font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${num}</span>
           ${setLabelHtml(s)}
           <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;">${rolls.length}</span>
         </div>
@@ -3565,7 +3560,40 @@ function renderRollSetList() {
         </select>
       </div>
     </div>`;
-  }).join('');
+}
+
+function rollSetSectionHeaderHtml(label, count) {
+  return `<div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;
+    padding:10px 4px 6px;margin-top:4px;border-bottom:1px solid var(--border-light);margin-bottom:6px;
+    display:flex;align-items:center;justify-content:space-between;">
+    <span>${label}</span><span style="font-weight:600;">${count}</span>
+  </div>`;
+}
+
+function renderRollSetList() {
+  const el = document.getElementById('roll-set-list');
+  if (!el) return;
+
+  const q = (document.getElementById('roll-set-search')||{}).value||'';
+  const sets = getRollSets().filter(s => s.toLowerCase().includes(q.toLowerCase()));
+
+  // แยกกลุ่ม Size Roll ออกเป็น 3 หมวดตามชื่อ (Forming/Sizing/TH) — กลุ่มที่พาร์สหมวดไม่ได้ (ชื่อเก่า/กำหนดเอง) จะตกไปอยู่หมวด "อื่นๆ" ท้ายสุด
+  const buckets = { Forming: [], Sizing: [], TH: [], other: [] };
+  sets.forEach(s => {
+    const cat = parseSizeRollName(s).category;
+    (buckets[cat] || buckets.other).push(s);
+  });
+
+  const sections = [
+    ['Forming', buckets.Forming],
+    ['Sizing', buckets.Sizing],
+    ['TH', buckets.TH],
+    ['อื่นๆ', buckets.other],
+  ].filter(([, list]) => list.length);
+
+  el.innerHTML = sections.map(([label, list]) =>
+    rollSetSectionHeaderHtml(label, list.length) + list.map((s, i) => rollSetCardHtml(s, i + 1)).join('')
+  ).join('');
 }
 
 function selectRollSet(setName) {
