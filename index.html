@@ -265,6 +265,8 @@ tbody tr{border-bottom:1px solid var(--border-light);transition:background .1s;}
 tbody tr:hover{background:var(--bg-hover);}
 tbody td{padding:10px 14px;color:var(--text-1);font-variant-numeric:tabular-nums;}
 tbody td.muted{color:var(--text-2);}
+tbody tr.roll-row-selected{background:var(--accent-glow);box-shadow:inset 3px 0 0 var(--accent);}
+tbody tr.roll-row-selected:hover{background:var(--accent-glow);}
 
 /* ─── STATUS CHIPS ───────────────────────────── */
 .chip{
@@ -1100,6 +1102,7 @@ canvas{display:block;}
                 <span style="font-size:13px;font-weight:700;" id="roll-detail-title">Roll ทั้งหมด</span>
                 <span style="font-size:11px;color:var(--text-3);" id="roll-detail-count"></span>
               </div>
+              <span id="add-roll-hint" style="font-size:11px;color:var(--accent);"></span>
               <button class="btn btn-primary btn-sm" id="add-roll-btn" onclick="openModal('roll')">
                 <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 เพิ่ม Roll
@@ -2472,16 +2475,21 @@ function saveModal() {
       color: (selectedRollColor && selectedRollColor !== NO_COLOR_KEY) ? selectedRollColor : ((document.getElementById('f-color')||{}).value || null),
       set: selectedRollSet || ''
     };
-    toolingData.roll.push(newRoll);
+    // ถ้ามีแถวที่กำลังเลือกไว้ในตาราง ให้แทรก Roll ใหม่ต่อจากแถวนั้นทันที แทนที่จะต่อท้ายสุดเสมอ
+    const afterIdx = (selectedRollRow && toolingData.roll.includes(selectedRollRow)) ? toolingData.roll.indexOf(selectedRollRow) : -1;
+    if (afterIdx >= 0) toolingData.roll.splice(afterIdx + 1, 0, newRoll);
+    else toolingData.roll.push(newRoll);
     if (newRoll.set) extraRollSets = extraRollSets.filter(s => s !== newRoll.set);
-    const filteredCount = selectedRollSet
-      ? toolingData.roll.filter(r => r.set === selectedRollSet).length
-      : toolingData.roll.length;
-    const lastPage = Math.ceil(filteredCount / PAGE_SIZE) || 1;
-    pageState.roll = lastPage;
     renderRollSetList();
     renderRollColorList();
-    renderRollTable(lastPage);
+    // หาว่า Roll ใหม่ตกอยู่หน้าไหนภายใต้ตัวกรอง/คำค้นหาที่เลือกอยู่ตอนนี้ แล้วเปิดไปหน้านั้นให้เห็นผลทันที
+    const viewData = computeRollViewData();
+    const posInView = viewData.indexOf(newRoll);
+    const targetPage = posInView >= 0 ? Math.floor(posInView / PAGE_SIZE) + 1 : (Math.ceil(viewData.length / PAGE_SIZE) || 1);
+    pageState.roll = targetPage;
+    // เลือกแถวที่เพิ่งเพิ่มต่อ เพื่อให้กดเพิ่มต่อเนื่องได้เรียงลำดับกันไปเรื่อยๆ
+    selectedRollRow = newRoll;
+    renderRollTable(targetPage);
   } else if (currentRegTab === 'sq') {
     toolingData.sq.push({
       id: vals[0]||'SQ-NEW', name: vals[1]||'(ไม่มีชื่อ)',
@@ -3142,6 +3150,9 @@ let selectedRollSet = null;    // col1 (Size Roll): null = ทุก Size Roll
 let extraRollSets = [];
 let selectedRollColor = null;  // col2 (ชุดสี Roll): null = ทั้งหมด
 
+// แถว Roll ที่ถูกเลือกไว้ในตาราง Checklist — ใช้อ้างอิงตัว object โดยตรง (ไม่ใช่ index) เพื่อไม่ให้เพี้ยนเวลามีการเพิ่ม/ลบแถวอื่นก่อนหน้า
+let selectedRollRow = null;
+
 // ลำดับการแสดง Size Roll ในคอลัมน์ที่ 1 — เก็บแยกจาก extraRollSets เพื่อให้แทรก Set ใหม่ต่อจาก Set ที่เลือกอยู่ได้ แทนที่จะต่อท้ายสุดเสมอ
 let rollSetOrder = [];
 function ensureRollSetOrder(sets) {
@@ -3553,6 +3564,7 @@ function renderRollSetList() {
 function selectRollSet(setName) {
   selectedRollSet = setName;
   selectedRollColor = null;
+  selectedRollRow = null;
   renderRollSetList();
   renderRollColorList();
   renderRollTable(1);
@@ -3560,6 +3572,7 @@ function selectRollSet(setName) {
 
 function selectRollColor(key) {
   selectedRollColor = key;
+  selectedRollRow = null;
   renderRollColorList();
   renderRollTable(1);
 }
@@ -3585,20 +3598,15 @@ function updateRollKpi() {
   document.getElementById('cnt-roll').textContent = d.length;
 }
 
-function renderRollTable(page) {
-  const allData = toolingData.roll;
+// รายการ Roll ที่กรองแล้วตามขอบเขต Size Roll / ชุดสี / คำค้นหา / สถานะที่เลือกอยู่ตอนนี้ — ใช้ร่วมกันทั้งตอน render ตารางและตอนหาตำแหน่งแทรกแถวใหม่
+function computeRollViewData() {
   let data = rollSetScope();
-  let title = selectedRollSet;
 
   if (selectedRollColor === NO_COLOR_KEY && selectedRollSet) {
     data = data.filter(r => !r.color);
-    title = (title ? title + ' · ' : '') + 'ไม่ระบุสี';
   } else if (selectedRollColor && selectedRollSet) {
     const g = getSetPalette(selectedRollSet).find(x => x.key === selectedRollColor);
-    if (g) {
-      data = data.filter(r => r.color === g.key);
-      title = (title ? title + ' · ' : '') + g.label;
-    }
+    if (g) data = data.filter(r => r.color === g.key);
   }
 
   const q = ((document.getElementById('roll-detail-search')||{}).value || '').trim().toLowerCase();
@@ -3606,6 +3614,30 @@ function renderRollTable(page) {
   const statusFilter = (document.getElementById('roll-detail-status-filter')||{}).value || '';
   if (statusFilter) data = data.filter(r => r.status === statusFilter);
 
+  return data;
+}
+
+function selectRollRow(realIdx, ev) {
+  if (ev && ev.target.closest('button')) return;
+  const row = toolingData.roll[realIdx];
+  if (!row) return;
+  selectedRollRow = (selectedRollRow === row) ? null : row;
+  renderRollTable(pageState.roll || 1);
+}
+
+function renderRollTable(page) {
+  const allData = toolingData.roll;
+  if (selectedRollRow && !allData.includes(selectedRollRow)) selectedRollRow = null;
+
+  let title = selectedRollSet;
+  if (selectedRollColor === NO_COLOR_KEY && selectedRollSet) {
+    title = (title ? title + ' · ' : '') + 'ไม่ระบุสี';
+  } else if (selectedRollColor && selectedRollSet) {
+    const g = getSetPalette(selectedRollSet).find(x => x.key === selectedRollColor);
+    if (g) title = (title ? title + ' · ' : '') + g.label;
+  }
+
+  const data = computeRollViewData();
   const start = (page-1)*PAGE_SIZE;
   const rows = data.slice(start, start+PAGE_SIZE);
 
@@ -3615,11 +3647,15 @@ function renderRollTable(page) {
   if (titleEl) titleEl.textContent = title || 'Roll ทั้งหมด';
   if (countEl) countEl.textContent = data.length + ' รายการ';
 
+  const addBtnHint = document.getElementById('add-roll-hint');
+  if (addBtnHint) addBtnHint.textContent = selectedRollRow ? ('จะเพิ่มต่อจาก "' + selectedRollRow.name + '"') : '';
+
   const html = rows.map(r => {
     const realIdx = allData.indexOf(r);
     const colorInfo = r.color ? getSetPalette(r.set).find(c => c.key === r.color) : null;
     const colorDot = colorInfo ? `<span title="${colorInfo.label}" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${colorInfo.dot};margin-right:6px;"></span>` : '';
-    return `<tr>
+    const selected = r === selectedRollRow;
+    return `<tr class="${selected ? 'roll-row-selected' : ''}" style="cursor:pointer;" onclick="selectRollRow(${realIdx}, event)" title="คลิกเพื่อเลือกแถวนี้เป็นจุดแทรกแถวใหม่">
       <td class="muted">${r.id}</td>
       <td><strong>${colorDot}${r.name}</strong></td>
       <td>${r.diameter}</td>
