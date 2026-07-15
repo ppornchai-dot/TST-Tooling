@@ -1120,9 +1120,9 @@ canvas{display:block;}
               <div style="display:flex;gap:8px;padding:12px 16px 0;flex-wrap:wrap;">
                 <div class="search-bar" style="flex:1;min-width:180px;margin-bottom:0;">
                   <svg width="13" height="13" fill="none" stroke="var(--text-3)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                  <input type="text" id="roll-detail-search" placeholder="ค้นหารายการ..." oninput="renderRollTable(1)">
+                  <input type="text" id="roll-detail-search" placeholder="ค้นหารายการ..." oninput="renderRollTable(pageState.roll = 1)">
                 </div>
-                <select class="form-select" id="roll-detail-status-filter" style="width:160px;" onchange="renderRollTable(1)">
+                <select class="form-select" id="roll-detail-status-filter" style="width:160px;" onchange="renderRollTable(pageState.roll = 1)">
                   <option value="">ทุกสถานะ</option>
                   <option>กำลังใช้งาน</option>
                   <option>พร้อมใช้งาน</option>
@@ -3042,13 +3042,34 @@ function fillPlanRollReadonly(setName, colorKey) {
 }
 
 // รวมเวลาทำงาน (นาที) จากเวลาแต่ง/ขัด Roll ทั้งหมด แล้วคำนวณ "จบงาน" จาก "เริ่มงาน" ให้อัตโนมัติ
+// พักเที่ยง 12:00–13:00 ไม่นับเป็นเวลาทำงาน — ถ้าช่วงงานคาบเกี่ยวช่วงพักเที่ยงของวันไหน (รวมข้ามหลายวันถ้างานยาว) จะขยับเวลาจบให้ชดเชยเวลาพักนั้นไปด้วย
+const LUNCH_BREAK_START_MIN = 12 * 60; // 12:00
+const LUNCH_BREAK_END_MIN = 13 * 60;   // 13:00
 function computePlanEndTime(startTime, totalMinutes) {
   if (!startTime || !totalMinutes) return '';
   const [h, m] = startTime.split(':').map(Number);
   if (Number.isNaN(h) || Number.isNaN(m)) return '';
-  const totalM = h * 60 + m + Math.round(totalMinutes);
-  const eh = Math.floor(totalM / 60) % 24;
-  const em = totalM % 60;
+  let cursor = h * 60 + m;
+  let remaining = Math.round(totalMinutes);
+  // ถ้าเวลาเริ่มงานตกอยู่ในช่วงพักเที่ยงพอดี ให้เลื่อนไปเริ่มนับตอน 13:00 ของวันนั้นก่อน
+  if (cursor % 1440 >= LUNCH_BREAK_START_MIN && cursor % 1440 < LUNCH_BREAK_END_MIN) {
+    cursor += LUNCH_BREAK_END_MIN - (cursor % 1440);
+  }
+  while (remaining > 0) {
+    const dayStart = Math.floor(cursor / 1440) * 1440;
+    const lunchStartToday = dayStart + LUNCH_BREAK_START_MIN;
+    const nextLunchStart = cursor < lunchStartToday ? lunchStartToday : dayStart + 1440 + LUNCH_BREAK_START_MIN;
+    const gap = nextLunchStart - cursor;
+    if (remaining <= gap) {
+      cursor += remaining;
+      remaining = 0;
+    } else {
+      cursor = nextLunchStart + (LUNCH_BREAK_END_MIN - LUNCH_BREAK_START_MIN); // ข้ามช่วงพักเที่ยงไป
+      remaining -= gap;
+    }
+  }
+  const eh = Math.floor(cursor / 60) % 24;
+  const em = cursor % 60;
   return String(eh).padStart(2, '0') + ':' + String(em).padStart(2, '0');
 }
 
@@ -3610,14 +3631,14 @@ function selectRollSet(setName) {
   selectedRollRow = null;
   renderRollSetList();
   renderRollColorList();
-  renderRollTable(1);
+  renderRollTable(pageState.roll = 1);
 }
 
 function selectRollColor(key) {
   selectedRollColor = key;
   selectedRollRow = null;
   renderRollColorList();
-  renderRollTable(1);
+  renderRollTable(pageState.roll = 1);
 }
 
 function switchRollDetailTab(tab) {
@@ -3665,7 +3686,15 @@ function selectRollRow(realIdx, ev) {
   if (ev && ev.target.closest('button')) return;
   const row = toolingData.roll[realIdx];
   if (!row) return;
-  selectedRollRow = (selectedRollRow === row) ? null : row;
+  // ไม่ toggle ยกเลิกการเลือกด้วยการคลิกแถวเดิมซ้ำ — เพราะแถวที่เพิ่งเพิ่มจะถูกเลือกไว้ให้อัตโนมัติเสมอ
+  // (เพื่อให้กด "เพิ่ม Roll" ต่อเนื่องได้เรื่อยๆ) ถ้าคลิกซ้ำแล้วยกเลิกไปเงียบๆ ผู้ใช้จะไม่ทันสังเกตว่าแถวถัดไปที่เพิ่ม
+  // จะกระโดดไปต่อท้ายสุดของทั้งรายการแทน — ยกเลิกการเลือกต้องกดปุ่ม "ยกเลิก" ข้างข้อความคำใบ้แทน (clearSelectedRollRow)
+  selectedRollRow = row;
+  renderRollTable(pageState.roll || 1);
+}
+
+function clearSelectedRollRow() {
+  selectedRollRow = null;
   renderRollTable(pageState.roll || 1);
 }
 
@@ -3692,7 +3721,9 @@ function renderRollTable(page) {
   if (countEl) countEl.textContent = data.length + ' รายการ';
 
   const addBtnHint = document.getElementById('add-roll-hint');
-  if (addBtnHint) addBtnHint.textContent = selectedRollRow ? ('จะเพิ่มต่อจาก "' + selectedRollRow.name + '"') : '';
+  if (addBtnHint) addBtnHint.innerHTML = selectedRollRow
+    ? ('จะเพิ่มต่อจาก "' + escapeHtmlAttr(selectedRollRow.name) + '" <a href="javascript:void(0)" onclick="clearSelectedRollRow()" style="color:var(--text-3);text-decoration:underline;margin-left:4px;">ยกเลิก</a>')
+    : '';
 
   const html = rows.map(r => {
     const realIdx = allData.indexOf(r);
@@ -3800,7 +3831,7 @@ function openAddSetModal() {
     selectedRollColor = null;
     renderRollSetList();
     renderRollColorList();
-    renderRollTable(1);
+    renderRollTable(pageState.roll = 1);
     persistState();
     const btn = this;
     const orig = btn.innerHTML;
@@ -3879,7 +3910,7 @@ function deleteSet(setName) {
   if (selectedRollSet === setName) { selectedRollSet = null; selectedRollColor = null; }
   renderRollSetList();
   renderRollColorList();
-  renderRollTable(1);
+  renderRollTable(pageState.roll = 1);
   persistState();
 }
 
@@ -4139,7 +4170,9 @@ function renderSlitterTable(page) {
 }
 
 function changePage(tab, page) {
-  const data = toolingData[tab];
+  // สำหรับ roll ต้องนับจากรายการที่กรองอยู่จริง (computeRollViewData) ไม่ใช่ toolingData.roll ทั้งหมด
+  // ไม่งั้นเลขหน้าสูงสุดที่ตรวจสอบจะคำนวณจากทุก Set/สีรวมกัน ทำให้กดไปหน้าที่เกินจริงของ Set ที่กรองอยู่ได้
+  const data = tab === 'roll' ? computeRollViewData() : toolingData[tab];
   const max = Math.max(1, Math.ceil(data.length/PAGE_SIZE));
   if (page < 1 || page > max) return;
   pageState[tab] = page;
