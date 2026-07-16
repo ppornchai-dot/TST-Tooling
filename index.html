@@ -3091,7 +3091,16 @@ function planTaskFormFields() {
     </div>
     <div class="modal-row">
       <div class="form-group"><label class="form-label">จำนวน Roll ที่พบ</label><input class="form-input" id="pf-rollid" disabled></div>
-      <div class="form-group"><label class="form-label">รายชื่อ Roll — ดึงมาทั้งหมดอัตโนมัติ</label><input class="form-input" id="pf-rollname" disabled></div>
+      <div class="form-group"><label class="form-label">รายชื่อ Roll — เลือกเฉพาะรายการที่ต้องการได้</label>
+        <div class="roll-ms" style="position:relative;">
+          <input type="hidden" id="pf-rollids" value="">
+          <div class="form-select" id="pf-rollids-toggle" onclick="toggleRollDropdown(event)" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;gap:8px;">
+            <span id="pf-rollids-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">— เลือก Size Roll ก่อน —</span>
+            <span style="opacity:.6;font-size:11px;flex-shrink:0;">▾</span>
+          </div>
+          <div id="pf-rollids-panel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;box-shadow:0 6px 16px rgba(0,0,0,.15);z-index:20;padding:4px;max-height:220px;overflow-y:auto;"></div>
+        </div>
+      </div>
     </div>
     <div class="modal-row full">
       <div class="form-group"><label class="form-label" id="pf-plantime-label">เวลาแต่ง Roll (นาที) — จากทะเบียน Tooling</label><input class="form-input" id="pf-plantime" type="text" disabled>
@@ -3139,16 +3148,99 @@ function formatMinutesAsHm(totalMinutes) {
   return '≈ ' + (h > 0 ? `${h} ชม. ${m} นาที` : `${m} นาที`);
 }
 
-function fillPlanRollReadonly(setName, colorKey) {
-  const rolls = getMatchingRollsForPlan(setName, colorKey);
+// อ่าน Roll ที่ผู้ใช้ติ๊กเลือกไว้จริงในดรอปดาวน์ "รายชื่อ Roll" (ไม่ใช่แค่ Roll ที่พบตามเงื่อนไข Size Roll/สี)
+function getSelectedRollsForPlan() {
+  const idSet = new Set(((document.getElementById('pf-rollids') || {}).value || '').split(',').filter(Boolean));
+  return toolingData.roll.filter(r => idSet.has(r.id));
+}
+
+function renderRollOptionsPanel(rolls, selectedIds) {
+  const panel = document.getElementById('pf-rollids-panel');
+  if (!panel) return;
+  if (!rolls.length) {
+    panel.innerHTML = '<div style="padding:8px 10px;font-size:12px;color:var(--text-3);">ไม่พบ Roll ตามเงื่อนไขนี้</div>';
+    return;
+  }
+  const selectedSet = new Set(selectedIds);
+  panel.innerHTML =
+    `<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:700;border-bottom:1px solid var(--border-light);margin-bottom:2px;">
+      <input type="checkbox" id="pf-rollids-all" onchange="toggleAllRollOptions(this)" style="width:14px;height:14px;cursor:pointer;">เลือกทั้งหมด (${rolls.length})
+    </label>` +
+    rolls.map(r => `<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:5px;cursor:pointer;font-size:13px;">
+      <input type="checkbox" value="${r.id}"${selectedSet.has(r.id) ? ' checked' : ''} onchange="toggleRollOption(this)" style="width:14px;height:14px;cursor:pointer;">${escapeHtmlAttr(r.name)}
+    </label>`).join('');
+  syncRollSelectAllState();
+}
+
+function toggleRollDropdown(ev) {
+  if (ev) ev.stopPropagation();
+  const panel = document.getElementById('pf-rollids-panel');
+  if (!panel) return;
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+function syncRollSelectAllState() {
+  const panel = document.getElementById('pf-rollids-panel');
+  const all = document.getElementById('pf-rollids-all');
+  if (!panel || !all) return;
+  const boxes = Array.from(panel.querySelectorAll('input[type=checkbox]:not(#pf-rollids-all)'));
+  all.checked = boxes.length > 0 && boxes.every(b => b.checked);
+}
+
+// อัปเดต hidden field + label หลังผู้ใช้ติ๊ก/ยกเลิกติ๊ก Roll รายการใดรายการหนึ่ง แล้วคำนวณเวลารวมของแค่ Roll ที่เลือกใหม่
+function applyRollSelectionFromPanel() {
+  const panel = document.getElementById('pf-rollids-panel');
+  if (!panel) return;
+  const boxes = Array.from(panel.querySelectorAll('input[type=checkbox]:not(#pf-rollids-all)'));
+  const selected = boxes.filter(b => b.checked).map(b => b.value);
+  document.getElementById('pf-rollids').value = selected.join(',');
+  syncRollSelectAllState();
+  updateRollSelectionLabel();
+  recalcPlanTotalsFromSelection();
+}
+
+function toggleRollOption() {
+  applyRollSelectionFromPanel();
+}
+
+function toggleAllRollOptions(checkbox) {
+  const panel = document.getElementById('pf-rollids-panel');
+  if (!panel) return;
+  panel.querySelectorAll('input[type=checkbox]:not(#pf-rollids-all)').forEach(b => { b.checked = checkbox.checked; });
+  applyRollSelectionFromPanel();
+}
+
+function updateRollSelectionLabel() {
+  const labelEl = document.getElementById('pf-rollids-label');
+  if (!labelEl) return;
+  const rolls = getSelectedRollsForPlan();
+  labelEl.textContent = rolls.length ? (rolls.length + ' รายการ: ' + rolls.map(r => r.name).join(', ')) : '— ไม่ได้เลือก Roll —';
+}
+
+// คำนวณเวลารวม (นาที) จาก Roll ที่ติ๊กเลือกไว้จริงเท่านั้น แล้วคำนวณ "จบงาน" ต่อให้อัตโนมัติ
+function recalcPlanTotalsFromSelection() {
+  const rolls = getSelectedRollsForPlan();
   const field = PLAN_WORKTYPE_META[currentPlanWorkType].field;
   const total = rolls.reduce((sum, r) => sum + (parseFloat(r[field]) || 0), 0);
-  document.getElementById('pf-rollid').value = rolls.length ? (rolls.length + ' ตัว') : (setName ? 'ไม่พบ Roll ตามเงื่อนไขนี้' : '');
-  document.getElementById('pf-rollname').value = rolls.map(r => r.name).join(', ');
   document.getElementById('pf-plantime').value = rolls.length ? String(total) : '';
   const hoursEl = document.getElementById('pf-plantime-hours');
   if (hoursEl) hoursEl.textContent = rolls.length ? formatMinutesAsHm(total) : '';
   updatePlanEndTime();
+}
+
+// เติมรายการ Roll ที่พบตามเงื่อนไข Size Roll/สี แล้วเปิดดรอปดาวน์ให้เลือกเฉพาะรายการที่ต้องการ
+// presetSelectedIds ใช้ตอนแก้ไขงานเดิม เพื่อคงการเลือกรายการเดิมไว้ — ถ้าไม่ระบุ (เพิ่มงานใหม่/เปลี่ยน Size Roll) จะเลือกทั้งหมดที่พบเป็นค่าเริ่มต้น
+function fillPlanRollReadonly(setName, colorKey, presetSelectedIds) {
+  const rolls = getMatchingRollsForPlan(setName, colorKey);
+  document.getElementById('pf-rollid').value = rolls.length ? (rolls.length + ' ตัว') : (setName ? 'ไม่พบ Roll ตามเงื่อนไขนี้' : '');
+  const matchedIds = new Set(rolls.map(r => r.id));
+  const selectedIds = (presetSelectedIds && presetSelectedIds.length)
+    ? presetSelectedIds.filter(id => matchedIds.has(id))
+    : rolls.map(r => r.id);
+  document.getElementById('pf-rollids').value = selectedIds.join(',');
+  renderRollOptionsPanel(rolls, selectedIds);
+  updateRollSelectionLabel();
+  recalcPlanTotalsFromSelection();
 }
 
 // รวมเวลาทำงาน (นาที) จากเวลาแต่ง/ขัด Roll ทั้งหมด แล้วคำนวณ "จบงาน" จาก "เริ่มงาน" ให้อัตโนมัติ
@@ -3340,7 +3432,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   document.getElementById('pf-otcap-night').value = task ? ((task.otCapMinutesByShift || {}).night || 0) / 60 : 0;
   populatePlanRollSetSelect(task ? task.rollSet : null);
   populatePlanRollColorSelect(task ? task.rollSet : null, task ? task.rollColor : null);
-  fillPlanRollReadonly(task ? task.rollSet : null, task ? task.rollColor : null); // คำนวณเวลาเริ่ม/จบของแต่ละกะให้อัตโนมัติในตัว
+  fillPlanRollReadonly(task ? task.rollSet : null, task ? task.rollColor : null, task ? task.rollIds : null); // คำนวณเวลาเริ่ม/จบของแต่ละกะให้อัตโนมัติในตัว — คงรายการ Roll ที่เลือกไว้เดิมถ้าเป็นการแก้ไข
   // แก้ไขงานเดิม — คงวันที่จบที่บันทึกไว้ถ้ามีค่าจริง ไม่ทับด้วยค่าคำนวณใหม่ แต่ถ้าเดิมว่าง/เป็น "—" ให้ใช้ค่าที่คำนวณอัตโนมัติแทน
   if (task && task.endDate) document.getElementById('pf-enddate').value = task.endDate;
   document.getElementById('modal-overlay').classList.add('open');
@@ -3350,8 +3442,8 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     const date = g('pf-date');
     const setName = document.getElementById('pf-rollset').value;
     const colorKey = document.getElementById('pf-rollcolor').value;
-    const rolls = getMatchingRollsForPlan(setName, colorKey);
-    if (!date || !setName || !rolls.length) { alert('กรุณาเลือกวันที่ และ Size Roll ที่มี Roll อยู่จริงให้ครบถ้วน'); return; }
+    const rolls = getSelectedRollsForPlan();
+    if (!date || !setName || !rolls.length) { alert('กรุณาเลือกวันที่ และเลือก Roll อย่างน้อย 1 รายการ'); return; }
     const field = PLAN_WORKTYPE_META[workType].field;
     const totalTime = rolls.reduce((sum, r) => sum + (parseFloat(r[field]) || 0), 0);
     const shiftKey = document.getElementById('pf-shift').value || 'morning';
@@ -3554,6 +3646,10 @@ document.addEventListener('click', function(e) {
   const panel = document.getElementById('f-set-machine-panel');
   if (panel && panel.style.display === 'block' && !e.target.closest('.machine-ms')) {
     panel.style.display = 'none';
+  }
+  const rollPanel = document.getElementById('pf-rollids-panel');
+  if (rollPanel && rollPanel.style.display === 'block' && !e.target.closest('.roll-ms')) {
+    rollPanel.style.display = 'none';
   }
 });
 
