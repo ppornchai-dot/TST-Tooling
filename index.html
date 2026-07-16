@@ -1344,6 +1344,7 @@ canvas{display:block;}
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="" onclick="switchPlanShiftFilter('')" style="color:var(--accent);border-color:var(--accent);">ทั้งหมด</button>
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="morning" onclick="switchPlanShiftFilter('morning')">🌤 กะเช้า</button>
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="night" onclick="switchPlanShiftFilter('night')">🌙 กะดึก</button>
+        <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="both" onclick="switchPlanShiftFilter('both')">🌤🌙 2 กะ</button>
       </div>
 
       <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
@@ -2725,20 +2726,31 @@ const PLAN_WORKTYPE_META = {
 };
 let currentPlanWorkType = 'cnc';
 
-// ─── กะทำงาน (เช้า/ดึก) — ใช้กำหนดช่วงเวลาปกติของแต่ละกะ เวลาที่ทำงานนอกช่วงนี้นับเป็น OT ───
+// ─── กะทำงาน (เช้า/ดึก/2 กะ) — แต่ละกะมี "windows" ของช่วงเวลาปกติ (นาทีของวัน) เวลาที่ทำงานนอกทุก window นับเป็น OT ───
 // กะเช้ามีพักเที่ยง 12:00–13:00 (ไม่นับเป็นเวลาทำงาน) ส่วนกะดึกข้ามเที่ยงคืนไปวันถัดไป ไม่มีพักเที่ยง
+// "2 กะ" (ทำงานต่อเนื่องทั้งเช้า+ดึก) รวม window ของทั้งสองกะไว้ด้วยกัน — ช่วงคาบเกี่ยว (17:00–20:00 และ 05:00–08:00) ยังนับเป็น OT เหมือนเดิม
 const SHIFTS = {
-  morning: { key: 'morning', label: 'กะเช้า', start: '08:00', end: '17:00', startMin: 8 * 60,  endMin: 17 * 60, lunchBreak: true },
-  night:   { key: 'night',   label: 'กะดึก',  start: '20:00', end: '05:00', startMin: 20 * 60, endMin: 5 * 60,  lunchBreak: false },
+  morning: { key: 'morning', label: 'กะเช้า', start: '08:00', end: '17:00', windows: [{ startMin: 8 * 60, endMin: 17 * 60 }], lunchBreak: true },
+  night:   { key: 'night',   label: 'กะดึก',  start: '20:00', end: '05:00', windows: [{ startMin: 20 * 60, endMin: 5 * 60 }], lunchBreak: false },
+  both:    { key: 'both',    label: '2 กะ',   start: '08:00', end: '05:00', windows: [{ startMin: 8 * 60, endMin: 17 * 60 }, { startMin: 20 * 60, endMin: 5 * 60 }], lunchBreak: true },
 };
 let currentPlanShiftFilter = null; // null = ทั้งหมด
 
-// เวลา (นาทีสัมบูรณ์ นับจากจุดเริ่มต้น อาจเกิน 1440 ได้) อยู่ในช่วงกะนี้หรือไม่ — รองรับกะที่ข้ามเที่ยงคืน (endMin < startMin)
+function isMinuteInWindow(minOfDay, w) {
+  return w.startMin < w.endMin
+    ? (minOfDay >= w.startMin && minOfDay < w.endMin)
+    : (minOfDay >= w.startMin || minOfDay < w.endMin);
+}
+// เวลา (นาทีสัมบูรณ์ นับจากจุดเริ่มต้น อาจเกิน 1440 ได้) อยู่ใน window ใด window หนึ่งของกะนี้หรือไม่
 function isMinuteInShift(minAbs, shift) {
   const m = ((minAbs % 1440) + 1440) % 1440;
-  return shift.startMin < shift.endMin
-    ? (m >= shift.startMin && m < shift.endMin)
-    : (m >= shift.startMin || m < shift.endMin);
+  return shift.windows.some(w => isMinuteInWindow(m, w));
+}
+// กะที่บันทึกไว้ (shiftKey) ตรงกับตัวกรองที่เลือกอยู่หรือไม่ — งาน "2 กะ" ถือว่าตรงกับตัวกรองกะเช้าและกะดึกด้วย เพราะครอบคลุมทั้งสองช่วง
+function shiftMatchesFilter(shiftKey, filterKey) {
+  if (!filterKey) return true;
+  if (filterKey === 'both') return shiftKey === 'both';
+  return shiftKey === filterKey || shiftKey === 'both';
 }
 
 function switchPlanShiftFilter(key) {
@@ -2871,16 +2883,19 @@ function planDateGoToday() {
 // วันที่ (iso) ที่มีแผนงานอยู่แล้วของประเภทงานที่กำลังดู (CNC/ขัด Roll) — ใช้ทำจุดสีในปฏิทินป๊อปอัพ
 function planDatesWithTasks() {
   const set = new Set();
-  planTasks.forEach(t => { if (t.workType === currentPlanWorkType && (!currentPlanShiftFilter || t.shift === currentPlanShiftFilter)) set.add(t.date); });
+  planTasks.forEach(t => { if (t.workType === currentPlanWorkType && shiftMatchesFilter(t.shift, currentPlanShiftFilter)) set.add(t.date); });
   return set;
 }
 // เงื่อนไขกรองงานตามแผนที่ใช้ร่วมกันทุกมุมมอง (รายวัน/สัปดาห์/เดือน) — ประเภทงาน (CNC/ขัด Roll) + กะที่เลือกอยู่ (ถ้ามี)
 function matchesCurrentPlanFilter(t) {
-  return t.workType === currentPlanWorkType && (!currentPlanShiftFilter || t.shift === currentPlanShiftFilter);
+  return t.workType === currentPlanWorkType && shiftMatchesFilter(t.shift, currentPlanShiftFilter);
+}
+function shiftChipClass(shiftKey) {
+  return shiftKey === 'night' ? 'chip-purple' : shiftKey === 'both' ? 'chip-cyan' : 'chip-amber';
 }
 function shiftChipHtml(shiftKey) {
   const shift = SHIFTS[shiftKey] || SHIFTS.morning;
-  return `<span class="chip ${shift.key === 'night' ? 'chip-purple' : 'chip-amber'}">${shift.label}</span>`;
+  return `<span class="chip ${shiftChipClass(shift.key)}">${shift.label}</span>`;
 }
 function renderPlanDatePopup() {
   const el = document.getElementById('plan-date-popup');
@@ -2980,7 +2995,7 @@ function renderPlanWeek() {
     const tasks = planTasks.filter(t => t.date === iso && matchesCurrentPlanFilter(t)).sort((a, b) => (a.startTime||'').localeCompare(b.startTime||''));
     const items = tasks.map(t => `
       <div style="display:flex;align-items:center;gap:4px;">
-        <span class="chip ${t.shift === 'night' ? 'chip-purple' : 'chip-blue'}" style="cursor:pointer;flex:1;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(SHIFTS[t.shift]?.label || '')} — ${escapeHtmlAttr(t.rollId)} — ${escapeHtmlAttr(t.rollName)}">${escapeHtmlAttr(t.rollId)}</span>
+        <span class="chip ${shiftChipClass(t.shift)}" style="cursor:pointer;flex:1;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(SHIFTS[t.shift]?.label || '')} — ${escapeHtmlAttr(t.rollId)} — ${escapeHtmlAttr(t.rollName)}">${escapeHtmlAttr(t.rollId)}</span>
         <button title="ลบ" onclick="deletePlanTask('${t.id}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:11px;padding:0;">✕</button>
       </div>`).join('');
     return `<td style="min-width:110px;">
@@ -3013,7 +3028,7 @@ function renderPlanMonth() {
     const iso = toISODate(d);
     const tasks = planTasks.filter(t => t.date === iso && matchesCurrentPlanFilter(t));
     const chips = tasks.map(t =>
-      `<span class="chip ${t.shift === 'night' ? 'chip-purple' : 'chip-blue'}" style="font-size:10px;cursor:pointer;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(SHIFTS[t.shift]?.label || '')} — ${escapeHtmlAttr(t.rollId)} — ${escapeHtmlAttr(t.rollName)}">${escapeHtmlAttr(t.rollId)}</span>`
+      `<span class="chip ${shiftChipClass(t.shift)}" style="font-size:10px;cursor:pointer;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(SHIFTS[t.shift]?.label || '')} — ${escapeHtmlAttr(t.rollId)} — ${escapeHtmlAttr(t.rollName)}">${escapeHtmlAttr(t.rollId)}</span>`
     ).join('');
     html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -3038,9 +3053,12 @@ function planTaskFormFields() {
     </div>
     <div class="modal-row three">
       <div class="form-group"><label class="form-label">กะทำงาน</label>
-        <select class="form-select" id="pf-shift" onchange="onPlanShiftChange()">
-          ${Object.values(SHIFTS).map(s => `<option value="${s.key}">${s.label} (${s.start}–${s.end})</option>`).join('')}
-        </select>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-ghost btn-sm pf-shift-btn" data-shift="morning" onclick="selectPlanShift('morning')" title="08:00–17:00 (กะเดียว)">🌤 กะเช้า</button>
+          <button type="button" class="btn btn-ghost btn-sm pf-shift-btn" data-shift="night" onclick="selectPlanShift('night')" title="20:00–05:00 (กะเดียว)">🌙 กะดึก</button>
+          <button type="button" class="btn btn-ghost btn-sm pf-shift-btn" data-shift="both" onclick="selectPlanShift('both')" title="ทำงานต่อเนื่อง 08:00–17:00 และ 20:00–05:00">🌤🌙 2 กะ</button>
+        </div>
+        <input type="hidden" id="pf-shift" value="morning">
       </div>
       <div class="form-group"><label class="form-label">เริ่มงาน</label><input class="form-input" id="pf-start" type="time" onchange="updatePlanEndTime()"></div>
       <div class="form-group"><label class="form-label">จบงาน — คำนวณให้อัตโนมัติจากเวลารวม</label><input class="form-input" id="pf-end" type="time"></div>
@@ -3153,8 +3171,19 @@ function computePlanEnd(startDate, startTime, totalMinutes, shiftKey) {
   return { date: startDate ? addDaysIso(startDate, daysElapsed) : '', time, otMinutes };
 }
 
-function onPlanShiftChange() {
-  const key = (document.getElementById('pf-shift') || {}).value;
+// อัปเดตแค่ค่า/สถานะ active ของปุ่มกะ ไม่แตะเวลาเริ่มงาน — ใช้ตอนเปิดฟอร์ม (โหลดค่าเดิม) ที่ไม่ต้องการทับเวลาที่ผู้ใช้ตั้งไว้เอง
+function setPlanShiftButtons(key) {
+  document.getElementById('pf-shift').value = key;
+  document.querySelectorAll('.pf-shift-btn').forEach(b => {
+    const active = b.getAttribute('data-shift') === key;
+    b.style.color = active ? 'var(--accent)' : '';
+    b.style.borderColor = active ? 'var(--accent)' : '';
+    b.style.background = active ? 'var(--accent-glow)' : '';
+  });
+}
+// ผู้ใช้กดเลือกกะเอง — ตั้งเวลาเริ่มงานเป็นเวลาเริ่มมาตรฐานของกะนั้นด้วย
+function selectPlanShift(key) {
+  setPlanShiftButtons(key);
   const shift = SHIFTS[key];
   const startEl = document.getElementById('pf-start');
   if (shift && startEl) startEl.value = shift.start;
@@ -3197,7 +3226,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   if (planTimeLabel) planTimeLabel.textContent = PLAN_WORKTYPE_META[workType].metricLabel + ' — จากทะเบียน Tooling';
   document.getElementById('pf-date').value = task ? task.date : (presetDate || toISODate(planViewDate));
   const defaultShift = (task ? task.shift : currentPlanShiftFilter) || 'morning';
-  document.getElementById('pf-shift').value = defaultShift;
+  setPlanShiftButtons(defaultShift);
   document.getElementById('pf-start').value = task ? task.startTime : SHIFTS[defaultShift].start;
   populatePlanRollSetSelect(task ? task.rollSet : null);
   populatePlanRollColorSelect(task ? task.rollSet : null, task ? task.rollColor : null);
