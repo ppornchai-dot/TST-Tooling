@@ -3000,7 +3000,9 @@ function planTaskFormFields() {
       <div class="form-group"><label class="form-label">รายชื่อ Roll — ดึงมาทั้งหมดอัตโนมัติ</label><input class="form-input" id="pf-rollname" disabled></div>
     </div>
     <div class="modal-row">
-      <div class="form-group"><label class="form-label" id="pf-plantime-label">เวลาแต่ง Roll (นาที) — จากทะเบียน Tooling</label><input class="form-input" id="pf-plantime" type="text" disabled></div>
+      <div class="form-group"><label class="form-label" id="pf-plantime-label">เวลาแต่ง Roll (นาที) — จากทะเบียน Tooling</label><input class="form-input" id="pf-plantime" type="text" disabled>
+        <span id="pf-plantime-hours" style="font-size:11px;color:var(--text-3);"></span>
+      </div>
     </div>
     <div class="modal-row">
       <div class="form-group"><label class="form-label">เริ่มงาน</label><input class="form-input" id="pf-start" type="time" onchange="updatePlanEndTime()"></div>
@@ -3038,6 +3040,15 @@ function getMatchingRollsForPlan(setName, colorKey) {
   return rolls;
 }
 
+// แปลงนาทีรวมเป็นข้อความ "X ชม. Y นาที" ให้อ่านง่ายกว่าตัวเลขนาทีดิบ
+function formatMinutesAsHm(totalMinutes) {
+  const mins = Math.round(totalMinutes);
+  if (!mins) return '';
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return '≈ ' + (h > 0 ? `${h} ชม. ${m} นาที` : `${m} นาที`);
+}
+
 function fillPlanRollReadonly(setName, colorKey) {
   const rolls = getMatchingRollsForPlan(setName, colorKey);
   const field = PLAN_WORKTYPE_META[currentPlanWorkType].field;
@@ -3045,6 +3056,8 @@ function fillPlanRollReadonly(setName, colorKey) {
   document.getElementById('pf-rollid').value = rolls.length ? (rolls.length + ' ตัว') : (setName ? 'ไม่พบ Roll ตามเงื่อนไขนี้' : '');
   document.getElementById('pf-rollname').value = rolls.map(r => r.name).join(', ');
   document.getElementById('pf-plantime').value = rolls.length ? String(total) : '';
+  const hoursEl = document.getElementById('pf-plantime-hours');
+  if (hoursEl) hoursEl.textContent = rolls.length ? formatMinutesAsHm(total) : '';
   updatePlanEndTime();
 }
 
