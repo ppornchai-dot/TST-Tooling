@@ -1340,6 +1340,12 @@ canvas{display:block;}
         <button class="btn btn-ghost btn-sm plan-worktype-btn" data-worktype="polish" onclick="switchPlanWorkType('polish')">✦ ขัด Roll</button>
       </div>
 
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="" onclick="switchPlanShiftFilter('')" style="color:var(--accent);border-color:var(--accent);">ทั้งหมด</button>
+        <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="morning" onclick="switchPlanShiftFilter('morning')">🌤 กะเช้า</button>
+        <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="night" onclick="switchPlanShiftFilter('night')">🌙 กะดึก</button>
+      </div>
+
       <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
         <button class="btn btn-ghost btn-sm" onclick="planNav(-1)">‹ ก่อนหน้า</button>
         <div style="position:relative;display:inline-flex;">
@@ -1374,6 +1380,7 @@ canvas{display:block;}
                   <th rowspan="3">ชุดสี Roll</th>
                   <th rowspan="3">รหัส</th>
                   <th rowspan="3">ชื่อ Roll</th>
+                  <th rowspan="3">กะ</th>
                   <th colspan="3" style="text-align:center;">Plan</th>
                   <th rowspan="3">จัดการ</th>
                 </tr>
@@ -2598,15 +2605,15 @@ const toolingData = {
 
 // ─── PLAN TASKS (หน้าวางแผน — แผนการขึ้นงาน รายวัน/รายสัปดาห์/รายเดือน) ────────
 let planTasks = [
-  {id:'PT-0001',workType:'cnc',date:'2026-06-30',rollSet:'Pinch Roll — Ø200 mm',rollColor:'blue',rollId:'RL-0030',rollName:'Pinch Roll (Entry)',startTime:'09:00',endTime:'12:00'},
-  {id:'PT-0002',workType:'cnc',date:'2026-07-01',rollSet:'Backup Roll Stand 1 — Ø650 mm',rollColor:'yellow',rollId:'RL-0003',rollName:'Backup Roll #1 (Top)',startTime:'08:30',endTime:'11:30'},
-  {id:'PT-0003',workType:'cnc',date:'2026-07-02',rollSet:'Work Roll Stand 1 — Ø320 mm',rollColor:'blue',rollId:'RL-0001',rollName:'Work Roll #1 (Top)',startTime:'08:00',endTime:'10:59'},
-  {id:'PT-0004',workType:'cnc',date:'2026-07-02',rollSet:'Work Roll Stand 1 — Ø320 mm',rollColor:'blue',rollId:'RL-0002',rollName:'Work Roll #1 (Bot)',startTime:'10:59',endTime:'17:00'},
-  {id:'PT-0005',workType:'cnc',date:'2026-07-04',rollSet:'Work Roll Stand 2 — Ø300 mm',rollColor:'red',rollId:'RL-0007',rollName:'Work Roll #2 (Top)',startTime:'08:00',endTime:'12:00'},
-  {id:'PT-0006',workType:'cnc',date:'2026-07-11',rollSet:'Edger Roll — Ø250 mm',rollColor:'gold',rollId:'RL-0015',rollName:'Edger Roll (Left)',startTime:'08:00',endTime:'13:20'},
-  {id:'PT-0007',workType:'polish',date:'2026-07-02',rollSet:'Backup Roll Stand 1 — Ø650 mm',rollColor:'yellow',rollId:'RL-0004',rollName:'Backup Roll #1 (Bot)',startTime:'09:00',endTime:'09:30'},
-  {id:'PT-0008',workType:'polish',date:'2026-07-03',rollSet:'Work Roll Stand 2 — Ø300 mm',rollColor:'red',rollId:'RL-0008',rollName:'Work Roll #2 (Bot)',startTime:'08:00',endTime:'08:25'},
-  {id:'PT-0009',workType:'polish',date:'2026-07-11',rollSet:'Straightener Roll — Ø180 mm',rollColor:'purple',rollId:'RL-0021',rollName:'Straightener Roll Set A',startTime:'13:00',endTime:'13:22'},
+  {id:'PT-0001',workType:'cnc',date:'2026-06-30',rollSet:'Pinch Roll — Ø200 mm',rollColor:'blue',rollId:'RL-0030',rollName:'Pinch Roll (Entry)',startTime:'09:00',endTime:'12:00',shift:'morning',otMinutes:0},
+  {id:'PT-0002',workType:'cnc',date:'2026-07-01',rollSet:'Backup Roll Stand 1 — Ø650 mm',rollColor:'yellow',rollId:'RL-0003',rollName:'Backup Roll #1 (Top)',startTime:'08:30',endTime:'11:30',shift:'morning',otMinutes:0},
+  {id:'PT-0003',workType:'cnc',date:'2026-07-02',rollSet:'Work Roll Stand 1 — Ø320 mm',rollColor:'blue',rollId:'RL-0001',rollName:'Work Roll #1 (Top)',startTime:'08:00',endTime:'10:59',shift:'morning',otMinutes:0},
+  {id:'PT-0004',workType:'cnc',date:'2026-07-02',rollSet:'Work Roll Stand 1 — Ø320 mm',rollColor:'blue',rollId:'RL-0002',rollName:'Work Roll #1 (Bot)',startTime:'10:59',endTime:'17:00',shift:'morning',otMinutes:0},
+  {id:'PT-0005',workType:'cnc',date:'2026-07-04',rollSet:'Work Roll Stand 2 — Ø300 mm',rollColor:'red',rollId:'RL-0007',rollName:'Work Roll #2 (Top)',startTime:'08:00',endTime:'12:00',shift:'morning',otMinutes:0},
+  {id:'PT-0006',workType:'cnc',date:'2026-07-11',rollSet:'Edger Roll — Ø250 mm',rollColor:'gold',rollId:'RL-0015',rollName:'Edger Roll (Left)',startTime:'08:00',endTime:'13:20',shift:'morning',otMinutes:0},
+  {id:'PT-0007',workType:'polish',date:'2026-07-02',rollSet:'Backup Roll Stand 1 — Ø650 mm',rollColor:'yellow',rollId:'RL-0004',rollName:'Backup Roll #1 (Bot)',startTime:'09:00',endTime:'09:30',shift:'morning',otMinutes:0},
+  {id:'PT-0008',workType:'polish',date:'2026-07-03',rollSet:'Work Roll Stand 2 — Ø300 mm',rollColor:'red',rollId:'RL-0008',rollName:'Work Roll #2 (Bot)',startTime:'08:00',endTime:'08:25',shift:'morning',otMinutes:0},
+  {id:'PT-0009',workType:'polish',date:'2026-07-11',rollSet:'Straightener Roll — Ø180 mm',rollColor:'purple',rollId:'RL-0021',rollName:'Straightener Roll Set A',startTime:'13:00',endTime:'13:22',shift:'morning',otMinutes:0},
 ];
 let planTaskSeq = 9;
 
@@ -2717,6 +2724,32 @@ const PLAN_WORKTYPE_META = {
   polish: { label: 'แผนงานขัด Roll', field: 'polishTime', metricLabel: 'เวลาขัด Roll (นาที)' },
 };
 let currentPlanWorkType = 'cnc';
+
+// ─── กะทำงาน (เช้า/ดึก) — ใช้กำหนดช่วงเวลาปกติของแต่ละกะ เวลาที่ทำงานนอกช่วงนี้นับเป็น OT ───
+// กะเช้ามีพักเที่ยง 12:00–13:00 (ไม่นับเป็นเวลาทำงาน) ส่วนกะดึกข้ามเที่ยงคืนไปวันถัดไป ไม่มีพักเที่ยง
+const SHIFTS = {
+  morning: { key: 'morning', label: 'กะเช้า', start: '08:00', end: '17:00', startMin: 8 * 60,  endMin: 17 * 60, lunchBreak: true },
+  night:   { key: 'night',   label: 'กะดึก',  start: '20:00', end: '05:00', startMin: 20 * 60, endMin: 5 * 60,  lunchBreak: false },
+};
+let currentPlanShiftFilter = null; // null = ทั้งหมด
+
+// เวลา (นาทีสัมบูรณ์ นับจากจุดเริ่มต้น อาจเกิน 1440 ได้) อยู่ในช่วงกะนี้หรือไม่ — รองรับกะที่ข้ามเที่ยงคืน (endMin < startMin)
+function isMinuteInShift(minAbs, shift) {
+  const m = ((minAbs % 1440) + 1440) % 1440;
+  return shift.startMin < shift.endMin
+    ? (m >= shift.startMin && m < shift.endMin)
+    : (m >= shift.startMin || m < shift.endMin);
+}
+
+function switchPlanShiftFilter(key) {
+  currentPlanShiftFilter = key || null;
+  document.querySelectorAll('.plan-shift-btn').forEach(b => {
+    const active = (b.getAttribute('data-shift') || '') === (key || '');
+    b.style.color = active ? 'var(--accent)' : '';
+    b.style.borderColor = active ? 'var(--accent)' : '';
+  });
+  if (currentPlanView !== 'gantt') renderCurrentPlanView();
+}
 
 function planMetricTime(rollId) {
   const r = toolingData.roll.find(x => x.id === rollId);
@@ -2838,8 +2871,16 @@ function planDateGoToday() {
 // วันที่ (iso) ที่มีแผนงานอยู่แล้วของประเภทงานที่กำลังดู (CNC/ขัด Roll) — ใช้ทำจุดสีในปฏิทินป๊อปอัพ
 function planDatesWithTasks() {
   const set = new Set();
-  planTasks.forEach(t => { if (t.workType === currentPlanWorkType) set.add(t.date); });
+  planTasks.forEach(t => { if (t.workType === currentPlanWorkType && (!currentPlanShiftFilter || t.shift === currentPlanShiftFilter)) set.add(t.date); });
   return set;
+}
+// เงื่อนไขกรองงานตามแผนที่ใช้ร่วมกันทุกมุมมอง (รายวัน/สัปดาห์/เดือน) — ประเภทงาน (CNC/ขัด Roll) + กะที่เลือกอยู่ (ถ้ามี)
+function matchesCurrentPlanFilter(t) {
+  return t.workType === currentPlanWorkType && (!currentPlanShiftFilter || t.shift === currentPlanShiftFilter);
+}
+function shiftChipHtml(shiftKey) {
+  const shift = SHIFTS[shiftKey] || SHIFTS.morning;
+  return `<span class="chip ${shift.key === 'night' ? 'chip-purple' : 'chip-amber'}">${shift.label}</span>`;
 }
 function renderPlanDatePopup() {
   const el = document.getElementById('plan-date-popup');
@@ -2903,7 +2944,7 @@ function renderPlanDay() {
   const meta = PLAN_WORKTYPE_META[currentPlanWorkType];
   document.getElementById('plan-daterange-label').textContent = fmtDateThai(planViewDate);
   document.getElementById('plan-day-title').textContent = meta.label + ' — วันที่ ' + fmtDateThai(planViewDate);
-  const tasks = planTasks.filter(t => t.date === iso && t.workType === currentPlanWorkType).sort((a, b) => (a.startTime||'').localeCompare(b.startTime||''));
+  const tasks = planTasks.filter(t => t.date === iso && matchesCurrentPlanFilter(t)).sort((a, b) => (a.startTime||'').localeCompare(b.startTime||''));
   document.getElementById('plan-day-tbody').innerHTML = tasks.map((t, i) => `
     <tr>
       <td class="muted">${i + 1}</td>
@@ -2911,14 +2952,15 @@ function renderPlanDay() {
       <td>${escapeHtmlAttr(planRollColorLabel(t))}</td>
       <td class="muted">${escapeHtmlAttr(t.rollId)}</td>
       <td><strong>${escapeHtmlAttr(t.rollName)}</strong></td>
+      <td>${shiftChipHtml(t.shift)}</td>
       <td class="muted" style="text-align:right;">${escapeHtmlAttr(t.totalTime != null ? String(t.totalTime) : planMetricTime(t.rollId))}</td>
       <td class="muted">${escapeHtmlAttr(t.startTime || '—')}</td>
-      <td class="muted">${escapeHtmlAttr(t.endTime || '—')}${t.endDate && t.endDate !== t.date ? ` <span style="color:var(--accent);font-weight:700;">(+${Math.round((parseISODate(t.endDate)-parseISODate(t.date))/86400000)} วัน)</span>` : ''}</td>
+      <td class="muted">${escapeHtmlAttr(t.endTime || '—')}${t.endDate && t.endDate !== t.date ? ` <span style="color:var(--accent);font-weight:700;">(+${Math.round((parseISODate(t.endDate)-parseISODate(t.date))/86400000)} วัน)</span>` : ''}${t.otMinutes ? ` <span class="chip chip-red" title="เวลาทำงานนอกช่วงกะ">OT ${formatMinutesAsHm(t.otMinutes).replace('≈ ', '')}</span>` : ''}</td>
       <td style="display:flex;gap:4px;">
         <button class="btn btn-ghost btn-sm" onclick="openPlanTaskModal('edit','${t.id}')">แก้ไข</button>
         <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deletePlanTask('${t.id}')">ลบ</button>
       </td>
-    </tr>`).join('') || `<tr><td colspan="9" style="padding:32px;text-align:center;color:var(--text-3);">ไม่มีงานตามแผนในวันนี้</td></tr>`;
+    </tr>`).join('') || `<tr><td colspan="10" style="padding:32px;text-align:center;color:var(--text-3);">ไม่มีงานตามแผนในวันนี้</td></tr>`;
 }
 
 function renderPlanWeek() {
@@ -2935,10 +2977,10 @@ function renderPlanWeek() {
 
   document.getElementById('plan-week-tbody').innerHTML = days.map(d => {
     const iso = toISODate(d);
-    const tasks = planTasks.filter(t => t.date === iso && t.workType === currentPlanWorkType).sort((a, b) => (a.startTime||'').localeCompare(b.startTime||''));
+    const tasks = planTasks.filter(t => t.date === iso && matchesCurrentPlanFilter(t)).sort((a, b) => (a.startTime||'').localeCompare(b.startTime||''));
     const items = tasks.map(t => `
       <div style="display:flex;align-items:center;gap:4px;">
-        <span class="chip chip-blue" style="cursor:pointer;flex:1;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(t.rollId)} — ${escapeHtmlAttr(t.rollName)}">${escapeHtmlAttr(t.rollId)}</span>
+        <span class="chip ${t.shift === 'night' ? 'chip-purple' : 'chip-blue'}" style="cursor:pointer;flex:1;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(SHIFTS[t.shift]?.label || '')} — ${escapeHtmlAttr(t.rollId)} — ${escapeHtmlAttr(t.rollName)}">${escapeHtmlAttr(t.rollId)}</span>
         <button title="ลบ" onclick="deletePlanTask('${t.id}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:11px;padding:0;">✕</button>
       </div>`).join('');
     return `<td style="min-width:110px;">
@@ -2969,9 +3011,9 @@ function renderPlanMonth() {
   for (let day = 1; day <= daysInMonth; day++) {
     const d = new Date(year, month, day);
     const iso = toISODate(d);
-    const tasks = planTasks.filter(t => t.date === iso && t.workType === currentPlanWorkType);
+    const tasks = planTasks.filter(t => t.date === iso && matchesCurrentPlanFilter(t));
     const chips = tasks.map(t =>
-      `<span class="chip chip-blue" style="font-size:10px;cursor:pointer;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(t.rollId)} — ${escapeHtmlAttr(t.rollName)}">${escapeHtmlAttr(t.rollId)}</span>`
+      `<span class="chip ${t.shift === 'night' ? 'chip-purple' : 'chip-blue'}" style="font-size:10px;cursor:pointer;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(SHIFTS[t.shift]?.label || '')} — ${escapeHtmlAttr(t.rollId)} — ${escapeHtmlAttr(t.rollName)}">${escapeHtmlAttr(t.rollId)}</span>`
     ).join('');
     html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -2994,6 +3036,15 @@ function planTaskFormFields() {
       <div class="form-group"><label class="form-label">วันที่เริ่มงาน</label><input class="form-input" id="pf-date" type="date" onchange="updatePlanEndTime()"></div>
       <div class="form-group"><label class="form-label">วันที่จบงาน — คำนวณให้อัตโนมัติ</label><input class="form-input" id="pf-enddate" type="date"></div>
     </div>
+    <div class="modal-row three">
+      <div class="form-group"><label class="form-label">กะทำงาน</label>
+        <select class="form-select" id="pf-shift" onchange="onPlanShiftChange()">
+          ${Object.values(SHIFTS).map(s => `<option value="${s.key}">${s.label} (${s.start}–${s.end})</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">เริ่มงาน</label><input class="form-input" id="pf-start" type="time" onchange="updatePlanEndTime()"></div>
+      <div class="form-group"><label class="form-label">จบงาน — คำนวณให้อัตโนมัติจากเวลารวม</label><input class="form-input" id="pf-end" type="time"></div>
+    </div>
     <div class="modal-row">
       <div class="form-group"><label class="form-label">Size Roll</label>
         <select class="form-select" id="pf-rollset" onchange="onPlanRollSetChange()"></select>
@@ -3010,10 +3061,9 @@ function planTaskFormFields() {
       <div class="form-group"><label class="form-label" id="pf-plantime-label">เวลาแต่ง Roll (นาที) — จากทะเบียน Tooling</label><input class="form-input" id="pf-plantime" type="text" disabled>
         <span id="pf-plantime-hours" style="font-size:11px;color:var(--text-3);"></span>
       </div>
-    </div>
-    <div class="modal-row">
-      <div class="form-group"><label class="form-label">เริ่มงาน</label><input class="form-input" id="pf-start" type="time" onchange="updatePlanEndTime()"></div>
-      <div class="form-group"><label class="form-label">จบงาน — คำนวณให้อัตโนมัติจากเวลารวม</label><input class="form-input" id="pf-end" type="time"></div>
+      <div class="form-group"><label class="form-label">เวลา OT — เกินช่วงกะที่เลือก</label><input class="form-input" id="pf-ot" type="text" disabled>
+        <span style="font-size:11px;color:var(--text-3);">นับเฉพาะเวลาทำงานนอกช่วงกะ</span>
+      </div>
     </div>`;
 }
 
@@ -3072,46 +3122,57 @@ function fillPlanRollReadonly(setName, colorKey) {
 // พักเที่ยง 12:00–13:00 ไม่นับเป็นเวลาทำงาน — ถ้าช่วงงานคาบเกี่ยวช่วงพักเที่ยงของวันไหน (รวมข้ามหลายวันถ้างานยาว) จะขยับเวลาจบให้ชดเชยเวลาพักนั้นไปด้วย
 const LUNCH_BREAK_START_MIN = 12 * 60; // 12:00
 const LUNCH_BREAK_END_MIN = 13 * 60;   // 13:00
-// คำนวณทั้งวันที่และเวลาจบงาน — คืน {date, time} เพื่อรองรับงานที่ยาวข้ามวัน (startDate เป็น undefined ได้ถ้าต้องการแค่เวลา)
-function computePlanEnd(startDate, startTime, totalMinutes) {
-  if (!startTime || !totalMinutes) return { date: '', time: '' };
+// คำนวณวันที่/เวลาจบงาน + เวลา OT — คืน {date, time, otMinutes} รองรับงานที่ยาวข้ามวัน (startDate เป็น undefined ได้ถ้าต้องการแค่เวลา)
+// ถ้าระบุ shiftKey: นาทีที่ตกนอกช่วงกะนั้น (ดูช่วงเวลาที่ SHIFTS) จะถูกนับเป็น otMinutes แยกไว้ — พักเที่ยงยังข้ามได้เฉพาะกะที่มีพักเที่ยง (lunchBreak:true)
+function computePlanEnd(startDate, startTime, totalMinutes, shiftKey) {
+  if (!startTime || !totalMinutes) return { date: '', time: '', otMinutes: 0 };
   const [h, m] = startTime.split(':').map(Number);
-  if (Number.isNaN(h) || Number.isNaN(m)) return { date: '', time: '' };
+  if (Number.isNaN(h) || Number.isNaN(m)) return { date: '', time: '', otMinutes: 0 };
+  const shift = SHIFTS[shiftKey] || null;
+  const lunchApplies = !shift || shift.lunchBreak;
   let cursor = h * 60 + m;
   let remaining = Math.round(totalMinutes);
-  // ถ้าเวลาเริ่มงานตกอยู่ในช่วงพักเที่ยงพอดี ให้เลื่อนไปเริ่มนับตอน 13:00 ของวันนั้นก่อน
-  if (cursor % 1440 >= LUNCH_BREAK_START_MIN && cursor % 1440 < LUNCH_BREAK_END_MIN) {
+  let otMinutes = 0;
+  // ถ้าเวลาเริ่มงานตกอยู่ในช่วงพักเที่ยงพอดี (เฉพาะกะที่มีพักเที่ยง) ให้เลื่อนไปเริ่มนับตอน 13:00 ของวันนั้นก่อน
+  if (lunchApplies && cursor % 1440 >= LUNCH_BREAK_START_MIN && cursor % 1440 < LUNCH_BREAK_END_MIN) {
     cursor += LUNCH_BREAK_END_MIN - (cursor % 1440);
   }
   while (remaining > 0) {
-    const dayStart = Math.floor(cursor / 1440) * 1440;
-    const lunchStartToday = dayStart + LUNCH_BREAK_START_MIN;
-    const nextLunchStart = cursor < lunchStartToday ? lunchStartToday : dayStart + 1440 + LUNCH_BREAK_START_MIN;
-    const gap = nextLunchStart - cursor;
-    if (remaining <= gap) {
-      cursor += remaining;
-      remaining = 0;
-    } else {
-      cursor = nextLunchStart + (LUNCH_BREAK_END_MIN - LUNCH_BREAK_START_MIN); // ข้ามช่วงพักเที่ยงไป
-      remaining -= gap;
+    if (lunchApplies && cursor % 1440 === LUNCH_BREAK_START_MIN) {
+      cursor += (LUNCH_BREAK_END_MIN - LUNCH_BREAK_START_MIN); // ข้ามช่วงพักเที่ยงไปทีเดียว ไม่นับเป็นเวลาทำงาน
+      continue;
     }
+    if (shift && !isMinuteInShift(cursor, shift)) otMinutes++;
+    cursor++;
+    remaining--;
   }
   const daysElapsed = Math.floor(cursor / 1440);
   const eh = Math.floor(cursor / 60) % 24;
   const em = cursor % 60;
   const time = String(eh).padStart(2, '0') + ':' + String(em).padStart(2, '0');
-  return { date: startDate ? addDaysIso(startDate, daysElapsed) : '', time };
+  return { date: startDate ? addDaysIso(startDate, daysElapsed) : '', time, otMinutes };
+}
+
+function onPlanShiftChange() {
+  const key = (document.getElementById('pf-shift') || {}).value;
+  const shift = SHIFTS[key];
+  const startEl = document.getElementById('pf-start');
+  if (shift && startEl) startEl.value = shift.start;
+  updatePlanEndTime();
 }
 
 function updatePlanEndTime() {
   const startDate = (document.getElementById('pf-date') || {}).value;
   const start = (document.getElementById('pf-start') || {}).value;
+  const shiftKey = (document.getElementById('pf-shift') || {}).value;
   const total = parseFloat((document.getElementById('pf-plantime') || {}).value) || 0;
-  const result = computePlanEnd(startDate, start, total);
+  const result = computePlanEnd(startDate, start, total, shiftKey);
   const endEl = document.getElementById('pf-end');
   if (endEl) endEl.value = result.time;
   const endDateEl = document.getElementById('pf-enddate');
   if (endDateEl) endDateEl.value = result.date || startDate;
+  const otEl = document.getElementById('pf-ot');
+  if (otEl) otEl.value = result.otMinutes ? (result.otMinutes + ' นาที (' + formatMinutesAsHm(result.otMinutes).replace('≈ ', '') + ')') : '0 นาที';
 }
 
 function onPlanRollSetChange() {
@@ -3135,7 +3196,9 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   const planTimeLabel = document.getElementById('pf-plantime-label');
   if (planTimeLabel) planTimeLabel.textContent = PLAN_WORKTYPE_META[workType].metricLabel + ' — จากทะเบียน Tooling';
   document.getElementById('pf-date').value = task ? task.date : (presetDate || toISODate(planViewDate));
-  document.getElementById('pf-start').value = task ? task.startTime : '08:00';
+  const defaultShift = (task ? task.shift : currentPlanShiftFilter) || 'morning';
+  document.getElementById('pf-shift').value = defaultShift;
+  document.getElementById('pf-start').value = task ? task.startTime : SHIFTS[defaultShift].start;
   populatePlanRollSetSelect(task ? task.rollSet : null);
   populatePlanRollColorSelect(task ? task.rollSet : null, task ? task.rollColor : null);
   fillPlanRollReadonly(task ? task.rollSet : null, task ? task.rollColor : null); // คำนวณ "จบงาน" ให้อัตโนมัติในตัว
@@ -3154,8 +3217,9 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     const field = PLAN_WORKTYPE_META[workType].field;
     const totalTime = rolls.reduce((sum, r) => sum + (parseFloat(r[field]) || 0), 0);
     const startTime = g('pf-start');
-    // คำนวณวันที่/เวลาจบงานซ้ำตรงนี้เสมอ กันกรณีช่อง "จบงาน"/"วันที่จบงาน" บนหน้าจอยังไม่ทันอัปเดตตามค่าล่าสุด
-    const computedEnd = computePlanEnd(date, startTime, totalTime);
+    const shiftKey = document.getElementById('pf-shift').value || 'morning';
+    // คำนวณวันที่/เวลาจบงาน + OT ซ้ำตรงนี้เสมอ กันกรณีช่อง "จบงาน"/"วันที่จบงาน" บนหน้าจอยังไม่ทันอัปเดตตามค่าล่าสุด
+    const computedEnd = computePlanEnd(date, startTime, totalTime, shiftKey);
     const endTime = g('pf-end') || computedEnd.time;
     const endDate = g('pf-enddate') || computedEnd.date || date;
     const data = {
@@ -3166,7 +3230,9 @@ function openPlanTaskModal(mode, taskId, presetDate) {
       totalTime,
       startTime: startTime || '—',
       endTime: endTime || '—',
-      endDate: endDate || date
+      endDate: endDate || date,
+      shift: shiftKey,
+      otMinutes: computedEnd.otMinutes || 0
     };
     if (mode === 'edit') {
       Object.assign(task, data);
