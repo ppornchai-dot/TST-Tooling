@@ -3149,9 +3149,13 @@ function formatMinutesAsHm(totalMinutes) {
 }
 
 // อ่าน Roll ที่ผู้ใช้ติ๊กเลือกไว้จริงในดรอปดาวน์ "รายชื่อ Roll" (ไม่ใช่แค่ Roll ที่พบตามเงื่อนไข Size Roll/สี)
+// จำกัดขอบเขตด้วย Size Roll/สีที่เลือกอยู่ก่อนเทียบ id เสมอ เพราะ id ของ Roll ไม่ได้ unique ทั้งระบบ — Size Roll กลุ่มอื่นอาจมีรายการชื่อ/id ซ้ำกัน (เช่น "S1-T") ได้
 function getSelectedRollsForPlan() {
+  const setName = (document.getElementById('pf-rollset') || {}).value;
+  const colorKey = (document.getElementById('pf-rollcolor') || {}).value;
+  const scoped = getMatchingRollsForPlan(setName, colorKey);
   const idSet = new Set(((document.getElementById('pf-rollids') || {}).value || '').split(',').filter(Boolean));
-  return toolingData.roll.filter(r => idSet.has(r.id));
+  return scoped.filter(r => idSet.has(r.id));
 }
 
 function renderRollOptionsPanel(rolls, selectedIds) {
