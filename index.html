@@ -3149,29 +3149,30 @@ function formatMinutesAsHm(totalMinutes) {
 }
 
 // อ่าน Roll ที่ผู้ใช้ติ๊กเลือกไว้จริงในดรอปดาวน์ "รายชื่อ Roll" (ไม่ใช่แค่ Roll ที่พบตามเงื่อนไข Size Roll/สี)
-// จำกัดขอบเขตด้วย Size Roll/สีที่เลือกอยู่ก่อนเทียบ id เสมอ เพราะ id ของ Roll ไม่ได้ unique ทั้งระบบ — Size Roll กลุ่มอื่นอาจมีรายการชื่อ/id ซ้ำกัน (เช่น "S1-T") ได้
+// เก็บ/เทียบด้วย "ตำแหน่งลำดับ" (index) ในรายการที่พบ ไม่ใช่ r.id เพราะ Roll หลายตัวในกลุ่มเดียวกันอาจมี id/ชื่อซ้ำกันได้ (เช่นตั้งชื่อ "S1-T" ซ้ำกันหลายตัว)
+// ถ้าใช้ id เทียบ พอมีตัวซ้ำ ยกเลิกติ๊กตัวหนึ่งจะไม่มีผลเลยเพราะยังมี id เดียวกันจากตัวอื่นที่ยังติ๊กอยู่ค้างใน Set
 function getSelectedRollsForPlan() {
   const setName = (document.getElementById('pf-rollset') || {}).value;
   const colorKey = (document.getElementById('pf-rollcolor') || {}).value;
   const scoped = getMatchingRollsForPlan(setName, colorKey);
-  const idSet = new Set(((document.getElementById('pf-rollids') || {}).value || '').split(',').filter(Boolean));
-  return scoped.filter(r => idSet.has(r.id));
+  const idxSet = new Set(((document.getElementById('pf-rollids') || {}).value || '').split(',').filter(Boolean).map(Number));
+  return scoped.filter((r, idx) => idxSet.has(idx));
 }
 
-function renderRollOptionsPanel(rolls, selectedIds) {
+function renderRollOptionsPanel(rolls, selectedIndexes) {
   const panel = document.getElementById('pf-rollids-panel');
   if (!panel) return;
   if (!rolls.length) {
     panel.innerHTML = '<div style="padding:8px 10px;font-size:12px;color:var(--text-3);">ไม่พบ Roll ตามเงื่อนไขนี้</div>';
     return;
   }
-  const selectedSet = new Set(selectedIds);
+  const selectedSet = new Set(selectedIndexes.map(Number));
   panel.innerHTML =
     `<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:700;border-bottom:1px solid var(--border-light);margin-bottom:2px;">
       <input type="checkbox" id="pf-rollids-all" onchange="toggleAllRollOptions(this)" style="width:14px;height:14px;cursor:pointer;">เลือกทั้งหมด (${rolls.length})
     </label>` +
-    rolls.map(r => `<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:5px;cursor:pointer;font-size:13px;">
-      <input type="checkbox" value="${r.id}"${selectedSet.has(r.id) ? ' checked' : ''} onchange="toggleRollOption(this)" style="width:14px;height:14px;cursor:pointer;">${escapeHtmlAttr(r.name)}
+    rolls.map((r, idx) => `<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:5px;cursor:pointer;font-size:13px;">
+      <input type="checkbox" value="${idx}"${selectedSet.has(idx) ? ' checked' : ''} onchange="toggleRollOption(this)" style="width:14px;height:14px;cursor:pointer;">${escapeHtmlAttr(r.name)}
     </label>`).join('');
   syncRollSelectAllState();
 }
@@ -3249,15 +3250,15 @@ function recalcPlanTotalsFromSelection() {
 }
 
 // เติมรายการ Roll ที่พบตามเงื่อนไข Size Roll/สี แล้วเปิดดรอปดาวน์ให้เลือกเฉพาะรายการที่ต้องการ
-// presetSelectedIds ใช้ตอนแก้ไขงานเดิม เพื่อคงการเลือกรายการเดิมไว้ — ถ้าไม่ระบุ (เพิ่มงานใหม่/เปลี่ยน Size Roll) จะเลือกทั้งหมดที่พบเป็นค่าเริ่มต้น
-function fillPlanRollReadonly(setName, colorKey, presetSelectedIds) {
+// presetSelectedIndexes (ตำแหน่งลำดับในรายการที่พบ) ใช้ตอนแก้ไขงานเดิม เพื่อคงการเลือกรายการเดิมไว้ — ถ้าไม่ระบุ (เพิ่มงานใหม่/เปลี่ยน Size Roll) จะเลือกทั้งหมดที่พบเป็นค่าเริ่มต้น
+function fillPlanRollReadonly(setName, colorKey, presetSelectedIndexes) {
   const rolls = getMatchingRollsForPlan(setName, colorKey);
-  const matchedIds = new Set(rolls.map(r => r.id));
-  const selectedIds = (presetSelectedIds && presetSelectedIds.length)
-    ? presetSelectedIds.filter(id => matchedIds.has(id))
-    : rolls.map(r => r.id);
-  document.getElementById('pf-rollids').value = selectedIds.join(',');
-  renderRollOptionsPanel(rolls, selectedIds);
+  const allIndexes = rolls.map((_, idx) => idx);
+  const selectedIndexes = (presetSelectedIndexes && presetSelectedIndexes.length)
+    ? presetSelectedIndexes.filter(idx => idx >= 0 && idx < rolls.length)
+    : allIndexes;
+  document.getElementById('pf-rollids').value = selectedIndexes.join(',');
+  renderRollOptionsPanel(rolls, selectedIndexes);
   updateRollSelectionLabel();
   recalcPlanTotalsFromSelection();
 }
@@ -3472,9 +3473,11 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     const computedEnd = computePlanEnd(date, startTime, totalTime, shiftKey, otCapMinutesByShift);
     const endTime = computedEnd.time;
     const endDate = g('pf-enddate') || computedEnd.date || date;
+    // เก็บเป็น "ตำแหน่งลำดับ" ในรายการที่พบ (ไม่ใช่ r.id ตรงๆ) เพราะ Roll หลายตัวอาจมี id/ชื่อซ้ำกันได้ ตำแหน่งลำดับจะระบุตัวที่เลือกได้แม่นยำกว่า
+    const selectedIndexes = ((document.getElementById('pf-rollids') || {}).value || '').split(',').filter(Boolean).map(Number);
     const data = {
       date, rollSet: setName, rollColor: colorKey || null,
-      rollIds: rolls.map(r => r.id),
+      rollIds: selectedIndexes,
       rollId: rolls.length + ' Roll',
       rollName: rolls.map(r => r.name).join(', '),
       totalTime,
