@@ -3774,13 +3774,24 @@ function editRoll(idx) {
   document.getElementById('modal-overlay').classList.add('open');
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const g = id => (document.getElementById(id)||{}).value||'—';
-    toolingData.roll[idx] = {
+    const isFirstInGroup = toolingData.roll.findIndex(x => x.set === r.set) === idx;
+    const updated = {
       id: g('f-id'), name: g('f-name'), material: r.material,
       diameter: g('f-diameter'), width: g('f-width'), position: r.position,
       usage: g('f-usage'), regrind: g('f-regrind'),
       grindTime: g('f-grindtime'), polishTime: g('f-polishtime'), lastService: g('f-service'), status: g('f-status'),
       color: (document.getElementById('f-color')||{}).value || null, set: r.set
     };
+    toolingData.roll[idx] = updated;
+    // แก้ไขรายการแรกของกลุ่ม Size Roll แล้ว ให้คัดลอกรอบการใช้งาน/เวลาแต่ง/เวลาขัดไปยังทุกรายการในกลุ่มเดียวกัน
+    // เพราะ Roll ในกลุ่มเดียวกันมักถูกตั้งค่ามาตรฐานเดียวกันหมด ไม่ต้องกรอกซ้ำทีละ 12 รายการ
+    if (isFirstInGroup) {
+      toolingData.roll.forEach(x => {
+        if (x.set === r.set && x !== updated) {
+          x.usage = updated.usage; x.grindTime = updated.grindTime; x.polishTime = updated.polishTime;
+        }
+      });
+    }
     renderRollTable(pageState.roll);
     persistState();
     const btn = this;
