@@ -3507,6 +3507,7 @@ function renderRollColorList() {
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
           <button class="btn btn-ghost btn-sm" style="padding:3px 6px;" onclick="openEditColorModal('${g.key}')" title="แก้ไข">✏️</button>
+          <button class="btn btn-ghost btn-sm" style="padding:3px 6px;" onclick="openCopyColorModal('${g.key}')" title="คัดลอกจากสีอื่น">📋</button>
           <button class="btn btn-ghost btn-sm" style="padding:3px 6px;color:var(--red);" onclick="deleteColor('${g.key}')" title="ลบ">✕</button>
         </div>
       </div>
@@ -3535,6 +3536,69 @@ function renderRollColorList() {
   }
 
   el.innerHTML = html;
+}
+
+// รายการชุดสีที่คัดลอกได้ในกลุ่ม Size Roll ที่เลือกอยู่ — รวม "ไม่ระบุสี" เข้าไปด้วยถ้ามีรายการอยู่ในนั้น เพื่อให้เลือกเป็นทั้งต้นทาง/ปลายทางได้
+function getCopyableRollColorGroups() {
+  const scope = rollSetScope();
+  const groups = getSetPalette(selectedRollSet).map(g => ({ key: g.key, label: g.label, count: scope.filter(r => r.color === g.key).length }));
+  const noColorCount = scope.filter(r => !r.color).length;
+  if (noColorCount > 0) groups.push({ key: NO_COLOR_KEY, label: 'ไม่ระบุสี', count: noColorCount });
+  return groups;
+}
+
+function openCopyColorModal(targetKey) {
+  if (!selectedRollSet) return;
+  const groups = getCopyableRollColorGroups();
+  const others = groups.filter(g => g.key !== targetKey);
+  if (!others.length) { alert('ไม่มีสีอื่นในกลุ่มนี้ให้คัดลอกจาก'); return; }
+  const targetLabel = (groups.find(g => g.key === targetKey) || {}).label || targetKey;
+
+  document.getElementById('modal-title').textContent = 'คัดลอกจากสีอื่น — ' + targetLabel;
+  document.getElementById('modal-body').innerHTML = `
+    <div class="form-group">
+      <label class="form-label">คัดลอกข้อมูลจาก</label>
+      <select class="form-select" id="f-copy-source">
+        ${others.map(g => `<option value="${escapeHtmlAttr(g.key)}">${escapeHtmlAttr(g.label)} (${g.count} รายการ)</option>`).join('')}
+      </select>
+    </div>
+    <p style="font-size:12px;color:var(--text-3);margin-top:10px;line-height:1.5;">
+      จับคู่รายการด้วย "ชื่อ Roll" ที่ตรงกัน แล้วคัดลอกเส้นผ่าศูนย์กลาง / ความหนา / รอบการใช้งาน / แต่งครั้งที่ / เวลาแต่ง Roll / เวลาขัด Roll
+      ไปทับค่าปัจจุบันของ "${targetLabel}" ทั้งหมด — รายการที่ไม่มีชื่อตรงกันในต้นทางจะไม่ถูกแก้ไข
+    </p>`;
+  document.getElementById('modal-overlay').classList.add('open');
+  document.querySelector('.modal-footer .btn-primary').onclick = function() {
+    const sourceKey = document.getElementById('f-copy-source').value;
+    const { copied, skipped } = copyRollColorData(selectedRollSet, sourceKey, targetKey);
+    renderRollColorList();
+    renderRollTable(pageState.roll || 1);
+    persistState();
+    const btn = this;
+    const orig = btn.innerHTML;
+    btn.innerHTML = copied ? ('✓ คัดลอกแล้ว ' + copied + ' รายการ' + (skipped ? ` (ข้าม ${skipped} รายการที่ชื่อไม่ตรงกัน)` : '')) : '✕ ไม่พบรายการชื่อตรงกัน';
+    btn.style.background = copied ? 'var(--green)' : 'var(--red)';
+    setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.onclick = saveModal; closeModal(); }, copied ? 1200 : 1800);
+  };
+}
+
+// คัดลอกสเปกของ Roll ในกลุ่มสีต้นทางไปทับกลุ่มสีปลายทาง โดยจับคู่กันด้วย r.name (เช่น TH1-T ในสีฟ้า -> TH1-T ในสีเหลือง)
+// ไม่แก้ id/name/status/color/lastService เพราะเป็นข้อมูลประจำตัวของ Roll แต่ละชิ้น ไม่ใช่สเปกที่ควรเหมือนกันทั้งกลุ่มสี
+function copyRollColorData(setName, fromKey, toKey) {
+  const bySourceColor = r => fromKey === NO_COLOR_KEY ? !r.color : r.color === fromKey;
+  const byTargetColor = r => toKey === NO_COLOR_KEY ? !r.color : r.color === toKey;
+  const sourceByName = new Map(
+    toolingData.roll.filter(r => r.set === setName && bySourceColor(r)).map(r => [r.name, r])
+  );
+  const targets = toolingData.roll.filter(r => r.set === setName && byTargetColor(r));
+  let copied = 0, skipped = 0;
+  targets.forEach(t => {
+    const s = sourceByName.get(t.name);
+    if (!s) { skipped++; return; }
+    t.diameter = s.diameter; t.width = s.width; t.usage = s.usage;
+    t.regrind = s.regrind; t.grindTime = s.grindTime; t.polishTime = s.polishTime;
+    copied++;
+  });
+  return { copied, skipped };
 }
 
 // รวม GS/GI + ขนาด + OD ไว้บรรทัดเดียว และตัดบรรทัด "หมวด" (Forming/Sizing/TH) ออก เพราะซ้ำกับหัวข้อหมวดที่คั่นไว้ให้แล้วในรายการ — เหลือแค่ชื่อ + เครื่องจักร (ถ้ามี) ให้อ่านง่ายและประหยัดพื้นที่แนวตั้ง
