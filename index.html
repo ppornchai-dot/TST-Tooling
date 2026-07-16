@@ -3090,7 +3090,7 @@ function planTaskFormFields() {
       </div>
     </div>
     <div class="modal-row">
-      <div class="form-group"><label class="form-label">จำนวน Roll ที่พบ</label><input class="form-input" id="pf-rollid" disabled></div>
+      <div class="form-group"><label class="form-label">จำนวน Roll ที่เลือก</label><input class="form-input" id="pf-rollid" disabled></div>
       <div class="form-group"><label class="form-label">รายชื่อ Roll — เลือกเฉพาะรายการที่ต้องการได้</label>
         <div class="roll-ms" style="position:relative;">
           <input type="hidden" id="pf-rollids" value="">
@@ -3222,8 +3222,23 @@ function updateRollSelectionLabel() {
   labelEl.textContent = rolls.length ? `เลือกไว้ ${rolls.length} รายการ` : '— ไม่ได้เลือก Roll —';
 }
 
-// คำนวณเวลารวม (นาที) จาก Roll ที่ติ๊กเลือกไว้จริงเท่านั้น แล้วคำนวณ "จบงาน" ต่อให้อัตโนมัติ
+// จำนวน Roll ที่เลือกไว้จริง (ไม่ใช่จำนวนที่พบทั้งหมด) — ถ้าเลือกไม่ครบทุกตัวที่พบ จะโชว์จำนวนที่พบไว้ในวงเล็บเป็นข้อมูลอ้างอิงด้วย
+function updateRollCountField() {
+  const el = document.getElementById('pf-rollid');
+  if (!el) return;
+  const setName = (document.getElementById('pf-rollset') || {}).value;
+  if (!setName) { el.value = ''; return; }
+  const matched = getMatchingRollsForPlan(setName, (document.getElementById('pf-rollcolor') || {}).value);
+  if (!matched.length) { el.value = 'ไม่พบ Roll ตามเงื่อนไขนี้'; return; }
+  const selectedCount = getSelectedRollsForPlan().length;
+  el.value = selectedCount === matched.length
+    ? `${selectedCount} ตัว`
+    : `${selectedCount} ตัว (จากที่พบ ${matched.length} ตัว)`;
+}
+
+// คำนวณจำนวน + เวลารวม (นาที) จาก Roll ที่ติ๊กเลือกไว้จริงเท่านั้น แล้วคำนวณ "จบงาน" ต่อให้อัตโนมัติ
 function recalcPlanTotalsFromSelection() {
+  updateRollCountField();
   const rolls = getSelectedRollsForPlan();
   const field = PLAN_WORKTYPE_META[currentPlanWorkType].field;
   const total = rolls.reduce((sum, r) => sum + (parseFloat(r[field]) || 0), 0);
@@ -3237,7 +3252,6 @@ function recalcPlanTotalsFromSelection() {
 // presetSelectedIds ใช้ตอนแก้ไขงานเดิม เพื่อคงการเลือกรายการเดิมไว้ — ถ้าไม่ระบุ (เพิ่มงานใหม่/เปลี่ยน Size Roll) จะเลือกทั้งหมดที่พบเป็นค่าเริ่มต้น
 function fillPlanRollReadonly(setName, colorKey, presetSelectedIds) {
   const rolls = getMatchingRollsForPlan(setName, colorKey);
-  document.getElementById('pf-rollid').value = rolls.length ? (rolls.length + ' ตัว') : (setName ? 'ไม่พบ Roll ตามเงื่อนไขนี้' : '');
   const matchedIds = new Set(rolls.map(r => r.id));
   const selectedIds = (presetSelectedIds && presetSelectedIds.length)
     ? presetSelectedIds.filter(id => matchedIds.has(id))
