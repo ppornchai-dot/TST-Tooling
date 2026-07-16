@@ -293,6 +293,8 @@ tbody tr.roll-row-selected:hover{background:var(--accent-glow);}
 .chip-pink::before{background:#C2469E;}
 .chip-gray{background:rgba(107,114,128,0.10);color:#6B7280;}
 .chip-gray::before{background:#6B7280;}
+.chip-slate{background:rgba(71,85,105,0.10);color:#475569;}
+.chip-slate::before{background:#475569;}
 
 /* ─── PRIORITY ────────────────────────────────── */
 .prio{
@@ -1072,6 +1074,7 @@ canvas{display:block;}
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:#C2469E;" id="kpi-roll-waitpolish">0</span><span class="reg-kpi-lbl">รอขัด</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:#6B7280;" id="kpi-roll-noroll">0</span><span class="reg-kpi-lbl">ไม่มีลูกรีด</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-roll-expired">0</span><span class="reg-kpi-lbl">อายุ</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:#475569;" id="kpi-roll-cancelled">0</span><span class="reg-kpi-lbl">ยกเลิกใช้งาน</span></div>
         </div>
         <div style="display:grid;grid-template-columns:210px 250px 1fr;gap:14px;align-items:start;">
           <!-- COL 1: Size Roll -->
@@ -1133,6 +1136,7 @@ canvas{display:block;}
                   <option>รอขัด</option>
                   <option>อายุ</option>
                   <option>ไม่มีลูกรีด</option>
+                  <option>ยกเลิกใช้งาน</option>
                 </select>
               </div>
               <div class="table-wrap" style="overflow-x:auto;">
@@ -1837,6 +1841,7 @@ const C_CYAN   = '#0E9BB5';
 const C_BROWN  = '#A9752B';
 const C_PINK   = '#C2469E';
 const C_GRAY   = '#6B7280';
+const C_SLATE  = '#475569';
 
 // ลำดับ/สี ของ 8 สถานะ Roll (เฉพาะหมวด Roll เท่านั้น) — ใช้ทำแถบ+ป้ายสถานะแบบแยกสีในหน้า Dashboard
 // รอใช้งาน/รอแต่ง/รอขัด คือคิวที่เกิดจากการซิงก์กับ Production Block อัตโนมัติ (ดู syncRollStatusWithProdBlock)
@@ -1850,6 +1855,7 @@ const ROLL_STATUS_STEPS = [
   { keys: ['รอขัด'],                     label: 'รอขัด',       color: C_PINK,   cls: 'chip-pink' },
   { keys: ['อายุ', 'หมดอายุ', 'มีปัญหา'], label: 'อายุ',        color: C_RED,    cls: 'chip-red' },
   { keys: ['ไม่มีลูกรีด'],               label: 'ไม่มีลูกรีด', color: C_GRAY,   cls: 'chip-gray' },
+  { keys: ['ยกเลิกใช้งาน'],              label: 'ยกเลิกใช้งาน', color: C_SLATE,  cls: 'chip-slate' },
 ];
 // หมวดอื่น (Roll SQ / ใบเลื่อย / มีดสลิตเตอร์) ยังใช้ 3 สถานะรวมแบบเดิม
 function otherStatusSteps(items) {
@@ -2295,6 +2301,7 @@ const MODAL_FORMS = {
             <option>แต่ง Roll</option><option>รอแต่ง</option>
             <option>ขัด Roll</option><option>รอขัด</option>
             <option>อายุ</option><option>ไม่มีลูกรีด</option>
+            <option>ยกเลิกใช้งาน</option>
           </select>
         </div>
         <div class="form-group"><label class="form-label">สี</label>
@@ -3161,7 +3168,7 @@ const pageState = { roll: 1, sq: 1, saw: 1, slitter: 1 };
 function statusChip(s) {
   const map = {'พร้อมใช้':'chip-green','ใช้งานอยู่':'chip-blue','ซ่อมบำรุง':'chip-amber','Regrind':'chip-amber','ใกล้หมดอายุ':'chip-amber','มีปัญหา':'chip-amber','หมดอายุ':'chip-red',
     'กำลังใช้งาน':'chip-blue','พร้อมใช้งาน':'chip-green','แต่ง Roll':'chip-amber','ขัด Roll':'chip-purple','อายุ':'chip-red',
-    'รอใช้งาน':'chip-cyan','รอแต่ง':'chip-brown','รอขัด':'chip-pink','ไม่มีลูกรีด':'chip-gray'};
+    'รอใช้งาน':'chip-cyan','รอแต่ง':'chip-brown','รอขัด':'chip-pink','ไม่มีลูกรีด':'chip-gray','ยกเลิกใช้งาน':'chip-slate'};
   return `<span class="chip ${map[s]||'chip-blue'}">${s}</span>`;
 }
 
@@ -3724,6 +3731,7 @@ function updateRollKpi() {
   document.getElementById('kpi-roll-waitpolish').textContent = d.filter(r=>r.status==='รอขัด').length;
   document.getElementById('kpi-roll-noroll').textContent = d.filter(r=>r.status==='ไม่มีลูกรีด').length;
   document.getElementById('kpi-roll-expired').textContent = d.filter(r=>r.status==='อายุ'||r.status==='หมดอายุ'||r.status==='มีปัญหา').length;
+  document.getElementById('kpi-roll-cancelled').textContent = d.filter(r=>r.status==='ยกเลิกใช้งาน').length;
   document.getElementById('cnt-roll').textContent = d.length;
 }
 
