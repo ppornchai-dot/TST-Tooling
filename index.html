@@ -1908,6 +1908,7 @@ function rollStatusBar(items) {
 
 // ─── NAVIGATION ───────────────────────────────────────────────────────────────
 let currentPage = 'dashboard';
+const CURRENT_PAGE_STORAGE_KEY = 'tst-tooling-current-page'; // จำหน้าล่าสุดไว้ใน localStorage เพื่อกลับมาหน้าเดิมได้เมื่อรีเฟรช (ไม่ใช่กลับไป Dashboard ทุกครั้ง)
 const PAGE_META = {
   dashboard: { title: 'Dashboard', sub: 'ภาพรวมระบบ Tooling — อัปเดต 30 มิ.ย. 2569' },
   registry:  { title: 'ทะเบียน Tooling', sub: 'รายการเครื่องมือและอุปกรณ์ทั้งหมด 248 รายการ' },
@@ -1934,6 +1935,7 @@ function showPage(id) {
     document.getElementById('page-sub').textContent = m.sub;
   }
   currentPage = id;
+  try { localStorage.setItem(CURRENT_PAGE_STORAGE_KEY, id); } catch (e) { /* localStorage unavailable — แค่จำหน้าไม่ได้ตอนรีเฟรช ไม่กระทบการใช้งานอื่น */ }
   if (id === 'dashboard') initDashboard();
 }
 
@@ -5675,6 +5677,13 @@ function initAuth() {
     currentUser = saved;
     document.getElementById('login-overlay').classList.add('hidden');
     applyRoleUI();
+    // รีเฟรชหน้าเว็บ (ยังล็อกอินอยู่) — กลับไปหน้าล่าสุดที่เคยดูอยู่ ไม่ใช่ Dashboard เสมอ
+    let savedPage = null;
+    try { savedPage = localStorage.getItem(CURRENT_PAGE_STORAGE_KEY); } catch (e) { /* localStorage unavailable */ }
+    if (savedPage && savedPage !== 'dashboard' && PAGE_META[savedPage]) {
+      const navBtn = document.querySelector('.nav-item[onclick*="\'' + savedPage + '\'"]');
+      if (!navBtn || navBtn.style.display !== 'none') showPage(savedPage);
+    }
   } else {
     renderLoginOptions();
     document.getElementById('login-overlay').classList.remove('hidden');
