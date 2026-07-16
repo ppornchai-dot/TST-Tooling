@@ -3079,8 +3079,8 @@ function planTaskFormFields() {
       <div class="form-group"><label class="form-label" id="pf-plantime-label">เวลาแต่ง Roll (นาที) — จากทะเบียน Tooling</label><input class="form-input" id="pf-plantime" type="text" disabled>
         <span id="pf-plantime-hours" style="font-size:11px;color:var(--text-3);"></span>
       </div>
-      <div class="form-group"><label class="form-label">เวลา OT — เกินช่วงกะที่เลือก</label><input class="form-input" id="pf-ot" type="text" disabled>
-        <span style="font-size:11px;color:var(--text-3);">นับเฉพาะเวลาทำงานนอกช่วงกะ</span>
+      <div class="form-group"><label class="form-label">เวลา OT ต่อวัน (ชม.) — กำหนดเอง</label><input class="form-input" id="pf-otcap" type="number" min="0" step="0.5" value="0" onchange="updatePlanEndTime()">
+        <span id="pf-ot-hint" style="font-size:11px;color:var(--text-3);">พักก่อนเริ่ม OT 20 นาที (ไม่นับเวลาทำงาน)</span>
       </div>
     </div>`;
 }
@@ -3140,9 +3140,22 @@ function fillPlanRollReadonly(setName, colorKey) {
 // พักเที่ยง 12:00–13:00 ไม่นับเป็นเวลาทำงาน — ถ้าช่วงงานคาบเกี่ยวช่วงพักเที่ยงของวันไหน (รวมข้ามหลายวันถ้างานยาว) จะขยับเวลาจบให้ชดเชยเวลาพักนั้นไปด้วย
 const LUNCH_BREAK_START_MIN = 12 * 60; // 12:00
 const LUNCH_BREAK_END_MIN = 13 * 60;   // 13:00
-// คำนวณวันที่/เวลาจบงาน + เวลา OT — คืน {date, time, otMinutes} รองรับงานที่ยาวข้ามวัน (startDate เป็น undefined ได้ถ้าต้องการแค่เวลา)
-// ถ้าระบุ shiftKey: นาทีที่ตกนอกช่วงกะนั้น (ดูช่วงเวลาที่ SHIFTS) จะถูกนับเป็น otMinutes แยกไว้ — พักเที่ยงยังข้ามได้เฉพาะกะที่มีพักเที่ยง (lunchBreak:true)
-function computePlanEnd(startDate, startTime, totalMinutes, shiftKey) {
+const OT_BREAK_MIN = 20; // พักก่อนเริ่ม OT (นาที) ไม่นับเป็นเวลาทำงาน
+// หาเวลา (นาทีสัมบูรณ์ >= fromCursor) ที่เข้ากะปกติครั้งถัดไป — ใช้ตอนหมดโควตา OT ของวันแล้วต้องข้ามไปรอเริ่มกะถัดไป (อาจเป็น window ที่สองของวันเดียวกัน เช่น "2 กะ" หรือกะแรกของวันถัดไป)
+function nextShiftEntry(fromCursor, shift) {
+  let best = Infinity;
+  shift.windows.forEach(w => {
+    let candidate = w.startMin;
+    while (candidate < fromCursor) candidate += 1440;
+    if (candidate < best) best = candidate;
+  });
+  return best;
+}
+// คำนวณวันที่/เวลาจบงาน + เวลา OT ที่ใช้จริง — คืน {date, time, otMinutes} รองรับงานที่ยาวข้ามวัน (startDate เป็น undefined ได้ถ้าต้องการแค่เวลา)
+// ถ้าระบุ shiftKey: เวลาทำงานนอกช่วงกะจะต้องพัก OT_BREAK_MIN นาทีก่อน แล้วทำ OT ได้ไม่เกิน otCapMinutes ต่อรอบที่ออกจากกะ
+// ถ้างานที่เหลือมากกว่าโควตา OT จะข้ามช่วงที่เหลือของวันไปเริ่มกะถัดไปเลย (ไม่นับเวลาที่ข้ามเป็นเวลาทำงานหรือ OT) — พักเที่ยงยังข้ามได้เฉพาะกะที่มีพักเที่ยง (lunchBreak:true)
+function computePlanEnd(startDate, startTime, totalMinutes, shiftKey, otCapMinutes) {
+  otCapMinutes = Math.max(0, otCapMinutes || 0);
   if (!startTime || !totalMinutes) return { date: '', time: '', otMinutes: 0 };
   const [h, m] = startTime.split(':').map(Number);
   if (Number.isNaN(h) || Number.isNaN(m)) return { date: '', time: '', otMinutes: 0 };
@@ -3160,9 +3173,20 @@ function computePlanEnd(startDate, startTime, totalMinutes, shiftKey) {
       cursor += (LUNCH_BREAK_END_MIN - LUNCH_BREAK_START_MIN); // ข้ามช่วงพักเที่ยงไปทีเดียว ไม่นับเป็นเวลาทำงาน
       continue;
     }
-    if (shift && !isMinuteInShift(cursor, shift)) otMinutes++;
-    cursor++;
-    remaining--;
+    if (!shift || isMinuteInShift(cursor, shift)) {
+      cursor++;
+      remaining--;
+      continue;
+    }
+    // ออกนอกช่วงกะแล้ว — พัก OT_BREAK_MIN นาทีก่อน แล้วทำ OT ได้ไม่เกิน otCapMinutes ของรอบนี้
+    if (otCapMinutes > 0) {
+      cursor += OT_BREAK_MIN;
+      const otChunk = Math.min(remaining, otCapMinutes);
+      cursor += otChunk;
+      remaining -= otChunk;
+      otMinutes += otChunk;
+    }
+    if (remaining > 0) cursor = nextShiftEntry(cursor, shift); // เกินโควตา OT แล้ว — ข้ามไปเริ่มกะถัดไปเลย
   }
   const daysElapsed = Math.floor(cursor / 1440);
   const eh = Math.floor(cursor / 60) % 24;
@@ -3194,14 +3218,18 @@ function updatePlanEndTime() {
   const startDate = (document.getElementById('pf-date') || {}).value;
   const start = (document.getElementById('pf-start') || {}).value;
   const shiftKey = (document.getElementById('pf-shift') || {}).value;
+  const otCapHours = parseFloat((document.getElementById('pf-otcap') || {}).value) || 0;
   const total = parseFloat((document.getElementById('pf-plantime') || {}).value) || 0;
-  const result = computePlanEnd(startDate, start, total, shiftKey);
+  const result = computePlanEnd(startDate, start, total, shiftKey, otCapHours * 60);
   const endEl = document.getElementById('pf-end');
   if (endEl) endEl.value = result.time;
   const endDateEl = document.getElementById('pf-enddate');
   if (endDateEl) endDateEl.value = result.date || startDate;
-  const otEl = document.getElementById('pf-ot');
-  if (otEl) otEl.value = result.otMinutes ? (result.otMinutes + ' นาที (' + formatMinutesAsHm(result.otMinutes).replace('≈ ', '') + ')') : '0 นาที';
+  const otHintEl = document.getElementById('pf-ot-hint');
+  if (otHintEl) {
+    otHintEl.textContent = 'พักก่อนเริ่ม OT 20 นาที (ไม่นับเวลาทำงาน)' +
+      (result.otMinutes ? ` — ใช้จริง ${formatMinutesAsHm(result.otMinutes).replace('≈ ', '')}` : '');
+  }
 }
 
 function onPlanRollSetChange() {
@@ -3228,6 +3256,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   const defaultShift = (task ? task.shift : currentPlanShiftFilter) || 'morning';
   setPlanShiftButtons(defaultShift);
   document.getElementById('pf-start').value = task ? task.startTime : SHIFTS[defaultShift].start;
+  document.getElementById('pf-otcap').value = task ? (task.otCapMinutes || 0) / 60 : 0;
   populatePlanRollSetSelect(task ? task.rollSet : null);
   populatePlanRollColorSelect(task ? task.rollSet : null, task ? task.rollColor : null);
   fillPlanRollReadonly(task ? task.rollSet : null, task ? task.rollColor : null); // คำนวณ "จบงาน" ให้อัตโนมัติในตัว
@@ -3247,8 +3276,9 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     const totalTime = rolls.reduce((sum, r) => sum + (parseFloat(r[field]) || 0), 0);
     const startTime = g('pf-start');
     const shiftKey = document.getElementById('pf-shift').value || 'morning';
+    const otCapMinutes = (parseFloat(g('pf-otcap')) || 0) * 60;
     // คำนวณวันที่/เวลาจบงาน + OT ซ้ำตรงนี้เสมอ กันกรณีช่อง "จบงาน"/"วันที่จบงาน" บนหน้าจอยังไม่ทันอัปเดตตามค่าล่าสุด
-    const computedEnd = computePlanEnd(date, startTime, totalTime, shiftKey);
+    const computedEnd = computePlanEnd(date, startTime, totalTime, shiftKey, otCapMinutes);
     const endTime = g('pf-end') || computedEnd.time;
     const endDate = g('pf-enddate') || computedEnd.date || date;
     const data = {
@@ -3261,6 +3291,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
       endTime: endTime || '—',
       endDate: endDate || date,
       shift: shiftKey,
+      otCapMinutes,
       otMinutes: computedEnd.otMinutes || 0
     };
     if (mode === 'edit') {
