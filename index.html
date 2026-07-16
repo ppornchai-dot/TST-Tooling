@@ -2759,6 +2759,12 @@ function parseISODate(s) {
   const [y, m, d] = s.split('-').map(Number);
   return new Date(y, m - 1, d);
 }
+function addDaysIso(iso, days) {
+  if (!iso || !days) return iso;
+  const d = parseISODate(iso);
+  d.setDate(d.getDate() + days);
+  return toISODate(d);
+}
 function fmtDateThai(d) { return `${d.getDate()} ${THAI_MONTHS_ABBR[d.getMonth()]} ${d.getFullYear() + 543}`; }
 function fmtDateThaiShort(d) { return `${d.getDate()} ${THAI_MONTHS_ABBR[d.getMonth()]}`; }
 function getMonday(d) {
@@ -2907,7 +2913,7 @@ function renderPlanDay() {
       <td><strong>${escapeHtmlAttr(t.rollName)}</strong></td>
       <td class="muted" style="text-align:right;">${escapeHtmlAttr(t.totalTime != null ? String(t.totalTime) : planMetricTime(t.rollId))}</td>
       <td class="muted">${escapeHtmlAttr(t.startTime || '—')}</td>
-      <td class="muted">${escapeHtmlAttr(t.endTime || '—')}</td>
+      <td class="muted">${escapeHtmlAttr(t.endTime || '—')}${t.endDate && t.endDate !== t.date ? ` <span style="color:var(--accent);font-weight:700;">(+${Math.round((parseISODate(t.endDate)-parseISODate(t.date))/86400000)} วัน)</span>` : ''}</td>
       <td style="display:flex;gap:4px;">
         <button class="btn btn-ghost btn-sm" onclick="openPlanTaskModal('edit','${t.id}')">แก้ไข</button>
         <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deletePlanTask('${t.id}')">ลบ</button>
@@ -2984,8 +2990,9 @@ function addPlanTaskForCurrentDay() {
 
 function planTaskFormFields() {
   return `
-    <div class="modal-row full">
-      <div class="form-group"><label class="form-label">วันที่</label><input class="form-input" id="pf-date" type="date"></div>
+    <div class="modal-row">
+      <div class="form-group"><label class="form-label">วันที่เริ่มงาน</label><input class="form-input" id="pf-date" type="date" onchange="updatePlanEndTime()"></div>
+      <div class="form-group"><label class="form-label">วันที่จบงาน — คำนวณให้อัตโนมัติ</label><input class="form-input" id="pf-enddate" type="date"></div>
     </div>
     <div class="modal-row">
       <div class="form-group"><label class="form-label">Size Roll</label>
@@ -3065,10 +3072,11 @@ function fillPlanRollReadonly(setName, colorKey) {
 // พักเที่ยง 12:00–13:00 ไม่นับเป็นเวลาทำงาน — ถ้าช่วงงานคาบเกี่ยวช่วงพักเที่ยงของวันไหน (รวมข้ามหลายวันถ้างานยาว) จะขยับเวลาจบให้ชดเชยเวลาพักนั้นไปด้วย
 const LUNCH_BREAK_START_MIN = 12 * 60; // 12:00
 const LUNCH_BREAK_END_MIN = 13 * 60;   // 13:00
-function computePlanEndTime(startTime, totalMinutes) {
-  if (!startTime || !totalMinutes) return '';
+// คำนวณทั้งวันที่และเวลาจบงาน — คืน {date, time} เพื่อรองรับงานที่ยาวข้ามวัน (startDate เป็น undefined ได้ถ้าต้องการแค่เวลา)
+function computePlanEnd(startDate, startTime, totalMinutes) {
+  if (!startTime || !totalMinutes) return { date: '', time: '' };
   const [h, m] = startTime.split(':').map(Number);
-  if (Number.isNaN(h) || Number.isNaN(m)) return '';
+  if (Number.isNaN(h) || Number.isNaN(m)) return { date: '', time: '' };
   let cursor = h * 60 + m;
   let remaining = Math.round(totalMinutes);
   // ถ้าเวลาเริ่มงานตกอยู่ในช่วงพักเที่ยงพอดี ให้เลื่อนไปเริ่มนับตอน 13:00 ของวันนั้นก่อน
@@ -3088,16 +3096,22 @@ function computePlanEndTime(startTime, totalMinutes) {
       remaining -= gap;
     }
   }
+  const daysElapsed = Math.floor(cursor / 1440);
   const eh = Math.floor(cursor / 60) % 24;
   const em = cursor % 60;
-  return String(eh).padStart(2, '0') + ':' + String(em).padStart(2, '0');
+  const time = String(eh).padStart(2, '0') + ':' + String(em).padStart(2, '0');
+  return { date: startDate ? addDaysIso(startDate, daysElapsed) : '', time };
 }
 
 function updatePlanEndTime() {
+  const startDate = (document.getElementById('pf-date') || {}).value;
   const start = (document.getElementById('pf-start') || {}).value;
   const total = parseFloat((document.getElementById('pf-plantime') || {}).value) || 0;
+  const result = computePlanEnd(startDate, start, total);
   const endEl = document.getElementById('pf-end');
-  if (endEl) endEl.value = computePlanEndTime(start, total);
+  if (endEl) endEl.value = result.time;
+  const endDateEl = document.getElementById('pf-enddate');
+  if (endDateEl) endDateEl.value = result.date || startDate;
 }
 
 function onPlanRollSetChange() {
@@ -3125,8 +3139,9 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   populatePlanRollSetSelect(task ? task.rollSet : null);
   populatePlanRollColorSelect(task ? task.rollSet : null, task ? task.rollColor : null);
   fillPlanRollReadonly(task ? task.rollSet : null, task ? task.rollColor : null); // คำนวณ "จบงาน" ให้อัตโนมัติในตัว
-  // แก้ไขงานเดิม — คงเวลาจบที่บันทึกไว้ถ้ามีค่าจริง (HH:MM) ไม่ทับด้วยค่าคำนวณใหม่ แต่ถ้าเดิมว่าง/เป็น "—" ให้ใช้ค่าที่คำนวณอัตโนมัติแทน
+  // แก้ไขงานเดิม — คงเวลา/วันที่จบที่บันทึกไว้ถ้ามีค่าจริง ไม่ทับด้วยค่าคำนวณใหม่ แต่ถ้าเดิมว่าง/เป็น "—" ให้ใช้ค่าที่คำนวณอัตโนมัติแทน
   if (task && task.endTime && task.endTime.includes(':')) document.getElementById('pf-end').value = task.endTime;
+  if (task && task.endDate) document.getElementById('pf-enddate').value = task.endDate;
   document.getElementById('modal-overlay').classList.add('open');
 
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
@@ -3139,8 +3154,10 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     const field = PLAN_WORKTYPE_META[workType].field;
     const totalTime = rolls.reduce((sum, r) => sum + (parseFloat(r[field]) || 0), 0);
     const startTime = g('pf-start');
-    // คำนวณเวลาจบงานซ้ำตรงนี้เสมอ กันกรณีช่อง "จบงาน" บนหน้าจอยังไม่ทันอัปเดตตามค่าล่าสุด
-    const endTime = g('pf-end') || computePlanEndTime(startTime, totalTime);
+    // คำนวณวันที่/เวลาจบงานซ้ำตรงนี้เสมอ กันกรณีช่อง "จบงาน"/"วันที่จบงาน" บนหน้าจอยังไม่ทันอัปเดตตามค่าล่าสุด
+    const computedEnd = computePlanEnd(date, startTime, totalTime);
+    const endTime = g('pf-end') || computedEnd.time;
+    const endDate = g('pf-enddate') || computedEnd.date || date;
     const data = {
       date, rollSet: setName, rollColor: colorKey || null,
       rollIds: rolls.map(r => r.id),
@@ -3148,7 +3165,8 @@ function openPlanTaskModal(mode, taskId, presetDate) {
       rollName: rolls.map(r => r.name).join(', '),
       totalTime,
       startTime: startTime || '—',
-      endTime: endTime || '—'
+      endTime: endTime || '—',
+      endDate: endDate || date
     };
     if (mode === 'edit') {
       Object.assign(task, data);
