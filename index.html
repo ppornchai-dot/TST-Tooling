@@ -3067,13 +3067,19 @@ function planTaskFormFields() {
         <input type="hidden" id="pf-shift" value="morning">
       </div>
     </div>
-    <div class="modal-row">
+    <div class="modal-row three">
       <div class="form-group"><label class="form-label">🌤 เริ่มงานกะเช้า</label><input class="form-input" id="pf-start-morning" type="time" onchange="updatePlanEndTime()"></div>
       <div class="form-group"><label class="form-label">จบงานกะเช้า — คำนวณให้อัตโนมัติ</label><input class="form-input" id="pf-end-morning" type="text" disabled></div>
+      <div class="form-group"><label class="form-label">เวลา OT กะเช้า (ชม.)</label><input class="form-input" id="pf-otcap-morning" type="number" min="0" step="0.5" value="0" onchange="updatePlanEndTime()">
+        <span id="pf-ot-hint-morning" style="font-size:11px;color:var(--text-3);">พัก 20 นาทีก่อนเริ่ม OT</span>
+      </div>
     </div>
-    <div class="modal-row">
+    <div class="modal-row three">
       <div class="form-group"><label class="form-label">🌙 เริ่มงานกะดึก</label><input class="form-input" id="pf-start-night" type="time" onchange="updatePlanEndTime()"></div>
       <div class="form-group"><label class="form-label">จบงานกะดึก — คำนวณให้อัตโนมัติ</label><input class="form-input" id="pf-end-night" type="text" disabled></div>
+      <div class="form-group"><label class="form-label">เวลา OT กะดึก (ชม.)</label><input class="form-input" id="pf-otcap-night" type="number" min="0" step="0.5" value="0" onchange="updatePlanEndTime()">
+        <span id="pf-ot-hint-night" style="font-size:11px;color:var(--text-3);">พัก 20 นาทีก่อนเริ่ม OT</span>
+      </div>
     </div>
     <div class="modal-row">
       <div class="form-group"><label class="form-label">Size Roll</label>
@@ -3087,12 +3093,9 @@ function planTaskFormFields() {
       <div class="form-group"><label class="form-label">จำนวน Roll ที่พบ</label><input class="form-input" id="pf-rollid" disabled></div>
       <div class="form-group"><label class="form-label">รายชื่อ Roll — ดึงมาทั้งหมดอัตโนมัติ</label><input class="form-input" id="pf-rollname" disabled></div>
     </div>
-    <div class="modal-row">
+    <div class="modal-row full">
       <div class="form-group"><label class="form-label" id="pf-plantime-label">เวลาแต่ง Roll (นาที) — จากทะเบียน Tooling</label><input class="form-input" id="pf-plantime" type="text" disabled>
         <span id="pf-plantime-hours" style="font-size:11px;color:var(--text-3);"></span>
-      </div>
-      <div class="form-group"><label class="form-label">เวลา OT ต่อวัน (ชม.) — กำหนดเอง</label><input class="form-input" id="pf-otcap" type="number" min="0" step="0.5" value="0" onchange="updatePlanEndTime()">
-        <span id="pf-ot-hint" style="font-size:11px;color:var(--text-3);">พักก่อนเริ่ม OT 20 นาที (ไม่นับเวลาทำงาน)</span>
       </div>
     </div>`;
 }
@@ -3163,21 +3166,24 @@ function nextShiftEntry(fromCursor, shift) {
   });
   return best;
 }
-// คำนวณวันที่/เวลาจบงาน + เวลา OT ที่ใช้จริง + ช่วงเวลาเริ่ม/จบของแต่ละกะ (segments) — คืน {date, time, otMinutes, segments}
-// segments = { morning: {start,end}, night: {start,end} } เป็นนาทีสัมบูรณ์นับจากจุดเริ่มงาน ใช้แสดงเวลาเริ่ม/จบแยกรายกะในฟอร์ม
-// ถ้าระบุ shiftKey: เวลาทำงานนอกช่วงกะจะต้องพัก OT_BREAK_MIN นาทีก่อน แล้วทำ OT ได้ไม่เกิน otCapMinutes ต่อรอบที่ออกจากกะ
+// คำนวณวันที่/เวลาจบงาน + เวลา OT ที่ใช้จริง (รวม + แยกรายกะ) + ช่วงเวลาเริ่ม/จบของแต่ละกะ (segments)
+// คืน {date, time, otMinutes, otMinutesByShift, segments} — segments/otMinutesByShift = { morning: ..., night: ... }
+// เวลาทำงานนอกช่วงกะจะต้องพัก OT_BREAK_MIN นาทีก่อน แล้วทำ OT ได้ไม่เกินโควตาของกะที่เพิ่งออกมา (ดู otCaps)
 // ถ้างานที่เหลือมากกว่าโควตา OT จะข้ามช่วงที่เหลือของวันไปเริ่มกะถัดไปเลย (ไม่นับเวลาที่ข้ามเป็นเวลาทำงานหรือ OT) — พักเที่ยงยังข้ามได้เฉพาะกะที่มีพักเที่ยง (lunchBreak:true)
 // OT ที่ทำต่อจากกะไหน จะถูกรวมเข้ากับเวลา "จบ" ของกะนั้น (segments[key].end ขยายตาม OT ที่ทำต่อ)
-function computePlanEnd(startDate, startTime, totalMinutes, shiftKey, otCapMinutes) {
-  otCapMinutes = Math.max(0, otCapMinutes || 0);
-  if (!startTime || !totalMinutes) return { date: '', time: '', otMinutes: 0, segments: {} };
+// otCaps = { morning: นาที, night: นาที } — โควตา OT ต่อวันแยกกันของแต่ละกะ เพราะ OT ที่ต่อจากกะเช้ากับกะดึกอาจกำหนดไว้ไม่เท่ากัน
+function computePlanEnd(startDate, startTime, totalMinutes, shiftKey, otCaps) {
+  otCaps = otCaps || {};
+  const otCapFor = key => Math.max(0, otCaps[key] || 0);
+  if (!startTime || !totalMinutes) return { date: '', time: '', otMinutes: 0, otMinutesByShift: {}, segments: {} };
   const [h, m] = startTime.split(':').map(Number);
-  if (Number.isNaN(h) || Number.isNaN(m)) return { date: '', time: '', otMinutes: 0, segments: {} };
+  if (Number.isNaN(h) || Number.isNaN(m)) return { date: '', time: '', otMinutes: 0, otMinutesByShift: {}, segments: {} };
   const shift = SHIFTS[shiftKey] || null;
   const lunchApplies = !shift || shift.lunchBreak;
   let cursor = h * 60 + m;
   let remaining = Math.round(totalMinutes);
   let otMinutes = 0;
+  const otMinutesByShift = {};
   const segments = {};
   let lastExitedKey = null;
   // ถ้าเวลาเริ่มงานตกอยู่ในช่วงพักเที่ยงพอดี (เฉพาะกะที่มีพักเที่ยง) ให้เลื่อนไปเริ่มนับตอน 13:00 ของวันนั้นก่อน
@@ -3200,12 +3206,14 @@ function computePlanEnd(startDate, startTime, totalMinutes, shiftKey, otCapMinut
       remaining--;
       continue;
     }
-    // ออกนอกช่วงกะแล้ว — พัก OT_BREAK_MIN นาทีก่อน แล้วทำ OT ได้ไม่เกิน otCapMinutes ของรอบนี้
-    if (otCapMinutes > 0) {
+    // ออกนอกช่วงกะแล้ว — พัก OT_BREAK_MIN นาทีก่อน แล้วทำ OT ได้ไม่เกินโควตาของกะที่เพิ่งออกมา (lastExitedKey)
+    const cap = lastExitedKey ? otCapFor(lastExitedKey) : 0;
+    if (cap > 0) {
       cursor += OT_BREAK_MIN;
-      const otChunk = Math.min(remaining, otCapMinutes);
-      if (otChunk > 0 && lastExitedKey && segments[lastExitedKey]) {
-        segments[lastExitedKey].end = cursor + otChunk; // OT ต่อจากกะไหน ให้นับรวมเป็นเวลาจบของกะนั้น
+      const otChunk = Math.min(remaining, cap);
+      if (otChunk > 0) {
+        if (segments[lastExitedKey]) segments[lastExitedKey].end = cursor + otChunk; // OT ต่อจากกะไหน ให้นับรวมเป็นเวลาจบของกะนั้น
+        otMinutesByShift[lastExitedKey] = (otMinutesByShift[lastExitedKey] || 0) + otChunk;
       }
       cursor += otChunk;
       remaining -= otChunk;
@@ -3217,7 +3225,7 @@ function computePlanEnd(startDate, startTime, totalMinutes, shiftKey, otCapMinut
   const eh = Math.floor(cursor / 60) % 24;
   const em = cursor % 60;
   const time = String(eh).padStart(2, '0') + ':' + String(em).padStart(2, '0');
-  return { date: startDate ? addDaysIso(startDate, daysElapsed) : '', time, otMinutes, segments };
+  return { date: startDate ? addDaysIso(startDate, daysElapsed) : '', time, otMinutes, otMinutesByShift, segments };
 }
 
 // อัปเดตแค่ค่า/สถานะ active ของปุ่มกะ + เปิด/ปิดช่องเริ่มงานของแต่ละกะตามโหมด ไม่แตะเวลาเริ่มงาน — ใช้ตอนเปิดฟอร์ม (โหลดค่าเดิม) ที่ไม่ต้องการทับเวลาที่ผู้ใช้ตั้งไว้เอง
@@ -3233,8 +3241,15 @@ function setPlanShiftButtons(key) {
   // เพราะตอนทำ "2 กะ" เวลาเริ่มกะดึกจะมาจากรอบเวลาที่ทำงานต่อเนื่องจากกะเช้า คำนวณให้อัตโนมัติ ไม่ให้ผู้ใช้กำหนดเอง
   const startMorningEl = document.getElementById('pf-start-morning');
   const startNightEl = document.getElementById('pf-start-night');
-  if (startMorningEl) startMorningEl.disabled = !(key === 'morning' || key === 'both');
+  const morningRelevant = key === 'morning' || key === 'both';
+  const nightRelevant = key === 'night' || key === 'both';
+  if (startMorningEl) startMorningEl.disabled = !morningRelevant;
   if (startNightEl) startNightEl.disabled = key !== 'night';
+  // เวลา OT กรอกเองได้ทั้งสองกะเมื่อเลือก "2 กะ" เพราะ OT อาจเกิดต่อจากกะเช้าหรือกะดึกก็ได้ — กะเดียวก็เปิดเฉพาะ OT ของกะนั้น
+  const otMorningEl = document.getElementById('pf-otcap-morning');
+  const otNightEl = document.getElementById('pf-otcap-night');
+  if (otMorningEl) { otMorningEl.disabled = !morningRelevant; if (!morningRelevant) otMorningEl.value = 0; }
+  if (otNightEl) { otNightEl.disabled = !nightRelevant; if (!nightRelevant) otNightEl.value = 0; }
 }
 // ผู้ใช้กดเลือกกะเอง — ตั้งเวลาเริ่มงานเป็นเวลาเริ่มมาตรฐานของกะนั้นด้วย
 function selectPlanShift(key) {
@@ -3268,25 +3283,32 @@ function renderShiftSegmentFields(key, seg) {
   if (startEl && startEl.disabled) startEl.value = absMinuteToClock(seg.start);
 }
 
+function getOtCapMinutes() {
+  const morningHours = parseFloat((document.getElementById('pf-otcap-morning') || {}).value) || 0;
+  const nightHours = parseFloat((document.getElementById('pf-otcap-night') || {}).value) || 0;
+  return { morning: morningHours * 60, night: nightHours * 60 };
+}
+
 function updatePlanEndTime() {
   const startDate = (document.getElementById('pf-date') || {}).value;
   const shiftKey = (document.getElementById('pf-shift') || {}).value || 'morning';
   const start = shiftKey === 'night'
     ? (document.getElementById('pf-start-night') || {}).value
     : (document.getElementById('pf-start-morning') || {}).value;
-  const otCapHours = parseFloat((document.getElementById('pf-otcap') || {}).value) || 0;
   const total = parseFloat((document.getElementById('pf-plantime') || {}).value) || 0;
-  const result = computePlanEnd(startDate, start, total, shiftKey, otCapHours * 60);
+  const result = computePlanEnd(startDate, start, total, shiftKey, getOtCapMinutes());
   const endDateEl = document.getElementById('pf-enddate');
   if (endDateEl) endDateEl.value = result.date || startDate;
   const seg = result.segments || {};
   renderShiftSegmentFields('morning', seg.morning);
   renderShiftSegmentFields('night', seg.night);
-  const otHintEl = document.getElementById('pf-ot-hint');
-  if (otHintEl) {
-    otHintEl.textContent = 'พักก่อนเริ่ม OT 20 นาที (ไม่นับเวลาทำงาน)' +
-      (result.otMinutes ? ` — ใช้จริง ${formatMinutesAsHm(result.otMinutes).replace('≈ ', '')}` : '');
-  }
+  const otByShift = result.otMinutesByShift || {};
+  ['morning', 'night'].forEach(key => {
+    const hintEl = document.getElementById('pf-ot-hint-' + key);
+    if (!hintEl) return;
+    const used = otByShift[key];
+    hintEl.textContent = 'พัก 20 นาทีก่อนเริ่ม OT' + (used ? ` — ใช้จริง ${formatMinutesAsHm(used).replace('≈ ', '')}` : '');
+  });
 }
 
 function onPlanRollSetChange() {
@@ -3314,7 +3336,8 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   setPlanShiftButtons(defaultShift);
   const startFieldId = defaultShift === 'night' ? 'pf-start-night' : 'pf-start-morning';
   document.getElementById(startFieldId).value = task ? task.startTime : SHIFTS[defaultShift].start;
-  document.getElementById('pf-otcap').value = task ? (task.otCapMinutes || 0) / 60 : 0;
+  document.getElementById('pf-otcap-morning').value = task ? ((task.otCapMinutesByShift || {}).morning || 0) / 60 : 0;
+  document.getElementById('pf-otcap-night').value = task ? ((task.otCapMinutesByShift || {}).night || 0) / 60 : 0;
   populatePlanRollSetSelect(task ? task.rollSet : null);
   populatePlanRollColorSelect(task ? task.rollSet : null, task ? task.rollColor : null);
   fillPlanRollReadonly(task ? task.rollSet : null, task ? task.rollColor : null); // คำนวณเวลาเริ่ม/จบของแต่ละกะให้อัตโนมัติในตัว
@@ -3333,9 +3356,9 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     const totalTime = rolls.reduce((sum, r) => sum + (parseFloat(r[field]) || 0), 0);
     const shiftKey = document.getElementById('pf-shift').value || 'morning';
     const startTime = shiftKey === 'night' ? g('pf-start-night') : g('pf-start-morning');
-    const otCapMinutes = (parseFloat(g('pf-otcap')) || 0) * 60;
+    const otCapMinutesByShift = getOtCapMinutes();
     // คำนวณวันที่/เวลาจบงาน + OT ซ้ำตรงนี้เสมอ กันกรณีช่อง "วันที่จบงาน" บนหน้าจอยังไม่ทันอัปเดตตามค่าล่าสุด
-    const computedEnd = computePlanEnd(date, startTime, totalTime, shiftKey, otCapMinutes);
+    const computedEnd = computePlanEnd(date, startTime, totalTime, shiftKey, otCapMinutesByShift);
     const endTime = computedEnd.time;
     const endDate = g('pf-enddate') || computedEnd.date || date;
     const data = {
@@ -3348,8 +3371,9 @@ function openPlanTaskModal(mode, taskId, presetDate) {
       endTime: endTime || '—',
       endDate: endDate || date,
       shift: shiftKey,
-      otCapMinutes,
-      otMinutes: computedEnd.otMinutes || 0
+      otCapMinutesByShift,
+      otMinutes: computedEnd.otMinutes || 0,
+      otMinutesByShift: computedEnd.otMinutesByShift || {}
     };
     if (mode === 'edit') {
       Object.assign(task, data);
