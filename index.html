@@ -3214,11 +3214,12 @@ function toggleAllRollOptions(checkbox) {
   applyRollSelectionFromPanel();
 }
 
+// โชว์แค่จำนวนที่เลือกไว้ ไม่แจกแจงชื่อทั้งหมด (กินพื้นที่มากถ้าเลือกไว้หลายสิบตัว) — กดเปิดดรอปดาวน์เพื่อดูรายชื่อทั้งหมดเอง
 function updateRollSelectionLabel() {
   const labelEl = document.getElementById('pf-rollids-label');
   if (!labelEl) return;
   const rolls = getSelectedRollsForPlan();
-  labelEl.textContent = rolls.length ? (rolls.length + ' รายการ: ' + rolls.map(r => r.name).join(', ')) : '— ไม่ได้เลือก Roll —';
+  labelEl.textContent = rolls.length ? `เลือกไว้ ${rolls.length} รายการ` : '— ไม่ได้เลือก Roll —';
 }
 
 // คำนวณเวลารวม (นาที) จาก Roll ที่ติ๊กเลือกไว้จริงเท่านั้น แล้วคำนวณ "จบงาน" ต่อให้อัตโนมัติ
