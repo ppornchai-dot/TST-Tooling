@@ -2944,28 +2944,40 @@ function planTaskPieceBreakdown(t) {
 }
 
 const PLAN_TIME_TYPE_META = {
-  normal: { label: 'ปกติ', chip: 'chip-green' },
-  ot:     { label: 'OT',   chip: 'chip-red' },
+  normal:   { label: 'ปกติ', chip: 'chip-green', icon: '' },
+  ot:       { label: 'OT',   chip: 'chip-red',    icon: '' },
+  lunch:    { label: 'พักเที่ยง',    chip: 'chip-gray', icon: '🍽️ ' },
+  otbreak:  { label: 'พักก่อน OT',  chip: 'chip-gray', icon: '⏸ ' },
+  shiftgap: { label: 'รอกะถัดไป',   chip: 'chip-gray', icon: '⏳ ' },
 };
+const PLAN_BREAK_TYPES = ['lunch', 'otbreak', 'shiftgap'];
 
 // แต่ละชิ้นอาจใช้เวลาคาบเกี่ยวมากกว่า 1 กะ/1 ประเภทเวลา (เช่น ทำต่อจากปกติเข้า OT หรือข้ามจากกะเช้าไปกะดึก) — แตกเป็นแถวย่อยตามช่วงเวลาจริงของชิ้นนั้น
+// รวมถึงช่วงพักเที่ยง/พักก่อน OT ที่แทรกอยู่ระหว่างกลาง ให้เห็นเป็นแถวของตัวเองชัดเจน แยกจากแถวเวลาทำงานจริง
 function renderPlanDayTaskDetailRow(t) {
   const pieces = planTaskPieceBreakdown(t);
   const body = pieces.map((p, i) => {
     const segs = (p.range.segments && p.range.segments.length)
       ? p.range.segments
       : [{ shiftKey: null, type: null, startDate: p.range.startDate, startTime: p.range.startTime, endDate: p.range.endDate, endTime: p.range.endTime, minutes: p.minutes }];
+    // โชว์ลำดับ/รหัส/ชื่อ Roll ที่แถวเวลาทำงานจริงแถวแรกของชิ้นนี้ (ไม่ใช่ si===0 เสมอไป เพราะบางทีชิ้นอาจเริ่มด้วยแถวพักถ้าพักเที่ยง/พัก OT มาคาบเกี่ยวพอดี)
+    const firstWorkIdx = segs.findIndex(s => !PLAN_BREAK_TYPES.includes(s.type));
     return segs.map((s, si) => {
+      const isBreak = PLAN_BREAK_TYPES.includes(s.type);
+      const isFirstRow = si === (firstWorkIdx === -1 ? 0 : firstWorkIdx);
       const endBadge = s.endDate && s.startDate && s.endDate !== s.startDate
         ? ` <span style="color:var(--accent);font-weight:700;">(+${Math.round((parseISODate(s.endDate)-parseISODate(s.startDate))/86400000)} วัน)</span>` : '';
       const shiftChip = s.shiftKey ? `<span class="chip ${shiftChipClass(s.shiftKey)}">${SHIFTS[s.shiftKey].label}</span>` : '—';
       const typeMeta = s.type ? PLAN_TIME_TYPE_META[s.type] : null;
-      const typeChip = typeMeta ? `<span class="chip ${typeMeta.chip}">${typeMeta.label}</span>` : '—';
+      const typeChip = typeMeta ? `<span class="chip ${typeMeta.chip}">${typeMeta.icon}${typeMeta.label}</span>` : '—';
       const groupBorder = (si === 0 && i > 0) ? 'border-top:2px solid var(--border);' : '';
-      return `<tr style="${groupBorder}">
-        <td class="muted" style="padding-left:36px;">${si === 0 ? i + 1 : ''}</td>
-        <td class="muted">${si === 0 ? escapeHtmlAttr(p.roll.id) : ''}</td>
-        <td><strong>${si === 0 ? escapeHtmlAttr(p.roll.name) : ''}</strong></td>
+      const breakStyle = isBreak ? 'background:var(--bg-hover);font-style:italic;' : '';
+      const rollCell = isBreak
+        ? `<td colspan="2" class="muted" style="${breakStyle}">${escapeHtmlAttr(typeMeta.label)}</td>`
+        : `<td class="muted">${isFirstRow ? escapeHtmlAttr(p.roll.id) : ''}</td><td><strong>${isFirstRow ? escapeHtmlAttr(p.roll.name) : ''}</strong></td>`;
+      return `<tr style="${groupBorder}${breakStyle}">
+        <td class="muted" style="padding-left:36px;">${isFirstRow ? i + 1 : ''}</td>
+        ${rollCell}
         <td>${shiftChip}</td>
         <td>${typeChip}</td>
         <td class="muted" style="text-align:right;">${escapeHtmlAttr(String(s.minutes))}</td>
@@ -3322,7 +3334,9 @@ function advancePlanCursor(state, minutes) {
   };
   while (remaining > 0) {
     if (state.lunchApplies && state.cursor % 1440 === LUNCH_BREAK_START_MIN) {
+      const lunchStart = state.cursor;
       state.cursor += (LUNCH_BREAK_END_MIN - LUNCH_BREAK_START_MIN); // ข้ามช่วงพักเที่ยงไปทีเดียว ไม่นับเป็นเวลาทำงาน
+      pushChunk('morning', 'lunch', lunchStart, state.cursor);
       continue;
     }
     const curKey = state.shift ? windowKeyAt(state.shift, state.cursor) : null;
@@ -3345,7 +3359,9 @@ function advancePlanCursor(state, minutes) {
     const otAvailable = Math.max(0, cap - OT_BREAK_MIN - (state.otUsedThisExit || 0)); // เวลาพัก 20 นาทีหักออกจากโควตา OT ที่กรอกเลย ไม่ใช่เวลาที่เพิ่มขึ้นมาต่างหาก
     if (cap > 0 && otAvailable > 0) {
       if (!state.breakPaidThisExit) {
+        const breakStart = state.cursor;
         state.cursor += OT_BREAK_MIN;
+        pushChunk(state.lastExitedKey, 'otbreak', breakStart, state.cursor);
         state.breakPaidThisExit = true;
       }
       const otChunk = Math.min(remaining, otAvailable);
@@ -3359,8 +3375,12 @@ function advancePlanCursor(state, minutes) {
       state.cursor += otChunk;
       remaining -= otChunk;
     }
-    // ข้ามไปเริ่มกะถัดไปเฉพาะตอนที่ cursor ยังอยู่นอกทุกช่วงกะจริงๆ (โควตา OT ไม่พอ) — ถ้า OT ที่เพิ่งทำพาข้ามเข้ากะถัดไปพอดีแล้ว (เช่น OT กะเช้ายาวจนถึงเวลาเริ่มกะดึก) ปล่อยให้ลูปด้านบนรับช่วงกะนั้นต่อเอง ไม่งั้นจะข้ามกะนั้นไปทั้งวันโดยไม่ได้วางแผนเวลาให้เลย
-    if (remaining > 0 && !windowKeyAt(state.shift, state.cursor)) state.cursor = nextShiftEntry(state.cursor, state.shift);
+    // ข้ามไปเริ่มกะถัดไปเฉพาะตอนที่ cursor ยังอยู่นอกทุกช่วงกะจริงๆ (โควตา OT ไม่พอ หรือไม่มี OT เลย) — ถ้า OT ที่เพิ่งทำพาข้ามเข้ากะถัดไปพอดีแล้ว (เช่น OT กะเช้ายาวจนถึงเวลาเริ่มกะดึก) ปล่อยให้ลูปด้านบนรับช่วงกะนั้นต่อเอง ไม่งั้นจะข้ามกะนั้นไปทั้งวันโดยไม่ได้วางแผนเวลาให้เลย
+    if (remaining > 0 && !windowKeyAt(state.shift, state.cursor)) {
+      const gapStart = state.cursor;
+      state.cursor = nextShiftEntry(state.cursor, state.shift);
+      pushChunk(null, 'shiftgap', gapStart, state.cursor); // ช่วงรอกะถัดไป ไม่ใช่ของกะไหนกะหนึ่งโดยเฉพาะ (ไม่มีคนทำงานอยู่เลยในช่วงนี้)
+    }
   }
   return chunks;
 }
