@@ -342,9 +342,12 @@ tbody tr.roll-row-selected:hover{background:var(--accent-glow);}
 .gantt-cell{flex:1;height:100%;border-left:1px solid var(--border-light);}
 .gantt-bar{
   position:absolute;height:22px;border-radius:4px;
-  display:flex;align-items:center;padding:0 8px;
-  font-size:11px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;
+  display:flex;align-items:center;justify-content:space-between;gap:6px;padding:0 8px;
+  font-size:11px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;cursor:pointer;
 }
+.gantt-bar-label{overflow:hidden;text-overflow:ellipsis;}
+.gantt-bar-del{border:none;background:none;color:inherit;opacity:.75;cursor:pointer;padding:0;font-size:11px;line-height:1;flex-shrink:0;}
+.gantt-bar-del:hover{opacity:1;}
 
 /* ─── TEAM CARDS ─────────────────────────────── */
 .team-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
@@ -1436,92 +1439,24 @@ canvas{display:block;}
 
       <div id="plan-view-gantt" class="plan-view-panel">
       <div class="card">
+        <div class="card-header">
+          <span class="card-title">แผน Gantt</span>
+          <button class="btn btn-primary btn-sm" onclick="openGanttTaskModal('add')">+ เพิ่มงาน</button>
+        </div>
         <div class="gantt-wrap">
           <div style="min-width:860px;">
 
             <div class="gantt-header">
               <div class="gantt-label-col">งาน / Tooling</div>
-              <div class="gantt-months">
-                <div class="gantt-month">ม.ค.</div>
-                <div class="gantt-month">ก.พ.</div>
-                <div class="gantt-month">มี.ค.</div>
-                <div class="gantt-month">เม.ย.</div>
-                <div class="gantt-month">พ.ค.</div>
-                <div class="gantt-month">มิ.ย.</div>
-              </div>
+              <div class="gantt-months" id="gantt-months-row"></div>
             </div>
 
             <!-- ROWS -->
-            <div class="gantt-row">
-              <div class="gantt-row-label">
-                <strong>PM ชุด Cutting Tool A</strong>
-                <div><span>สมชาย ว.</span></div>
-              </div>
-              <div class="gantt-timeline">
-                <div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div>
-                <div class="gantt-bar" style="left:2%;width:12%;background:var(--accent);">PM-A</div>
-                <div class="gantt-bar" style="left:35%;width:12%;background:var(--accent);">PM-A</div>
-                <div class="gantt-bar" style="left:68%;width:12%;background:var(--accent);">PM-A</div>
-              </div>
-            </div>
+            <div id="gantt-rows-body"></div>
 
-            <div class="gantt-row">
-              <div class="gantt-row-label">
-                <strong>Regrind Carbide End Mill</strong>
-                <div><span>วิรัตน์ ส.</span></div>
-              </div>
-              <div class="gantt-timeline">
-                <div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div>
-                <div class="gantt-bar" style="left:15%;width:18%;background:var(--amber);">Regrind Lot1</div>
-                <div class="gantt-bar" style="left:60%;width:18%;background:var(--amber);">Regrind Lot2</div>
-              </div>
-            </div>
-
-            <div class="gantt-row">
-              <div class="gantt-row-label">
-                <strong>Calibrate Gauge ชุด A</strong>
-                <div><span>QC / อนุชา ท.</span></div>
-              </div>
-              <div class="gantt-timeline">
-                <div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div>
-                <div class="gantt-bar" style="left:2%;width:7%;background:var(--purple);">Cal-A</div>
-                <div class="gantt-bar" style="left:52%;width:7%;background:var(--purple);">Cal-A</div>
-              </div>
-            </div>
-
-            <div class="gantt-row">
-              <div class="gantt-row-label">
-                <strong>ซ่อม Fixture F-07</strong>
-                <div><span>ปิยะ ร.</span></div>
-              </div>
-              <div class="gantt-timeline">
-                <div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div>
-                <div class="gantt-bar" style="left:80%;width:16%;background:var(--red);">ซ่อม F-07</div>
-              </div>
-            </div>
-
-            <div class="gantt-row">
-              <div class="gantt-row-label">
-                <strong>สั่งซื้อ Tooling ประจำปี</strong>
-                <div><span>วิรัตน์ ส. / จัดซื้อ</span></div>
-              </div>
-              <div class="gantt-timeline">
-                <div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div>
-                <div class="gantt-bar" style="left:2%;width:25%;background:var(--green);">PO Q1</div>
-                <div class="gantt-bar" style="left:52%;width:25%;background:var(--green);">PO Q2</div>
-              </div>
-            </div>
-
-            <div class="gantt-row">
-              <div class="gantt-row-label">
-                <strong>ตรวจสอบ Holder & Collet</strong>
-                <div><span>สมชาย ว.</span></div>
-              </div>
-              <div class="gantt-timeline">
-                <div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div>
-                <div class="gantt-bar" style="left:25%;width:8%;background:var(--accent-dim);">ตรวจ</div>
-                <div class="gantt-bar" style="left:75%;width:8%;background:var(--accent-dim);">ตรวจ</div>
-              </div>
+            <div id="gantt-empty-state" style="display:none;padding:48px 20px;text-align:center;color:var(--text-3);">
+              <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="margin:0 auto 10px;"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+              <div style="font-size:13px;" id="gantt-empty-state-text">ยังไม่มีงานในแผน — กด "+ เพิ่มงาน" เพื่อเริ่มวางแผนใหม่</div>
             </div>
 
           </div>
@@ -1534,6 +1469,7 @@ canvas{display:block;}
           <span style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;background:var(--green);border-radius:3px;display:inline-block;"></span>จัดซื้อ</span>
           <span style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;background:var(--purple);border-radius:3px;display:inline-block;"></span>Calibrate</span>
           <span style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;background:var(--red);border-radius:3px;display:inline-block;"></span>ซ่อมแซม</span>
+          <span style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;background:var(--accent-dim);border-radius:3px;display:inline-block;"></span>ตรวจสอบ/อื่นๆ</span>
         </div>
       </div>
       </div>
@@ -2620,6 +2556,19 @@ let planTasks = [
 ];
 let planTaskSeq = 9;
 
+// ─── GANTT TASKS (หน้าวางแผน — มุมมอง Gantt) ───────────────────────────────────
+let ganttTasks = [];
+let ganttTaskSeq = 0;
+let planGanttWindowStart = '2026-01-01'; // วันแรกของหน้าต่าง 6 เดือนที่กำลังแสดงอยู่
+const GANTT_CATEGORY_META = {
+  pm:        { label: 'PM บำรุงรักษา', color: 'var(--accent)' },
+  regrind:   { label: 'Regrind', color: 'var(--amber)' },
+  purchase:  { label: 'จัดซื้อ', color: 'var(--green)' },
+  calibrate: { label: 'Calibrate', color: 'var(--purple)' },
+  repair:    { label: 'ซ่อมแซม', color: 'var(--red)' },
+  inspect:   { label: 'ตรวจสอบ/อื่นๆ', color: 'var(--accent-dim)' }
+};
+
 // ─── TEAM MEMBERS (หน้าทีมงาน) — ข้อมูลอยู่ก่อน restoreState() เพื่อไม่ให้ชนกับ TDZ ─
 const TEAM_STATUS_META = {
   available: { label: 'พร้อมงาน', chip: 'chip-green' },
@@ -2787,11 +2736,7 @@ function switchPlanWorkType(type) {
   document.getElementById('plan-day-plancol-header').textContent = PLAN_WORKTYPE_META[type].metricLabel;
   const planTimeLabel = document.getElementById('pf-plantime-label');
   if (planTimeLabel) planTimeLabel.textContent = PLAN_WORKTYPE_META[type].metricLabel + ' — จากทะเบียน Tooling';
-  if (currentPlanView === 'gantt') {
-    document.getElementById('plan-daterange-label').textContent = 'ม.ค. – มิ.ย. 2569';
-  } else {
-    renderCurrentPlanView();
-  }
+  renderCurrentPlanView();
 }
 
 function planRollColorLabel(t) {
@@ -2834,6 +2779,7 @@ function renderCurrentPlanView() {
   if (currentPlanView === 'day') renderPlanDay();
   else if (currentPlanView === 'week') renderPlanWeek();
   else if (currentPlanView === 'month') renderPlanMonth();
+  else if (currentPlanView === 'gantt') renderPlanGantt();
 }
 
 function switchPlanView(mode) {
@@ -2843,15 +2789,17 @@ function switchPlanView(mode) {
   document.querySelectorAll('.plan-view-btn').forEach(b => {
     b.classList.toggle('active', b.getAttribute('data-view') === mode);
   });
-  if (mode === 'gantt') {
-    document.getElementById('plan-daterange-label').textContent = 'ม.ค. – มิ.ย. 2569';
-  } else {
-    renderCurrentPlanView();
-  }
+  renderCurrentPlanView();
 }
 
 function planNav(dir) {
-  if (currentPlanView === 'gantt') return;
+  if (currentPlanView === 'gantt') {
+    const d = parseISODate(planGanttWindowStart);
+    d.setMonth(d.getMonth() + dir * 6);
+    planGanttWindowStart = toISODate(d);
+    renderPlanGantt();
+    return;
+  }
   const d = new Date(planViewDate);
   if (currentPlanView === 'day') d.setDate(d.getDate() + dir);
   else if (currentPlanView === 'week') d.setDate(d.getDate() + dir * 7);
@@ -3516,6 +3464,148 @@ function deletePlanTask(taskId) {
   renderCurrentPlanView();
 }
 
+// ─── GANTT: render/เพิ่ม/แก้ไข/ลบ งานในหน้าวางแผน (มุมมอง Gantt) ────────────────
+function ganttWindowMonths() {
+  const start = parseISODate(planGanttWindowStart);
+  const months = [];
+  for (let i = 0; i < 6; i++) months.push(new Date(start.getFullYear(), start.getMonth() + i, 1));
+  return months;
+}
+
+function renderPlanGantt() {
+  const months = ganttWindowMonths();
+  const windowStart = months[0];
+  const windowEnd = new Date(months[5].getFullYear(), months[5].getMonth() + 1, 1); // exclusive
+  const totalDays = (windowEnd - windowStart) / 86400000;
+
+  document.getElementById('gantt-months-row').innerHTML =
+    months.map(m => `<div class="gantt-month">${THAI_MONTHS_ABBR[m.getMonth()]}</div>`).join('');
+
+  const sameYear = months[0].getFullYear() === months[5].getFullYear();
+  const startLabel = THAI_MONTHS_ABBR[months[0].getMonth()] + (sameYear ? '' : ' ' + (months[0].getFullYear() + 543));
+  const endLabel = THAI_MONTHS_ABBR[months[5].getMonth()] + ' ' + (months[5].getFullYear() + 543);
+  document.getElementById('plan-daterange-label').textContent = `${startLabel} – ${endLabel}`;
+
+  const tasks = ganttTasks.filter(t => t.workType === currentPlanWorkType);
+  const rowsBody = document.getElementById('gantt-rows-body');
+  const emptyState = document.getElementById('gantt-empty-state');
+
+  if (!tasks.length) {
+    rowsBody.innerHTML = '';
+    document.getElementById('gantt-empty-state-text').textContent = 'ยังไม่มีงานในแผน — กด "+ เพิ่มงาน" เพื่อเริ่มวางแผนใหม่';
+    emptyState.style.display = '';
+    return;
+  }
+
+  const visible = tasks.filter(t => parseISODate(t.endDate) >= windowStart && parseISODate(t.startDate) < windowEnd);
+  if (!visible.length) {
+    rowsBody.innerHTML = '';
+    document.getElementById('gantt-empty-state-text').textContent = 'ไม่มีงานในช่วงเวลานี้ — ลองกด "‹ ก่อนหน้า" หรือ "ถัดไป ›" เพื่อดูช่วงอื่น';
+    emptyState.style.display = '';
+    return;
+  }
+  emptyState.style.display = 'none';
+
+  rowsBody.innerHTML = visible.map(t => {
+    const cat = GANTT_CATEGORY_META[t.category] || GANTT_CATEGORY_META.inspect;
+    const barStart = new Date(Math.max(parseISODate(t.startDate).getTime(), windowStart.getTime()));
+    const barEndExclusive = new Date(Math.min(parseISODate(t.endDate).getTime() + 86400000, windowEnd.getTime()));
+    const leftPct = (barStart - windowStart) / 86400000 / totalDays * 100;
+    const widthPct = Math.max((barEndExclusive - barStart) / 86400000 / totalDays * 100, 2.5);
+    return `
+      <div class="gantt-row">
+        <div class="gantt-row-label">
+          <strong>${escapeHtmlAttr(t.name)}</strong>
+          <div><span>${escapeHtmlAttr(t.assignee || '—')}</span></div>
+        </div>
+        <div class="gantt-timeline">
+          <div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div>
+          <div class="gantt-bar" style="left:${leftPct}%;width:${widthPct}%;background:${cat.color};" onclick="openGanttTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(t.name)}">
+            <span class="gantt-bar-label">${escapeHtmlAttr(cat.label)}</span>
+            <button type="button" class="gantt-bar-del" title="ลบ" onclick="event.stopPropagation();deleteGanttTask('${t.id}')">✕</button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function ganttTaskFormFields() {
+  const options = Object.keys(GANTT_CATEGORY_META).map(k => `<option value="${k}">${GANTT_CATEGORY_META[k].label}</option>`).join('');
+  return `
+    <div class="modal-row full">
+      <div class="form-group">
+        <label class="form-label">ชื่องาน / Tooling</label>
+        <input type="text" class="form-input" id="gf-name" placeholder="เช่น PM ชุด Cutting Tool A">
+      </div>
+    </div>
+    <div class="modal-row">
+      <div class="form-group">
+        <label class="form-label">ผู้รับผิดชอบ</label>
+        <input type="text" class="form-input" id="gf-assignee" placeholder="เช่น สมชาย ว.">
+      </div>
+      <div class="form-group">
+        <label class="form-label">ประเภทงาน</label>
+        <select class="form-select" id="gf-category">${options}</select>
+      </div>
+    </div>
+    <div class="modal-row">
+      <div class="form-group">
+        <label class="form-label">วันที่เริ่ม</label>
+        <input type="date" class="form-input" id="gf-start">
+      </div>
+      <div class="form-group">
+        <label class="form-label">วันที่สิ้นสุด</label>
+        <input type="date" class="form-input" id="gf-end">
+      </div>
+    </div>`;
+}
+
+function openGanttTaskModal(mode, taskId) {
+  const task = mode === 'edit' ? ganttTasks.find(t => t.id === taskId) : null;
+  document.getElementById('modal-title').textContent = mode === 'edit' ? 'แก้ไขงานในแผน' : 'เพิ่มงานใหม่ในแผน';
+  document.getElementById('modal-body').innerHTML = ganttTaskFormFields();
+  const defaultDate = toISODate(parseISODate(planGanttWindowStart));
+  document.getElementById('gf-name').value = task ? task.name : '';
+  document.getElementById('gf-assignee').value = task ? task.assignee : '';
+  document.getElementById('gf-category').value = task ? task.category : 'pm';
+  document.getElementById('gf-start').value = task ? task.startDate : defaultDate;
+  document.getElementById('gf-end').value = task ? task.endDate : defaultDate;
+  document.getElementById('modal-overlay').classList.add('open');
+
+  document.querySelector('.modal-footer .btn-primary').onclick = function() {
+    const name = document.getElementById('gf-name').value.trim();
+    const assignee = document.getElementById('gf-assignee').value.trim();
+    const category = document.getElementById('gf-category').value;
+    const startDate = document.getElementById('gf-start').value;
+    const endDate = document.getElementById('gf-end').value;
+    if (!name || !startDate || !endDate) { alert('กรุณากรอกชื่องาน วันที่เริ่ม และวันที่สิ้นสุด'); return; }
+    if (endDate < startDate) { alert('วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม'); return; }
+    const data = { name, assignee: assignee || '—', category, startDate, endDate };
+    if (mode === 'edit') {
+      Object.assign(task, data);
+    } else {
+      ganttTaskSeq++;
+      ganttTasks.push({ id: 'GT-' + String(ganttTaskSeq).padStart(4, '0'), workType: currentPlanWorkType, ...data });
+    }
+    persistState();
+    renderPlanGantt();
+    const btn = this;
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✓ บันทึกแล้ว';
+    btn.style.background = 'var(--green)';
+    setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.onclick = saveModal; closeModal(); }, 700);
+  };
+}
+
+function deleteGanttTask(taskId) {
+  const t = ganttTasks.find(x => x.id === taskId);
+  if (!t) return;
+  if (!confirm('ลบงาน "' + t.name + '" ออกจากแผน?')) return;
+  ganttTasks = ganttTasks.filter(x => x.id !== taskId);
+  persistState();
+  renderPlanGantt();
+}
+
 const PAGE_SIZE = 10;
 const pageState = { roll: 1, sq: 1, saw: 1, slitter: 1 };
 
@@ -3756,6 +3846,7 @@ function persistState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus,
       planTasks, planTaskSeq, teamMembers, teamSeq,
+      ganttTasks, ganttTaskSeq, planGanttWindowStart,
       prodBlockProducts, prodBlockSeq, prodBlockCells, prodBlockPM, prodBlockSummary,
       prodBlockEntries, prodBlockEntrySeq, prodBlockActiveMachine, prodBlockViewMonth
     }));
@@ -3781,6 +3872,9 @@ function restoreState() {
     if (typeof saved.rollColorSeq === 'number') rollColorSeq = saved.rollColorSeq;
     if (Array.isArray(saved.planTasks)) planTasks = saved.planTasks;
     if (typeof saved.planTaskSeq === 'number') planTaskSeq = saved.planTaskSeq;
+    if (Array.isArray(saved.ganttTasks)) ganttTasks = saved.ganttTasks;
+    if (typeof saved.ganttTaskSeq === 'number') ganttTaskSeq = saved.ganttTaskSeq;
+    if (typeof saved.planGanttWindowStart === 'string') planGanttWindowStart = saved.planGanttWindowStart;
     if (Array.isArray(saved.teamMembers)) teamMembers = saved.teamMembers;
     if (typeof saved.teamSeq === 'number') teamSeq = saved.teamSeq;
     if (Array.isArray(saved.prodBlockProducts)) prodBlockProducts = saved.prodBlockProducts;
@@ -3810,6 +3904,7 @@ syncRollStatusWithProdBlock();
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 // เรียกหลัง restoreState() เสมอ เพื่อให้ Dashboard แสดงข้อมูลที่กู้คืนจาก localStorage ได้ถูกต้อง
 initDashboard();
+renderPlanGantt();
 
 function getRollSets() {
   const sets = [];
