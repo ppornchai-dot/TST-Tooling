@@ -3538,6 +3538,13 @@ function onPlanRollColorChange() {
   fillPlanRollReadonly(setName, colorKey);
 }
 
+// หางาน (ประเภทเดียวกัน) ที่จบล่าสุด (เรียงตามวันที่จบ+เวลาจบ) เพื่อให้งานใหม่เริ่มต่อจากตรงนั้นได้เลย ไม่ทับเวลากับงานที่วางแผนไว้ก่อนหน้า
+function findLatestPlanTaskEnd(workType) {
+  const candidates = planTasks.filter(t => t.workType === workType && t.endDate && t.endTime && t.endTime !== '—');
+  if (!candidates.length) return null;
+  return candidates.reduce((latest, t) => (t.endDate + ' ' + t.endTime) > (latest.endDate + ' ' + latest.endTime) ? t : latest);
+}
+
 function openPlanTaskModal(mode, taskId, presetDate) {
   const task = mode === 'edit' ? planTasks.find(t => t.id === taskId) : null;
   const workType = task ? task.workType : currentPlanWorkType;
@@ -3546,11 +3553,13 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   document.getElementById('modal-body').innerHTML = planTaskFormFields();
   const planTimeLabel = document.getElementById('pf-plantime-label');
   if (planTimeLabel) planTimeLabel.textContent = PLAN_WORKTYPE_META[workType].metricLabel + ' — จากทะเบียน Tooling';
-  document.getElementById('pf-date').value = task ? task.date : (presetDate || toISODate(planViewDate));
-  const defaultShift = (task ? task.shift : currentPlanShiftFilter) || 'morning';
+  // เพิ่มงานใหม่โดยไม่ได้ระบุวันที่มาให้เจาะจง (เช่นกดปุ่ม "+ เพิ่มงาน" ธรรมดา) ให้เริ่มต่อจากงานประเภทเดียวกันที่จบล่าสุดโดยอัตโนมัติ
+  const chainFrom = (!task && !presetDate) ? findLatestPlanTaskEnd(workType) : null;
+  document.getElementById('pf-date').value = task ? task.date : (chainFrom ? chainFrom.endDate : (presetDate || toISODate(planViewDate)));
+  const defaultShift = (task ? task.shift : (chainFrom ? chainFrom.shift : currentPlanShiftFilter)) || 'morning';
   setPlanShiftButtons(defaultShift);
   const startFieldId = defaultShift === 'night' ? 'pf-start-night' : 'pf-start-morning';
-  document.getElementById(startFieldId).value = task ? task.startTime : SHIFTS[defaultShift].start;
+  document.getElementById(startFieldId).value = task ? task.startTime : (chainFrom ? chainFrom.endTime : SHIFTS[defaultShift].start);
   document.getElementById('pf-otcap-morning').value = task ? ((task.otCapMinutesByShift || {}).morning || 0) / 60 : 0;
   document.getElementById('pf-otcap-night').value = task ? ((task.otCapMinutesByShift || {}).night || 0) / 60 : 0;
   populatePlanRollSetSelect(task ? task.rollSet : null);
