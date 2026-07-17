@@ -1325,11 +1325,14 @@ canvas{display:block;}
       </div>
 
       <div class="card">
-        <div class="card-header"><span class="card-title">เช็คลิสต์งานวันนี้</span></div>
+        <div class="card-header">
+          <span class="card-title">เช็คลิสต์งานวันนี้</span>
+          <button class="btn btn-primary btn-sm" onclick="openDailyChecklistModal('add')">+ เพิ่มงานเช็คลิสต์</button>
+        </div>
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th></th><th>เวลา</th><th>งาน</th><th>ประเภท</th><th>Tooling / เครื่องจักร</th><th>ผู้รับผิดชอบ</th><th>สถานะ</th></tr>
+              <tr><th></th><th>เวลา</th><th>งาน</th><th>ประเภท</th><th>Tooling / เครื่องจักร</th><th>ผู้รับผิดชอบ</th><th>สถานะ</th><th>จัดการ</th></tr>
             </thead>
             <tbody id="tbody-daily"></tbody>
           </table>
@@ -2578,24 +2581,18 @@ const GANTT_CATEGORY_META = {
 };
 
 // ─── DAILY TASKS (หน้างานประจำวัน) — ข้อมูลอยู่ก่อน restoreState() เพื่อไม่ให้ชนกับ TDZ ─
-const DAILY_TASKS = [
-  {time:'08:00', task:'ตรวจสอบ Runout Work Roll Stand 1', type:'ตรวจสอบ', ref:'Mill-01 Stand 1', who:'สมชาย ว.'},
-  {time:'09:00', task:'ทำความสะอาด + ตรวจ Slitter Knife Ø250', type:'ทำความสะอาด', ref:'Slitter-01', who:'วิรัตน์ ส.'},
-  {time:'10:30', task:'ตรวจสอบฟัน Circular Cold Saw Ø710', type:'ตรวจสอบ', ref:'Cold Saw-01', who:'อนุชา ท.'},
-  {time:'11:00', task:'เช็คน้ำหล่อเย็นทุกเครื่อง', type:'PM', ref:'ทุกเครื่อง', who:'ปิยะ ร.'},
-  {time:'11:30', task:'บันทึกอุณหภูมิ Bearing Backup Roll', type:'ตรวจสอบ', ref:'Mill-01 Stand 1', who:'พรชัย ป.'},
-  {time:'14:00', task:'ตรวจความตึงใบ Band Saw Blade', type:'ตรวจสอบ', ref:'Band Saw-01', who:'วิรัตน์ ส.'},
-  {time:'16:30', task:'เดินตรวจ 5ส พื้นที่ Tooling Room', type:'ตรวจสอบ', ref:'Tooling Room', who:'สมชาย ว.'},
-];
+// dailyChecklistTasks: งานเช็คลิสต์ที่ผู้ใช้เพิ่มเอง — date:null = ทำซ้ำทุกวัน, date:'YYYY-MM-DD' = เฉพาะวันนั้นวันเดียว
+let dailyChecklistTasks = [];
+let dailyChecklistSeq = 0;
 const DAILY_STATUS_META = {
   done:    {label:'สำเร็จ',      chip:'chip-green'},
   pending: {label:'รอดำเนินการ', chip:'chip-amber'},
   overdue: {label:'เลยเวลา',     chip:'chip-red'},
 };
-const DAILY_TODAY_ISO = '2026-07-02'; // วันที่ใช้อ้างอิงเป็น "วันนี้" ของระบบ (ข้อมูลตัวอย่างทั้งหมดอิงวันนี้)
+const DAILY_TODAY_ISO = '2026-07-02'; // วันที่ใช้อ้างอิงเป็น "วันนี้" ของระบบ
 let dailyViewDate = DAILY_TODAY_ISO;
-// สถานะเช็คลิสต์แยกตามวันที่ที่ดู — { 'YYYY-MM-DD': { [taskIndex]: 'done'|'pending'|'overdue' } } ค่าที่ไม่มีถือว่า 'pending'
-let dailyStatusByDate = { [DAILY_TODAY_ISO]: {0:'done', 1:'done', 4:'overdue'} };
+// สถานะเช็คลิสต์แยกตามวันที่ที่ดู — { 'YYYY-MM-DD': { [taskKey]: 'done'|'pending'|'overdue' } } ค่าที่ไม่มีถือว่า 'pending'
+let dailyStatusByDate = {};
 
 // ─── TEAM MEMBERS (หน้าทีมงาน) — ข้อมูลอยู่ก่อน restoreState() เพื่อไม่ให้ชนกับ TDZ ─
 const TEAM_STATUS_META = {
@@ -3877,7 +3874,7 @@ function persistState() {
       toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus,
       planTasks, planTaskSeq, teamMembers, teamSeq,
       ganttTasks, ganttTaskSeq, planGanttWindowStart,
-      dailyStatusByDate,
+      dailyStatusByDate, dailyChecklistTasks, dailyChecklistSeq,
       prodBlockProducts, prodBlockSeq, prodBlockCells, prodBlockPM, prodBlockSummary,
       prodBlockEntries, prodBlockEntrySeq, prodBlockActiveMachine, prodBlockViewMonth
     }));
@@ -3907,6 +3904,8 @@ function restoreState() {
     if (typeof saved.ganttTaskSeq === 'number') ganttTaskSeq = saved.ganttTaskSeq;
     if (typeof saved.planGanttWindowStart === 'string') planGanttWindowStart = saved.planGanttWindowStart;
     if (saved.dailyStatusByDate) dailyStatusByDate = saved.dailyStatusByDate;
+    if (Array.isArray(saved.dailyChecklistTasks)) dailyChecklistTasks = saved.dailyChecklistTasks;
+    if (typeof saved.dailyChecklistSeq === 'number') dailyChecklistSeq = saved.dailyChecklistSeq;
     if (Array.isArray(saved.teamMembers)) teamMembers = saved.teamMembers;
     if (typeof saved.teamSeq === 'number') teamSeq = saved.teamSeq;
     if (Array.isArray(saved.prodBlockProducts)) prodBlockProducts = saved.prodBlockProducts;
@@ -4793,8 +4792,10 @@ function renderDailyTasks() {
     if (topSub) topSub.textContent = subText;
   }
 
-  // เช็คลิสต์ประจำวัน (คงที่ทุกวัน) + งาน CNC/ขัด Roll ที่วางแผนไว้ในหน้า "วางแผน" สำหรับวันนี้โดยเฉพาะ — รวมเป็นรายการเดียวกัน เรียงตามเวลา
-  const checklistItems = DAILY_TASKS.map((t, i) => ({ key: i, time: t.time, task: t.task, type: t.type, ref: t.ref, who: t.who }));
+  // เช็คลิสต์ที่ผู้ใช้เพิ่มเอง (ทำซ้ำทุกวัน หรือเฉพาะวันที่เลือก) + งาน CNC/ขัด Roll ที่วางแผนไว้ในหน้า "วางแผน" สำหรับวันนี้โดยเฉพาะ — รวมเป็นรายการเดียวกัน เรียงตามเวลา
+  const checklistItems = dailyChecklistTasks
+    .filter(t => !t.date || t.date === dailyViewDate)
+    .map(t => ({ key: t.id, time: t.time, task: t.task, type: t.type, ref: t.ref, who: t.who, editable: true }));
   const plannedItems = planTasks.filter(t => t.date === dailyViewDate).map(t => {
     const workMeta = PLAN_WORKTYPE_META[t.workType];
     return {
@@ -4804,6 +4805,7 @@ function renderDailyTasks() {
       type: workMeta ? workMeta.label.replace('แผนงาน', '').trim() : t.workType,
       ref: [t.rollSet, t.rollId].filter(Boolean).join(' — '),
       who: (SHIFTS[t.shift] || {}).label || '—',
+      editable: false,
     };
   });
   const allItems = checklistItems.concat(plannedItems).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
@@ -4811,6 +4813,9 @@ function renderDailyTasks() {
   tbody.innerHTML = allItems.map(item => {
     const status = getDailyStatus(item.key);
     const meta = DAILY_STATUS_META[status];
+    const actions = item.editable
+      ? `<div style="display:flex;gap:4px;"><button class="btn btn-ghost btn-sm" onclick="openDailyChecklistModal('edit','${item.key}')">แก้ไข</button><button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteDailyChecklistTask('${item.key}')">ลบ</button></div>`
+      : '';
     return `<tr>
       <td><input type="checkbox" ${status==='done'?'checked':''} onchange="toggleDailyTask('${item.key}')" style="width:16px;height:16px;cursor:pointer;"></td>
       <td class="muted">${escapeHtmlAttr(item.time)}</td>
@@ -4819,14 +4824,86 @@ function renderDailyTasks() {
       <td class="muted">${escapeHtmlAttr(item.ref)}</td>
       <td class="muted">${escapeHtmlAttr(item.who)}</td>
       <td><span class="chip ${meta.chip}">${meta.label}</span></td>
+      <td>${actions}</td>
     </tr>`;
-  }).join('');
+  }).join('') || `<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--text-3);">ยังไม่มีงานในวันนี้ — กด "+ เพิ่มงานเช็คลิสต์" เพื่อเริ่มสร้างเช็คลิสต์เอง</td></tr>`;
 
   const statuses = allItems.map(item => getDailyStatus(item.key));
   document.getElementById('daily-kpi-total').textContent = allItems.length;
   document.getElementById('daily-kpi-done').textContent = statuses.filter(s=>s==='done').length;
   document.getElementById('daily-kpi-pending').textContent = statuses.filter(s=>s==='pending').length;
   document.getElementById('daily-kpi-overdue').textContent = statuses.filter(s=>s==='overdue').length;
+}
+
+function dailyChecklistFormFields() {
+  return `
+    <div class="modal-row full">
+      <div class="form-group"><label class="form-label">ชื่องาน</label><input class="form-input" id="dcf-task" placeholder="เช่น ตรวจสอบ Runout Work Roll Stand 1"></div>
+    </div>
+    <div class="modal-row three">
+      <div class="form-group"><label class="form-label">เวลา</label><input class="form-input" id="dcf-time" type="time"></div>
+      <div class="form-group"><label class="form-label">ประเภท</label><input class="form-input" id="dcf-type" placeholder="เช่น ตรวจสอบ, PM, ทำความสะอาด"></div>
+      <div class="form-group"><label class="form-label">ผู้รับผิดชอบ</label><input class="form-input" id="dcf-who" placeholder="เช่น สมชาย ว."></div>
+    </div>
+    <div class="modal-row">
+      <div class="form-group"><label class="form-label">Tooling / เครื่องจักร</label><input class="form-input" id="dcf-ref" placeholder="เช่น Mill-01 Stand 1"></div>
+      <div class="form-group"><label class="form-label">ความถี่</label>
+        <select class="form-select" id="dcf-repeat">
+          <option value="daily">ทำซ้ำทุกวัน</option>
+          <option value="once">เฉพาะวันที่กำลังดูอยู่</option>
+        </select>
+      </div>
+    </div>`;
+}
+
+function openDailyChecklistModal(mode, taskId) {
+  const task = mode === 'edit' ? dailyChecklistTasks.find(t => t.id === taskId) : null;
+  document.getElementById('modal-title').textContent = mode === 'edit' ? 'แก้ไขงานเช็คลิสต์' : 'เพิ่มงานเช็คลิสต์ใหม่';
+  document.getElementById('modal-body').innerHTML = dailyChecklistFormFields();
+  document.getElementById('dcf-task').value = task ? task.task : '';
+  document.getElementById('dcf-time').value = task ? task.time : '';
+  document.getElementById('dcf-type').value = task ? task.type : '';
+  document.getElementById('dcf-who').value = task ? task.who : '';
+  document.getElementById('dcf-ref').value = task ? task.ref : '';
+  document.getElementById('dcf-repeat').value = task ? (task.date ? 'once' : 'daily') : 'daily';
+  document.getElementById('modal-overlay').classList.add('open');
+
+  document.querySelector('.modal-footer .btn-primary').onclick = function() {
+    const g = id => document.getElementById(id).value.trim();
+    const taskName = g('dcf-task');
+    const time = g('dcf-time');
+    if (!taskName || !time) { alert('กรุณากรอกชื่องานและเวลา'); return; }
+    const data = {
+      task: taskName,
+      time,
+      type: g('dcf-type') || '—',
+      who: g('dcf-who') || '—',
+      ref: g('dcf-ref') || '—',
+      date: document.getElementById('dcf-repeat').value === 'once' ? dailyViewDate : null,
+    };
+    if (mode === 'edit') {
+      Object.assign(task, data);
+    } else {
+      dailyChecklistSeq++;
+      dailyChecklistTasks.push({ id: 'DC-' + String(dailyChecklistSeq).padStart(4, '0'), ...data });
+    }
+    persistState();
+    renderDailyTasks();
+    const btn = this;
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✓ บันทึกแล้ว';
+    btn.style.background = 'var(--green)';
+    setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.onclick = saveModal; closeModal(); }, 700);
+  };
+}
+
+function deleteDailyChecklistTask(taskId) {
+  const t = dailyChecklistTasks.find(x => x.id === taskId);
+  if (!t) return;
+  if (!confirm('ลบงานเช็คลิสต์ "' + t.task + '" ออกจากรายการ?')) return;
+  dailyChecklistTasks = dailyChecklistTasks.filter(x => x.id !== taskId);
+  persistState();
+  renderDailyTasks();
 }
 
 renderDailyTasks();
