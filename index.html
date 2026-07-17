@@ -3017,6 +3017,11 @@ function renderPlanDay() {
       <td class="muted">${escapeHtmlAttr(t.startTime || '—')}</td>
       <td class="muted">${escapeHtmlAttr(t.endTime || '—')}${t.endDate && t.endDate !== t.date ? ` <span style="color:var(--accent);font-weight:700;">(+${Math.round((parseISODate(t.endDate)-parseISODate(t.date))/86400000)} วัน)</span>` : ''}${t.otMinutes ? ` <span class="chip chip-red" title="เวลาทำงานนอกช่วงกะ">OT ${formatMinutesAsHm(t.otMinutes).replace('≈ ', '')}</span>` : ''}</td>
       <td style="display:flex;gap:4px;" onclick="event.stopPropagation();">
+        ${(() => {
+          const prev = findPrecedingPlanTask(t);
+          const outOfSequence = prev && (t.date !== prev.endDate || t.startTime !== prev.endTime);
+          return outOfSequence ? `<button class="btn btn-ghost btn-sm" style="color:var(--accent);" title="ย้ายให้เริ่มต่อจากงานก่อนหน้าทันที" onclick="resequencePlanTask('${t.id}')">ต่อเวลา</button>` : '';
+        })()}
         <button class="btn btn-ghost btn-sm" onclick="openPlanTaskModal('edit','${t.id}')">แก้ไข</button>
         <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deletePlanTask('${t.id}')">ลบ</button>
       </td>
@@ -3539,10 +3544,43 @@ function onPlanRollColorChange() {
 }
 
 // หางาน (ประเภทเดียวกัน) ที่จบล่าสุด (เรียงตามวันที่จบ+เวลาจบ) เพื่อให้งานใหม่เริ่มต่อจากตรงนั้นได้เลย ไม่ทับเวลากับงานที่วางแผนไว้ก่อนหน้า
-function findLatestPlanTaskEnd(workType) {
-  const candidates = planTasks.filter(t => t.workType === workType && t.endDate && t.endTime && t.endTime !== '—');
+function findLatestPlanTaskEnd(workType, excludeId) {
+  const candidates = planTasks.filter(t => t.workType === workType && t.id !== excludeId && t.endDate && t.endTime && t.endTime !== '—');
   if (!candidates.length) return null;
   return candidates.reduce((latest, t) => (t.endDate + ' ' + t.endTime) > (latest.endDate + ' ' + latest.endTime) ? t : latest);
+}
+
+// ย้ายงานเดิม (ที่สร้างไว้ก่อนหน้าแล้วดันทับเวลากับงานอื่น) ให้เริ่มต่อจากงานประเภทเดียวกันที่จบล่าสุดทันที แล้วคำนวณเวลาจบ/OT ใหม่ให้เลย
+// หางานประเภทเดียวกัน "ที่มาก่อนหน้างานนี้จริงๆ ในคิว" (เทียบจากเวลาเริ่มงาน) แล้วในกลุ่มนั้นเอางานที่จบล่าสุด — ต่างจาก findLatestPlanTaskEnd
+// ตรงที่จะไม่เอางานที่จริงๆ แล้วเริ่มทีหลังงานนี้มาเป็น "งานก่อนหน้า" (ป้องกันเอางานที่มาทีหลังในคิวมาอ้างว่าต้องต่อจากมันย้อนกลับ)
+function findPrecedingPlanTask(task) {
+  const sameType = planTasks.filter(t => t.workType === task.workType && t.id !== task.id && t.endDate && t.endTime && t.endTime !== '—');
+  const taskStartKey = task.date + ' ' + (task.startTime || '');
+  const before = sameType.filter(t => {
+    const tStartKey = t.date + ' ' + (t.startTime || '');
+    // เวลาเริ่มเท่ากันเป๊ะ (เช่นบั๊กเดิมที่ทั้งคู่เริ่ม 08:00 ทับกัน) ให้ใช้ id ที่สร้างก่อนตัดสินว่าใครมาก่อนกัน กัน tie แบบ <= ทำให้สองงานเห็นกันและกันเป็น "งานก่อนหน้า" พร้อมกันทั้งคู่
+    return tStartKey !== taskStartKey ? tStartKey < taskStartKey : t.id < task.id;
+  });
+  if (!before.length) return null;
+  return before.reduce((latest, t) => (t.endDate + ' ' + t.endTime) > (latest.endDate + ' ' + latest.endTime) ? t : latest);
+}
+
+function resequencePlanTask(taskId) {
+  const task = planTasks.find(t => t.id === taskId);
+  if (!task) return;
+  const prev = findPrecedingPlanTask(task);
+  if (!prev) { alert('ไม่พบงานประเภทเดียวกันงานอื่นที่มาก่อนหน้างานนี้ให้ต่อเวลาด้วย'); return; }
+  if (!confirm(`ย้ายงานนี้ให้เริ่มต่อจาก "${prev.rollName}" (จบ ${fmtDateThai(parseISODate(prev.endDate))} ${prev.endTime}) เลยไหม?`)) return;
+  task.date = prev.endDate;
+  task.shift = prev.shift;
+  task.startTime = prev.endTime;
+  const computed = computePlanEnd(task.date, task.startTime, task.totalTime, task.shift, task.otCapMinutesByShift || {});
+  task.endTime = computed.time;
+  task.endDate = computed.date || task.date;
+  task.otMinutes = computed.otMinutes || 0;
+  task.otMinutesByShift = computed.otMinutesByShift || {};
+  persistState();
+  renderCurrentPlanView();
 }
 
 function openPlanTaskModal(mode, taskId, presetDate) {
