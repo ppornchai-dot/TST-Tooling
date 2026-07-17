@@ -2554,17 +2554,8 @@ const toolingData = {
 };
 
 // ─── PLAN TASKS (หน้าวางแผน — แผนการขึ้นงาน รายวัน/รายสัปดาห์/รายเดือน) ────────
-let planTasks = [
-  {id:'PT-0001',workType:'cnc',date:'2026-06-30',rollSet:'Pinch Roll — Ø200 mm',rollColor:'blue',rollId:'RL-0030',rollName:'Pinch Roll (Entry)',startTime:'09:00',endTime:'12:00',shift:'morning',otMinutes:0},
-  {id:'PT-0002',workType:'cnc',date:'2026-07-01',rollSet:'Backup Roll Stand 1 — Ø650 mm',rollColor:'yellow',rollId:'RL-0003',rollName:'Backup Roll #1 (Top)',startTime:'08:30',endTime:'11:30',shift:'morning',otMinutes:0},
-  {id:'PT-0003',workType:'cnc',date:'2026-07-02',rollSet:'Work Roll Stand 1 — Ø320 mm',rollColor:'blue',rollId:'RL-0001',rollName:'Work Roll #1 (Top)',startTime:'08:00',endTime:'10:59',shift:'morning',otMinutes:0},
-  {id:'PT-0004',workType:'cnc',date:'2026-07-02',rollSet:'Work Roll Stand 1 — Ø320 mm',rollColor:'blue',rollId:'RL-0002',rollName:'Work Roll #1 (Bot)',startTime:'10:59',endTime:'17:00',shift:'morning',otMinutes:0},
-  {id:'PT-0005',workType:'cnc',date:'2026-07-04',rollSet:'Work Roll Stand 2 — Ø300 mm',rollColor:'red',rollId:'RL-0007',rollName:'Work Roll #2 (Top)',startTime:'08:00',endTime:'12:00',shift:'morning',otMinutes:0},
-  {id:'PT-0006',workType:'cnc',date:'2026-07-11',rollSet:'Edger Roll — Ø250 mm',rollColor:'gold',rollId:'RL-0015',rollName:'Edger Roll (Left)',startTime:'08:00',endTime:'13:20',shift:'morning',otMinutes:0},
-  {id:'PT-0007',workType:'polish',date:'2026-07-02',rollSet:'Backup Roll Stand 1 — Ø650 mm',rollColor:'yellow',rollId:'RL-0004',rollName:'Backup Roll #1 (Bot)',startTime:'09:00',endTime:'09:30',shift:'morning',otMinutes:0},
-  {id:'PT-0008',workType:'polish',date:'2026-07-03',rollSet:'Work Roll Stand 2 — Ø300 mm',rollColor:'red',rollId:'RL-0008',rollName:'Work Roll #2 (Bot)',startTime:'08:00',endTime:'08:25',shift:'morning',otMinutes:0},
-  {id:'PT-0009',workType:'polish',date:'2026-07-11',rollSet:'Straightener Roll — Ø180 mm',rollColor:'purple',rollId:'RL-0021',rollName:'Straightener Roll Set A',startTime:'13:00',endTime:'13:22',shift:'morning',otMinutes:0},
-];
+// planTaskSeq เริ่มที่ 9 (ไม่ใช่ 0) เพื่อไม่ให้ id ใหม่ชนกับ id ตัวอย่างเดิม PT-0001–PT-0009 ที่ removeSamplePlanTasks() กรองทิ้งอยู่เสมอ
+let planTasks = [];
 let planTaskSeq = 9;
 
 // ─── GANTT TASKS (หน้าวางแผน — มุมมอง Gantt) ───────────────────────────────────
@@ -3930,6 +3921,15 @@ syncRollStatusWithProdBlock();
     teamMembers.push({ id: 'TM-' + String(teamSeq).padStart(4, '0'), name: 'ช่างเครื่อง ' + p, role: 'operator', roleLabel: 'ช่างเครื่อง', avatarInitials: p, avatarColor: 'var(--green)', status: 'available', monthTasks: 0, pendingTasks: 0, onTimePct: null, skills: [] });
   });
   persistState();
+})();
+
+// migration: ล้างงานตัวอย่างเดิม (PT-0001 ถึง PT-0009) ที่ฝังมากับโค้ดตั้งแต่แรก ออกจากข้อมูลที่เคยถูกบันทึกลง
+// localStorage ไปแล้ว — id ชุดนี้จะไม่ถูกใช้ซ้ำอีก (planTaskSeq เริ่มที่ 9 นับขึ้นเท่านั้น) จึงกรองทิ้งซ้ำได้ทุกครั้งอย่างปลอดภัย
+(function removeSamplePlanTasks() {
+  const sampleIds = ['PT-0001','PT-0002','PT-0003','PT-0004','PT-0005','PT-0006','PT-0007','PT-0008','PT-0009'];
+  const before = planTasks.length;
+  planTasks = planTasks.filter(t => !sampleIds.includes(t.id));
+  if (planTasks.length !== before) persistState();
 })();
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
