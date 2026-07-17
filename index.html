@@ -3300,7 +3300,8 @@ function computePlanEnd(startDate, startTime, totalMinutes, shiftKey, otCaps) {
     const cap = lastExitedKey ? otCapFor(lastExitedKey) : 0;
     if (cap > 0) {
       cursor += OT_BREAK_MIN;
-      const otChunk = Math.min(remaining, cap);
+      const otAvailable = Math.max(0, cap - OT_BREAK_MIN); // เวลาพัก 20 นาทีหักออกจากโควตา OT ที่กรอกเลย ไม่ใช่เวลาที่เพิ่มขึ้นมาต่างหาก
+      const otChunk = Math.min(remaining, otAvailable);
       if (otChunk > 0) {
         if (segments[lastExitedKey]) segments[lastExitedKey].end = cursor + otChunk; // OT ต่อจากกะไหน ให้นับรวมเป็นเวลาจบของกะนั้น
         otMinutesByShift[lastExitedKey] = (otMinutesByShift[lastExitedKey] || 0) + otChunk;
