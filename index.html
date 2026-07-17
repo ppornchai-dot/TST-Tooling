@@ -2926,15 +2926,61 @@ document.addEventListener('click', function(ev) {
   closePlanDatePicker();
 });
 
+let expandedPlanDayTaskId = null;
+function togglePlanDayTaskDetail(taskId) {
+  expandedPlanDayTaskId = expandedPlanDayTaskId === taskId ? null : taskId;
+  renderPlanDay();
+}
+
+// แกะ rollIds (ตำแหน่งลำดับใน getMatchingRollsForPlan) กลับเป็น Roll จริงแต่ละตัว แล้วคำนวณเวลาเริ่ม/จบแยกทีละชิ้นต่อเนื่องกัน
+function planTaskPieceBreakdown(t) {
+  const scoped = getMatchingRollsForPlan(t.rollSet, t.rollColor);
+  const rolls = (t.rollIds || []).map(idx => scoped[idx]).filter(Boolean);
+  if (!rolls.length) return [];
+  const field = PLAN_WORKTYPE_META[t.workType].field;
+  const pieceMinutesList = rolls.map(r => parseFloat(r[field]) || 0);
+  const schedule = computePlanPieceSchedule(t.date, t.startTime, pieceMinutesList, t.shift, t.otCapMinutesByShift || {});
+  return rolls.map((r, i) => ({ roll: r, minutes: pieceMinutesList[i], range: schedule[i] || {} }));
+}
+
+function renderPlanDayTaskDetailRow(t) {
+  const pieces = planTaskPieceBreakdown(t);
+  const metricLabel = PLAN_WORKTYPE_META[t.workType].metricLabel;
+  const body = pieces.map((p, i) => {
+    const r = p.range;
+    const endBadge = r.endDate && r.startDate && r.endDate !== r.startDate
+      ? ` <span style="color:var(--accent);font-weight:700;">(+${Math.round((parseISODate(r.endDate)-parseISODate(r.startDate))/86400000)} วัน)</span>` : '';
+    return `<tr>
+      <td class="muted" style="padding-left:36px;">${i + 1}</td>
+      <td class="muted">${escapeHtmlAttr(p.roll.id)}</td>
+      <td><strong>${escapeHtmlAttr(p.roll.name)}</strong></td>
+      <td class="muted" style="text-align:right;">${escapeHtmlAttr(String(p.minutes))}</td>
+      <td class="muted">${escapeHtmlAttr(r.startTime || '—')}</td>
+      <td class="muted">${escapeHtmlAttr(r.endTime || '—')}${endBadge}</td>
+    </tr>`;
+  }).join('');
+  return `<tr><td colspan="10" style="padding:0;background:var(--bg-panel);">
+    <table>
+      <thead><tr>
+        <th style="padding-left:36px;">ลำดับ</th><th>รหัส</th><th>ชื่อ Roll</th><th style="text-align:right;">${escapeHtmlAttr(metricLabel)}</th><th>เริ่มงาน</th><th>จบงาน</th>
+      </tr></thead>
+      <tbody>${body}</tbody>
+    </table>
+  </td></tr>`;
+}
+
 function renderPlanDay() {
   const iso = toISODate(planViewDate);
   const meta = PLAN_WORKTYPE_META[currentPlanWorkType];
   document.getElementById('plan-daterange-label').textContent = fmtDateThai(planViewDate);
   document.getElementById('plan-day-title').textContent = meta.label + ' — วันที่ ' + fmtDateThai(planViewDate);
   const tasks = planTasks.filter(t => t.date === iso && matchesCurrentPlanFilter(t)).sort((a, b) => (a.startTime||'').localeCompare(b.startTime||''));
-  document.getElementById('plan-day-tbody').innerHTML = tasks.map((t, i) => `
-    <tr>
-      <td class="muted">${i + 1}</td>
+  document.getElementById('plan-day-tbody').innerHTML = tasks.map((t, i) => {
+    const expandable = (t.rollIds || []).length > 1;
+    const expanded = expandable && expandedPlanDayTaskId === t.id;
+    const row = `
+    <tr${expandable ? ` style="cursor:pointer;" onclick="togglePlanDayTaskDetail('${t.id}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : ''}>
+      <td class="muted">${expandable ? `<span aria-hidden="true" style="display:inline-block;width:12px;transition:transform .15s;transform:rotate(${expanded ? 90 : 0}deg);">▸</span> ` : ''}${i + 1}</td>
       <td>${escapeHtmlAttr(t.rollSet)}</td>
       <td>${escapeHtmlAttr(planRollColorLabel(t))}</td>
       <td class="muted">${escapeHtmlAttr(t.rollId)}</td>
@@ -2943,11 +2989,13 @@ function renderPlanDay() {
       <td class="muted" style="text-align:right;">${escapeHtmlAttr(t.totalTime != null ? String(t.totalTime) : planMetricTime(t.rollId))}</td>
       <td class="muted">${escapeHtmlAttr(t.startTime || '—')}</td>
       <td class="muted">${escapeHtmlAttr(t.endTime || '—')}${t.endDate && t.endDate !== t.date ? ` <span style="color:var(--accent);font-weight:700;">(+${Math.round((parseISODate(t.endDate)-parseISODate(t.date))/86400000)} วัน)</span>` : ''}${t.otMinutes ? ` <span class="chip chip-red" title="เวลาทำงานนอกช่วงกะ">OT ${formatMinutesAsHm(t.otMinutes).replace('≈ ', '')}</span>` : ''}</td>
-      <td style="display:flex;gap:4px;">
+      <td style="display:flex;gap:4px;" onclick="event.stopPropagation();">
         <button class="btn btn-ghost btn-sm" onclick="openPlanTaskModal('edit','${t.id}')">แก้ไข</button>
         <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deletePlanTask('${t.id}')">ลบ</button>
       </td>
-    </tr>`).join('') || `<tr><td colspan="10" style="padding:32px;text-align:center;color:var(--text-3);">ไม่มีงานตามแผนในวันนี้</td></tr>`;
+    </tr>`;
+    return row + (expanded ? renderPlanDayTaskDetailRow(t) : '');
+  }).join('') || `<tr><td colspan="10" style="padding:32px;text-align:center;color:var(--text-3);">ไม่มีงานตามแผนในวันนี้</td></tr>`;
 }
 
 function renderPlanWeek() {
@@ -3244,68 +3292,100 @@ function nextShiftEntry(fromCursor, shift) {
   });
   return best;
 }
-// คำนวณวันที่/เวลาจบงาน + เวลา OT ที่ใช้จริง (รวม + แยกรายกะ) + ช่วงเวลาเริ่ม/จบของแต่ละกะ (segments)
-// คืน {date, time, otMinutes, otMinutesByShift, segments} — segments/otMinutesByShift = { morning: ..., night: ... }
-// เวลาทำงานนอกช่วงกะจะต้องพัก OT_BREAK_MIN นาทีก่อน แล้วทำ OT ได้ไม่เกินโควตาของกะที่เพิ่งออกมา (ดู otCaps)
-// ถ้างานที่เหลือมากกว่าโควตา OT จะข้ามช่วงที่เหลือของวันไปเริ่มกะถัดไปเลย (ไม่นับเวลาที่ข้ามเป็นเวลาทำงานหรือ OT) — พักเที่ยงยังข้ามได้เฉพาะกะที่มีพักเที่ยง (lunchBreak:true)
-// OT ที่ทำต่อจากกะไหน จะถูกรวมเข้ากับเวลา "จบ" ของกะนั้น (segments[key].end ขยายตาม OT ที่ทำต่อ)
-// otCaps = { morning: นาที, night: นาที } — โควตา OT ต่อวันแยกกันของแต่ละกะ เพราะ OT ที่ต่อจากกะเช้ากับกะดึกอาจกำหนดไว้ไม่เท่ากัน
-function computePlanEnd(startDate, startTime, totalMinutes, shiftKey, otCaps) {
-  otCaps = otCaps || {};
-  const otCapFor = key => Math.max(0, otCaps[key] || 0);
-  if (!startTime || !totalMinutes) return { date: '', time: '', otMinutes: 0, otMinutesByShift: {}, segments: {} };
+// เดินเวลาไปข้างหน้า "minutes" นาทีของเวลาทำงานจริง จาก state.cursor ที่กำหนด ตามกฎกะ/พักเที่ยง/OT เดียวกันทั้งหมด
+// แก้ไข state ที่ส่งเข้ามาโดยตรง (cursor, segments, otMinutesByShift, otMinutes, lastExitedKey) — ใช้ร่วมกันได้ทั้งแบบคำนวณรวมทั้งงาน (computePlanEnd)
+// และแบบแยกคำนวณทีละชิ้น (computePlanPieceSchedule) เพื่อให้ผลลัพธ์ตรงกันเป๊ะไม่ว่าจะเรียกครั้งเดียวหรือหลายครั้งต่อกัน
+function advancePlanCursor(state, minutes) {
+  const otCapFor = key => Math.max(0, (state.otCaps && state.otCaps[key]) || 0);
+  let remaining = Math.round(minutes);
+  while (remaining > 0) {
+    if (state.lunchApplies && state.cursor % 1440 === LUNCH_BREAK_START_MIN) {
+      state.cursor += (LUNCH_BREAK_END_MIN - LUNCH_BREAK_START_MIN); // ข้ามช่วงพักเที่ยงไปทีเดียว ไม่นับเป็นเวลาทำงาน
+      continue;
+    }
+    const curKey = state.shift ? windowKeyAt(state.shift, state.cursor) : null;
+    if (!state.shift || curKey) {
+      if (curKey) {
+        if (!state.segments[curKey]) state.segments[curKey] = { start: state.cursor, end: state.cursor };
+        state.segments[curKey].end = state.cursor + 1;
+        state.lastExitedKey = curKey;
+        // กลับเข้าช่วงกะแล้ว แปลว่าการออกนอกกะครั้งก่อน (ถ้ามี) จบลงแล้วจริงๆ — ครั้งต่อไปที่ออกนอกกะถือเป็นการออกครั้งใหม่ ต้องพัก/นับโควตา OT ใหม่ทั้งหมด
+        state.otUsedThisExit = 0;
+        state.breakPaidThisExit = false;
+      }
+      state.cursor++;
+      remaining--;
+      continue;
+    }
+    // ออกนอกช่วงกะแล้ว — พัก OT_BREAK_MIN นาทีก่อน (แค่ครั้งเดียวต่อการออกนอกกะหนึ่งครั้ง แม้จะถูกแบ่งคำนวณเป็นหลายชิ้นก็ตาม) แล้วทำ OT ได้ไม่เกินโควตาของกะที่เพิ่งออกมา (lastExitedKey)
+    const cap = state.lastExitedKey ? otCapFor(state.lastExitedKey) : 0;
+    const otAvailable = Math.max(0, cap - OT_BREAK_MIN - (state.otUsedThisExit || 0)); // เวลาพัก 20 นาทีหักออกจากโควตา OT ที่กรอกเลย ไม่ใช่เวลาที่เพิ่มขึ้นมาต่างหาก
+    if (cap > 0 && otAvailable > 0) {
+      if (!state.breakPaidThisExit) {
+        state.cursor += OT_BREAK_MIN;
+        state.breakPaidThisExit = true;
+      }
+      const otChunk = Math.min(remaining, otAvailable);
+      if (otChunk > 0) {
+        if (state.segments[state.lastExitedKey]) state.segments[state.lastExitedKey].end = state.cursor + otChunk; // OT ต่อจากกะไหน ให้นับรวมเป็นเวลาจบของกะนั้น
+        state.otMinutesByShift[state.lastExitedKey] = (state.otMinutesByShift[state.lastExitedKey] || 0) + otChunk;
+        state.otMinutes += otChunk;
+        state.otUsedThisExit = (state.otUsedThisExit || 0) + otChunk;
+      }
+      state.cursor += otChunk;
+      remaining -= otChunk;
+    }
+    // ข้ามไปเริ่มกะถัดไปเฉพาะตอนที่ cursor ยังอยู่นอกทุกช่วงกะจริงๆ (โควตา OT ไม่พอ) — ถ้า OT ที่เพิ่งทำพาข้ามเข้ากะถัดไปพอดีแล้ว (เช่น OT กะเช้ายาวจนถึงเวลาเริ่มกะดึก) ปล่อยให้ลูปด้านบนรับช่วงกะนั้นต่อเอง ไม่งั้นจะข้ามกะนั้นไปทั้งวันโดยไม่ได้วางแผนเวลาให้เลย
+    if (remaining > 0 && !windowKeyAt(state.shift, state.cursor)) state.cursor = nextShiftEntry(state.cursor, state.shift);
+  }
+}
+
+// เตรียม state เริ่มต้นสำหรับเดินเวลา — ใช้ร่วมกันทั้ง computePlanEnd และ computePlanPieceSchedule
+function initPlanCursorState(startTime, shiftKey, otCaps) {
   const [h, m] = startTime.split(':').map(Number);
-  if (Number.isNaN(h) || Number.isNaN(m)) return { date: '', time: '', otMinutes: 0, otMinutesByShift: {}, segments: {} };
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
   const shift = SHIFTS[shiftKey] || null;
   const lunchApplies = !shift || shift.lunchBreak;
   let cursor = h * 60 + m;
-  let remaining = Math.round(totalMinutes);
-  let otMinutes = 0;
-  const otMinutesByShift = {};
-  const segments = {};
-  let lastExitedKey = null;
   // ถ้าเวลาเริ่มงานตกอยู่ในช่วงพักเที่ยงพอดี (เฉพาะกะที่มีพักเที่ยง) ให้เลื่อนไปเริ่มนับตอน 13:00 ของวันนั้นก่อน
   if (lunchApplies && cursor % 1440 >= LUNCH_BREAK_START_MIN && cursor % 1440 < LUNCH_BREAK_END_MIN) {
     cursor += LUNCH_BREAK_END_MIN - (cursor % 1440);
   }
-  while (remaining > 0) {
-    if (lunchApplies && cursor % 1440 === LUNCH_BREAK_START_MIN) {
-      cursor += (LUNCH_BREAK_END_MIN - LUNCH_BREAK_START_MIN); // ข้ามช่วงพักเที่ยงไปทีเดียว ไม่นับเป็นเวลาทำงาน
-      continue;
-    }
-    const curKey = shift ? windowKeyAt(shift, cursor) : null;
-    if (!shift || curKey) {
-      if (curKey) {
-        if (!segments[curKey]) segments[curKey] = { start: cursor, end: cursor };
-        segments[curKey].end = cursor + 1;
-        lastExitedKey = curKey;
-      }
-      cursor++;
-      remaining--;
-      continue;
-    }
-    // ออกนอกช่วงกะแล้ว — พัก OT_BREAK_MIN นาทีก่อน แล้วทำ OT ได้ไม่เกินโควตาของกะที่เพิ่งออกมา (lastExitedKey)
-    const cap = lastExitedKey ? otCapFor(lastExitedKey) : 0;
-    if (cap > 0) {
-      cursor += OT_BREAK_MIN;
-      const otAvailable = Math.max(0, cap - OT_BREAK_MIN); // เวลาพัก 20 นาทีหักออกจากโควตา OT ที่กรอกเลย ไม่ใช่เวลาที่เพิ่มขึ้นมาต่างหาก
-      const otChunk = Math.min(remaining, otAvailable);
-      if (otChunk > 0) {
-        if (segments[lastExitedKey]) segments[lastExitedKey].end = cursor + otChunk; // OT ต่อจากกะไหน ให้นับรวมเป็นเวลาจบของกะนั้น
-        otMinutesByShift[lastExitedKey] = (otMinutesByShift[lastExitedKey] || 0) + otChunk;
-      }
-      cursor += otChunk;
-      remaining -= otChunk;
-      otMinutes += otChunk;
-    }
-    // ข้ามไปเริ่มกะถัดไปเฉพาะตอนที่ cursor ยังอยู่นอกทุกช่วงกะจริงๆ (โควตา OT ไม่พอ) — ถ้า OT ที่เพิ่งทำพาข้ามเข้ากะถัดไปพอดีแล้ว (เช่น OT กะเช้ายาวจนถึงเวลาเริ่มกะดึก) ปล่อยให้ลูปด้านบนรับช่วงกะนั้นต่อเอง ไม่งั้นจะข้ามกะนั้นไปทั้งวันโดยไม่ได้วางแผนเวลาให้เลย
-    if (remaining > 0 && !windowKeyAt(shift, cursor)) cursor = nextShiftEntry(cursor, shift);
-  }
-  const daysElapsed = Math.floor(cursor / 1440);
-  const eh = Math.floor(cursor / 60) % 24;
-  const em = cursor % 60;
+  return { cursor, shift, lunchApplies, otCaps: otCaps || {}, segments: {}, otMinutesByShift: {}, otMinutes: 0, lastExitedKey: null, otUsedThisExit: 0, breakPaidThisExit: false };
+}
+
+// คำนวณวันที่/เวลาจบงาน + เวลา OT ที่ใช้จริง (รวม + แยกรายกะ) + ช่วงเวลาเริ่ม/จบของแต่ละกะ (segments)
+// คืน {date, time, otMinutes, otMinutesByShift, segments} — segments/otMinutesByShift = { morning: ..., night: ... }
+// otCaps = { morning: นาที, night: นาที } — โควตา OT ต่อวันแยกกันของแต่ละกะ เพราะ OT ที่ต่อจากกะเช้ากับกะดึกอาจกำหนดไว้ไม่เท่ากัน
+function computePlanEnd(startDate, startTime, totalMinutes, shiftKey, otCaps) {
+  if (!startTime || !totalMinutes) return { date: '', time: '', otMinutes: 0, otMinutesByShift: {}, segments: {} };
+  const state = initPlanCursorState(startTime, shiftKey, otCaps);
+  if (!state) return { date: '', time: '', otMinutes: 0, otMinutesByShift: {}, segments: {} };
+  advancePlanCursor(state, totalMinutes);
+  const daysElapsed = Math.floor(state.cursor / 1440);
+  const eh = Math.floor(state.cursor / 60) % 24;
+  const em = state.cursor % 60;
   const time = String(eh).padStart(2, '0') + ':' + String(em).padStart(2, '0');
-  return { date: startDate ? addDaysIso(startDate, daysElapsed) : '', time, otMinutes, otMinutesByShift, segments };
+  return { date: startDate ? addDaysIso(startDate, daysElapsed) : '', time, otMinutes: state.otMinutes, otMinutesByShift: state.otMinutesByShift, segments: state.segments };
+}
+
+// เหมือน computePlanEnd แต่แยกคำนวณเวลาเริ่ม/จบของงานทีละชิ้น (ต่อเนื่องกันไปตามลำดับ) — ใช้แสดงรายละเอียดเวลาต่อชิ้นในงานที่มีหลาย Roll
+// pieceMinutesList = [นาทีต่อชิ้น, ...] ตามลำดับที่จะทำ — คืน [{startDate, startTime, endDate, endTime}, ...] ความยาวเท่ากับ pieceMinutesList
+function computePlanPieceSchedule(startDate, startTime, pieceMinutesList, shiftKey, otCaps) {
+  if (!startTime || !pieceMinutesList || !pieceMinutesList.length) return [];
+  const state = initPlanCursorState(startTime, shiftKey, otCaps);
+  if (!state) return [];
+  return pieceMinutesList.map(minutes => {
+    const startAbs = state.cursor;
+    advancePlanCursor(state, minutes || 0);
+    const endAbs = state.cursor;
+    return {
+      startDate: addDaysIso(startDate, Math.floor(startAbs / 1440)),
+      startTime: absMinuteToClock(startAbs),
+      endDate: addDaysIso(startDate, Math.floor(endAbs / 1440)),
+      endTime: absMinuteToClock(endAbs),
+    };
+  });
 }
 
 // อัปเดตแค่ค่า/สถานะ active ของปุ่มกะ + เปิด/ปิดช่องเริ่มงานของแต่ละกะตามโหมด ไม่แตะเวลาเริ่มงาน — ใช้ตอนเปิดฟอร์ม (โหลดค่าเดิม) ที่ไม่ต้องการทับเวลาที่ผู้ใช้ตั้งไว้เอง
