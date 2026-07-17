@@ -1284,7 +1284,14 @@ canvas{display:block;}
     ══════════════════════════════════════════ -->
     <div class="page" id="page-daily">
       <div class="section-title">งานประจำวัน</div>
-      <div class="section-sub">เช็คลิสต์งานประจำวันของทีม Tooling — วันที่ 2 ก.ค. 2569</div>
+      <div class="section-sub" id="daily-section-sub">เช็คลิสต์งานประจำวันของทีม Tooling — วันที่ 2 ก.ค. 2569</div>
+
+      <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
+        <button class="btn btn-ghost btn-sm" onclick="dailyNav(-1)">‹ ก่อนหน้า</button>
+        <input type="date" class="form-input" id="daily-date-input" style="width:auto;" onchange="setDailyViewDate(this.value)">
+        <button class="btn btn-ghost btn-sm" onclick="dailyNav(1)">ถัดไป ›</button>
+        <button class="btn btn-ghost btn-sm" onclick="dailyGoToday()" style="margin-left:auto;">วันนี้</button>
+      </div>
 
       <div class="kpi-grid">
         <div class="kpi-card blue">
@@ -1873,6 +1880,7 @@ function showPage(id) {
   currentPage = id;
   try { localStorage.setItem(CURRENT_PAGE_STORAGE_KEY, id); } catch (e) { /* localStorage unavailable — แค่จำหน้าไม่ได้ตอนรีเฟรช ไม่กระทบการใช้งานอื่น */ }
   if (id === 'dashboard') initDashboard();
+  if (id === 'daily') renderDailyTasks();
 }
 
 function initDashboard() {
@@ -2568,6 +2576,26 @@ const GANTT_CATEGORY_META = {
   repair:    { label: 'ซ่อมแซม', color: 'var(--red)' },
   inspect:   { label: 'ตรวจสอบ/อื่นๆ', color: 'var(--accent-dim)' }
 };
+
+// ─── DAILY TASKS (หน้างานประจำวัน) — ข้อมูลอยู่ก่อน restoreState() เพื่อไม่ให้ชนกับ TDZ ─
+const DAILY_TASKS = [
+  {time:'08:00', task:'ตรวจสอบ Runout Work Roll Stand 1', type:'ตรวจสอบ', ref:'Mill-01 Stand 1', who:'สมชาย ว.'},
+  {time:'09:00', task:'ทำความสะอาด + ตรวจ Slitter Knife Ø250', type:'ทำความสะอาด', ref:'Slitter-01', who:'วิรัตน์ ส.'},
+  {time:'10:30', task:'ตรวจสอบฟัน Circular Cold Saw Ø710', type:'ตรวจสอบ', ref:'Cold Saw-01', who:'อนุชา ท.'},
+  {time:'11:00', task:'เช็คน้ำหล่อเย็นทุกเครื่อง', type:'PM', ref:'ทุกเครื่อง', who:'ปิยะ ร.'},
+  {time:'11:30', task:'บันทึกอุณหภูมิ Bearing Backup Roll', type:'ตรวจสอบ', ref:'Mill-01 Stand 1', who:'พรชัย ป.'},
+  {time:'14:00', task:'ตรวจความตึงใบ Band Saw Blade', type:'ตรวจสอบ', ref:'Band Saw-01', who:'วิรัตน์ ส.'},
+  {time:'16:30', task:'เดินตรวจ 5ส พื้นที่ Tooling Room', type:'ตรวจสอบ', ref:'Tooling Room', who:'สมชาย ว.'},
+];
+const DAILY_STATUS_META = {
+  done:    {label:'สำเร็จ',      chip:'chip-green'},
+  pending: {label:'รอดำเนินการ', chip:'chip-amber'},
+  overdue: {label:'เลยเวลา',     chip:'chip-red'},
+};
+const DAILY_TODAY_ISO = '2026-07-02'; // วันที่ใช้อ้างอิงเป็น "วันนี้" ของระบบ (ข้อมูลตัวอย่างทั้งหมดอิงวันนี้)
+let dailyViewDate = DAILY_TODAY_ISO;
+// สถานะเช็คลิสต์แยกตามวันที่ที่ดู — { 'YYYY-MM-DD': { [taskIndex]: 'done'|'pending'|'overdue' } } ค่าที่ไม่มีถือว่า 'pending'
+let dailyStatusByDate = { [DAILY_TODAY_ISO]: {0:'done', 1:'done', 4:'overdue'} };
 
 // ─── TEAM MEMBERS (หน้าทีมงาน) — ข้อมูลอยู่ก่อน restoreState() เพื่อไม่ให้ชนกับ TDZ ─
 const TEAM_STATUS_META = {
@@ -3847,6 +3875,7 @@ function persistState() {
       toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus,
       planTasks, planTaskSeq, teamMembers, teamSeq,
       ganttTasks, ganttTaskSeq, planGanttWindowStart,
+      dailyStatusByDate,
       prodBlockProducts, prodBlockSeq, prodBlockCells, prodBlockPM, prodBlockSummary,
       prodBlockEntries, prodBlockEntrySeq, prodBlockActiveMachine, prodBlockViewMonth
     }));
@@ -3875,6 +3904,7 @@ function restoreState() {
     if (Array.isArray(saved.ganttTasks)) ganttTasks = saved.ganttTasks;
     if (typeof saved.ganttTaskSeq === 'number') ganttTaskSeq = saved.ganttTaskSeq;
     if (typeof saved.planGanttWindowStart === 'string') planGanttWindowStart = saved.planGanttWindowStart;
+    if (saved.dailyStatusByDate) dailyStatusByDate = saved.dailyStatusByDate;
     if (Array.isArray(saved.teamMembers)) teamMembers = saved.teamMembers;
     if (typeof saved.teamSeq === 'number') teamSeq = saved.teamSeq;
     if (Array.isArray(saved.prodBlockProducts)) prodBlockProducts = saved.prodBlockProducts;
@@ -4718,35 +4748,54 @@ function changePage(tab, page) {
   else if (tab==='slitter') renderSlitterTable(page);
 }
 
-// ─── DAILY TASKS (งานประจำวัน) ──────────────────────────────────────────────────
-const DAILY_TASKS = [
-  {time:'08:00', task:'ตรวจสอบ Runout Work Roll Stand 1', type:'ตรวจสอบ', ref:'Mill-01 Stand 1', who:'สมชาย ว.', status:'done'},
-  {time:'09:00', task:'ทำความสะอาด + ตรวจ Slitter Knife Ø250', type:'ทำความสะอาด', ref:'Slitter-01', who:'วิรัตน์ ส.', status:'done'},
-  {time:'10:30', task:'ตรวจสอบฟัน Circular Cold Saw Ø710', type:'ตรวจสอบ', ref:'Cold Saw-01', who:'อนุชา ท.', status:'pending'},
-  {time:'11:00', task:'เช็คน้ำหล่อเย็นทุกเครื่อง', type:'PM', ref:'ทุกเครื่อง', who:'ปิยะ ร.', status:'pending'},
-  {time:'11:30', task:'บันทึกอุณหภูมิ Bearing Backup Roll', type:'ตรวจสอบ', ref:'Mill-01 Stand 1', who:'พรชัย ป.', status:'overdue'},
-  {time:'14:00', task:'ตรวจความตึงใบ Band Saw Blade', type:'ตรวจสอบ', ref:'Band Saw-01', who:'วิรัตน์ ส.', status:'pending'},
-  {time:'16:30', task:'เดินตรวจ 5ส พื้นที่ Tooling Room', type:'ตรวจสอบ', ref:'Tooling Room', who:'สมชาย ว.', status:'pending'},
-];
-
-const DAILY_STATUS_META = {
-  done:    {label:'สำเร็จ',      chip:'chip-green'},
-  pending: {label:'รอดำเนินการ', chip:'chip-amber'},
-  overdue: {label:'เลยเวลา',     chip:'chip-red'},
-};
+// ─── DAILY TASKS (งานประจำวัน) — เลือกดูเช็คลิสต์แต่ละวันได้ (ดูข้อมูลที่ประกาศไว้ก่อน restoreState() ด้านบน) ──
+function getDailyStatus(idx) {
+  return (dailyStatusByDate[dailyViewDate] || {})[idx] || 'pending';
+}
 
 function toggleDailyTask(idx) {
-  DAILY_TASKS[idx].status = DAILY_TASKS[idx].status === 'done' ? 'pending' : 'done';
+  const dayMap = dailyStatusByDate[dailyViewDate] || (dailyStatusByDate[dailyViewDate] = {});
+  dayMap[idx] = getDailyStatus(idx) === 'done' ? 'pending' : 'done';
+  persistState();
+  renderDailyTasks();
+}
+
+function setDailyViewDate(iso) {
+  if (!iso) return;
+  dailyViewDate = iso;
+  renderDailyTasks();
+}
+
+function dailyNav(dir) {
+  dailyViewDate = addDaysIso(dailyViewDate, dir);
+  renderDailyTasks();
+}
+
+function dailyGoToday() {
+  dailyViewDate = DAILY_TODAY_ISO;
   renderDailyTasks();
 }
 
 function renderDailyTasks() {
   const tbody = document.getElementById('tbody-daily');
   if (!tbody) return;
+
+  const dateInput = document.getElementById('daily-date-input');
+  if (dateInput) dateInput.value = dailyViewDate;
+  const subText = 'เช็คลิสต์งานประจำวันของทีม Tooling — วันที่ ' + fmtDateThai(parseISODate(dailyViewDate));
+  const subEl = document.getElementById('daily-section-sub');
+  if (subEl) subEl.textContent = subText;
+  if (PAGE_META.daily) PAGE_META.daily.sub = subText;
+  if (currentPage === 'daily') {
+    const topSub = document.getElementById('page-sub');
+    if (topSub) topSub.textContent = subText;
+  }
+
   tbody.innerHTML = DAILY_TASKS.map((t, i) => {
-    const meta = DAILY_STATUS_META[t.status];
+    const status = getDailyStatus(i);
+    const meta = DAILY_STATUS_META[status];
     return `<tr>
-      <td><input type="checkbox" ${t.status==='done'?'checked':''} onchange="toggleDailyTask(${i})" style="width:16px;height:16px;cursor:pointer;"></td>
+      <td><input type="checkbox" ${status==='done'?'checked':''} onchange="toggleDailyTask(${i})" style="width:16px;height:16px;cursor:pointer;"></td>
       <td class="muted">${t.time}</td>
       <td><strong>${t.task}</strong></td>
       <td class="muted">${t.type}</td>
@@ -4756,10 +4805,11 @@ function renderDailyTasks() {
     </tr>`;
   }).join('');
 
+  const statuses = DAILY_TASKS.map((_, i) => getDailyStatus(i));
   document.getElementById('daily-kpi-total').textContent = DAILY_TASKS.length;
-  document.getElementById('daily-kpi-done').textContent = DAILY_TASKS.filter(t=>t.status==='done').length;
-  document.getElementById('daily-kpi-pending').textContent = DAILY_TASKS.filter(t=>t.status==='pending').length;
-  document.getElementById('daily-kpi-overdue').textContent = DAILY_TASKS.filter(t=>t.status==='overdue').length;
+  document.getElementById('daily-kpi-done').textContent = statuses.filter(s=>s==='done').length;
+  document.getElementById('daily-kpi-pending').textContent = statuses.filter(s=>s==='pending').length;
+  document.getElementById('daily-kpi-overdue').textContent = statuses.filter(s=>s==='overdue').length;
 }
 
 renderDailyTasks();
