@@ -3309,7 +3309,8 @@ function computePlanEnd(startDate, startTime, totalMinutes, shiftKey, otCaps) {
       remaining -= otChunk;
       otMinutes += otChunk;
     }
-    if (remaining > 0) cursor = nextShiftEntry(cursor, shift); // เกินโควตา OT แล้ว — ข้ามไปเริ่มกะถัดไปเลย
+    // ข้ามไปเริ่มกะถัดไปเฉพาะตอนที่ cursor ยังอยู่นอกทุกช่วงกะจริงๆ (โควตา OT ไม่พอ) — ถ้า OT ที่เพิ่งทำพาข้ามเข้ากะถัดไปพอดีแล้ว (เช่น OT กะเช้ายาวจนถึงเวลาเริ่มกะดึก) ปล่อยให้ลูปด้านบนรับช่วงกะนั้นต่อเอง ไม่งั้นจะข้ามกะนั้นไปทั้งวันโดยไม่ได้วางแผนเวลาให้เลย
+    if (remaining > 0 && !windowKeyAt(shift, cursor)) cursor = nextShiftEntry(cursor, shift);
   }
   const daysElapsed = Math.floor(cursor / 1440);
   const eh = Math.floor(cursor / 60) % 24;
