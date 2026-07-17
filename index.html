@@ -4793,22 +4793,37 @@ function renderDailyTasks() {
     if (topSub) topSub.textContent = subText;
   }
 
-  tbody.innerHTML = DAILY_TASKS.map((t, i) => {
-    const status = getDailyStatus(i);
+  // เช็คลิสต์ประจำวัน (คงที่ทุกวัน) + งาน CNC/ขัด Roll ที่วางแผนไว้ในหน้า "วางแผน" สำหรับวันนี้โดยเฉพาะ — รวมเป็นรายการเดียวกัน เรียงตามเวลา
+  const checklistItems = DAILY_TASKS.map((t, i) => ({ key: i, time: t.time, task: t.task, type: t.type, ref: t.ref, who: t.who }));
+  const plannedItems = planTasks.filter(t => t.date === dailyViewDate).map(t => {
+    const workMeta = PLAN_WORKTYPE_META[t.workType];
+    return {
+      key: t.id,
+      time: t.startTime || '—',
+      task: t.rollName,
+      type: workMeta ? workMeta.label.replace('แผนงาน', '').trim() : t.workType,
+      ref: [t.rollSet, t.rollId].filter(Boolean).join(' — '),
+      who: (SHIFTS[t.shift] || {}).label || '—',
+    };
+  });
+  const allItems = checklistItems.concat(plannedItems).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+
+  tbody.innerHTML = allItems.map(item => {
+    const status = getDailyStatus(item.key);
     const meta = DAILY_STATUS_META[status];
     return `<tr>
-      <td><input type="checkbox" ${status==='done'?'checked':''} onchange="toggleDailyTask(${i})" style="width:16px;height:16px;cursor:pointer;"></td>
-      <td class="muted">${t.time}</td>
-      <td><strong>${t.task}</strong></td>
-      <td class="muted">${t.type}</td>
-      <td class="muted">${t.ref}</td>
-      <td class="muted">${t.who}</td>
+      <td><input type="checkbox" ${status==='done'?'checked':''} onchange="toggleDailyTask('${item.key}')" style="width:16px;height:16px;cursor:pointer;"></td>
+      <td class="muted">${escapeHtmlAttr(item.time)}</td>
+      <td><strong>${escapeHtmlAttr(item.task)}</strong></td>
+      <td class="muted">${escapeHtmlAttr(item.type)}</td>
+      <td class="muted">${escapeHtmlAttr(item.ref)}</td>
+      <td class="muted">${escapeHtmlAttr(item.who)}</td>
       <td><span class="chip ${meta.chip}">${meta.label}</span></td>
     </tr>`;
   }).join('');
 
-  const statuses = DAILY_TASKS.map((_, i) => getDailyStatus(i));
-  document.getElementById('daily-kpi-total').textContent = DAILY_TASKS.length;
+  const statuses = allItems.map(item => getDailyStatus(item.key));
+  document.getElementById('daily-kpi-total').textContent = allItems.length;
   document.getElementById('daily-kpi-done').textContent = statuses.filter(s=>s==='done').length;
   document.getElementById('daily-kpi-pending').textContent = statuses.filter(s=>s==='pending').length;
   document.getElementById('daily-kpi-overdue').textContent = statuses.filter(s=>s==='overdue').length;
