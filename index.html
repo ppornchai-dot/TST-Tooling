@@ -3696,6 +3696,42 @@ function resequencePlanTask(taskId) {
   renderCurrentPlanView();
 }
 
+// ต่อเวลางานที่ "ทับ/ไม่ต่อเนื่อง" กับงานประเภทเดียวกันก่อนหน้าให้อัตโนมัติทันที (ไม่ต้องกดปุ่ม "ต่อเวลา" เอง) — เรียกทุกครั้งหลังบันทึก/ลบ/สร้างงานวางแผน
+// ไล่ทีละประเภทงาน เรียงตามเวลาเริ่มจริง แล้วต่อเวลาทีละคู่จากซ้ายไปขวาซ้ำจนกว่าจะเรียงต่อกันหมดแล้ว (กันเคสที่ขยับคิวหนึ่งแล้วดันไปทับอีกคิวที่อยู่ถัดไป)
+function autoFixPlanSequencing() {
+  const workTypes = Object.keys(PLAN_WORKTYPE_META);
+  let anyChanged = false;
+  let changed = true;
+  let guard = 0;
+  while (changed && guard < 1000) {
+    changed = false;
+    guard++;
+    workTypes.forEach(workType => {
+      const tasks = planTasks
+        .filter(t => t.workType === workType && t.endDate && t.endTime && t.endTime !== '—')
+        .sort((a, b) => {
+          const ak = a.date + ' ' + (a.startTime || ''), bk = b.date + ' ' + (b.startTime || '');
+          return ak !== bk ? ak.localeCompare(bk) : (a.id < b.id ? -1 : 1);
+        });
+      for (let i = 1; i < tasks.length; i++) {
+        const prev = tasks[i - 1], cur = tasks[i];
+        if (cur.date === prev.endDate && cur.startTime === prev.endTime) continue;
+        cur.date = prev.endDate;
+        cur.shift = prev.shift;
+        cur.startTime = prev.endTime;
+        const computed = computePlanEnd(cur.date, cur.startTime, cur.totalTime, cur.shift, cur.otCapMinutesByShift || {});
+        cur.endTime = computed.time;
+        cur.endDate = computed.date || cur.date;
+        cur.otMinutes = computed.otMinutes || 0;
+        cur.otMinutesByShift = computed.otMinutesByShift || {};
+        changed = true;
+        anyChanged = true;
+      }
+    });
+  }
+  return anyChanged;
+}
+
 function openPlanTaskModal(mode, taskId, presetDate) {
   const task = mode === 'edit' ? planTasks.find(t => t.id === taskId) : null;
   const workType = task ? task.workType : currentPlanWorkType;
@@ -3785,6 +3821,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
       planTaskSeq++;
       planTasks.push({ id: 'PT-' + String(planTaskSeq).padStart(4, '0'), workType, ...data, splitGroupId: null });
     }
+    autoFixPlanSequencing();
     persistState();
     renderCurrentPlanView();
     const btn = this;
@@ -3800,6 +3837,7 @@ function deletePlanTask(taskId) {
   if (!t) return;
   if (!confirm('ลบงาน "' + t.rollId + ' — ' + t.rollName + '" ออกจากแผน?')) return;
   planTasks = planTasks.filter(x => x.id !== taskId);
+  autoFixPlanSequencing();
   persistState();
   renderCurrentPlanView();
 }
@@ -4299,6 +4337,9 @@ syncRollStatusWithProdBlock();
   });
   if (removed) { planTasks = keep; persistState(); }
 })();
+
+// migration: งานวางแผนเก่าที่เคยทับเวลากัน/ไม่ต่อเนื่องกัน (ก่อนมีระบบต่อเวลาอัตโนมัติ) ให้ต่อเวลาให้เรียบร้อยตั้งแต่ตอนโหลดแอปเลย ไม่ต้องรอให้ผู้ใช้กดปุ่ม "ต่อเวลา" เอง
+if (autoFixPlanSequencing()) persistState();
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 // เรียกหลัง restoreState() เสมอ เพื่อให้ Dashboard แสดงข้อมูลที่กู้คืนจาก localStorage ได้ถูกต้อง
@@ -5208,7 +5249,10 @@ function maybeAutoContinueDailyPlan(dateIso) {
     }
     createdCount++;
   });
-  if (createdCount) alert(`งานวันที่ ${fmtDateThai(parseISODate(dateIso))} เสร็จครบแล้ว — สร้างแผนวันที่ ${fmtDateThai(parseISODate(nextDate))} ต่อให้อัตโนมัติ ${createdCount} งาน`);
+  if (createdCount) {
+    autoFixPlanSequencing();
+    alert(`งานวันที่ ${fmtDateThai(parseISODate(dateIso))} เสร็จครบแล้ว — สร้างแผนวันที่ ${fmtDateThai(parseISODate(nextDate))} ต่อให้อัตโนมัติ ${createdCount} งาน`);
+  }
 }
 
 function setDailyViewDate(iso) {
