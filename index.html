@@ -3489,19 +3489,45 @@ function computePlanPieceSchedule(startDate, startTime, pieceMinutesList, shiftK
   });
 }
 
-// ถ้าเวลาทำงานของ Roll ที่เลือกทั้งหมด (ตามลำดับ) ยาวข้ามคืนไปมากกว่า 1 วันปฏิทิน ให้ตัดเป็นงานแยกทีละวันจริง แทนที่จะเก็บเป็นงานก้อนเดียวที่วันที่เริ่มงานวันเดียว
-// (rollIds ของแต่ละงานที่ตัดออกมายังอ้างอิงตำแหน่งเดิมในกลุ่ม Size Roll/สีเดิมได้ปกติ เพราะ Size Roll/สีไม่เปลี่ยน — จัดกลุ่มชิ้นตาม "วันที่เริ่ม" ของแต่ละชิ้น ไม่ตัดกลางชิ้นแม้ชิ้นนั้นจะยาวข้ามเที่ยงคืนไปจบอีกวันก็ตาม)
-// คืนค่า null ถ้าทำงานจบภายในวันเดียว — ให้ผู้เรียกบันทึกเป็นงานเดียวตามปกติ
+// "1 วัน" ของการวางแผนนับตามรอบกะทำงานจริง (กะเช้า 08:00–17:00 / กะดึก 20:00–05:00 ไม่รวม OT) ไม่ใช่ตามวันปฏิทิน —
+// กะดึกที่ข้ามเที่ยงคืนไปตามปกติ (ยังไม่เข้า OT) ยังถือเป็นงานของ "1 วัน" เดียวกัน ไม่ตัดที่เที่ยงคืน
+// ส่วน OT ที่ทำต่อจากกะใดกะหนึ่งไปจนกว่าจะเข้ากะถัดไป ถือว่ายังเป็นของ "วันที่เริ่มกะนั้น" (วันก่อนหน้า) ไม่ใช่วันถัดไป
+// จุดเริ่ม "วันใหม่" คือทุกครั้งที่เข้าสู่ช่วงเวลาปกติ (type: 'normal') แบบเป็นรอบกะใหม่จริงๆ — คือช่วงแรกสุดของงาน, หรือมาหลังจากรอกะถัดไป (shiftgap), หรือกะเปลี่ยนขณะทำต่อเนื่อง (เช้า⇄ดึก)
+// ถ้าทำงานยาวข้ามรอบกะแบบนี้ไปมากกว่า 1 รอบ ให้ตัดเป็นงานแยกทีละวันจริง แทนที่จะเก็บเป็นงานก้อนเดียวที่วันที่เริ่มงานวันเดียว
+// (rollIds ของแต่ละงานที่ตัดออกมายังอ้างอิงตำแหน่งเดิมในกลุ่ม Size Roll/สีเดิมได้ปกติ เพราะ Size Roll/สีไม่เปลี่ยน)
+// คืนค่า null ถ้าทำงานจบภายในรอบกะเดียว — ให้ผู้เรียกบันทึกเป็นงานเดียวตามปกติ
 function splitPlanDataAcrossDays(base, rolls, workType) {
   const field = PLAN_WORKTYPE_META[workType].field;
   const pieceMinutesList = rolls.map(r => parseFloat(r[field]) || 0);
   const schedule = computePlanPieceSchedule(base.date, base.startTime, pieceMinutesList, base.shift, base.otCapMinutesByShift || {});
   if (!schedule.length) return null;
+
+  let lastNormalShiftKey = null;
+  let freshEntry = true; // เพิ่งเริ่มงาน/เพิ่งรอกะถัดไปมา — เจอช่วงปกติถัดไปนับเป็น "วันใหม่" เสมอ
+  let sessionIdx = -1;
+  const pieceSessionIdx = schedule.map(piece => {
+    const segs = (piece.segments && piece.segments.length) ? piece.segments : [{ type: 'normal', shiftKey: base.shift }];
+    let firstSession = null;
+    segs.forEach(seg => {
+      if (seg.type === 'normal') {
+        if (freshEntry || seg.shiftKey !== lastNormalShiftKey) sessionIdx++;
+        if (firstSession === null) firstSession = sessionIdx;
+        lastNormalShiftKey = seg.shiftKey;
+        freshEntry = false;
+      } else if (seg.type === 'shiftgap') {
+        freshEntry = true;
+      }
+      // ot/otbreak/lunch/lunch_night: ยังถือเป็นวันเดิมต่อเนื่อง (OT รวมกับวันก่อนหน้าตามเกณฑ์ที่ตกลงกัน)
+    });
+    if (sessionIdx < 0) sessionIdx = 0;
+    return firstSession === null ? sessionIdx : firstSession;
+  });
+
   const groups = [];
-  schedule.forEach((piece, i) => {
+  pieceSessionIdx.forEach((sIdx, i) => {
     const last = groups[groups.length - 1];
-    if (last && last.date === piece.startDate) last.indices.push(i);
-    else groups.push({ date: piece.startDate, indices: [i] });
+    if (last && last.sessionIdx === sIdx) last.indices.push(i);
+    else groups.push({ sessionIdx: sIdx, indices: [i] });
   });
   if (groups.length <= 1) return null;
   return groups.map(grp => {
@@ -3516,7 +3542,7 @@ function splitPlanDataAcrossDays(base, rolls, workType) {
       if (s.type === 'ot') { otMinutes += s.minutes; otMinutesByShift[s.shiftKey] = (otMinutesByShift[s.shiftKey] || 0) + s.minutes; }
     }));
     return {
-      date: grp.date,
+      date: first.startDate,
       rollIds: grp.indices.map(i => base.rollIds[i]),
       rollId: groupRolls.length + ' Roll',
       rollName: groupRolls.map(r => r.name).join(', '),
