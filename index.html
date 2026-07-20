@@ -2694,12 +2694,12 @@ const PLAN_WORKTYPE_META = {
 let currentPlanWorkType = 'cnc';
 
 // ─── กะทำงาน (เช้า/ดึก/2 กะ) — แต่ละกะมี "windows" ของช่วงเวลาปกติ (นาทีของวัน) เวลาที่ทำงานนอกทุก window นับเป็น OT ───
-// กะเช้ามีพักเที่ยง 12:00–13:00 (ไม่นับเป็นเวลาทำงาน) ส่วนกะดึกข้ามเที่ยงคืนไปวันถัดไป ไม่มีพักเที่ยง
-// "2 กะ" (ทำงานต่อเนื่องทั้งเช้า+ดึก) รวม window ของทั้งสองกะไว้ด้วยกัน — ช่วงคาบเกี่ยว (17:00–20:00 และ 05:00–08:00) ยังนับเป็น OT เหมือนเดิม
+// กะเช้ามีพักเที่ยง 12:00–13:00 ส่วนกะดึกมีพักเที่ยงคืน 00:00–01:00 (ทั้งคู่ไม่นับเป็นเวลาทำงาน)
+// "2 กะ" (ทำงานต่อเนื่องทั้งเช้า+ดึก) รวม window และพักของทั้งสองกะไว้ด้วยกัน — ช่วงคาบเกี่ยว (17:00–20:00 และ 05:00–08:00) ยังนับเป็น OT เหมือนเดิม
 const SHIFTS = {
-  morning: { key: 'morning', label: 'กะเช้า', start: '08:00', end: '17:00', windows: [{ startMin: 8 * 60, endMin: 17 * 60, shiftKey: 'morning' }], lunchBreak: true },
-  night:   { key: 'night',   label: 'กะดึก',  start: '20:00', end: '05:00', windows: [{ startMin: 20 * 60, endMin: 5 * 60, shiftKey: 'night' }], lunchBreak: false },
-  both:    { key: 'both',    label: '2 กะ',   start: '08:00', end: '05:00', windows: [{ startMin: 8 * 60, endMin: 17 * 60, shiftKey: 'morning' }, { startMin: 20 * 60, endMin: 5 * 60, shiftKey: 'night' }], lunchBreak: true },
+  morning: { key: 'morning', label: 'กะเช้า', start: '08:00', end: '17:00', windows: [{ startMin: 8 * 60, endMin: 17 * 60, shiftKey: 'morning' }], breaks: [{ startMin: 12 * 60, endMin: 13 * 60, shiftKey: 'morning', type: 'lunch' }] },
+  night:   { key: 'night',   label: 'กะดึก',  start: '20:00', end: '05:00', windows: [{ startMin: 20 * 60, endMin: 5 * 60, shiftKey: 'night' }], breaks: [{ startMin: 0, endMin: 60, shiftKey: 'night', type: 'lunch_night' }] },
+  both:    { key: 'both',    label: '2 กะ',   start: '08:00', end: '05:00', windows: [{ startMin: 8 * 60, endMin: 17 * 60, shiftKey: 'morning' }, { startMin: 20 * 60, endMin: 5 * 60, shiftKey: 'night' }], breaks: [{ startMin: 12 * 60, endMin: 13 * 60, shiftKey: 'morning', type: 'lunch' }, { startMin: 0, endMin: 60, shiftKey: 'night', type: 'lunch_night' }] },
 };
 let currentPlanShiftFilter = null; // null = ทั้งหมด
 
@@ -2944,13 +2944,14 @@ function planTaskPieceBreakdown(t) {
 }
 
 const PLAN_TIME_TYPE_META = {
-  normal:   { label: 'ปกติ', chip: 'chip-green', icon: '' },
-  ot:       { label: 'OT',   chip: 'chip-red',    icon: '' },
-  lunch:    { label: 'พักเที่ยง',    chip: 'chip-gray', icon: '🍽️ ' },
-  otbreak:  { label: 'พักก่อน OT',  chip: 'chip-gray', icon: '⏸ ' },
-  shiftgap: { label: 'รอกะถัดไป',   chip: 'chip-gray', icon: '⏳ ' },
+  normal:      { label: 'ปกติ', chip: 'chip-green', icon: '' },
+  ot:          { label: 'OT',   chip: 'chip-red',    icon: '' },
+  lunch:       { label: 'พักเที่ยง',    chip: 'chip-gray', icon: '🍽️ ' },
+  lunch_night: { label: 'พักเที่ยงคืน', chip: 'chip-gray', icon: '🍽️ ' },
+  otbreak:     { label: 'พักก่อน OT',  chip: 'chip-gray', icon: '⏸ ' },
+  shiftgap:    { label: 'รอกะถัดไป',   chip: 'chip-gray', icon: '⏳ ' },
 };
-const PLAN_BREAK_TYPES = ['lunch', 'otbreak', 'shiftgap'];
+const PLAN_BREAK_TYPES = ['lunch', 'lunch_night', 'otbreak', 'shiftgap'];
 
 // แต่ละชิ้นอาจใช้เวลาคาบเกี่ยวมากกว่า 1 กะ/1 ประเภทเวลา (เช่น ทำต่อจากปกติเข้า OT หรือข้ามจากกะเช้าไปกะดึก) — แตกเป็นแถวย่อยตามช่วงเวลาจริงของชิ้นนั้น
 // รวมถึงช่วงพักเที่ยง/พักก่อน OT ที่แทรกอยู่ระหว่างกลาง ให้เห็นเป็นแถวของตัวเองชัดเจน แยกจากแถวเวลาทำงานจริง
@@ -3310,9 +3311,7 @@ function fillPlanRollReadonly(setName, colorKey, presetSelectedIndexes) {
 }
 
 // รวมเวลาทำงาน (นาที) จากเวลาแต่ง/ขัด Roll ทั้งหมด แล้วคำนวณ "จบงาน" จาก "เริ่มงาน" ให้อัตโนมัติ
-// พักเที่ยง 12:00–13:00 ไม่นับเป็นเวลาทำงาน — ถ้าช่วงงานคาบเกี่ยวช่วงพักเที่ยงของวันไหน (รวมข้ามหลายวันถ้างานยาว) จะขยับเวลาจบให้ชดเชยเวลาพักนั้นไปด้วย
-const LUNCH_BREAK_START_MIN = 12 * 60; // 12:00
-const LUNCH_BREAK_END_MIN = 13 * 60;   // 13:00
+// พักเที่ยง/พักเที่ยงคืนของแต่ละกะ (ดู SHIFTS[key].breaks) ไม่นับเป็นเวลาทำงาน — ถ้าช่วงงานคาบเกี่ยวช่วงพักของวันไหน (รวมข้ามหลายวันถ้างานยาว) จะขยับเวลาจบให้ชดเชยเวลาพักนั้นไปด้วย
 const OT_BREAK_MIN = 20; // พักก่อนเริ่ม OT (นาที) ไม่นับเป็นเวลาทำงาน
 // หาเวลา (นาทีสัมบูรณ์ >= fromCursor) ที่เข้ากะปกติครั้งถัดไป — ใช้ตอนหมดโควตา OT ของวันแล้วต้องข้ามไปรอเริ่มกะถัดไป (อาจเป็น window ที่สองของวันเดียวกัน เช่น "2 กะ" หรือกะแรกของวันถัดไป)
 function nextShiftEntry(fromCursor, shift) {
@@ -3338,10 +3337,13 @@ function advancePlanCursor(state, minutes) {
     else { chunks.push({ key, type, start, end }); }
   };
   while (remaining > 0) {
-    if (state.lunchApplies && state.cursor % 1440 === LUNCH_BREAK_START_MIN) {
-      const lunchStart = state.cursor;
-      state.cursor += (LUNCH_BREAK_END_MIN - LUNCH_BREAK_START_MIN); // ข้ามช่วงพักเที่ยงไปทีเดียว ไม่นับเป็นเวลาทำงาน
-      pushChunk('morning', 'lunch', lunchStart, state.cursor);
+    const activeBreak = state.shift && state.shift.breaks
+      ? state.shift.breaks.find(b => state.cursor % 1440 === b.startMin)
+      : null;
+    if (activeBreak) {
+      const breakStart = state.cursor;
+      state.cursor += (activeBreak.endMin - activeBreak.startMin); // ข้ามช่วงพักไปทีเดียว ไม่นับเป็นเวลาทำงาน
+      pushChunk(activeBreak.shiftKey, activeBreak.type, breakStart, state.cursor);
       continue;
     }
     const curKey = state.shift ? windowKeyAt(state.shift, state.cursor) : null;
@@ -3395,13 +3397,15 @@ function initPlanCursorState(startTime, shiftKey, otCaps) {
   const [h, m] = startTime.split(':').map(Number);
   if (Number.isNaN(h) || Number.isNaN(m)) return null;
   const shift = SHIFTS[shiftKey] || null;
-  const lunchApplies = !shift || shift.lunchBreak;
   let cursor = h * 60 + m;
-  // ถ้าเวลาเริ่มงานตกอยู่ในช่วงพักเที่ยงพอดี (เฉพาะกะที่มีพักเที่ยง) ให้เลื่อนไปเริ่มนับตอน 13:00 ของวันนั้นก่อน
-  if (lunchApplies && cursor % 1440 >= LUNCH_BREAK_START_MIN && cursor % 1440 < LUNCH_BREAK_END_MIN) {
-    cursor += LUNCH_BREAK_END_MIN - (cursor % 1440);
+  // ถ้าเวลาเริ่มงานตกอยู่ในช่วงพักของกะนี้พอดี ให้เลื่อนไปเริ่มนับตอนพักจบของวันนั้นก่อน
+  const startBreak = shift && shift.breaks
+    ? shift.breaks.find(b => (cursor % 1440) >= b.startMin && (cursor % 1440) < b.endMin)
+    : null;
+  if (startBreak) {
+    cursor += startBreak.endMin - (cursor % 1440);
   }
-  return { cursor, shift, lunchApplies, otCaps: otCaps || {}, segments: {}, otMinutesByShift: {}, otMinutes: 0, lastExitedKey: null, otUsedThisExit: 0, breakPaidThisExit: false };
+  return { cursor, shift, otCaps: otCaps || {}, segments: {}, otMinutesByShift: {}, otMinutes: 0, lastExitedKey: null, otUsedThisExit: 0, breakPaidThisExit: false };
 }
 
 // คำนวณวันที่/เวลาจบงาน + เวลา OT ที่ใช้จริง (รวม + แยกรายกะ) + ช่วงเวลาเริ่ม/จบของแต่ละกะ (segments)
