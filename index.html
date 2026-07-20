@@ -3489,6 +3489,43 @@ function computePlanPieceSchedule(startDate, startTime, pieceMinutesList, shiftK
   });
 }
 
+// ถ้าเวลาทำงานของ Roll ที่เลือกทั้งหมด (ตามลำดับ) ยาวข้ามคืนไปมากกว่า 1 วันปฏิทิน ให้ตัดเป็นงานแยกทีละวันจริง แทนที่จะเก็บเป็นงานก้อนเดียวที่วันที่เริ่มงานวันเดียว
+// (rollIds ของแต่ละงานที่ตัดออกมายังอ้างอิงตำแหน่งเดิมในกลุ่ม Size Roll/สีเดิมได้ปกติ เพราะ Size Roll/สีไม่เปลี่ยน — จัดกลุ่มชิ้นตาม "วันที่เริ่ม" ของแต่ละชิ้น ไม่ตัดกลางชิ้นแม้ชิ้นนั้นจะยาวข้ามเที่ยงคืนไปจบอีกวันก็ตาม)
+// คืนค่า null ถ้าทำงานจบภายในวันเดียว — ให้ผู้เรียกบันทึกเป็นงานเดียวตามปกติ
+function splitPlanDataAcrossDays(base, rolls, workType) {
+  const field = PLAN_WORKTYPE_META[workType].field;
+  const pieceMinutesList = rolls.map(r => parseFloat(r[field]) || 0);
+  const schedule = computePlanPieceSchedule(base.date, base.startTime, pieceMinutesList, base.shift, base.otCapMinutesByShift || {});
+  if (!schedule.length) return null;
+  const groups = [];
+  schedule.forEach((piece, i) => {
+    const last = groups[groups.length - 1];
+    if (last && last.date === piece.startDate) last.indices.push(i);
+    else groups.push({ date: piece.startDate, indices: [i] });
+  });
+  if (groups.length <= 1) return null;
+  return groups.map(grp => {
+    const groupRolls = grp.indices.map(i => rolls[i]);
+    const groupPieces = grp.indices.map(i => schedule[i]);
+    const totalTime = grp.indices.reduce((sum, i) => sum + pieceMinutesList[i], 0);
+    const first = groupPieces[0];
+    const last = groupPieces[groupPieces.length - 1];
+    let otMinutes = 0;
+    const otMinutesByShift = {};
+    groupPieces.forEach(p => (p.segments || []).forEach(s => {
+      if (s.type === 'ot') { otMinutes += s.minutes; otMinutesByShift[s.shiftKey] = (otMinutesByShift[s.shiftKey] || 0) + s.minutes; }
+    }));
+    return {
+      date: grp.date,
+      rollIds: grp.indices.map(i => base.rollIds[i]),
+      rollId: groupRolls.length + ' Roll',
+      rollName: groupRolls.map(r => r.name).join(', '),
+      totalTime, startTime: first.startTime, endTime: last.endTime, endDate: last.endDate,
+      otMinutes, otMinutesByShift,
+    };
+  });
+}
+
 // อัปเดตแค่ค่า/สถานะ active ของปุ่มกะ + เปิด/ปิดช่องเริ่มงานของแต่ละกะตามโหมด ไม่แตะเวลาเริ่มงาน — ใช้ตอนเปิดฟอร์ม (โหลดค่าเดิม) ที่ไม่ต้องการทับเวลาที่ผู้ใช้ตั้งไว้เอง
 function setPlanShiftButtons(key) {
   document.getElementById('pf-shift').value = key;
@@ -3682,7 +3719,23 @@ function openPlanTaskModal(mode, taskId, presetDate) {
       otMinutesByShift: computedEnd.otMinutesByShift || {},
       workerId: g('pf-worker') || null,
     };
-    if (mode === 'edit') {
+    // ถ้าเวลาทำงานยาวข้ามคืนไปมากกว่า 1 วันปฏิทิน ตัดเป็นงานแยกทีละวันจริงแทนที่จะเก็บเป็นงานก้อนเดียว
+    const splitGroups = splitPlanDataAcrossDays({ date, shift: shiftKey, startTime, otCapMinutesByShift, rollIds: selectedIndexes }, rolls, workType);
+    if (splitGroups) {
+      if (mode === 'edit') planTasks = planTasks.filter(x => x.id !== task.id);
+      splitGroups.forEach(grp => {
+        planTaskSeq++;
+        planTasks.push({
+          id: 'PT-' + String(planTaskSeq).padStart(4, '0'), workType,
+          date: grp.date, rollSet: setName, rollColor: colorKey || null,
+          rollIds: grp.rollIds, rollId: grp.rollId, rollName: grp.rollName, totalTime: grp.totalTime,
+          startTime: grp.startTime, endTime: grp.endTime, endDate: grp.endDate,
+          shift: shiftKey, otCapMinutesByShift,
+          otMinutes: grp.otMinutes, otMinutesByShift: grp.otMinutesByShift,
+          workerId: data.workerId,
+        });
+      });
+    } else if (mode === 'edit') {
       Object.assign(task, data);
     } else {
       planTaskSeq++;
@@ -5032,17 +5085,35 @@ function maybeAutoContinueDailyPlan(dateIso) {
   plannedForDay.forEach(t => {
     const alreadyExists = planTasks.some(x => x.workType === t.workType && x.rollSet === t.rollSet && x.rollColor === t.rollColor && x.date === nextDate);
     if (alreadyExists) return;
-    const computedEnd = computePlanEnd(nextDate, t.startTime, t.totalTime, t.shift, t.otCapMinutesByShift || {});
-    planTaskSeq++;
-    planTasks.push({
-      id: 'PT-' + String(planTaskSeq).padStart(4, '0'),
-      workType: t.workType, date: nextDate, rollSet: t.rollSet, rollColor: t.rollColor,
-      rollIds: t.rollIds, rollId: t.rollId, rollName: t.rollName, totalTime: t.totalTime,
-      startTime: t.startTime, endTime: computedEnd.time, endDate: computedEnd.date || nextDate,
-      shift: t.shift, otCapMinutesByShift: t.otCapMinutesByShift,
-      otMinutes: computedEnd.otMinutes || 0, otMinutesByShift: computedEnd.otMinutesByShift || {},
-      workerId: t.workerId || null,
-    });
+    const scopedRolls = getMatchingRollsForPlan(t.rollSet, t.rollColor);
+    const rolls = t.rollIds.map(idx => scopedRolls[idx]).filter(Boolean);
+    const splitGroups = splitPlanDataAcrossDays({ date: nextDate, shift: t.shift, startTime: t.startTime, otCapMinutesByShift: t.otCapMinutesByShift || {}, rollIds: t.rollIds }, rolls, t.workType);
+    if (splitGroups) {
+      splitGroups.forEach(grp => {
+        planTaskSeq++;
+        planTasks.push({
+          id: 'PT-' + String(planTaskSeq).padStart(4, '0'),
+          workType: t.workType, date: grp.date, rollSet: t.rollSet, rollColor: t.rollColor,
+          rollIds: grp.rollIds, rollId: grp.rollId, rollName: grp.rollName, totalTime: grp.totalTime,
+          startTime: grp.startTime, endTime: grp.endTime, endDate: grp.endDate,
+          shift: t.shift, otCapMinutesByShift: t.otCapMinutesByShift,
+          otMinutes: grp.otMinutes, otMinutesByShift: grp.otMinutesByShift,
+          workerId: t.workerId || null,
+        });
+      });
+    } else {
+      const computedEnd = computePlanEnd(nextDate, t.startTime, t.totalTime, t.shift, t.otCapMinutesByShift || {});
+      planTaskSeq++;
+      planTasks.push({
+        id: 'PT-' + String(planTaskSeq).padStart(4, '0'),
+        workType: t.workType, date: nextDate, rollSet: t.rollSet, rollColor: t.rollColor,
+        rollIds: t.rollIds, rollId: t.rollId, rollName: t.rollName, totalTime: t.totalTime,
+        startTime: t.startTime, endTime: computedEnd.time, endDate: computedEnd.date || nextDate,
+        shift: t.shift, otCapMinutesByShift: t.otCapMinutesByShift,
+        otMinutes: computedEnd.otMinutes || 0, otMinutesByShift: computedEnd.otMinutesByShift || {},
+        workerId: t.workerId || null,
+      });
+    }
     createdCount++;
   });
   if (createdCount) alert(`งานวันที่ ${fmtDateThai(parseISODate(dateIso))} เสร็จครบแล้ว — สร้างแผนวันที่ ${fmtDateThai(parseISODate(nextDate))} ต่อให้อัตโนมัติ ${createdCount} งาน`);
