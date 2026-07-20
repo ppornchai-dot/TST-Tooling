@@ -4456,10 +4456,19 @@ syncRollStatusWithProdBlock();
     usageByRoll.forEach((usingTasks, rollIdx) => {
       if (usingTasks.length <= 1) return;
       const sorted = [...usingTasks].sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
-      const isLegitSplit = sorted.length === 2 &&
-        sorted[0].endDate === sorted[1].date && sorted[0].endTime === sorted[1].startTime &&
-        sorted[0].rollMinutesOverride && sorted[0].rollMinutesOverride[rollIdx] != null &&
-        sorted[1].rollMinutesOverride && sorted[1].rollMinutesOverride[rollIdx] != null;
+      // ยืนยันว่าเป็นการแบ่งเวลาจริง (นาทีรวมทั้ง 2 ส่วนเท่ากับเวลาแต่ง/ขัด Roll เต็มพอดี และแต่ละส่วนน้อยกว่าเต็ม) ไม่ใช่แค่มี rollMinutesOverride ติดมาเฉยๆ
+      // (splitPlanDataAcrossDays จะใส่ override ให้ทุกชิ้นในกลุ่มเสมอไม่ว่าจะถูกแบ่งจริงหรือไม่ แค่เช็คว่า "มี override" เฉยๆ จึงไม่พอ)
+      let isLegitSplit = false;
+      if (sorted.length === 2 && sorted[0].endDate === sorted[1].date && sorted[0].endTime === sorted[1].startTime &&
+          sorted[0].rollMinutesOverride && sorted[0].rollMinutesOverride[rollIdx] != null &&
+          sorted[1].rollMinutesOverride && sorted[1].rollMinutesOverride[rollIdx] != null) {
+        const scopedForCheck = getMatchingRollsForPlan(sorted[0].rollSet, sorted[0].rollColor);
+        const rollForCheck = scopedForCheck[rollIdx];
+        const fieldForCheck = PLAN_WORKTYPE_META[sorted[0].workType].field;
+        const fullMinutes = rollForCheck ? (parseFloat(rollForCheck[fieldForCheck]) || 0) : 0;
+        const m0 = sorted[0].rollMinutesOverride[rollIdx], m1 = sorted[1].rollMinutesOverride[rollIdx];
+        isLegitSplit = fullMinutes > 0 && m0 < fullMinutes && m1 < fullMinutes && Math.abs((m0 + m1) - fullMinutes) < 0.001;
+      }
       if (isLegitSplit) return;
       sorted.slice(1).forEach(t => {
         if (!removeRollFromTask.has(t.id)) removeRollFromTask.set(t.id, new Set());
