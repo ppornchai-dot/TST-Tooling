@@ -3756,9 +3756,15 @@ function openPlanTaskModal(mode, taskId, presetDate) {
       workerId: g('pf-worker') || null,
     };
     // ถ้าเวลาทำงานยาวข้ามคืนไปมากกว่า 1 วันปฏิทิน ตัดเป็นงานแยกทีละวันจริงแทนที่จะเก็บเป็นงานก้อนเดียว
+    // แก้ไขงานที่เคยถูกตัดวันไว้แล้ว (มี splitGroupId) ต้องลบ "พี่น้อง" เดิมทั้งกลุ่มทิ้งด้วย ไม่ใช่แค่ตัวเองที่กำลังแก้ — กันเศษงานเก่าตกค้างซ้ำกับชุดใหม่ที่คำนวณใหม่
+    if (mode === 'edit' && task.splitGroupId) {
+      const priorGroupId = task.splitGroupId;
+      planTasks = planTasks.filter(x => x.id === task.id || x.splitGroupId !== priorGroupId);
+    }
     const splitGroups = splitPlanDataAcrossDays({ date, shift: shiftKey, startTime, otCapMinutesByShift, rollIds: selectedIndexes }, rolls, workType);
     if (splitGroups) {
       if (mode === 'edit') planTasks = planTasks.filter(x => x.id !== task.id);
+      const newGroupId = 'SG-' + String(planTaskSeq + 1).padStart(4, '0');
       splitGroups.forEach(grp => {
         planTaskSeq++;
         planTasks.push({
@@ -3770,13 +3776,14 @@ function openPlanTaskModal(mode, taskId, presetDate) {
           otMinutes: grp.otMinutes, otMinutesByShift: grp.otMinutesByShift,
           rollMinutesOverride: grp.rollMinutesOverride,
           workerId: data.workerId,
+          splitGroupId: newGroupId,
         });
       });
     } else if (mode === 'edit') {
-      Object.assign(task, data);
+      Object.assign(task, data, { splitGroupId: null });
     } else {
       planTaskSeq++;
-      planTasks.push({ id: 'PT-' + String(planTaskSeq).padStart(4, '0'), workType, ...data });
+      planTasks.push({ id: 'PT-' + String(planTaskSeq).padStart(4, '0'), workType, ...data, splitGroupId: null });
     }
     persistState();
     renderCurrentPlanView();
@@ -4259,6 +4266,7 @@ syncRollStatusWithProdBlock();
     const splitGroups = rolls.length ? splitPlanDataAcrossDays({ date: t.date, shift: t.shift, startTime: t.startTime, otCapMinutesByShift: t.otCapMinutesByShift || {}, rollIds: t.rollIds }, rolls, t.workType) : null;
     if (!splitGroups) { result.push(t); return; }
     changed = true;
+    const newGroupId = 'SG-' + String(planTaskSeq + 1).padStart(4, '0');
     splitGroups.forEach(grp => {
       planTaskSeq++;
       result.push({
@@ -4270,10 +4278,26 @@ syncRollStatusWithProdBlock();
         otMinutes: grp.otMinutes, otMinutesByShift: grp.otMinutesByShift,
         rollMinutesOverride: grp.rollMinutesOverride,
         workerId: t.workerId || null,
+        splitGroupId: newGroupId,
       });
     });
   });
   if (changed) { planTasks = result; persistState(); }
+})();
+
+// migration: ลบงานวางแผนที่ซ้ำกันเป๊ะ (workType/Size Roll/สี/วันที่/เวลาเริ่ม/รายชื่อ Roll เดียวกันทั้งหมด) ที่หลงเหลือจากบั๊กเดิม
+// (แก้ไขงานที่เคยถูกตัดข้ามวันไว้แล้ว โดยที่ยังไม่มี splitGroupId เชื่อมกับ "พี่น้อง" เดิม ทำให้เศษงานเก่าตกค้างไม่ถูกลบตอนบันทึกใหม่) — เก็บไว้แค่รายการเดียว (id เล็กสุด) ต่อชุดที่ซ้ำกัน
+(function removeDuplicatePlanTasks() {
+  const seen = new Map();
+  const keep = [];
+  let removed = 0;
+  [...planTasks].sort((a, b) => a.id < b.id ? -1 : 1).forEach(t => {
+    const key = [t.workType, t.rollSet, t.rollColor, t.date, t.startTime, JSON.stringify([...(t.rollIds || [])].sort((a, b) => a - b))].join('|');
+    if (seen.has(key)) { removed++; return; }
+    seen.set(key, true);
+    keep.push(t);
+  });
+  if (removed) { planTasks = keep; persistState(); }
 })();
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
@@ -5154,6 +5178,7 @@ function maybeAutoContinueDailyPlan(dateIso) {
     const rolls = t.rollIds.map(idx => scopedRolls[idx]).filter(Boolean);
     const splitGroups = splitPlanDataAcrossDays({ date: nextDate, shift: t.shift, startTime: t.startTime, otCapMinutesByShift: t.otCapMinutesByShift || {}, rollIds: t.rollIds }, rolls, t.workType);
     if (splitGroups) {
+      const newGroupId = 'SG-' + String(planTaskSeq + 1).padStart(4, '0');
       splitGroups.forEach(grp => {
         planTaskSeq++;
         planTasks.push({
@@ -5165,6 +5190,7 @@ function maybeAutoContinueDailyPlan(dateIso) {
           otMinutes: grp.otMinutes, otMinutesByShift: grp.otMinutesByShift,
           rollMinutesOverride: grp.rollMinutesOverride,
           workerId: t.workerId || null,
+          splitGroupId: newGroupId,
         });
       });
     } else {
