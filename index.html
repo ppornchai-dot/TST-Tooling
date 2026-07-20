@@ -3704,8 +3704,9 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   document.getElementById('modal-body').innerHTML = planTaskFormFields();
   const planTimeLabel = document.getElementById('pf-plantime-label');
   if (planTimeLabel) planTimeLabel.textContent = PLAN_WORKTYPE_META[workType].metricLabel + ' — จากทะเบียน Tooling';
-  // เพิ่มงานใหม่โดยไม่ได้ระบุวันที่มาให้เจาะจง (เช่นกดปุ่ม "+ เพิ่มงาน" ธรรมดา) ให้เริ่มต่อจากงานประเภทเดียวกันที่จบล่าสุดโดยอัตโนมัติ
-  const chainFrom = (!task && !presetDate) ? findLatestPlanTaskEnd(workType) : null;
+  // เพิ่มงานใหม่ (ไม่ว่าจะกดปุ่ม "+ เพิ่มงาน" ธรรมดา หรือกด "+" จากช่องปฏิทินรายสัปดาห์/เดือนที่ระบุวันที่มาเจาะจงก็ตาม) ให้เริ่มต่อจากงานประเภทเดียวกันที่จบล่าสุดโดยอัตโนมัติเสมอ
+  // ถ้ายังไม่เคยมีงานประเภทนี้มาก่อนเลย (chainFrom เป็น null) จึงค่อยใช้ presetDate ที่ระบุมาเป็นวันเริ่มต้นแทน
+  const chainFrom = !task ? findLatestPlanTaskEnd(workType) : null;
   document.getElementById('pf-date').value = task ? task.date : (chainFrom ? chainFrom.endDate : (presetDate || toISODate(planViewDate)));
   const defaultShift = (task ? task.shift : (chainFrom ? chainFrom.shift : currentPlanShiftFilter)) || 'morning';
   setPlanShiftButtons(defaultShift);
