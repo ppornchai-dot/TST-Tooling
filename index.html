@@ -3744,6 +3744,56 @@ function autoFixPlanSequencing() {
   return anyChanged;
 }
 
+// รวมงานที่ต่อเวลากันสนิท (จบงานก่อนหน้า = เริ่มงานถัดไปเป๊ะ) ของ Size Roll/สี/กะ/ผู้ปฏิบัติงาน/โควตา OT เดียวกัน ให้เป็นงานเดียวกัน
+// แทนที่จะปล่อยเป็นหลายแถวแยกกันทั้งที่จริงๆ ต่อเนื่องเป็นงานเดียวในรอบกะเดียวกัน (เช่น เพิ่มงานทีละล็อตแล้วเผลอสร้างแยกไว้)
+// ตรวจก่อนรวมทุกครั้งว่ารวมกันแล้วยังคงจบภายในรอบกะเดียว (splitPlanDataAcrossDays คืน null) — ถ้ารวมแล้วจะข้ามรอบกะจริง (เช้า/ดึกคนละรอบ) จะไม่รวม เพราะต้องแยกเป็นคนละวันตามฟีเจอร์ตัดวันจริง
+function mergeAdjacentPlanTasks() {
+  let anyChanged = false;
+  let changed = true;
+  let guard = 0;
+  while (changed && guard < 500) {
+    changed = false;
+    guard++;
+    const byGroup = new Map();
+    planTasks.forEach(t => {
+      const key = [t.workType, t.rollSet, t.rollColor, t.shift, JSON.stringify(t.otCapMinutesByShift || {}), t.workerId || ''].join('|');
+      if (!byGroup.has(key)) byGroup.set(key, []);
+      byGroup.get(key).push(t);
+    });
+    merged:
+    for (const tasks of byGroup.values()) {
+      const sorted = [...tasks].sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
+      for (let i = 1; i < sorted.length; i++) {
+        const prev = sorted[i - 1], cur = sorted[i];
+        if (cur.date !== prev.endDate || cur.startTime !== prev.endTime) continue;
+        const combinedRollIds = (prev.rollIds || []).concat(cur.rollIds || []);
+        const scoped = getMatchingRollsForPlan(prev.rollSet, prev.rollColor);
+        const rolls = combinedRollIds.map(idx => scoped[idx]).filter(Boolean);
+        if (rolls.length !== combinedRollIds.length) continue; // หา Roll บางตัวไม่เจอ ข้ามไปก่อนเพื่อความปลอดภัย
+        const wouldSplit = splitPlanDataAcrossDays({ date: prev.date, shift: prev.shift, startTime: prev.startTime, otCapMinutesByShift: prev.otCapMinutesByShift || {}, rollIds: combinedRollIds }, rolls, prev.workType);
+        if (wouldSplit) continue; // รวมแล้วจะข้ามรอบกะจริง ต้องแยกไว้ตามเดิม
+        prev.rollIds = combinedRollIds;
+        prev.rollId = combinedRollIds.length + ' Roll';
+        prev.rollName = rolls.map(r => r.name).join(', ');
+        prev.totalTime = (prev.totalTime || 0) + (cur.totalTime || 0);
+        prev.endTime = cur.endTime;
+        prev.endDate = cur.endDate;
+        prev.otMinutes = (prev.otMinutes || 0) + (cur.otMinutes || 0);
+        const mergedOtByShift = { ...(prev.otMinutesByShift || {}) };
+        Object.entries(cur.otMinutesByShift || {}).forEach(([k, v]) => { mergedOtByShift[k] = (mergedOtByShift[k] || 0) + v; });
+        prev.otMinutesByShift = mergedOtByShift;
+        if (cur.rollMinutesOverride || prev.rollMinutesOverride) prev.rollMinutesOverride = { ...(prev.rollMinutesOverride || {}), ...(cur.rollMinutesOverride || {}) };
+        prev.splitGroupId = null;
+        planTasks = planTasks.filter(t => t.id !== cur.id);
+        changed = true;
+        anyChanged = true;
+        break merged;
+      }
+    }
+  }
+  return anyChanged;
+}
+
 function openPlanTaskModal(mode, taskId, presetDate) {
   const task = mode === 'edit' ? planTasks.find(t => t.id === taskId) : null;
   const workType = task ? task.workType : currentPlanWorkType;
@@ -3834,6 +3884,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
       planTasks.push({ id: 'PT-' + String(planTaskSeq).padStart(4, '0'), workType, ...data, splitGroupId: null });
     }
     autoFixPlanSequencing();
+    mergeAdjacentPlanTasks();
     persistState();
     renderCurrentPlanView();
     const btn = this;
@@ -3850,6 +3901,7 @@ function deletePlanTask(taskId) {
   if (!confirm('ลบงาน "' + t.rollId + ' — ' + t.rollName + '" ออกจากแผน?')) return;
   planTasks = planTasks.filter(x => x.id !== taskId);
   autoFixPlanSequencing();
+  mergeAdjacentPlanTasks();
   persistState();
   renderCurrentPlanView();
 }
@@ -4445,6 +4497,8 @@ syncRollStatusWithProdBlock();
 
 // migration: งานวางแผนเก่าที่เคยทับเวลากัน/ไม่ต่อเนื่องกัน (ก่อนมีระบบต่อเวลาอัตโนมัติ) ให้ต่อเวลาให้เรียบร้อยตั้งแต่ตอนโหลดแอปเลย ไม่ต้องรอให้ผู้ใช้กดปุ่ม "ต่อเวลา" เอง
 if (autoFixPlanSequencing()) persistState();
+// migration: รวมงานเก่าที่ต่อเวลากันสนิทแต่ถูกสร้างแยกไว้คนละแถว (เช่น เพิ่มงานทีละล็อต) ให้เป็นงานเดียวกันตั้งแต่ตอนโหลดแอปเลย
+if (mergeAdjacentPlanTasks()) persistState();
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 // เรียกหลัง restoreState() เสมอ เพื่อให้ Dashboard แสดงข้อมูลที่กู้คืนจาก localStorage ได้ถูกต้อง
@@ -5392,6 +5446,7 @@ function maybeAutoContinueDailyPlan(dateIso) {
   });
   if (createdCount) {
     autoFixPlanSequencing();
+    mergeAdjacentPlanTasks();
     alert(`งานวันที่ ${fmtDateThai(parseISODate(dateIso))} เสร็จครบแล้ว — สร้างแผนวันที่ ${fmtDateThai(parseISODate(nextDate))} ต่อให้อัตโนมัติ ${createdCount} งาน`);
   }
 }
