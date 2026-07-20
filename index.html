@@ -2953,12 +2953,18 @@ function togglePlanDayTaskDetail(taskId) {
 // แกะ rollIds (ตำแหน่งลำดับใน getMatchingRollsForPlan) กลับเป็น Roll จริงแต่ละตัว แล้วคำนวณเวลาเริ่ม/จบแยกทีละชิ้นต่อเนื่องกัน
 function planTaskPieceBreakdown(t) {
   const scoped = getMatchingRollsForPlan(t.rollSet, t.rollColor);
-  const rolls = (t.rollIds || []).map(idx => scoped[idx]).filter(Boolean);
-  if (!rolls.length) return [];
+  // เก็บคู่ (roll, ตำแหน่งเดิมใน rollIds) ไว้ด้วยกันตอนกรอง Roll ที่หาไม่เจอทิ้ง กันไม่ให้ index เพี้ยนตอนไปเทียบกับ rollMinutesOverride
+  const pairs = (t.rollIds || []).map(idx => ({ idx, roll: scoped[idx] })).filter(p => p.roll);
+  if (!pairs.length) return [];
   const field = PLAN_WORKTYPE_META[t.workType].field;
-  const pieceMinutesList = rolls.map(r => parseFloat(r[field]) || 0);
+  // ชิ้นที่ถูกแบ่งเวลาคาบเกี่ยวจุดเริ่มวันใหม่ตอนวางแผน (ดู splitPlanDataAcrossDays) จะมีนาทีของตัวเองใน rollMinutesOverride แทนเวลาแต่ง/ขัด Roll เต็มจากทะเบียน Tooling
+  const pieceMinutesList = pairs.map(p => {
+    const override = t.rollMinutesOverride && t.rollMinutesOverride[p.idx];
+    return override != null ? override : (parseFloat(p.roll[field]) || 0);
+  });
   const schedule = computePlanPieceSchedule(t.date, t.startTime, pieceMinutesList, t.shift, t.otCapMinutesByShift || {});
-  return rolls.map((r, i) => ({ roll: r, minutes: pieceMinutesList[i], range: schedule[i] || {} }));
+  // "continued" เฉพาะชิ้นที่นาทีจริงถูก override ไว้ *น้อยกว่า* เวลาแต่ง/ขัด Roll เต็มจากทะเบียน Tooling — คือชิ้นที่ถูกแบ่งเวลาคาบเกี่ยวจริงๆ ไม่ใช่ทุกชิ้นในงานที่เคยผ่านการตัดวัน
+  return pairs.map((p, i) => ({ roll: p.roll, minutes: pieceMinutesList[i], range: schedule[i] || {}, continued: pieceMinutesList[i] < (parseFloat(p.roll[field]) || 0) }));
 }
 
 const PLAN_TIME_TYPE_META = {
@@ -2992,9 +2998,10 @@ function renderPlanDayTaskDetailRow(t, colspan) {
       const typeChip = typeMeta ? `<span class="chip ${typeMeta.chip}">${typeMeta.icon}${typeMeta.label}</span>` : '—';
       const groupBorder = (si === 0 && i > 0) ? 'border-top:2px solid var(--border);' : '';
       const breakStyle = isBreak ? 'background:var(--bg-hover);font-style:italic;' : '';
+      const continuedBadge = p.continued ? ' <span class="muted" style="font-weight:400;font-style:italic;">(ต่อ)</span>' : '';
       const rollCell = isBreak
         ? `<td colspan="2" class="muted" style="${breakStyle}">${escapeHtmlAttr(typeMeta.label)}</td>`
-        : `<td class="muted">${isFirstRow ? escapeHtmlAttr(p.roll.id) : ''}</td><td><strong>${isFirstRow ? escapeHtmlAttr(p.roll.name) : ''}</strong></td>`;
+        : `<td class="muted">${isFirstRow ? escapeHtmlAttr(p.roll.id) : ''}</td><td><strong>${isFirstRow ? escapeHtmlAttr(p.roll.name) : ''}</strong>${isFirstRow ? continuedBadge : ''}</td>`;
       return `<tr style="${groupBorder}${breakStyle}">
         <td class="muted" style="padding-left:36px;">${isFirstRow ? i + 1 : ''}</td>
         ${rollCell}
@@ -3493,8 +3500,9 @@ function computePlanPieceSchedule(startDate, startTime, pieceMinutesList, shiftK
 // กะดึกที่ข้ามเที่ยงคืนไปตามปกติ (ยังไม่เข้า OT) ยังถือเป็นงานของ "1 วัน" เดียวกัน ไม่ตัดที่เที่ยงคืน
 // ส่วน OT ที่ทำต่อจากกะใดกะหนึ่งไปจนกว่าจะเข้ากะถัดไป ถือว่ายังเป็นของ "วันที่เริ่มกะนั้น" (วันก่อนหน้า) ไม่ใช่วันถัดไป
 // จุดเริ่ม "วันใหม่" คือทุกครั้งที่เข้าสู่ช่วงเวลาปกติ (type: 'normal') แบบเป็นรอบกะใหม่จริงๆ — คือช่วงแรกสุดของงาน, หรือมาหลังจากรอกะถัดไป (shiftgap), หรือกะเปลี่ยนขณะทำต่อเนื่อง (เช้า⇄ดึก)
+// ถ้า Roll ชิ้นใดชิ้นหนึ่งคาบเกี่ยวจุดเริ่มวันใหม่พอดี (เริ่มก่อนแต่ทำเสร็จหลังจุดนั้น) จะแบ่งเวลาของชิ้นนั้นออกเป็น 2 ส่วนจริงตรงจุดตัด
+// (ส่วนก่อน = OT/งานของวันก่อนหน้า, ส่วนหลัง = งานของวันใหม่) แทนที่จะยกทั้งชิ้นไปวันใดวันหนึ่ง — เก็บนาทีของแต่ละส่วนไว้ใน rollMinutesOverride (key = ตำแหน่งใน Size Roll/สีเดิม)
 // ถ้าทำงานยาวข้ามรอบกะแบบนี้ไปมากกว่า 1 รอบ ให้ตัดเป็นงานแยกทีละวันจริง แทนที่จะเก็บเป็นงานก้อนเดียวที่วันที่เริ่มงานวันเดียว
-// (rollIds ของแต่ละงานที่ตัดออกมายังอ้างอิงตำแหน่งเดิมในกลุ่ม Size Roll/สีเดิมได้ปกติ เพราะ Size Roll/สีไม่เปลี่ยน)
 // คืนค่า null ถ้าทำงานจบภายในรอบกะเดียว — ให้ผู้เรียกบันทึกเป็นงานเดียวตามปกติ
 function splitPlanDataAcrossDays(base, rolls, workType) {
   const field = PLAN_WORKTYPE_META[workType].field;
@@ -3504,50 +3512,51 @@ function splitPlanDataAcrossDays(base, rolls, workType) {
 
   let lastNormalShiftKey = null;
   let freshEntry = true; // เพิ่งเริ่มงาน/เพิ่งรอกะถัดไปมา — เจอช่วงปกติถัดไปนับเป็น "วันใหม่" เสมอ
-  let sessionIdx = -1;
-  const pieceSessionIdx = schedule.map(piece => {
-    const segs = (piece.segments && piece.segments.length) ? piece.segments : [{ type: 'normal', shiftKey: base.shift }];
-    let firstSession = null;
+  let cur = null; // ยังไม่มีกลุ่มจนกว่าจะเจอช่วงเวลาทำงานจริง ('normal') ครั้งแรก — กันไม่ให้มีกลุ่มว่างหลอกที่ไม่มีชิ้นงานอยู่
+  const groups = [];
+
+  schedule.forEach((piece, i) => {
+    const segs = (piece.segments && piece.segments.length)
+      ? piece.segments
+      : [{ type: 'normal', shiftKey: base.shift, minutes: pieceMinutesList[i], startDate: piece.startDate, startTime: piece.startTime, endDate: piece.endDate, endTime: piece.endTime }];
+    let sinceBoundary = 0; // นาที "ทำงานจริง" (normal/ot เท่านั้น ไม่รวมพัก/รอกะ) ของชิ้นนี้ที่สะสมมาตั้งแต่จุดเริ่มวันใหม่ล่าสุด
     segs.forEach(seg => {
-      if (seg.type === 'normal') {
-        if (freshEntry || seg.shiftKey !== lastNormalShiftKey) sessionIdx++;
-        if (firstSession === null) firstSession = sessionIdx;
+      const isNewSession = seg.type === 'normal' && (freshEntry || seg.shiftKey !== lastNormalShiftKey);
+      if (isNewSession) {
+        if (cur && sinceBoundary > 0) cur.pieces.push({ idx: i, minutes: sinceBoundary }); // ส่วนก่อนจุดตัดของชิ้นนี้ (ถ้ามี) ปิดท้ายกลุ่มเดิม
+        cur = { pieces: [], startDate: seg.startDate, startTime: seg.startTime, endDate: seg.endDate, endTime: seg.endTime, otMinutes: 0, otMinutesByShift: {} };
+        groups.push(cur);
+        sinceBoundary = 0;
+      }
+      if (cur) { cur.endDate = seg.endDate; cur.endTime = seg.endTime; }
+      if (seg.type === 'ot') {
+        cur.otMinutes += seg.minutes;
+        cur.otMinutesByShift[seg.shiftKey] = (cur.otMinutesByShift[seg.shiftKey] || 0) + seg.minutes;
+        sinceBoundary += seg.minutes;
+      } else if (seg.type === 'normal') {
         lastNormalShiftKey = seg.shiftKey;
         freshEntry = false;
+        sinceBoundary += seg.minutes;
       } else if (seg.type === 'shiftgap') {
-        freshEntry = true;
+        freshEntry = true; // otbreak/lunch/lunch_night/shiftgap ไม่ใช่นาทีทำงานของชิ้นนี้ ไม่นับเข้า sinceBoundary
       }
-      // ot/otbreak/lunch/lunch_night: ยังถือเป็นวันเดิมต่อเนื่อง (OT รวมกับวันก่อนหน้าตามเกณฑ์ที่ตกลงกัน)
     });
-    if (sessionIdx < 0) sessionIdx = 0;
-    return firstSession === null ? sessionIdx : firstSession;
+    if (cur && sinceBoundary > 0) cur.pieces.push({ idx: i, minutes: sinceBoundary }); // ส่วนที่เหลือของชิ้นนี้ (ทั้งชิ้น หรือส่วนหลังจุดตัดถ้าเพิ่งแบ่งไป) เป็นของกลุ่มปัจจุบัน
   });
 
-  const groups = [];
-  pieceSessionIdx.forEach((sIdx, i) => {
-    const last = groups[groups.length - 1];
-    if (last && last.sessionIdx === sIdx) last.indices.push(i);
-    else groups.push({ sessionIdx: sIdx, indices: [i] });
-  });
   if (groups.length <= 1) return null;
-  return groups.map(grp => {
-    const groupRolls = grp.indices.map(i => rolls[i]);
-    const groupPieces = grp.indices.map(i => schedule[i]);
-    const totalTime = grp.indices.reduce((sum, i) => sum + pieceMinutesList[i], 0);
-    const first = groupPieces[0];
-    const last = groupPieces[groupPieces.length - 1];
-    let otMinutes = 0;
-    const otMinutesByShift = {};
-    groupPieces.forEach(p => (p.segments || []).forEach(s => {
-      if (s.type === 'ot') { otMinutes += s.minutes; otMinutesByShift[s.shiftKey] = (otMinutesByShift[s.shiftKey] || 0) + s.minutes; }
-    }));
+  return groups.map(g => {
+    const rollIds = g.pieces.map(p => base.rollIds[p.idx]);
+    const totalTime = g.pieces.reduce((sum, p) => sum + p.minutes, 0);
+    const rollMinutesOverride = {};
+    g.pieces.forEach(p => { rollMinutesOverride[base.rollIds[p.idx]] = p.minutes; });
     return {
-      date: first.startDate,
-      rollIds: grp.indices.map(i => base.rollIds[i]),
-      rollId: groupRolls.length + ' Roll',
-      rollName: groupRolls.map(r => r.name).join(', '),
-      totalTime, startTime: first.startTime, endTime: last.endTime, endDate: last.endDate,
-      otMinutes, otMinutesByShift,
+      date: g.startDate, startTime: g.startTime, endTime: g.endTime, endDate: g.endDate,
+      rollIds,
+      rollId: rollIds.length + ' Roll',
+      rollName: g.pieces.map(p => rolls[p.idx].name).join(', '),
+      totalTime, otMinutes: g.otMinutes, otMinutesByShift: g.otMinutesByShift,
+      rollMinutesOverride,
     };
   });
 }
@@ -3758,6 +3767,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
           startTime: grp.startTime, endTime: grp.endTime, endDate: grp.endDate,
           shift: shiftKey, otCapMinutesByShift,
           otMinutes: grp.otMinutes, otMinutesByShift: grp.otMinutesByShift,
+          rollMinutesOverride: grp.rollMinutesOverride,
           workerId: data.workerId,
         });
       });
@@ -4257,6 +4267,7 @@ syncRollStatusWithProdBlock();
         startTime: grp.startTime, endTime: grp.endTime, endDate: grp.endDate,
         shift: t.shift, otCapMinutesByShift: t.otCapMinutesByShift,
         otMinutes: grp.otMinutes, otMinutesByShift: grp.otMinutesByShift,
+        rollMinutesOverride: grp.rollMinutesOverride,
         workerId: t.workerId || null,
       });
     });
@@ -5151,6 +5162,7 @@ function maybeAutoContinueDailyPlan(dateIso) {
           startTime: grp.startTime, endTime: grp.endTime, endDate: grp.endDate,
           shift: t.shift, otCapMinutesByShift: t.otCapMinutesByShift,
           otMinutes: grp.otMinutes, otMinutesByShift: grp.otMinutesByShift,
+          rollMinutesOverride: grp.rollMinutesOverride,
           workerId: t.workerId || null,
         });
       });
