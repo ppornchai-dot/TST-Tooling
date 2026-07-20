@@ -2602,6 +2602,11 @@ let currentDailyShiftFilter = null;    // null = ทั้งหมด
 let expandedDailyTaskId = null;        // งานที่กำลังกางดูเวลาแยกรายชิ้นอยู่ (ถ้ามี)
 // วันที่ (iso) ที่เคยสร้างแผนวันถัดไปต่อให้อัตโนมัติแล้ว (หลังเช็คลิสต์ของวันนั้นครบทุกรายการ) — กันไม่ให้สร้างซ้ำทุกครั้งที่ติ๊ก
 let dailyAutoContinuedDates = {};
+// เช็คงานทีละชิ้น Roll ในตารางแยกรายชิ้นของหน้างานประจำวัน — { 'YYYY-MM-DD': { [planTaskId]: { [rollIdx]: true } } } ค่าที่ไม่มีถือว่ายังไม่เสร็จ
+let dailyPieceStatus = {};
+// ล็อกขนาดที่วัดได้จริงหลังแต่ง/ขัด Roll แต่ละชิ้น — เก็บแยกต่างหาก ไม่ทับข้อมูลเดิมในทะเบียน Tooling
+let rollSizeLog = [];
+let rollSizeLogSeq = 0;
 
 // ─── TEAM MEMBERS (หน้าทีมงาน) — ข้อมูลอยู่ก่อน restoreState() เพื่อไม่ให้ชนกับ TDZ ─
 const TEAM_STATUS_META = {
@@ -2979,10 +2984,12 @@ const PLAN_BREAK_TYPES = ['lunch', 'lunch_night', 'otbreak', 'shiftgap'];
 
 // แต่ละชิ้นอาจใช้เวลาคาบเกี่ยวมากกว่า 1 กะ/1 ประเภทเวลา (เช่น ทำต่อจากปกติเข้า OT หรือข้ามจากกะเช้าไปกะดึก) — แตกเป็นแถวย่อยตามช่วงเวลาจริงของชิ้นนั้น
 // รวมถึงช่วงพักเที่ยง/พักก่อน OT ที่แทรกอยู่ระหว่างกลาง ให้เห็นเป็นแถวของตัวเองชัดเจน แยกจากแถวเวลาทำงานจริง
-function renderPlanDayTaskDetailRow(t, colspan) {
+function renderPlanDayTaskDetailRow(t, colspan, interactive) {
   colspan = colspan || 10;
   const pieces = planTaskPieceBreakdown(t);
+  const pieceDoneMap = interactive ? ((dailyPieceStatus[dailyViewDate] || {})[t.id] || {}) : {};
   const body = pieces.map((p, i) => {
+    const rollIdx = t.rollIds[i];
     const segs = (p.range.segments && p.range.segments.length)
       ? p.range.segments
       : [{ shiftKey: null, type: null, startDate: p.range.startDate, startTime: p.range.startTime, endDate: p.range.endDate, endTime: p.range.endTime, minutes: p.minutes }];
@@ -3002,8 +3009,13 @@ function renderPlanDayTaskDetailRow(t, colspan) {
       const rollCell = isBreak
         ? `<td colspan="2" class="muted" style="${breakStyle}">${escapeHtmlAttr(typeMeta.label)}</td>`
         : `<td class="muted">${isFirstRow ? escapeHtmlAttr(p.roll.id) : ''}</td><td><strong>${isFirstRow ? escapeHtmlAttr(p.roll.name) : ''}</strong>${isFirstRow ? continuedBadge : ''}</td>`;
+      // ช่องเช็ค "ทำทีละชิ้น" (เฉพาะโหมด interactive จากหน้างานประจำวัน) — โชว์แค่แถวแรกของชิ้นนั้น กดแล้วบันทึกขนาดที่วัดได้เป็นล็อกแยก
+      const checkCell = interactive
+        ? (isBreak ? '' : (isFirstRow ? `<td onclick="event.stopPropagation();"><input type="checkbox" ${pieceDoneMap[rollIdx] ? 'checked' : ''} onchange="toggleDailyPieceDone('${t.id}','${rollIdx}')" style="width:16px;height:16px;cursor:pointer;"></td>` : '<td></td>'))
+        : '';
       return `<tr style="${groupBorder}${breakStyle}">
         <td class="muted" style="padding-left:36px;">${isFirstRow ? i + 1 : ''}</td>
+        ${checkCell}
         ${rollCell}
         <td>${shiftChip}</td>
         <td>${typeChip}</td>
@@ -3016,7 +3028,7 @@ function renderPlanDayTaskDetailRow(t, colspan) {
   return `<tr><td colspan="${colspan}" style="padding:0;background:var(--bg-panel);">
     <table>
       <thead><tr>
-        <th style="padding-left:36px;">ลำดับ</th><th>รหัส</th><th>ชื่อ Roll</th><th>กะ</th><th>ช่วงเวลา</th><th style="text-align:right;">นาที</th><th>เริ่มงาน</th><th>จบงาน</th>
+        <th style="padding-left:36px;">ลำดับ</th>${interactive ? '<th></th>' : ''}<th>รหัส</th><th>ชื่อ Roll</th><th>กะ</th><th>ช่วงเวลา</th><th style="text-align:right;">นาที</th><th>เริ่มงาน</th><th>จบงาน</th>
       </tr></thead>
       <tbody>${body}</tbody>
     </table>
@@ -4226,6 +4238,7 @@ function persistState() {
       planTasks, planTaskSeq, teamMembers, teamSeq,
       ganttTasks, ganttTaskSeq, planGanttWindowStart,
       dailyStatusByDate, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
+      dailyPieceStatus, rollSizeLog, rollSizeLogSeq,
       prodBlockProducts, prodBlockSeq, prodBlockCells, prodBlockPM, prodBlockSummary,
       prodBlockEntries, prodBlockEntrySeq, prodBlockActiveMachine, prodBlockViewMonth
     }));
@@ -4258,6 +4271,9 @@ function restoreState() {
     if (Array.isArray(saved.dailyChecklistTasks)) dailyChecklistTasks = saved.dailyChecklistTasks;
     if (typeof saved.dailyChecklistSeq === 'number') dailyChecklistSeq = saved.dailyChecklistSeq;
     if (saved.dailyAutoContinuedDates) dailyAutoContinuedDates = saved.dailyAutoContinuedDates;
+    if (saved.dailyPieceStatus) dailyPieceStatus = saved.dailyPieceStatus;
+    if (Array.isArray(saved.rollSizeLog)) rollSizeLog = saved.rollSizeLog;
+    if (typeof saved.rollSizeLogSeq === 'number') rollSizeLogSeq = saved.rollSizeLogSeq;
     if (Array.isArray(saved.teamMembers)) teamMembers = saved.teamMembers;
     if (typeof saved.teamSeq === 'number') teamSeq = saved.teamSeq;
     if (Array.isArray(saved.prodBlockProducts)) prodBlockProducts = saved.prodBlockProducts;
@@ -5196,6 +5212,42 @@ function toggleDailyTaskDetail(taskId) {
   renderDailyTasks();
 }
 
+// เช็คงานทีละชิ้น Roll ในตารางแยกรายชิ้นของงานประจำวัน — ติ๊กเสร็จต้องบันทึกขนาดที่วัดได้จริงเป็นล็อกแยกต่างหากด้วย (ไม่ทับข้อมูลเดิมในทะเบียน Tooling)
+// เมื่อติ๊กครบทุกชิ้นของงานนั้นแล้ว จะทำเครื่องหมายงานหลักเป็น "สำเร็จ" ให้อัตโนมัติ (และอาจไปกระตุ้นการวางแผนวันถัดไปอัตโนมัติต่อ ถ้าทั้งวันเสร็จครบพอดี)
+function toggleDailyPieceDone(taskId, rollIdx) {
+  const task = planTasks.find(t => t.id === taskId);
+  if (!task) return;
+  const dateMap = dailyPieceStatus[dailyViewDate] || (dailyPieceStatus[dailyViewDate] = {});
+  const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
+  const wasDone = !!taskMap[rollIdx];
+  if (!wasDone) {
+    const scoped = getMatchingRollsForPlan(task.rollSet, task.rollColor);
+    const roll = scoped[rollIdx];
+    const label = roll ? roll.name + (roll.diameter ? ` (เดิม ${roll.diameter})` : '') : 'ชิ้นนี้';
+    const size = prompt(`บันทึกขนาดที่วัดได้จริงหลังแต่ง/ขัดของ "${label}":`, '');
+    if (size === null) return; // กดยกเลิก — ไม่ติ๊กและไม่บันทึกอะไร
+    taskMap[rollIdx] = true;
+    rollSizeLogSeq++;
+    rollSizeLog.push({
+      id: 'RSL-' + String(rollSizeLogSeq).padStart(4, '0'),
+      taskId, rollIdx, rollId: roll ? roll.id : null, rollName: roll ? roll.name : '—',
+      date: dailyViewDate, measuredSize: size,
+    });
+  } else {
+    taskMap[rollIdx] = false;
+  }
+  const allDone = (task.rollIds || []).every(idx => taskMap[idx]);
+  const dayMap = dailyStatusByDate[dailyViewDate] || (dailyStatusByDate[dailyViewDate] = {});
+  if (allDone) {
+    dayMap[taskId] = 'done';
+    maybeAutoContinueDailyPlan(dailyViewDate);
+  } else if (dayMap[taskId] === 'done') {
+    dayMap[taskId] = 'pending';
+  }
+  persistState();
+  renderDailyTasks();
+}
+
 // เมื่อรายการเช็คลิสต์ + งานตามแผนของวันนี้ "เสร็จครบทุกรายการ" แล้ว ให้สร้างแผนงาน CNC/ขัด Roll ของวันถัดไปต่อให้อัตโนมัติทันที
 // (คัดลอก Size Roll/ชุดสี/รายชื่อ Roll/กะ/ผู้ปฏิบัติงาน/โควตา OT เดิม แค่เปลี่ยนวันที่ — คำนวณเวลาจบใหม่ตามกฎกะ/พักตามปกติ)
 // ทำครั้งเดียวต่อวันที่ (กันสร้างซ้ำทุกครั้งที่ติ๊ก/ยกเลิกติ๊กหลังจากครบแล้ว) และข้ามถ้ามีแผนวันถัดไปของ Size Roll/ชุดสีเดียวกันอยู่แล้ว
@@ -5330,7 +5382,7 @@ function renderDailyTasks() {
       <td><span class="chip ${meta.chip}">${meta.label}</span></td>
       <td onclick="event.stopPropagation();">${actions}</td>
     </tr>`;
-    return row + (expanded ? renderPlanDayTaskDetailRow(item.raw, 9) : '');
+    return row + (expanded ? renderPlanDayTaskDetailRow(item.raw, 9, true) : '');
   }).join('') || `<tr><td colspan="9" style="padding:32px;text-align:center;color:var(--text-3);">ยังไม่มีงานในวันนี้ — กด "+ เพิ่มงานเช็คลิสต์" เพื่อเริ่มสร้างเช็คลิสต์เอง</td></tr>`;
 
   const statuses = allItems.map(item => getDailyStatus(item.key));
