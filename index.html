@@ -2890,7 +2890,7 @@ function planDateGoToday() {
 // วันที่ (iso) ที่มีแผนงานอยู่แล้วของประเภทงานที่กำลังดู (CNC/ขัด Roll) — ใช้ทำจุดสีในปฏิทินป๊อปอัพ
 function planDatesWithTasks() {
   const set = new Set();
-  planTasks.forEach(t => { if (t.workType === currentPlanWorkType && shiftMatchesFilter(t.shift, currentPlanShiftFilter)) set.add(t.date); });
+  planTasks.forEach(t => { if (t.workType === currentPlanWorkType && shiftMatchesFilter(t.shift, currentPlanShiftFilter)) set.add(taskDisplayDate(t)); });
   return set;
 }
 // เงื่อนไขกรองงานตามแผนที่ใช้ร่วมกันทุกมุมมอง (รายวัน/สัปดาห์/เดือน) — ประเภทงาน (CNC/ขัด Roll) + กะที่เลือกอยู่ (ถ้ามี)
@@ -3052,7 +3052,7 @@ function renderPlanDay() {
   const meta = PLAN_WORKTYPE_META[currentPlanWorkType];
   document.getElementById('plan-daterange-label').textContent = fmtDateThai(planViewDate);
   document.getElementById('plan-day-title').textContent = meta.label + ' — วันที่ ' + fmtDateThai(planViewDate);
-  const tasks = planTasks.filter(t => t.date === iso && matchesCurrentPlanFilter(t)).sort((a, b) => (a.startTime||'').localeCompare(b.startTime||''));
+  const tasks = planTasks.filter(t => taskDisplayDate(t) === iso && matchesCurrentPlanFilter(t)).sort((a, b) => (a.startTime||'').localeCompare(b.startTime||''));
   document.getElementById('plan-day-tbody').innerHTML = tasks.map((t, i) => {
     const expandable = (t.rollIds || []).length > 1;
     const expanded = expandable && expandedPlanDayTaskId === t.id;
@@ -3095,7 +3095,7 @@ function renderPlanWeek() {
 
   document.getElementById('plan-week-tbody').innerHTML = days.map(d => {
     const iso = toISODate(d);
-    const tasks = planTasks.filter(t => t.date === iso && matchesCurrentPlanFilter(t)).sort((a, b) => (a.startTime||'').localeCompare(b.startTime||''));
+    const tasks = planTasks.filter(t => taskDisplayDate(t) === iso && matchesCurrentPlanFilter(t)).sort((a, b) => (a.startTime||'').localeCompare(b.startTime||''));
     const items = tasks.map(t => `
       <div style="display:flex;align-items:center;gap:4px;">
         <span class="chip ${shiftChipClass(t.shift)}" style="cursor:pointer;flex:1;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(SHIFTS[t.shift]?.label || '')} — ${escapeHtmlAttr(t.rollId)} — ${escapeHtmlAttr(t.rollName)}">${escapeHtmlAttr(t.rollId)}</span>
@@ -3129,7 +3129,7 @@ function renderPlanMonth() {
   for (let day = 1; day <= daysInMonth; day++) {
     const d = new Date(year, month, day);
     const iso = toISODate(d);
-    const tasks = planTasks.filter(t => t.date === iso && matchesCurrentPlanFilter(t));
+    const tasks = planTasks.filter(t => taskDisplayDate(t) === iso && matchesCurrentPlanFilter(t));
     const chips = tasks.map(t =>
       `<span class="chip ${shiftChipClass(t.shift)}" style="font-size:10px;cursor:pointer;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(SHIFTS[t.shift]?.label || '')} — ${escapeHtmlAttr(t.rollId)} — ${escapeHtmlAttr(t.rollName)}">${escapeHtmlAttr(t.rollId)}</span>`
     ).join('');
@@ -3549,6 +3549,31 @@ function computePlanPieceSchedule(startDate, startTime, pieceMinutesList, shiftK
 // (ส่วนก่อน = OT/งานของวันก่อนหน้า, ส่วนหลัง = งานของวันใหม่) แทนที่จะยกทั้งชิ้นไปวันใดวันหนึ่ง — เก็บนาทีของแต่ละส่วนไว้ใน rollMinutesOverride (key = ตำแหน่งใน Size Roll/สีเดิม)
 // ถ้าทำงานยาวข้ามรอบกะแบบนี้ไปมากกว่า 1 รอบ ให้ตัดเป็นงานแยกทีละวันจริง แทนที่จะเก็บเป็นงานก้อนเดียวที่วันที่เริ่มงานวันเดียว
 // คืนค่า null ถ้าทำงานจบภายในรอบกะเดียว — ให้ผู้เรียกบันทึกเป็นงานเดียวตามปกติ
+// หา "วันที่ของกะจริง" สำหรับ "แสดงผล" เท่านั้น (ไม่ใช่ค่าที่เก็บ/ใช้คำนวณตารางซ้ำ) ให้งานที่เริ่มกลางช่วงกะดึกแบบข้ามเที่ยงคืนมาแล้ว
+// (เช่น ต่อเวลามาเริ่ม 02:30 ซึ่งจริงๆ เป็นช่วงท้ายของกะดึกที่เริ่มตั้งแต่ 20:00 เมื่อคืนก่อนหน้า) ให้ไปโผล่ในมุมมองรายวัน/หน้างานประจำวันของ "วันก่อนหน้า" แทนที่จะเป็นวันปฏิทินตามเวลาที่เห็น
+// สำคัญ: ห้ามเอาค่าที่ได้ไปเขียนทับ t.date ที่เก็บไว้จริง เพราะ computePlanEnd/resequencePlanTask/autoFixPlanSequencing ยังต้องใช้ t.date เดิม (วันปฏิทินจริง) ในการคำนวณตารางซ้ำให้ถูกต้อง
+function sessionOwningDate(rawDate, rawTime, shiftKeyOfSession) {
+  if (shiftKeyOfSession === 'night') {
+    const [h, m] = rawTime.split(':').map(Number);
+    if (!Number.isNaN(h) && !Number.isNaN(m) && (h * 60 + m) < 20 * 60) return addDaysIso(rawDate, -1);
+  }
+  return rawDate;
+}
+// กะ (shiftKey) ที่ "เวลาเริ่มงาน" ของงานนี้ตกอยู่ใน — ใช้หาว่างานนี้เป็นของกะเช้าหรือกะดึกจริงๆ (สำหรับงาน "2 กะ" ที่ไม่รู้ล่วงหน้าว่าเริ่มในช่วงไหน)
+// ถ้าเวลาเริ่มตกอยู่นอกทุกช่วงกะพอดี (เช่น ต่อ OT มาจากกะดึกแต่ยังไม่ทันถึงเวลาเริ่มกะเช้า) ให้ถือว่าเป็นของกะที่จบเร็วที่สุดก่อนหน้า เหมือนตอนคำนวณ OT
+function taskSessionShiftKey(t) {
+  const shift = SHIFTS[t.shift];
+  if (!shift) return null;
+  const [h, m] = (t.startTime || '').split(':').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  const minOfDay = h * 60 + m;
+  return windowKeyAt(shift, minOfDay) || mostRecentShiftKeyBefore(shift, minOfDay);
+}
+// "วันที่" ที่ควรใช้แสดงงานนี้ในมุมมองรายวัน/หน้างานประจำวัน (ดู sessionOwningDate) — คำนวณสดทุกครั้ง ไม่แตะ t.date ที่เก็บไว้จริง
+function taskDisplayDate(t) {
+  return sessionOwningDate(t.date, t.startTime || '', taskSessionShiftKey(t));
+}
+
 function splitPlanDataAcrossDays(base, rolls, workType) {
   const field = PLAN_WORKTYPE_META[workType].field;
   const pieceMinutesList = rolls.map(r => parseFloat(r[field]) || 0);
@@ -3569,7 +3594,7 @@ function splitPlanDataAcrossDays(base, rolls, workType) {
       const isNewSession = seg.type === 'normal' && (freshEntry || seg.shiftKey !== lastNormalShiftKey);
       if (isNewSession) {
         if (cur && sinceBoundary > 0) cur.pieces.push({ idx: i, minutes: sinceBoundary }); // ส่วนก่อนจุดตัดของชิ้นนี้ (ถ้ามี) ปิดท้ายกลุ่มเดิม
-        cur = { pieces: [], startDate: seg.startDate, startTime: seg.startTime, endDate: seg.endDate, endTime: seg.endTime, otMinutes: 0, otMinutesByShift: {} };
+        cur = { pieces: [], startDate: seg.startDate, startTime: seg.startTime, endDate: seg.endDate, endTime: seg.endTime, shiftKey: seg.shiftKey, otMinutes: 0, otMinutesByShift: {} };
         groups.push(cur);
         sinceBoundary = 0;
       }
@@ -5474,7 +5499,7 @@ function toggleDailyPieceDone(taskId, rollIdx) {
 function maybeAutoContinueDailyPlan(dateIso) {
   if (dailyAutoContinuedDates[dateIso]) return;
   const checklistIds = dailyChecklistTasks.filter(t => !t.date || t.date === dateIso).map(t => t.id);
-  const plannedForDay = planTasks.filter(t => t.date === dateIso);
+  const plannedForDay = planTasks.filter(t => taskDisplayDate(t) === dateIso);
   const allKeys = checklistIds.concat(plannedForDay.map(t => t.id));
   if (!allKeys.length) return;
   const dayMap = dailyStatusByDate[dateIso] || {};
@@ -5565,7 +5590,7 @@ function renderDailyTasks() {
     .filter(t => !t.date || t.date === dailyViewDate)
     .map(t => ({ key: t.id, time: t.time, task: t.task, type: t.type, ref: t.ref, shiftLabel: '—', who: t.who, editable: true, expandable: false }));
   const plannedItems = planTasks
-    .filter(t => t.date === dailyViewDate)
+    .filter(t => taskDisplayDate(t) === dailyViewDate)
     .filter(t => !currentDailyWorkTypeFilter || t.workType === currentDailyWorkTypeFilter)
     .filter(t => shiftMatchesFilter(t.shift, currentDailyShiftFilter))
     .map(t => {
