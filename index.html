@@ -1366,11 +1366,12 @@ canvas{display:block;}
         <button class="btn btn-ghost btn-sm plan-worktype-btn" data-worktype="polish" onclick="switchPlanWorkType('polish')">✦ ขัด Roll</button>
       </div>
 
-      <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="" onclick="switchPlanShiftFilter('')" style="color:var(--accent);border-color:var(--accent);">ทั้งหมด</button>
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="morning" onclick="switchPlanShiftFilter('morning')">🌤 กะเช้า</button>
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="night" onclick="switchPlanShiftFilter('night')">🌙 กะดึก</button>
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="both" onclick="switchPlanShiftFilter('both')">🌤🌙 2 กะ</button>
+        <button class="btn btn-ghost btn-sm" style="margin-left:auto;color:var(--red);border-color:var(--red);" onclick="resetAllPlanTasks()">🗑 ล้างแผนทั้งหมด</button>
       </div>
 
       <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
@@ -3960,6 +3961,17 @@ function deletePlanTask(taskId) {
   mergeAdjacentPlanTasks();
   persistState();
   renderCurrentPlanView();
+}
+
+// ล้างงานวางแผนทั้งหมด (CNC + ขัด Roll) ทิ้ง เริ่มตารางวางแผนใหม่ตั้งแต่ต้น — ไม่แตะเช็คลิสต์งานประจำวันที่เพิ่มเอง หรือล็อกขนาดที่วัดได้เดิม
+function resetAllPlanTasks() {
+  if (!planTasks.length) { alert('ยังไม่มีงานวางแผนอยู่เลย'); return; }
+  if (!confirm(`ยืนยันลบงานวางแผนทั้งหมด (${planTasks.length} รายการ) ออกจากตาราง แล้วเริ่มต้นใหม่ทั้งหมด?\n\nการกระทำนี้ไม่สามารถย้อนกลับได้`)) return;
+  planTasks = [];
+  dailyAutoContinuedDates = {};
+  persistState();
+  renderCurrentPlanView();
+  alert('ล้างงานวางแผนทั้งหมดเรียบร้อยแล้ว เริ่มเพิ่มงานใหม่ได้เลย');
 }
 
 // ─── GANTT: render/เพิ่ม/แก้ไข/ลบ งานในหน้าวางแผน (มุมมอง Gantt) ────────────────
