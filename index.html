@@ -3166,14 +3166,14 @@ function planTaskFormFields() {
       </div>
     </div>
     <div class="modal-row three">
-      <div class="form-group"><label class="form-label">🌤 เริ่มงานกะเช้า</label><input class="form-input" id="pf-start-morning" type="time" onchange="updatePlanEndTime()"></div>
+      <div class="form-group"><label class="form-label">🌤 เริ่มงานกะเช้า</label><input class="form-input" id="pf-start-morning" type="text" inputmode="numeric" placeholder="เช่น 08:00" maxlength="5" onchange="normalizeTimeInput(this);updatePlanEndTime()"></div>
       <div class="form-group"><label class="form-label">จบงานกะเช้า — คำนวณให้อัตโนมัติ</label><input class="form-input" id="pf-end-morning" type="text" disabled></div>
       <div class="form-group"><label class="form-label">เวลา OT กะเช้า (ชม.)</label><input class="form-input" id="pf-otcap-morning" type="number" min="0" step="0.5" value="0" onchange="updatePlanEndTime()">
         <span id="pf-ot-hint-morning" style="font-size:11px;color:var(--text-3);">พัก 20 นาทีก่อนเริ่ม OT</span>
       </div>
     </div>
     <div class="modal-row three">
-      <div class="form-group"><label class="form-label">🌙 เริ่มงานกะดึก</label><input class="form-input" id="pf-start-night" type="time" onchange="updatePlanEndTime()"></div>
+      <div class="form-group"><label class="form-label">🌙 เริ่มงานกะดึก</label><input class="form-input" id="pf-start-night" type="text" inputmode="numeric" placeholder="เช่น 20:00" maxlength="5" onchange="normalizeTimeInput(this);updatePlanEndTime()"></div>
       <div class="form-group"><label class="form-label">จบงานกะดึก — คำนวณให้อัตโนมัติ</label><input class="form-input" id="pf-end-night" type="text" disabled></div>
       <div class="form-group"><label class="form-label">เวลา OT กะดึก (ชม.)</label><input class="form-input" id="pf-otcap-night" type="number" min="0" step="0.5" value="0" onchange="updatePlanEndTime()">
         <span id="pf-ot-hint-night" style="font-size:11px;color:var(--text-3);">พัก 20 นาทีก่อนเริ่ม OT</span>
@@ -3615,6 +3615,29 @@ function selectPlanShift(key) {
   if (key === 'morning' || key === 'both') document.getElementById('pf-start-morning').value = SHIFTS.morning.start;
   if (key === 'night') document.getElementById('pf-start-night').value = SHIFTS.night.start;
   updatePlanEndTime();
+}
+
+// แปลงค่าที่พิมพ์ในช่องเวลา (เช่น "8:0", "800", "20:00") ให้เป็นรูปแบบ 24 ชั่วโมงมาตรฐาน "HH:MM" เสมอ
+// ใช้ช่อง text ธรรมดาแทน input[type=time] เพราะตัวหลังแสดงผลตามภาษา/เครื่องของผู้ใช้ (บางเครื่องขึ้น AM/PM) ทำให้หน่วยเวลาไม่ตรงกันทั้งระบบ
+function normalizeTimeInput(el) {
+  const raw = (el.value || '').trim();
+  if (!raw) return;
+  let h, m;
+  const withColon = raw.match(/^(\d{1,2}):(\d{1,2})$/);
+  if (withColon) {
+    h = parseInt(withColon[1], 10);
+    m = parseInt(withColon[2], 10);
+  } else {
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length <= 2) { h = parseInt(digits, 10); m = 0; }
+    else { h = parseInt(digits.slice(0, digits.length - 2), 10); m = parseInt(digits.slice(-2), 10); }
+  }
+  if (Number.isNaN(h) || Number.isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) {
+    alert('รูปแบบเวลาไม่ถูกต้อง กรุณากรอกเป็น HH:MM แบบ 24 ชั่วโมง เช่น 08:00 หรือ 20:00');
+    el.value = '';
+    return;
+  }
+  el.value = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
 }
 
 // แปลงนาทีสัมบูรณ์ (นับจากวันที่เริ่มงาน) เป็น "HH:MM" ธรรมดา ไม่สนวันที่ — ใช้กับช่อง time picker ที่ปิดใช้งาน (แสดงอย่างเดียว)
@@ -5564,7 +5587,7 @@ function dailyChecklistFormFields() {
       <div class="form-group"><label class="form-label">ชื่องาน</label><input class="form-input" id="dcf-task" placeholder="เช่น ตรวจสอบ Runout Work Roll Stand 1"></div>
     </div>
     <div class="modal-row three">
-      <div class="form-group"><label class="form-label">เวลา</label><input class="form-input" id="dcf-time" type="time"></div>
+      <div class="form-group"><label class="form-label">เวลา</label><input class="form-input" id="dcf-time" type="text" inputmode="numeric" placeholder="เช่น 08:00" maxlength="5" onchange="normalizeTimeInput(this)"></div>
       <div class="form-group"><label class="form-label">ประเภท</label><input class="form-input" id="dcf-type" placeholder="เช่น ตรวจสอบ, PM, ทำความสะอาด"></div>
       <div class="form-group"><label class="form-label">ผู้รับผิดชอบ</label><input class="form-input" id="dcf-who" placeholder="เช่น สมชาย ว."></div>
     </div>
