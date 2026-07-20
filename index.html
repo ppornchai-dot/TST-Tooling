@@ -4354,6 +4354,36 @@ syncRollStatusWithProdBlock();
   if (removed) { planTasks = keep; persistState(); }
 })();
 
+// migration: ลบงานที่ Roll ทั้งหมดของมันเป็นเซตย่อยซ้ำอยู่ในงานอื่นที่ใหญ่กว่า (ประเภทงาน/Size Roll/สีเดียวกัน และวันที่อยู่ในช่วงงานที่ใหญ่กว่านั้นพอดี)
+// เศษงานตกค้างจากบั๊กเดิม (ก่อนมี splitGroupId) ที่ทำให้ Roll ตัวเดียวกันถูกเพิ่มซ้ำอยู่ในหลายงาน (เช่น "F5-T" เดี่ยวๆ ที่ Roll นั้นมีอยู่ในงาน 9 Roll ใหญ่กว่าอยู่แล้ว) — เก็บไว้แค่งานที่ใหญ่กว่า (ครอบคลุมกว่า)
+(function removeSubsetDuplicatePlanTasks() {
+  const removedIds = new Set();
+  let changed = true;
+  let guard = 0;
+  while (changed && guard < 50) {
+    changed = false;
+    guard++;
+    const candidates = planTasks.filter(t => !removedIds.has(t.id));
+    candidates.forEach(a => {
+      if (removedIds.has(a.id)) return;
+      const aRollIds = a.rollIds || [];
+      if (!aRollIds.length) return;
+      const superTask = candidates.find(b =>
+        b.id !== a.id && !removedIds.has(b.id) &&
+        b.workType === a.workType && b.rollSet === a.rollSet && b.rollColor === a.rollColor &&
+        (b.rollIds || []).length > aRollIds.length &&
+        aRollIds.every(idx => (b.rollIds || []).includes(idx)) &&
+        a.date >= b.date && a.date <= (b.endDate || b.date)
+      );
+      if (superTask) { removedIds.add(a.id); changed = true; }
+    });
+  }
+  if (removedIds.size) {
+    planTasks = planTasks.filter(t => !removedIds.has(t.id));
+    persistState();
+  }
+})();
+
 // migration: งานวางแผนเก่าที่เคยทับเวลากัน/ไม่ต่อเนื่องกัน (ก่อนมีระบบต่อเวลาอัตโนมัติ) ให้ต่อเวลาให้เรียบร้อยตั้งแต่ตอนโหลดแอปเลย ไม่ต้องรอให้ผู้ใช้กดปุ่ม "ต่อเวลา" เอง
 if (autoFixPlanSequencing()) persistState();
 
