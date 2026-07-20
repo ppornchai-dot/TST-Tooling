@@ -2715,6 +2715,7 @@ const PLAN_WORKTYPE_META = {
   polish: { label: 'แผนงานขัด Roll', field: 'polishTime', metricLabel: 'เวลาขัด Roll (นาที)' },
 };
 let currentPlanWorkType = 'cnc';
+let currentEditingPlanTaskId = null; // taskId ของงานที่กำลังแก้ไขอยู่ในฟอร์มวางแผน (null ถ้าเป็นการเพิ่มงานใหม่) — ใช้กันไม่ให้ตัวเองถูกนับเป็น "งานอื่น" ตอนหา Roll ที่ยังไม่ถูกวางแผน
 
 // ─── กะทำงาน (เช้า/ดึก/2 กะ) — แต่ละกะมี "windows" ของช่วงเวลาปกติ (นาทีของวัน) เวลาที่ทำงานนอกทุก window นับเป็น OT ───
 // กะเช้ามีพักเที่ยง 12:00–13:00 ส่วนกะดึกมีพักเที่ยงคืน 00:00–01:00 (ทั้งคู่ไม่นับเป็นเวลาทำงาน)
@@ -3252,6 +3253,17 @@ function getMatchingRollsForPlan(setName, colorKey) {
   return rolls;
 }
 
+// หา "ตำแหน่ง" (index ใน getMatchingRollsForPlan) ของ Roll ที่ถูกวางแผนไปแล้วในงานอื่นของประเภทงาน/Size Roll/สีเดียวกัน — ใช้กันไม่ให้เลือกซ้ำโดยไม่ตั้งใจตอนเพิ่มงานใหม่
+function getPlannedRollIndexSet(setName, colorKey, workType, excludeTaskId) {
+  const planned = new Set();
+  planTasks.forEach(t => {
+    if (t.id === excludeTaskId) return;
+    if (t.workType !== workType || t.rollSet !== setName || t.rollColor !== (colorKey || null)) return;
+    (t.rollIds || []).forEach(idx => planned.add(idx));
+  });
+  return planned;
+}
+
 // แปลงนาทีรวมเป็นข้อความ "X ชม. Y นาที" ให้อ่านง่ายกว่าตัวเลขนาทีดิบ
 function formatMinutesAsHm(totalMinutes) {
   const mins = Math.round(totalMinutes);
@@ -3363,13 +3375,20 @@ function recalcPlanTotalsFromSelection() {
 }
 
 // เติมรายการ Roll ที่พบตามเงื่อนไข Size Roll/สี แล้วเปิดดรอปดาวน์ให้เลือกเฉพาะรายการที่ต้องการ
-// presetSelectedIndexes (ตำแหน่งลำดับในรายการที่พบ) ใช้ตอนแก้ไขงานเดิม เพื่อคงการเลือกรายการเดิมไว้ — ถ้าไม่ระบุ (เพิ่มงานใหม่/เปลี่ยน Size Roll) จะเลือกทั้งหมดที่พบเป็นค่าเริ่มต้น
-function fillPlanRollReadonly(setName, colorKey, presetSelectedIndexes) {
+// presetSelectedIndexes (ตำแหน่งลำดับในรายการที่พบ) ใช้ตอนแก้ไขงานเดิม เพื่อคงการเลือกรายการเดิมไว้
+// ถ้าไม่ระบุ (เพิ่มงานใหม่/เปลี่ยน Size Roll) จะเลือกเฉพาะ Roll ที่ "ยังไม่ถูกวางแผน" ในงานอื่นของประเภทงานเดียวกันเป็นค่าเริ่มต้น — ดึง Roll ที่เหลือมาใช้เวลา (รวม OT) ให้เต็มที่ ไม่ซ้ำกับที่วางแผนไปแล้ว
+// (ถ้าไม่เหลือ Roll ที่ยังไม่วางแผนเลยสักตัว จะ fallback ไปเลือกทั้งหมดที่พบแทน กันเลือกไม่ได้เลย)
+function fillPlanRollReadonly(setName, colorKey, presetSelectedIndexes, excludeTaskId) {
   const rolls = getMatchingRollsForPlan(setName, colorKey);
   const allIndexes = rolls.map((_, idx) => idx);
-  const selectedIndexes = (presetSelectedIndexes && presetSelectedIndexes.length)
-    ? presetSelectedIndexes.filter(idx => idx >= 0 && idx < rolls.length)
-    : allIndexes;
+  let selectedIndexes;
+  if (presetSelectedIndexes && presetSelectedIndexes.length) {
+    selectedIndexes = presetSelectedIndexes.filter(idx => idx >= 0 && idx < rolls.length);
+  } else {
+    const planned = getPlannedRollIndexSet(setName, colorKey, currentPlanWorkType, excludeTaskId);
+    const unplanned = allIndexes.filter(idx => !planned.has(idx));
+    selectedIndexes = unplanned.length ? unplanned : allIndexes;
+  }
   document.getElementById('pf-rollids').value = selectedIndexes.join(',');
   renderRollOptionsPanel(rolls, selectedIndexes);
   updateRollSelectionLabel();
@@ -3695,13 +3714,13 @@ function updatePlanEndTime() {
 function onPlanRollSetChange() {
   const setName = document.getElementById('pf-rollset').value;
   populatePlanRollColorSelect(setName, null);
-  fillPlanRollReadonly(setName, null);
+  fillPlanRollReadonly(setName, null, null, currentEditingPlanTaskId);
 }
 
 function onPlanRollColorChange() {
   const setName = document.getElementById('pf-rollset').value;
   const colorKey = document.getElementById('pf-rollcolor').value;
-  fillPlanRollReadonly(setName, colorKey);
+  fillPlanRollReadonly(setName, colorKey, null, currentEditingPlanTaskId);
 }
 
 // หางาน (ประเภทเดียวกัน) ที่จบล่าสุด (เรียงตามวันที่จบ+เวลาจบ) เพื่อให้งานใหม่เริ่มต่อจากตรงนั้นได้เลย ไม่ทับเวลากับงานที่วางแผนไว้ก่อนหน้า
@@ -3832,6 +3851,7 @@ function mergeAdjacentPlanTasks() {
 
 function openPlanTaskModal(mode, taskId, presetDate) {
   const task = mode === 'edit' ? planTasks.find(t => t.id === taskId) : null;
+  currentEditingPlanTaskId = task ? task.id : null;
   const workType = task ? task.workType : currentPlanWorkType;
   const workTypeLabel = PLAN_WORKTYPE_META[workType].label;
   document.getElementById('modal-title').textContent = mode === 'edit' ? ('แก้ไขงาน — ' + workTypeLabel) : ('เพิ่มงานใหม่ — ' + workTypeLabel);
@@ -3851,7 +3871,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   populatePlanWorkerSelect(workType, task ? task.workerId : (chainFrom ? chainFrom.workerId : null));
   populatePlanRollSetSelect(task ? task.rollSet : null);
   populatePlanRollColorSelect(task ? task.rollSet : null, task ? task.rollColor : null);
-  fillPlanRollReadonly(task ? task.rollSet : null, task ? task.rollColor : null, task ? task.rollIds : null); // คำนวณเวลาเริ่ม/จบของแต่ละกะให้อัตโนมัติในตัว — คงรายการ Roll ที่เลือกไว้เดิมถ้าเป็นการแก้ไข
+  fillPlanRollReadonly(task ? task.rollSet : null, task ? task.rollColor : null, task ? task.rollIds : null, currentEditingPlanTaskId); // คำนวณเวลาเริ่ม/จบของแต่ละกะให้อัตโนมัติในตัว — คงรายการ Roll ที่เลือกไว้เดิมถ้าเป็นการแก้ไข
   // แก้ไขงานเดิม — คงวันที่จบที่บันทึกไว้ถ้ามีค่าจริง ไม่ทับด้วยค่าคำนวณใหม่ แต่ถ้าเดิมว่าง/เป็น "—" ให้ใช้ค่าที่คำนวณอัตโนมัติแทน
   if (task && task.endDate) document.getElementById('pf-enddate').value = task.endDate;
   document.getElementById('modal-overlay').classList.add('open');
