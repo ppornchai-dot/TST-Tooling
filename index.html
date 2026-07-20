@@ -4211,6 +4211,33 @@ syncRollStatusWithProdBlock();
   if (planTasks.length !== before) persistState();
 })();
 
+// migration: งานวางแผนที่บันทึกไว้ก่อนหน้านี้ (ตอนยังไม่มีการตัดงานข้ามวัน) อาจมีเวลาทำงานยาวข้ามคืนไปมากกว่า 1 วันปฏิทินอยู่รวมเป็นก้อนเดียว
+// รันครั้งเดียวตอนโหลดแอปเพื่อตัดงานเหล่านั้นออกเป็นงานแยกทีละวันปฏิทินให้ตรงกับพฤติกรรมใหม่ — ทำซ้ำได้ปลอดภัยทุกครั้งที่โหลด เพราะงานที่ตัดแล้วจะไม่ข้ามวันอีก จึงไม่ถูกตัดซ้ำ
+(function migrateSplitLongPlanTasks() {
+  let changed = false;
+  const result = [];
+  planTasks.forEach(t => {
+    const scopedRolls = getMatchingRollsForPlan(t.rollSet, t.rollColor);
+    const rolls = (t.rollIds || []).map(idx => scopedRolls[idx]).filter(Boolean);
+    const splitGroups = rolls.length ? splitPlanDataAcrossDays({ date: t.date, shift: t.shift, startTime: t.startTime, otCapMinutesByShift: t.otCapMinutesByShift || {}, rollIds: t.rollIds }, rolls, t.workType) : null;
+    if (!splitGroups) { result.push(t); return; }
+    changed = true;
+    splitGroups.forEach(grp => {
+      planTaskSeq++;
+      result.push({
+        id: 'PT-' + String(planTaskSeq).padStart(4, '0'),
+        workType: t.workType, date: grp.date, rollSet: t.rollSet, rollColor: t.rollColor,
+        rollIds: grp.rollIds, rollId: grp.rollId, rollName: grp.rollName, totalTime: grp.totalTime,
+        startTime: grp.startTime, endTime: grp.endTime, endDate: grp.endDate,
+        shift: t.shift, otCapMinutesByShift: t.otCapMinutesByShift,
+        otMinutes: grp.otMinutes, otMinutesByShift: grp.otMinutesByShift,
+        workerId: t.workerId || null,
+      });
+    });
+  });
+  if (changed) { planTasks = result; persistState(); }
+})();
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 // เรียกหลัง restoreState() เสมอ เพื่อให้ Dashboard แสดงข้อมูลที่กู้คืนจาก localStorage ได้ถูกต้อง
 initDashboard();
