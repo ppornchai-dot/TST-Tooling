@@ -4384,6 +4384,65 @@ syncRollStatusWithProdBlock();
   }
 })();
 
+// migration: Roll ตัวเดียวกัน (ตำแหน่งเดียวกันใน Size Roll/สีเดียวกัน) ที่ถูกวางแผนซ้ำอยู่ในหลายงานของประเภทงานเดียวกัน โดยไม่ใช่คู่ที่ถูกแบ่งเวลาคาบเกี่ยวกันจริง (เช่น "FS1-L" ที่ไปโผล่เต็มเวลาซ้ำอีกงานหนึ่งโดยไม่มี "(ต่อ)")
+// คู่ที่ถูกต้อง (ไม่แตะ) คือ 2 งานที่ต่อเวลากันสนิทเป๊ะ (จบงานแรก = เริ่มงานหลัง) และ Roll ตัวนั้นมี rollMinutesOverride อยู่ในทั้งคู่ (ถูกแบ่งเวลาจริงตามฟีเจอร์ตัดวัน)
+// นอกเหนือจากนั้นถือเป็นการวางซ้ำโดยไม่ตั้งใจ — เก็บไว้แค่ occurrence แรกสุดตามเวลา ตัด Roll ที่ซ้ำออกจากงานหลังๆ (ถ้างานไหนเหลือ 0 Roll ให้ตัดทั้งงานทิ้งไปเลย)
+(function removeOverlappingRollDuplicates() {
+  const groups = new Map();
+  planTasks.forEach(t => {
+    const key = [t.workType, t.rollSet, t.rollColor].join('|');
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(t);
+  });
+  const removeRollFromTask = new Map(); // taskId -> Set(rollIdx)
+  groups.forEach(tasks => {
+    const usageByRoll = new Map();
+    tasks.forEach(t => (t.rollIds || []).forEach(idx => {
+      if (!usageByRoll.has(idx)) usageByRoll.set(idx, []);
+      usageByRoll.get(idx).push(t);
+    }));
+    usageByRoll.forEach((usingTasks, rollIdx) => {
+      if (usingTasks.length <= 1) return;
+      const sorted = [...usingTasks].sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
+      const isLegitSplit = sorted.length === 2 &&
+        sorted[0].endDate === sorted[1].date && sorted[0].endTime === sorted[1].startTime &&
+        sorted[0].rollMinutesOverride && sorted[0].rollMinutesOverride[rollIdx] != null &&
+        sorted[1].rollMinutesOverride && sorted[1].rollMinutesOverride[rollIdx] != null;
+      if (isLegitSplit) return;
+      sorted.slice(1).forEach(t => {
+        if (!removeRollFromTask.has(t.id)) removeRollFromTask.set(t.id, new Set());
+        removeRollFromTask.get(t.id).add(rollIdx);
+      });
+    });
+  });
+  if (!removeRollFromTask.size) return;
+  const result = [];
+  planTasks.forEach(t => {
+    const removeSet = removeRollFromTask.get(t.id);
+    if (!removeSet) { result.push(t); return; }
+    const newRollIds = (t.rollIds || []).filter(idx => !removeSet.has(idx));
+    if (!newRollIds.length) return; // ทุก Roll ของงานนี้ซ้ำหมด — ตัดทั้งงานทิ้ง
+    const scopedRolls = getMatchingRollsForPlan(t.rollSet, t.rollColor);
+    const rolls = newRollIds.map(idx => scopedRolls[idx]).filter(Boolean);
+    if (!rolls.length) return;
+    const field = PLAN_WORKTYPE_META[t.workType].field;
+    const totalTime = newRollIds.reduce((sum, idx) => {
+      const override = t.rollMinutesOverride && t.rollMinutesOverride[idx];
+      const roll = scopedRolls[idx];
+      return sum + (override != null ? override : (roll ? parseFloat(roll[field]) || 0 : 0));
+    }, 0);
+    const computed = computePlanEnd(t.date, t.startTime, totalTime, t.shift, t.otCapMinutesByShift || {});
+    result.push({
+      ...t, rollIds: newRollIds, rollId: newRollIds.length + ' Roll',
+      rollName: rolls.map(r => r.name).join(', '), totalTime,
+      endTime: computed.time, endDate: computed.date || t.date,
+      otMinutes: computed.otMinutes || 0, otMinutesByShift: computed.otMinutesByShift || {},
+    });
+  });
+  planTasks = result;
+  persistState();
+})();
+
 // migration: งานวางแผนเก่าที่เคยทับเวลากัน/ไม่ต่อเนื่องกัน (ก่อนมีระบบต่อเวลาอัตโนมัติ) ให้ต่อเวลาให้เรียบร้อยตั้งแต่ตอนโหลดแอปเลย ไม่ต้องรอให้ผู้ใช้กดปุ่ม "ต่อเวลา" เอง
 if (autoFixPlanSequencing()) persistState();
 
