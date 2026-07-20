@@ -2742,6 +2742,16 @@ function isMinuteInShift(minAbs, shift) {
   const m = ((minAbs % 1440) + 1440) % 1440;
   return shift.windows.some(w => isMinuteInWindow(m, w));
 }
+// หา window ที่ "จบเร็วที่สุดก่อนหน้า" นาทีของวันนี้ (วนรอบ 1440 นาที) — ใช้ตอนเวลาเริ่มงานตกอยู่นอกทุกช่วงกะพอดี
+// (เช่น งานที่ต่อเวลามาจากงานก่อนหน้าที่เพิ่งทำ OT ของกะดึกจบไป แต่ยังไม่ทันถึงเวลาเริ่มกะเช้า) ให้ถือว่า "เพิ่งออกจากกะนั้น" ทันที เพื่อให้นับเป็น OT ต่อเนื่องได้ถูกต้อง แทนที่จะทิ้งช่วงนี้เป็นเวลาว่างเปล่าไม่นับอะไรเลย
+function mostRecentShiftKeyBefore(shift, minOfDay) {
+  let best = null, bestGap = Infinity;
+  shift.windows.forEach(w => {
+    const gap = ((minOfDay - w.endMin) % 1440 + 1440) % 1440;
+    if (gap < bestGap) { bestGap = gap; best = w.shiftKey; }
+  });
+  return best;
+}
 // กะที่บันทึกไว้ (shiftKey) ตรงกับตัวกรองที่เลือกอยู่หรือไม่ — งาน "2 กะ" ถือว่าตรงกับตัวกรองกะเช้าและกะดึกด้วย เพราะครอบคลุมทั้งสองช่วง
 function shiftMatchesFilter(shiftKey, filterKey) {
   if (!filterKey) return true;
@@ -3461,7 +3471,10 @@ function initPlanCursorState(startTime, shiftKey, otCaps) {
   if (startBreak) {
     cursor += startBreak.endMin - (cursor % 1440);
   }
-  return { cursor, shift, otCaps: otCaps || {}, segments: {}, otMinutesByShift: {}, otMinutes: 0, lastExitedKey: null, otUsedThisExit: 0, breakPaidThisExit: false };
+  // ถ้าเวลาเริ่มงานตกอยู่นอกทุกช่วงกะพอดี (เช่น ต่อเวลามาจากงานก่อนหน้าที่ทำ OT ของกะดึกจบไปแล้วแต่ยังไม่ทันถึงเวลาเริ่มกะเช้า) ให้ถือว่า "เพิ่งออกจากกะที่จบเร็วที่สุดก่อนหน้า" ทันที
+  // เพื่อให้นับช่วงนี้เป็น OT ต่อเนื่องของกะนั้นได้ถูกต้องตามโควตา OT ที่ตั้งไว้ แทนที่จะทิ้งเป็นช่วงว่างเปล่าไม่นับอะไรเลยจนกว่าจะถึงกะถัดไป
+  const lastExitedKey = (shift && !isMinuteInShift(cursor, shift)) ? mostRecentShiftKeyBefore(shift, ((cursor % 1440) + 1440) % 1440) : null;
+  return { cursor, shift, otCaps: otCaps || {}, segments: {}, otMinutesByShift: {}, otMinutes: 0, lastExitedKey, otUsedThisExit: 0, breakPaidThisExit: false };
 }
 
 // คำนวณวันที่/เวลาจบงาน + เวลา OT ที่ใช้จริง (รวม + แยกรายกะ) + ช่วงเวลาเริ่ม/จบของแต่ละกะ (segments)
