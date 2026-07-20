@@ -1286,6 +1286,19 @@ canvas{display:block;}
       <div class="section-title">งานประจำวัน</div>
       <div class="section-sub" id="daily-section-sub">เช็คลิสต์งานประจำวันของทีม Tooling — วันที่ 2 ก.ค. 2569</div>
 
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button class="btn btn-ghost btn-sm daily-worktype-btn" data-worktype="" onclick="switchDailyWorkTypeFilter('')" style="color:var(--accent);border-color:var(--accent);">ทั้งหมด</button>
+        <button class="btn btn-ghost btn-sm daily-worktype-btn" data-worktype="cnc" onclick="switchDailyWorkTypeFilter('cnc')">⚙ CNC</button>
+        <button class="btn btn-ghost btn-sm daily-worktype-btn" data-worktype="polish" onclick="switchDailyWorkTypeFilter('polish')">✦ ขัด Roll</button>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button class="btn btn-ghost btn-sm daily-shift-btn" data-shift="" onclick="switchDailyShiftFilter('')" style="color:var(--accent);border-color:var(--accent);">ทั้งหมด</button>
+        <button class="btn btn-ghost btn-sm daily-shift-btn" data-shift="morning" onclick="switchDailyShiftFilter('morning')">🌤 กะเช้า</button>
+        <button class="btn btn-ghost btn-sm daily-shift-btn" data-shift="night" onclick="switchDailyShiftFilter('night')">🌙 กะดึก</button>
+        <button class="btn btn-ghost btn-sm daily-shift-btn" data-shift="both" onclick="switchDailyShiftFilter('both')">🌤🌙 2 กะ</button>
+      </div>
+
       <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
         <button class="btn btn-ghost btn-sm" onclick="dailyNav(-1)">‹ ก่อนหน้า</button>
         <input type="date" class="form-input" id="daily-date-input" style="width:auto;" onchange="setDailyViewDate(this.value)">
@@ -1332,7 +1345,7 @@ canvas{display:block;}
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th></th><th>เวลา</th><th>งาน</th><th>ประเภท</th><th>Tooling / เครื่องจักร</th><th>ผู้รับผิดชอบ</th><th>สถานะ</th><th>จัดการ</th></tr>
+              <tr><th></th><th>เวลา</th><th>งาน</th><th>ประเภท</th><th>Tooling / เครื่องจักร</th><th>กะ</th><th>ผู้รับผิดชอบ</th><th>สถานะ</th><th>จัดการ</th></tr>
             </thead>
             <tbody id="tbody-daily"></tbody>
           </table>
@@ -2584,6 +2597,11 @@ const DAILY_TODAY_ISO = '2026-07-02'; // วันที่ใช้อ้าง
 let dailyViewDate = DAILY_TODAY_ISO;
 // สถานะเช็คลิสต์แยกตามวันที่ที่ดู — { 'YYYY-MM-DD': { [taskKey]: 'done'|'pending'|'overdue' } } ค่าที่ไม่มีถือว่า 'pending'
 let dailyStatusByDate = {};
+let currentDailyWorkTypeFilter = null; // null = ทั้งหมด — กรองเฉพาะงานที่มาจากหน้าวางแผน (CNC/ขัด Roll) ไม่กรองเช็คลิสต์ที่เพิ่มเอง
+let currentDailyShiftFilter = null;    // null = ทั้งหมด
+let expandedDailyTaskId = null;        // งานที่กำลังกางดูเวลาแยกรายชิ้นอยู่ (ถ้ามี)
+// วันที่ (iso) ที่เคยสร้างแผนวันถัดไปต่อให้อัตโนมัติแล้ว (หลังเช็คลิสต์ของวันนั้นครบทุกรายการ) — กันไม่ให้สร้างซ้ำทุกครั้งที่ติ๊ก
+let dailyAutoContinuedDates = {};
 
 // ─── TEAM MEMBERS (หน้าทีมงาน) — ข้อมูลอยู่ก่อน restoreState() เพื่อไม่ให้ชนกับ TDZ ─
 const TEAM_STATUS_META = {
@@ -2955,7 +2973,8 @@ const PLAN_BREAK_TYPES = ['lunch', 'lunch_night', 'otbreak', 'shiftgap'];
 
 // แต่ละชิ้นอาจใช้เวลาคาบเกี่ยวมากกว่า 1 กะ/1 ประเภทเวลา (เช่น ทำต่อจากปกติเข้า OT หรือข้ามจากกะเช้าไปกะดึก) — แตกเป็นแถวย่อยตามช่วงเวลาจริงของชิ้นนั้น
 // รวมถึงช่วงพักเที่ยง/พักก่อน OT ที่แทรกอยู่ระหว่างกลาง ให้เห็นเป็นแถวของตัวเองชัดเจน แยกจากแถวเวลาทำงานจริง
-function renderPlanDayTaskDetailRow(t) {
+function renderPlanDayTaskDetailRow(t, colspan) {
+  colspan = colspan || 10;
   const pieces = planTaskPieceBreakdown(t);
   const body = pieces.map((p, i) => {
     const segs = (p.range.segments && p.range.segments.length)
@@ -2987,7 +3006,7 @@ function renderPlanDayTaskDetailRow(t) {
       </tr>`;
     }).join('');
   }).join('');
-  return `<tr><td colspan="10" style="padding:0;background:var(--bg-panel);">
+  return `<tr><td colspan="${colspan}" style="padding:0;background:var(--bg-panel);">
     <table>
       <thead><tr>
         <th style="padding-left:36px;">ลำดับ</th><th>รหัส</th><th>ชื่อ Roll</th><th>กะ</th><th>ช่วงเวลา</th><th style="text-align:right;">นาที</th><th>เริ่มงาน</th><th>จบงาน</th>
@@ -3104,7 +3123,7 @@ function planTaskFormFields() {
       <div class="form-group"><label class="form-label">วันที่เริ่มงาน</label><input class="form-input" id="pf-date" type="date" onchange="updatePlanEndTime()"></div>
       <div class="form-group"><label class="form-label">วันที่จบงาน — คำนวณให้อัตโนมัติ</label><input class="form-input" id="pf-enddate" type="date"></div>
     </div>
-    <div class="modal-row full">
+    <div class="modal-row">
       <div class="form-group"><label class="form-label">กะทำงาน</label>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <button type="button" class="btn btn-ghost btn-sm pf-shift-btn" data-shift="morning" onclick="selectPlanShift('morning')" title="08:00–17:00 (กะเดียว)">🌤 กะเช้า</button>
@@ -3112,6 +3131,9 @@ function planTaskFormFields() {
           <button type="button" class="btn btn-ghost btn-sm pf-shift-btn" data-shift="both" onclick="selectPlanShift('both')" title="ทำงานต่อเนื่อง 08:00–17:00 และ 20:00–05:00">🌤🌙 2 กะ</button>
         </div>
         <input type="hidden" id="pf-shift" value="morning">
+      </div>
+      <div class="form-group"><label class="form-label">ผู้ปฏิบัติงาน</label>
+        <select class="form-select" id="pf-worker"></select>
       </div>
     </div>
     <div class="modal-row three">
@@ -3154,6 +3176,21 @@ function planTaskFormFields() {
         <span id="pf-plantime-hours" style="font-size:11px;color:var(--text-3);"></span>
       </div>
     </div>`;
+}
+
+// เลือกผู้ปฏิบัติงานได้เฉพาะบทบาทที่เกี่ยวข้องกับประเภทงานนั้น (CNC/ขัด Roll) — หัวหน้างานและช่างเครื่องคุมเครื่องได้ทั้งสองอย่าง
+const WORKER_ROLES_BY_WORKTYPE = { cnc: ['cnc', 'operator', 'lead'], polish: ['polish', 'operator', 'lead'] };
+function workerName(workerId) {
+  const m = teamMembers.find(x => x.id === workerId);
+  return m ? m.name : '—';
+}
+function populatePlanWorkerSelect(workType, selectedId) {
+  const sel = document.getElementById('pf-worker');
+  if (!sel) return;
+  const roles = WORKER_ROLES_BY_WORKTYPE[workType] || [];
+  const options = teamMembers.filter(m => roles.includes(m.role));
+  sel.innerHTML = '<option value="">— ยังไม่ระบุ —</option>' +
+    options.map(m => `<option value="${m.id}"${m.id === selectedId ? ' selected' : ''}>${escapeHtmlAttr(m.name)} (${escapeHtmlAttr(m.roleLabel)})</option>`).join('');
 }
 
 function populatePlanRollSetSelect(selectedSet) {
@@ -3604,6 +3641,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   document.getElementById(startFieldId).value = task ? task.startTime : (chainFrom ? chainFrom.endTime : SHIFTS[defaultShift].start);
   document.getElementById('pf-otcap-morning').value = task ? ((task.otCapMinutesByShift || {}).morning || 0) / 60 : 0;
   document.getElementById('pf-otcap-night').value = task ? ((task.otCapMinutesByShift || {}).night || 0) / 60 : 0;
+  populatePlanWorkerSelect(workType, task ? task.workerId : (chainFrom ? chainFrom.workerId : null));
   populatePlanRollSetSelect(task ? task.rollSet : null);
   populatePlanRollColorSelect(task ? task.rollSet : null, task ? task.rollColor : null);
   fillPlanRollReadonly(task ? task.rollSet : null, task ? task.rollColor : null, task ? task.rollIds : null); // คำนวณเวลาเริ่ม/จบของแต่ละกะให้อัตโนมัติในตัว — คงรายการ Roll ที่เลือกไว้เดิมถ้าเป็นการแก้ไข
@@ -3641,7 +3679,8 @@ function openPlanTaskModal(mode, taskId, presetDate) {
       shift: shiftKey,
       otCapMinutesByShift,
       otMinutes: computedEnd.otMinutes || 0,
-      otMinutesByShift: computedEnd.otMinutesByShift || {}
+      otMinutesByShift: computedEnd.otMinutesByShift || {},
+      workerId: g('pf-worker') || null,
     };
     if (mode === 'edit') {
       Object.assign(task, data);
@@ -4051,7 +4090,7 @@ function persistState() {
       toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus,
       planTasks, planTaskSeq, teamMembers, teamSeq,
       ganttTasks, ganttTaskSeq, planGanttWindowStart,
-      dailyStatusByDate, dailyChecklistTasks, dailyChecklistSeq,
+      dailyStatusByDate, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
       prodBlockProducts, prodBlockSeq, prodBlockCells, prodBlockPM, prodBlockSummary,
       prodBlockEntries, prodBlockEntrySeq, prodBlockActiveMachine, prodBlockViewMonth
     }));
@@ -4083,6 +4122,7 @@ function restoreState() {
     if (saved.dailyStatusByDate) dailyStatusByDate = saved.dailyStatusByDate;
     if (Array.isArray(saved.dailyChecklistTasks)) dailyChecklistTasks = saved.dailyChecklistTasks;
     if (typeof saved.dailyChecklistSeq === 'number') dailyChecklistSeq = saved.dailyChecklistSeq;
+    if (saved.dailyAutoContinuedDates) dailyAutoContinuedDates = saved.dailyAutoContinuedDates;
     if (Array.isArray(saved.teamMembers)) teamMembers = saved.teamMembers;
     if (typeof saved.teamSeq === 'number') teamSeq = saved.teamSeq;
     if (Array.isArray(saved.prodBlockProducts)) prodBlockProducts = saved.prodBlockProducts;
@@ -4943,8 +4983,69 @@ function getDailyStatus(idx) {
 function toggleDailyTask(idx) {
   const dayMap = dailyStatusByDate[dailyViewDate] || (dailyStatusByDate[dailyViewDate] = {});
   dayMap[idx] = getDailyStatus(idx) === 'done' ? 'pending' : 'done';
+  maybeAutoContinueDailyPlan(dailyViewDate);
   persistState();
   renderDailyTasks();
+}
+
+function switchDailyWorkTypeFilter(type) {
+  currentDailyWorkTypeFilter = type || null;
+  document.querySelectorAll('.daily-worktype-btn').forEach(b => {
+    const active = (b.getAttribute('data-worktype') || '') === (type || '');
+    b.style.color = active ? 'var(--accent)' : '';
+    b.style.borderColor = active ? 'var(--accent)' : '';
+  });
+  renderDailyTasks();
+}
+
+function switchDailyShiftFilter(key) {
+  currentDailyShiftFilter = key || null;
+  document.querySelectorAll('.daily-shift-btn').forEach(b => {
+    const active = (b.getAttribute('data-shift') || '') === (key || '');
+    b.style.color = active ? 'var(--accent)' : '';
+    b.style.borderColor = active ? 'var(--accent)' : '';
+  });
+  renderDailyTasks();
+}
+
+function toggleDailyTaskDetail(taskId) {
+  expandedDailyTaskId = expandedDailyTaskId === taskId ? null : taskId;
+  renderDailyTasks();
+}
+
+// เมื่อรายการเช็คลิสต์ + งานตามแผนของวันนี้ "เสร็จครบทุกรายการ" แล้ว ให้สร้างแผนงาน CNC/ขัด Roll ของวันถัดไปต่อให้อัตโนมัติทันที
+// (คัดลอก Size Roll/ชุดสี/รายชื่อ Roll/กะ/ผู้ปฏิบัติงาน/โควตา OT เดิม แค่เปลี่ยนวันที่ — คำนวณเวลาจบใหม่ตามกฎกะ/พักตามปกติ)
+// ทำครั้งเดียวต่อวันที่ (กันสร้างซ้ำทุกครั้งที่ติ๊ก/ยกเลิกติ๊กหลังจากครบแล้ว) และข้ามถ้ามีแผนวันถัดไปของ Size Roll/ชุดสีเดียวกันอยู่แล้ว
+function maybeAutoContinueDailyPlan(dateIso) {
+  if (dailyAutoContinuedDates[dateIso]) return;
+  const checklistIds = dailyChecklistTasks.filter(t => !t.date || t.date === dateIso).map(t => t.id);
+  const plannedForDay = planTasks.filter(t => t.date === dateIso);
+  const allKeys = checklistIds.concat(plannedForDay.map(t => t.id));
+  if (!allKeys.length) return;
+  const dayMap = dailyStatusByDate[dateIso] || {};
+  const allDone = allKeys.every(k => (dayMap[k] || 'pending') === 'done');
+  if (!allDone) return;
+  dailyAutoContinuedDates[dateIso] = true;
+  if (!plannedForDay.length) return;
+  const nextDate = addDaysIso(dateIso, 1);
+  let createdCount = 0;
+  plannedForDay.forEach(t => {
+    const alreadyExists = planTasks.some(x => x.workType === t.workType && x.rollSet === t.rollSet && x.rollColor === t.rollColor && x.date === nextDate);
+    if (alreadyExists) return;
+    const computedEnd = computePlanEnd(nextDate, t.startTime, t.totalTime, t.shift, t.otCapMinutesByShift || {});
+    planTaskSeq++;
+    planTasks.push({
+      id: 'PT-' + String(planTaskSeq).padStart(4, '0'),
+      workType: t.workType, date: nextDate, rollSet: t.rollSet, rollColor: t.rollColor,
+      rollIds: t.rollIds, rollId: t.rollId, rollName: t.rollName, totalTime: t.totalTime,
+      startTime: t.startTime, endTime: computedEnd.time, endDate: computedEnd.date || nextDate,
+      shift: t.shift, otCapMinutesByShift: t.otCapMinutesByShift,
+      otMinutes: computedEnd.otMinutes || 0, otMinutesByShift: computedEnd.otMinutesByShift || {},
+      workerId: t.workerId || null,
+    });
+    createdCount++;
+  });
+  if (createdCount) alert(`งานวันที่ ${fmtDateThai(parseISODate(dateIso))} เสร็จครบแล้ว — สร้างแผนวันที่ ${fmtDateThai(parseISODate(nextDate))} ต่อให้อัตโนมัติ ${createdCount} งาน`);
 }
 
 function setDailyViewDate(iso) {
@@ -4979,21 +5080,29 @@ function renderDailyTasks() {
   }
 
   // เช็คลิสต์ที่ผู้ใช้เพิ่มเอง (ทำซ้ำทุกวัน หรือเฉพาะวันที่เลือก) + งาน CNC/ขัด Roll ที่วางแผนไว้ในหน้า "วางแผน" สำหรับวันนี้โดยเฉพาะ — รวมเป็นรายการเดียวกัน เรียงตามเวลา
+  // ตัวกรองประเภทงาน/กะ มีผลเฉพาะงานที่มาจากหน้าวางแผน (มี workType/shift จริง) — เช็คลิสต์ที่เพิ่มเองแสดงเสมอไม่ว่าจะกรองแบบไหน
   const checklistItems = dailyChecklistTasks
     .filter(t => !t.date || t.date === dailyViewDate)
-    .map(t => ({ key: t.id, time: t.time, task: t.task, type: t.type, ref: t.ref, who: t.who, editable: true }));
-  const plannedItems = planTasks.filter(t => t.date === dailyViewDate).map(t => {
-    const workMeta = PLAN_WORKTYPE_META[t.workType];
-    return {
-      key: t.id,
-      time: t.startTime || '—',
-      task: t.rollName,
-      type: workMeta ? workMeta.label.replace('แผนงาน', '').trim() : t.workType,
-      ref: [t.rollSet, t.rollId].filter(Boolean).join(' — '),
-      who: (SHIFTS[t.shift] || {}).label || '—',
-      editable: false,
-    };
-  });
+    .map(t => ({ key: t.id, time: t.time, task: t.task, type: t.type, ref: t.ref, shiftLabel: '—', who: t.who, editable: true, expandable: false }));
+  const plannedItems = planTasks
+    .filter(t => t.date === dailyViewDate)
+    .filter(t => !currentDailyWorkTypeFilter || t.workType === currentDailyWorkTypeFilter)
+    .filter(t => shiftMatchesFilter(t.shift, currentDailyShiftFilter))
+    .map(t => {
+      const workMeta = PLAN_WORKTYPE_META[t.workType];
+      return {
+        key: t.id,
+        time: t.startTime || '—',
+        task: t.rollName,
+        type: workMeta ? workMeta.label.replace('แผนงาน', '').trim() : t.workType,
+        ref: [t.rollSet, t.rollId].filter(Boolean).join(' — '),
+        shiftLabel: (SHIFTS[t.shift] || {}).label || '—',
+        who: workerName(t.workerId),
+        editable: false,
+        expandable: (t.rollIds || []).length > 1,
+        raw: t,
+      };
+    });
   const allItems = checklistItems.concat(plannedItems).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 
   tbody.innerHTML = allItems.map(item => {
@@ -5002,17 +5111,20 @@ function renderDailyTasks() {
     const actions = item.editable
       ? `<div style="display:flex;gap:4px;"><button class="btn btn-ghost btn-sm" onclick="openDailyChecklistModal('edit','${item.key}')">แก้ไข</button><button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteDailyChecklistTask('${item.key}')">ลบ</button></div>`
       : '';
-    return `<tr>
-      <td><input type="checkbox" ${status==='done'?'checked':''} onchange="toggleDailyTask('${item.key}')" style="width:16px;height:16px;cursor:pointer;"></td>
-      <td class="muted">${escapeHtmlAttr(item.time)}</td>
+    const expanded = item.expandable && expandedDailyTaskId === item.key;
+    const row = `<tr${item.expandable ? ` style="cursor:pointer;" onclick="toggleDailyTaskDetail('${item.key}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : ''}>
+      <td onclick="event.stopPropagation();"><input type="checkbox" ${status==='done'?'checked':''} onchange="toggleDailyTask('${item.key}')" style="width:16px;height:16px;cursor:pointer;"></td>
+      <td class="muted">${item.expandable ? `<span aria-hidden="true" style="display:inline-block;width:12px;transition:transform .15s;transform:rotate(${expanded ? 90 : 0}deg);">▸</span> ` : ''}${escapeHtmlAttr(item.time)}</td>
       <td><strong>${escapeHtmlAttr(item.task)}</strong></td>
       <td class="muted">${escapeHtmlAttr(item.type)}</td>
       <td class="muted">${escapeHtmlAttr(item.ref)}</td>
+      <td class="muted">${escapeHtmlAttr(item.shiftLabel)}</td>
       <td class="muted">${escapeHtmlAttr(item.who)}</td>
       <td><span class="chip ${meta.chip}">${meta.label}</span></td>
-      <td>${actions}</td>
+      <td onclick="event.stopPropagation();">${actions}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--text-3);">ยังไม่มีงานในวันนี้ — กด "+ เพิ่มงานเช็คลิสต์" เพื่อเริ่มสร้างเช็คลิสต์เอง</td></tr>`;
+    return row + (expanded ? renderPlanDayTaskDetailRow(item.raw, 9) : '');
+  }).join('') || `<tr><td colspan="9" style="padding:32px;text-align:center;color:var(--text-3);">ยังไม่มีงานในวันนี้ — กด "+ เพิ่มงานเช็คลิสต์" เพื่อเริ่มสร้างเช็คลิสต์เอง</td></tr>`;
 
   const statuses = allItems.map(item => getDailyStatus(item.key));
   document.getElementById('daily-kpi-total').textContent = allItems.length;
