@@ -3170,14 +3170,14 @@ function planTaskFormFields() {
     <div class="modal-row three">
       <div class="form-group"><label class="form-label">🌤 เริ่มงานกะเช้า</label><input class="form-input" id="pf-start-morning" type="text" inputmode="numeric" placeholder="เช่น 08:00" maxlength="5" onchange="normalizeTimeInput(this);updatePlanEndTime()"></div>
       <div class="form-group"><label class="form-label">จบงานกะเช้า — คำนวณให้อัตโนมัติ</label><input class="form-input" id="pf-end-morning" type="text" disabled></div>
-      <div class="form-group"><label class="form-label">เวลา OT กะเช้า (ชม.)</label><input class="form-input" id="pf-otcap-morning" type="number" min="0" step="0.5" value="0" onchange="updatePlanEndTime()">
+      <div class="form-group"><label class="form-label">เวลา OT กะเช้า (ชม.)</label><input class="form-input" id="pf-otcap-morning" type="number" min="0" step="0.5" value="0" onchange="clampOtCapInput(this);updatePlanEndTime()">
         <span id="pf-ot-hint-morning" style="font-size:11px;color:var(--text-3);">พัก 20 นาทีก่อนเริ่ม OT</span>
       </div>
     </div>
     <div class="modal-row three">
       <div class="form-group"><label class="form-label">🌙 เริ่มงานกะดึก</label><input class="form-input" id="pf-start-night" type="text" inputmode="numeric" placeholder="เช่น 20:00" maxlength="5" onchange="normalizeTimeInput(this);updatePlanEndTime()"></div>
       <div class="form-group"><label class="form-label">จบงานกะดึก — คำนวณให้อัตโนมัติ</label><input class="form-input" id="pf-end-night" type="text" disabled></div>
-      <div class="form-group"><label class="form-label">เวลา OT กะดึก (ชม.)</label><input class="form-input" id="pf-otcap-night" type="number" min="0" step="0.5" value="0" onchange="updatePlanEndTime()">
+      <div class="form-group"><label class="form-label">เวลา OT กะดึก (ชม.)</label><input class="form-input" id="pf-otcap-night" type="number" min="0" step="0.5" value="0" onchange="clampOtCapInput(this);updatePlanEndTime()">
         <span id="pf-ot-hint-night" style="font-size:11px;color:var(--text-3);">พัก 20 นาทีก่อนเริ่ม OT</span>
       </div>
     </div>
@@ -3659,7 +3659,21 @@ function selectPlanShift(key) {
   setPlanShiftButtons(key);
   if (key === 'morning' || key === 'both') document.getElementById('pf-start-morning').value = SHIFTS.morning.start;
   if (key === 'night') document.getElementById('pf-start-night').value = SHIFTS.night.start;
+  if (key === 'both') {
+    clampOtCapInput(document.getElementById('pf-otcap-morning'));
+    clampOtCapInput(document.getElementById('pf-otcap-night'));
+  }
   updatePlanEndTime();
+}
+
+// งาน "2 กะ" ต่อเนื่อง กรอก OT เกิน 3 ชม. ไม่ได้ (ดู OT_CAP_BOTH_MAX_MIN) — กะเดี่ยวไม่จำกัด ปล่อยผ่านตามที่กรอก
+function clampOtCapInput(el) {
+  if (!el) return;
+  const shiftKey = (document.getElementById('pf-shift') || {}).value || 'morning';
+  if (shiftKey !== 'both') return;
+  const hours = parseFloat(el.value);
+  const maxHours = OT_CAP_BOTH_MAX_MIN / 60;
+  if (!Number.isNaN(hours) && hours > maxHours) el.value = maxHours;
 }
 
 // แปลงค่าที่พิมพ์ในช่องเวลา (เช่น "8:0", "800", "20:00") ให้เป็นรูปแบบ 24 ชั่วโมงมาตรฐาน "HH:MM" เสมอ
@@ -3709,10 +3723,17 @@ function renderShiftSegmentFields(key, seg) {
   if (startEl && startEl.disabled) startEl.value = absMinuteToClock(seg.start);
 }
 
+const OT_CAP_BOTH_MAX_MIN = 180; // งาน "2 กะ" ต่อเนื่อง OT คาบเกี่ยวไปชนเวลาเริ่มกะถัดไปพอดี (17:00–20:00 / 05:00–08:00) จึงห้ามกรอกเกิน 3 ชม. — กะเดี่ยวไม่ต่อกะอื่น จึงไม่จำกัด
 function getOtCapMinutes() {
+  const shiftKey = (document.getElementById('pf-shift') || {}).value || 'morning';
   const morningHours = parseFloat((document.getElementById('pf-otcap-morning') || {}).value) || 0;
   const nightHours = parseFloat((document.getElementById('pf-otcap-night') || {}).value) || 0;
-  return { morning: morningHours * 60, night: nightHours * 60 };
+  let morning = morningHours * 60, night = nightHours * 60;
+  if (shiftKey === 'both') {
+    morning = Math.min(morning, OT_CAP_BOTH_MAX_MIN);
+    night = Math.min(night, OT_CAP_BOTH_MAX_MIN);
+  }
+  return { morning, night };
 }
 
 function updatePlanEndTime() {
@@ -3733,7 +3754,8 @@ function updatePlanEndTime() {
     const hintEl = document.getElementById('pf-ot-hint-' + key);
     if (!hintEl) return;
     const used = otByShift[key];
-    hintEl.textContent = 'พัก 20 นาทีก่อนเริ่ม OT' + (used ? ` — ใช้จริง ${formatMinutesAsHm(used).replace('≈ ', '')}` : '');
+    const capNote = shiftKey === 'both' ? ' — 2 กะ สูงสุด 3 ชม.' : '';
+    hintEl.textContent = 'พัก 20 นาทีก่อนเริ่ม OT' + capNote + (used ? ` — ใช้จริง ${formatMinutesAsHm(used).replace('≈ ', '')}` : '');
   });
 }
 
