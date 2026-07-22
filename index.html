@@ -3399,12 +3399,11 @@ function fillPlanRollReadonly(setName, colorKey, presetSelectedIndexes, excludeT
 // รวมเวลาทำงาน (นาที) จากเวลาแต่ง/ขัด Roll ทั้งหมด แล้วคำนวณ "จบงาน" จาก "เริ่มงาน" ให้อัตโนมัติ
 // พักเที่ยง/พักเที่ยงคืนของแต่ละกะ (ดู SHIFTS[key].breaks) ไม่นับเป็นเวลาทำงาน — ถ้าช่วงงานคาบเกี่ยวช่วงพักของวันไหน (รวมข้ามหลายวันถ้างานยาว) จะขยับเวลาจบให้ชดเชยเวลาพักนั้นไปด้วย
 const OT_BREAK_MIN = 20; // พักก่อนเริ่ม OT (นาที) ไม่นับเป็นเวลาทำงาน
-// หาเวลา (นาทีสัมบูรณ์ >= fromCursor) ที่เข้ากะปกติครั้งถัดไป — ใช้ตอนหมดโควตา OT ของวันแล้วต้องข้ามไปรอเริ่มกะถัดไป (อาจเป็น window ที่สองของวันเดียวกัน เช่น "2 กะ" หรือกะแรกของวันถัดไป)
-// filterKey ระบุแล้ว (เช่น กะที่เพิ่งออกมา) จะพิจารณาเฉพาะ window ของกะนั้น — งาน "2 กะ" ที่ OT ของกะไหนหมดแล้วต้องรอ "กะเดิม" รอบถัดไปเท่านั้น ไม่ข้ามไปกะตรงข้ามที่บังเอิญเริ่มเวลาใกล้กว่า
-function nextShiftEntry(fromCursor, shift, filterKey) {
+// หาเวลา (นาทีสัมบูรณ์ >= fromCursor) ที่เข้ากะปกติครั้งถัดไป — ใช้ตอนออกนอกทุกช่วงกะแล้วต้องรอเริ่มกะถัดไป (อาจเป็น window ที่สองของวันเดียวกัน เช่น "2 กะ" ที่รอต่อจากกะเช้าไปกะดึก หรือกะแรกของวันถัดไป)
+// พิจารณาทุก window ของกะนี้ (ไม่กรองเฉพาะกะที่เพิ่งออกมา) — งาน "2 กะ" ต้องไหลต่อไปกะตรงข้ามที่ใกล้ที่สุดตามเวลาจริง ไม่ใช่รอกะเดิมย้อนกลับมาก่อน
+function nextShiftEntry(fromCursor, shift) {
   let best = Infinity;
   shift.windows.forEach(w => {
-    if (filterKey && w.shiftKey !== filterKey) return;
     let candidate = w.startMin;
     while (candidate < fromCursor) candidate += 1440;
     if (candidate < best) best = candidate;
@@ -3470,12 +3469,12 @@ function advancePlanCursor(state, minutes) {
       state.cursor += otChunk;
       remaining -= otChunk;
     }
-    // ข้ามไปรอกะถัดไปเฉพาะตอนที่ cursor ยังไม่อยู่ใน window ของ "กะเดิม" ที่เพิ่งออกมา (lastExitedKey) — ต้องเป็นกะเดิมเท่านั้น แม้ OT จะพาไปชนเวลาเริ่มของกะตรงข้ามพอดี (เช่น OT กะดึกหมด 3 ชม. ตอน 08:00 ซึ่งเป็นเวลาเริ่มกะเช้าพอดี) ก็ยังไม่ถือว่าเข้ากะแล้ว ต้องรอกะเดิมรอบถัดไป (20:00) — งาน "2 กะ" จึงไม่ไหลข้ามไปกะตรงข้ามอัตโนมัติ ต่อเมื่อกะเดิมมาถึงจริงๆ ถึงนับเป็นกะใหม่ (ดูจุดที่ set lastExitedKey ด้านบน)
+    // ข้ามไปรอกะถัดไปเฉพาะตอนที่ cursor ยังอยู่นอกทุกช่วงกะจริงๆ (โควตา OT ไม่พอ หรือไม่มี OT เลย) — ถ้า cursor ไปตกอยู่ใน window ของกะไหนก็ตามพอดีแล้ว (กะเดิมหรือกะตรงข้าม เช่น เลิกกะเช้าที่ 17:00 พอดีถึงเวลาเริ่มกะดึกในงาน "2 กะ") ปล่อยให้ลูปด้านบนรับช่วงกะนั้นต่อเอง ไม่ต้องรอ
     const curMinOfDay = ((state.cursor % 1440) + 1440) % 1440;
-    const inExitedShiftWindow = state.lastExitedKey && state.shift.windows.some(w => w.shiftKey === state.lastExitedKey && isMinuteInWindow(curMinOfDay, w));
-    if (remaining > 0 && !inExitedShiftWindow) {
+    const inAnyShiftWindow = state.shift.windows.some(w => isMinuteInWindow(curMinOfDay, w));
+    if (remaining > 0 && !inAnyShiftWindow) {
       const gapStart = state.cursor;
-      state.cursor = nextShiftEntry(state.cursor, state.shift, state.lastExitedKey);
+      state.cursor = nextShiftEntry(state.cursor, state.shift);
       pushChunk(null, 'shiftgap', gapStart, state.cursor); // ช่วงรอกะถัดไป ไม่ใช่ของกะไหนกะหนึ่งโดยเฉพาะ (ไม่มีคนทำงานอยู่เลยในช่วงนี้)
     }
   }
