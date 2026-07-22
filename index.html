@@ -3269,8 +3269,8 @@ function planTaskFormFields() {
     </div>`;
 }
 
-// เลือกผู้ปฏิบัติงานได้เฉพาะบทบาทที่เกี่ยวข้องกับประเภทงานนั้น (CNC/ขัด Roll) — หัวหน้างานและช่างเครื่องคุมเครื่องได้ทั้งสองอย่าง
-const WORKER_ROLES_BY_WORKTYPE = { cnc: ['cnc', 'operator', 'lead'], polish: ['polish', 'operator', 'lead'] };
+// งาน CNC เลือกผู้ปฏิบัติงานได้เฉพาะช่าง CNC เท่านั้น — งานขัด Roll ยังเลือกได้ทั้งช่างขัด Roll/ช่างเครื่อง/หัวหน้างานเหมือนเดิม
+const WORKER_ROLES_BY_WORKTYPE = { cnc: ['cnc'], polish: ['polish', 'operator', 'lead'] };
 function workerName(workerId) {
   const m = teamMembers.find(x => x.id === workerId);
   return m ? m.name : '—';
