@@ -3460,7 +3460,9 @@ function advancePlanCursor(state, minutes) {
       }
       const otChunk = Math.min(remaining, otAvailable);
       if (otChunk > 0) {
-        if (state.segments[state.lastExitedKey]) state.segments[state.lastExitedKey].end = state.cursor + otChunk; // OT ต่อจากกะไหน ให้นับรวมเป็นเวลาจบของกะนั้น
+        // ถ้างานนี้เริ่มกลาง OT ที่ต่อมาจากงานก่อนหน้าอยู่แล้ว (ไม่มีช่วงเวลาปกติของกะนี้เกิดขึ้นในการเรียกครั้งนี้เลย) ยังต้องสร้าง segment ของกะนี้ไว้ก่อน ไม่งั้นช่องจบงานของกะนี้จะไม่ถูกอัปเดตเลย
+        if (!state.segments[state.lastExitedKey]) state.segments[state.lastExitedKey] = { start: state.cursor, end: state.cursor };
+        state.segments[state.lastExitedKey].end = state.cursor + otChunk; // OT ต่อจากกะไหน ให้นับรวมเป็นเวลาจบของกะนั้น
         state.otMinutesByShift[state.lastExitedKey] = (state.otMinutesByShift[state.lastExitedKey] || 0) + otChunk;
         state.otMinutes += otChunk;
         state.otUsedThisExit = (state.otUsedThisExit || 0) + otChunk;
@@ -3496,8 +3498,18 @@ function initPlanCursorState(startTime, shiftKey, otCaps) {
   }
   // ถ้าเวลาเริ่มงานตกอยู่นอกทุกช่วงกะพอดี (เช่น ต่อเวลามาจากงานก่อนหน้าที่ทำ OT ของกะดึกจบไปแล้วแต่ยังไม่ทันถึงเวลาเริ่มกะเช้า) ให้ถือว่า "เพิ่งออกจากกะที่จบเร็วที่สุดก่อนหน้า" ทันที
   // เพื่อให้นับช่วงนี้เป็น OT ต่อเนื่องของกะนั้นได้ถูกต้องตามโควตา OT ที่ตั้งไว้ แทนที่จะทิ้งเป็นช่วงว่างเปล่าไม่นับอะไรเลยจนกว่าจะถึงกะถัดไป
-  const lastExitedKey = (shift && !isMinuteInShift(cursor, shift)) ? mostRecentShiftKeyBefore(shift, ((cursor % 1440) + 1440) % 1440) : null;
-  return { cursor, shift, otCaps: otCaps || {}, segments: {}, otMinutesByShift: {}, otMinutes: 0, lastExitedKey, otUsedThisExit: 0, breakPaidThisExit: false };
+  const minOfDay = ((cursor % 1440) + 1440) % 1440;
+  const lastExitedKey = (shift && !isMinuteInShift(cursor, shift)) ? mostRecentShiftKeyBefore(shift, minOfDay) : null;
+  // งานที่ต่อเวลามาแบบนี้มักเริ่มกลาง OT ของงานก่อนหน้าอยู่แล้ว (ไม่ใช่เพิ่งออกจากกะพอดีเป๊ะ) — คำนวณเวลาที่ผ่านไปตั้งแต่กะนั้นจบจริง (หักพัก 20 นาทีที่จ่ายไปแล้วออกก่อน)
+  // แล้วนับเป็นโควตา OT ที่ใช้ไปแล้วของ "รอบออกกะ" นี้ทันที กันไม่ให้งานถัดไปได้พัก 20 นาทีซ้ำ/ได้โควตา OT เต็มใหม่ทั้งที่จริงๆ เป็นการต่อเวลาของ OT รอบเดียวกัน
+  let otUsedThisExit = 0, breakPaidThisExit = false;
+  if (lastExitedKey) {
+    const exitedWindow = shift.windows.find(w => w.shiftKey === lastExitedKey);
+    const elapsedSinceShiftEnd = exitedWindow ? ((minOfDay - exitedWindow.endMin) % 1440 + 1440) % 1440 : 0;
+    breakPaidThisExit = elapsedSinceShiftEnd >= OT_BREAK_MIN;
+    otUsedThisExit = Math.max(0, elapsedSinceShiftEnd - OT_BREAK_MIN);
+  }
+  return { cursor, shift, otCaps: otCaps || {}, segments: {}, otMinutesByShift: {}, otMinutes: 0, lastExitedKey, otUsedThisExit, breakPaidThisExit };
 }
 
 // คำนวณวันที่/เวลาจบงาน + เวลา OT ที่ใช้จริง (รวม + แยกรายกะ) + ช่วงเวลาเริ่ม/จบของแต่ละกะ (segments)
