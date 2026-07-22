@@ -5901,7 +5901,7 @@ function renderDailyTasks() {
   const checklistItems = dailyChecklistTasks
     .filter(t => !t.date || t.date === dailyViewDate)
     .map(t => ({
-      key: t.id, startTime: t.time || '—', endTimeHtml: '—', duration: '—',
+      key: t.id, date: t.date || dailyViewDate, startTime: t.time || '—', endTimeHtml: '—', duration: '—',
       rollSet: '—', rollColor: '—', rollId: t.ref || '—', task: t.task,
       shiftHtml: '—', who: t.who, editable: true, expandable: false,
     }));
@@ -5911,6 +5911,7 @@ function renderDailyTasks() {
     .filter(t => shiftMatchesFilter(t.shift, currentDailyShiftFilter))
     .map(t => ({
       key: t.id,
+      date: t.date,
       startTime: t.startTime || '—',
       endTimeHtml: `${escapeHtmlAttr(t.endTime || '—')}${t.endDate && t.endDate !== t.date ? ` <span style="color:var(--accent);font-weight:700;">(+${Math.round((parseISODate(t.endDate)-parseISODate(t.date))/86400000)} วัน)</span>` : ''}${t.otMinutes ? ` <span class="chip chip-red" title="เวลาทำงานนอกช่วงกะ">OT ${formatMinutesAsHm(t.otMinutes).replace('≈ ', '')}</span>` : ''}`,
       duration: t.totalTime != null ? String(t.totalTime) : planMetricTime(t.rollId),
@@ -5918,7 +5919,8 @@ function renderDailyTasks() {
       shiftHtml: shiftChipHtml(t.shift), who: workerName(t.workerId),
       editable: false, expandable: (t.rollIds || []).length > 1, raw: t,
     }));
-  const allItems = checklistItems.concat(plannedItems).sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+  // เรียงตามวันที่จริง+เวลาเริ่ม ไม่ใช่แค่ตัวอักษรเวลา (ดูเหตุผลเดียวกับ renderPlanDay/renderPlanWeek) — งานกะดึกที่ข้ามเที่ยงคืนมาแสดงในวันเดียวกัน (taskDisplayDate) แต่จริงๆ เป็นงานล่าสุดของรอบ ต้องอยู่ท้ายสุด ไม่ใช่ต้นสุด
+  const allItems = checklistItems.concat(plannedItems).sort((a, b) => ((a.date||'') + a.startTime).localeCompare((b.date||'') + b.startTime));
 
   tbody.innerHTML = allItems.map((item, i) => {
     const status = getDailyStatus(item.key);
