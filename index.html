@@ -3650,8 +3650,23 @@ function splitPlanDataAcrossDays(base, rolls, workType) {
   });
 }
 
+// หา shiftKey (morning/night) ที่เวลา HH:MM ตกอยู่จริงตามนาฬิกา (หรือกะที่จบเร็วที่สุดก่อนหน้าถ้าตกอยู่นอกทุกช่วงกะพอดี เช่น ช่วง OT) — ใช้ตัดสินว่างาน "2 กะ" ที่มีช่องป้อนค่าเดียว ควรโชว์เวลานี้ไว้ในช่องเริ่มงานกะเช้าหรือกะดึก
+function bothModeStartFieldKey(timeStr) {
+  const [h, m] = (timeStr || '').split(':').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return 'morning';
+  const minOfDay = h * 60 + m;
+  return windowKeyAt(SHIFTS.both, minOfDay) || mostRecentShiftKeyBefore(SHIFTS.both, minOfDay);
+}
+// หาค่าที่กรอกจริงของงาน "2 กะ" — จากสองช่อง (เริ่มงานกะเช้า/กะดึก) ช่องที่ไม่ได้ถูกปิดใช้งานคือช่องที่เป็นตัวป้อนค่าจริง อีกช่องเป็นแค่ผลคำนวณที่โชว์ไว้เฉยๆ
+function bothModeStartValue() {
+  const m = document.getElementById('pf-start-morning');
+  const n = document.getElementById('pf-start-night');
+  if (n && !n.disabled) return n.value;
+  return m ? m.value : '';
+}
 // อัปเดตแค่ค่า/สถานะ active ของปุ่มกะ + เปิด/ปิดช่องเริ่มงานของแต่ละกะตามโหมด ไม่แตะเวลาเริ่มงาน — ใช้ตอนเปิดฟอร์ม (โหลดค่าเดิม) ที่ไม่ต้องการทับเวลาที่ผู้ใช้ตั้งไว้เอง
-function setPlanShiftButtons(key) {
+// bothStartKey ใช้เฉพาะตอน key === 'both' — ระบุว่าช่องไหน (morning/night) เป็นตัวป้อนค่าจริงของงาน "2 กะ" นี้ (ดู bothModeStartFieldKey) ค่าเริ่มต้นเป็น 'morning' ถ้าไม่ระบุ
+function setPlanShiftButtons(key, bothStartKey) {
   document.getElementById('pf-shift').value = key;
   document.querySelectorAll('.pf-shift-btn').forEach(b => {
     const active = b.getAttribute('data-shift') === key;
@@ -3659,41 +3674,51 @@ function setPlanShiftButtons(key) {
     b.style.borderColor = active ? 'var(--accent)' : '';
     b.style.background = active ? 'var(--accent-glow)' : '';
   });
-  // เริ่มงานกะเช้ากรอกเองได้เมื่อเลือกกะเช้าหรือ 2 กะ (2 กะ เริ่มจากเช้าเสมอ) — เริ่มงานกะดึกกรอกเองได้เฉพาะกะดึกอย่างเดียว
-  // เพราะตอนทำ "2 กะ" เวลาเริ่มกะดึกจะมาจากรอบเวลาที่ทำงานต่อเนื่องจากกะเช้า คำนวณให้อัตโนมัติ ไม่ให้ผู้ใช้กำหนดเอง
+  // ช่องเริ่มงานกรอกเองได้เฉพาะช่องเดียวเสมอ: กะเช้า/กะดึกก็ตามกะที่เลือกตรงตัว ส่วน "2 กะ" ใช้ช่องไหนขึ้นกับว่าเวลาที่ต่อมา/กรอกไว้ตกอยู่ในช่วงกะเช้าหรือกะดึกจริงตามนาฬิกา (bothStartKey)
+  // อีกช่องที่เหลือเป็นแค่ผลคำนวณโชว์ผล (ดู renderShiftSegmentFields) ไม่ให้ผู้ใช้กำหนดเอง
   const startMorningEl = document.getElementById('pf-start-morning');
   const startNightEl = document.getElementById('pf-start-night');
-  const morningRelevant = key === 'morning' || key === 'both';
-  const nightRelevant = key === 'night' || key === 'both';
-  if (startMorningEl) startMorningEl.disabled = !morningRelevant;
-  if (startNightEl) startNightEl.disabled = key !== 'night';
-  // เวลา OT กรอกเองได้ทั้งสองกะเมื่อเลือก "2 กะ" เพราะ OT อาจเกิดต่อจากกะเช้าหรือกะดึกก็ได้ — กะเดียวก็เปิดเฉพาะ OT ของกะนั้น
+  const activeBothKey = bothStartKey === 'night' ? 'night' : 'morning';
+  const startMorningRelevant = key === 'morning' || (key === 'both' && activeBothKey === 'morning');
+  const startNightRelevant = key === 'night' || (key === 'both' && activeBothKey === 'night');
+  if (startMorningEl) startMorningEl.disabled = !startMorningRelevant;
+  if (startNightEl) startNightEl.disabled = !startNightRelevant;
+  // เวลา OT กรอกเองได้ทั้งสองกะเมื่อเลือก "2 กะ" เพราะ OT อาจเกิดต่อจากกะเช้าหรือกะดึกก็ได้ ไม่ขึ้นกับว่าช่องเริ่มงานไหนเป็นตัวป้อนค่าจริง — กะเดียวก็เปิดเฉพาะ OT ของกะนั้น
+  const otMorningRelevant = key === 'morning' || key === 'both';
+  const otNightRelevant = key === 'night' || key === 'both';
   const otMorningEl = document.getElementById('pf-otcap-morning');
   const otNightEl = document.getElementById('pf-otcap-night');
-  if (otMorningEl) { otMorningEl.disabled = !morningRelevant; if (!morningRelevant) otMorningEl.value = 0; }
-  if (otNightEl) { otNightEl.disabled = !nightRelevant; if (!nightRelevant) otNightEl.value = 0; }
+  if (otMorningEl) { otMorningEl.disabled = !otMorningRelevant; if (!otMorningRelevant) otMorningEl.value = 0; }
+  if (otNightEl) { otNightEl.disabled = !otNightRelevant; if (!otNightRelevant) otNightEl.value = 0; }
 }
 // ผู้ใช้กดเลือกกะเอง — ถ้าเป็นการเพิ่มงานใหม่ (ไม่ใช่แก้ไขงานเดิม) ให้ลองต่อเวลาจากงานประเภทเดียวกันที่จบล่าสุดก่อนเสมอไม่ว่าจะกดเลือกกะไหน
 // (ตอนเปิดฟอร์มจะต่อเวลาให้เฉพาะช่องของกะที่เป็นค่าเริ่มต้นเท่านั้น — ถ้าผู้ใช้กดเปลี่ยนไปกะอื่นเอง ช่องนั้นจะยังว่างอยู่ ต้องลองต่อเวลาซ้ำตรงนี้ด้วย)
 // ถ้าไม่มีงานก่อนหน้าให้ต่อจริงๆ (chainFrom เป็น null) จึงค่อย fallback ไปใช้เวลาเริ่มมาตรฐานของกะ แต่ไม่ทับถ้าช่องมีค่าที่พิมพ์เองอยู่แล้ว
-// ต่อเวลาเข้าช่องเริ่มงานกะเช้าได้เฉพาะตอนงานก่อนหน้าเป็นกะเช้า/2 กะเท่านั้น (และช่องกะดึกก็ต้องเป็นกะดึก/2 กะของงานก่อนหน้าเช่นกัน) —
-// ถ้างานก่อนหน้าเป็นกะตรงข้ามล้วนๆ (เช่น กะดึกอย่างเดียว) เวลาที่จบมาไม่ใช่ช่วงของกะนี้จริง เอามาใส่จะสับสน (เช่น "เริ่มงานกะเช้า 01:10") ให้ใช้เวลาเริ่มมาตรฐานแทน
+// ต่อเวลาเข้าช่องเริ่มงานกะเช้า/กะดึก (กะเดียว) ได้เฉพาะตอนเวลาที่จบมาตกอยู่ในช่วงกะนั้นจริงตามนาฬิกาเท่านั้น — ถ้าไม่ตรง (เช่น จบกะดึกมาตอน 01:10 แต่จะเลือกกะเช้าเดี่ยว) ให้ใช้เวลาเริ่มมาตรฐานแทน กันความสับสน
+// ส่วน "2 กะ" มีช่องเดียวเป็นตัวป้อนค่าจริง เลือกช่องตามผลจำแนกเวลาที่จะต่อ (bothModeStartFieldKey) เสมอ ไม่ตายตัวว่าต้องเป็นช่องกะเช้า
 function selectPlanShift(key) {
-  setPlanShiftButtons(key);
   const startMorningEl = document.getElementById('pf-start-morning');
   const startNightEl = document.getElementById('pf-start-night');
   const chainFrom = !currentEditingPlanTaskId ? findLatestPlanTaskEnd(currentPlanWorkType) : null;
-  const chainMorning = chainFrom && (chainFrom.shift === 'morning' || chainFrom.shift === 'both') ? chainFrom.endTime : null;
-  const chainNight = chainFrom && (chainFrom.shift === 'night' || chainFrom.shift === 'both') ? chainFrom.endTime : null;
-  if ((key === 'morning' || key === 'both') && startMorningEl) {
-    startMorningEl.value = chainMorning || (startMorningEl.value || SHIFTS.morning.start);
-  }
-  if (key === 'night' && startNightEl) {
-    startNightEl.value = chainNight || (startNightEl.value || SHIFTS.night.start);
-  }
   if (key === 'both') {
+    const existing = (startMorningEl && startMorningEl.value) || (startNightEl && startNightEl.value) || '';
+    const value = chainFrom ? chainFrom.endTime : (existing || SHIFTS.both.start);
+    const fieldKey = bothModeStartFieldKey(value);
+    setPlanShiftButtons('both', fieldKey);
+    if (startMorningEl) startMorningEl.value = fieldKey === 'morning' ? value : '';
+    if (startNightEl) startNightEl.value = fieldKey === 'night' ? value : '';
     clampOtCapInput(document.getElementById('pf-otcap-morning'));
     clampOtCapInput(document.getElementById('pf-otcap-night'));
+  } else {
+    setPlanShiftButtons(key);
+    if (key === 'morning' && startMorningEl) {
+      const chainOk = chainFrom && bothModeStartFieldKey(chainFrom.endTime) === 'morning';
+      startMorningEl.value = chainOk ? chainFrom.endTime : (startMorningEl.value || SHIFTS.morning.start);
+    }
+    if (key === 'night' && startNightEl) {
+      const chainOk = chainFrom && bothModeStartFieldKey(chainFrom.endTime) === 'night';
+      startNightEl.value = chainOk ? chainFrom.endTime : (startNightEl.value || SHIFTS.night.start);
+    }
   }
   updatePlanEndTime();
 }
@@ -3771,8 +3796,8 @@ function getOtCapMinutes() {
 function updatePlanEndTime() {
   const startDate = (document.getElementById('pf-date') || {}).value;
   const shiftKey = (document.getElementById('pf-shift') || {}).value || 'morning';
-  const start = shiftKey === 'night'
-    ? (document.getElementById('pf-start-night') || {}).value
+  const start = shiftKey === 'night' ? (document.getElementById('pf-start-night') || {}).value
+    : shiftKey === 'both' ? bothModeStartValue()
     : (document.getElementById('pf-start-morning') || {}).value;
   const total = parseFloat((document.getElementById('pf-plantime') || {}).value) || 0;
   const result = computePlanEnd(startDate, start, total, shiftKey, getOtCapMinutes());
@@ -3943,9 +3968,18 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   const chainFrom = !task ? findLatestPlanTaskEnd(workType) : null;
   document.getElementById('pf-date').value = task ? task.date : (chainFrom ? chainFrom.endDate : (presetDate || toISODate(planViewDate)));
   const defaultShift = (task ? task.shift : (chainFrom ? chainFrom.shift : currentPlanShiftFilter)) || 'morning';
-  setPlanShiftButtons(defaultShift);
-  const startFieldId = defaultShift === 'night' ? 'pf-start-night' : 'pf-start-morning';
-  document.getElementById(startFieldId).value = task ? task.startTime : (chainFrom ? chainFrom.endTime : SHIFTS[defaultShift].start);
+  const startValue = task ? task.startTime : (chainFrom ? chainFrom.endTime : SHIFTS[defaultShift].start);
+  if (defaultShift === 'both') {
+    // "2 กะ" มีช่องเดียวเป็นตัวป้อนค่าจริง เลือกช่อง (เช้า/ดึก) ตามว่าเวลานี้ตกอยู่ในช่วงกะไหนจริงตามนาฬิกา ไม่ใช่ตายตัวว่าต้องเป็นช่องกะเช้าเสมอ
+    const fieldKey = bothModeStartFieldKey(startValue);
+    setPlanShiftButtons('both', fieldKey);
+    document.getElementById('pf-start-morning').value = fieldKey === 'morning' ? startValue : '';
+    document.getElementById('pf-start-night').value = fieldKey === 'night' ? startValue : '';
+  } else {
+    setPlanShiftButtons(defaultShift);
+    const startFieldId = defaultShift === 'night' ? 'pf-start-night' : 'pf-start-morning';
+    document.getElementById(startFieldId).value = startValue;
+  }
   document.getElementById('pf-otcap-morning').value = task ? ((task.otCapMinutesByShift || {}).morning || 0) / 60 : 0;
   document.getElementById('pf-otcap-night').value = task ? ((task.otCapMinutesByShift || {}).night || 0) / 60 : 0;
   populatePlanWorkerSelect(workType, task ? task.workerId : (chainFrom ? chainFrom.workerId : null));
@@ -3966,7 +4000,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     const field = PLAN_WORKTYPE_META[workType].field;
     const totalTime = rolls.reduce((sum, r) => sum + (parseFloat(r[field]) || 0), 0);
     const shiftKey = document.getElementById('pf-shift').value || 'morning';
-    const startTime = shiftKey === 'night' ? g('pf-start-night') : g('pf-start-morning');
+    const startTime = shiftKey === 'night' ? g('pf-start-night') : shiftKey === 'both' ? bothModeStartValue() : g('pf-start-morning');
     const otCapMinutesByShift = getOtCapMinutes();
     // คำนวณวันที่/เวลาจบงาน + OT ซ้ำตรงนี้เสมอ กันกรณีช่อง "วันที่จบงาน" บนหน้าจอยังไม่ทันอัปเดตตามค่าล่าสุด
     const computedEnd = computePlanEnd(date, startTime, totalTime, shiftKey, otCapMinutesByShift);
