@@ -2928,6 +2928,88 @@ document.addEventListener('click', function(ev) {
   closePlanDatePicker();
 });
 
+// ปฏิทินป๊อปอัพเลือก "วันที่เริ่มงาน" ในฟอร์มเพิ่ม/แก้ไขงานวางแผน — ทำเองแทน input[type=date] เหมือนกัน เพื่อทำจุดบอกวันที่มีแผนงานแล้วได้ (ใช้ plannedDates ชุดเดียวกับปฏิทินหลัก แยก state/element กันคนละตัว ไม่ให้กระทบมุมมองหลัก)
+let pfDatePopupMonth = null;
+function openPfDatePicker(ev) {
+  if (ev) ev.stopPropagation();
+  const cur = parseISODate(document.getElementById('pf-date').value) || new Date();
+  pfDatePopupMonth = new Date(cur.getFullYear(), cur.getMonth(), 1);
+  renderPfDatePopup();
+  document.getElementById('pf-date-popup').style.display = '';
+}
+function closePfDatePicker() {
+  const el = document.getElementById('pf-date-popup');
+  if (el) el.style.display = 'none';
+}
+function pfDatePopupNav(dir) {
+  pfDatePopupMonth = new Date(pfDatePopupMonth.getFullYear(), pfDatePopupMonth.getMonth() + dir, 1);
+  renderPfDatePopup();
+}
+function pickPfDate(iso) {
+  document.getElementById('pf-date').value = iso;
+  closePfDatePicker();
+  updatePlanEndTime();
+}
+function pfDateGoToday() {
+  pickPfDate(toISODate(new Date()));
+}
+function renderPfDatePopup() {
+  const el = document.getElementById('pf-date-popup');
+  if (!el || !pfDatePopupMonth) return;
+  const year = pfDatePopupMonth.getFullYear();
+  const month = pfDatePopupMonth.getMonth();
+  const plannedDates = planDatesWithTasks();
+  const todayIso = toISODate(new Date());
+  const selectedIso = document.getElementById('pf-date').value;
+
+  const firstWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+  let cells = '';
+  for (let i = 0; i < firstWeekday; i++) {
+    cells += `<div class="plan-date-popup-day other-month">${daysInPrevMonth - firstWeekday + i + 1}</div>`;
+  }
+  for (let day = 1; day <= daysInMonth; day++) {
+    const iso = toISODate(new Date(year, month, day));
+    const classes = ['plan-date-popup-day'];
+    if (iso === todayIso) classes.push('today');
+    if (iso === selectedIso) classes.push('selected');
+    if (plannedDates.has(iso)) classes.push('has-plan');
+    cells += `<div class="${classes.join(' ')}" onclick="pickPfDate('${iso}')" title="${plannedDates.has(iso) ? 'มีแผนงานแล้ว' : ''}">${day}</div>`;
+  }
+  const totalCells = firstWeekday + daysInMonth;
+  const remainder = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
+  for (let i = 1; i <= remainder; i++) {
+    cells += `<div class="plan-date-popup-day other-month">${i}</div>`;
+  }
+
+  el.innerHTML = `
+    <div class="plan-date-popup-header">
+      <span>${THAI_MONTHS_FULL[month]} ${year + 543}</span>
+      <div class="plan-date-popup-nav">
+        <button type="button" onclick="pfDatePopupNav(-1)">‹</button>
+        <button type="button" onclick="pfDatePopupNav(1)">›</button>
+      </div>
+    </div>
+    <div class="plan-date-popup-grid">
+      ${TH_DOW.map(d => `<div class="plan-date-popup-dow">${d}</div>`).join('')}
+      ${cells}
+    </div>
+    <div class="plan-date-popup-footer">
+      <div class="plan-date-popup-legend"><span></span>มีแผนงานแล้ว</div>
+      <button type="button" onclick="pfDateGoToday()">วันนี้</button>
+    </div>
+  `;
+}
+document.addEventListener('click', function(ev) {
+  const popup = document.getElementById('pf-date-popup');
+  const input = document.getElementById('pf-date');
+  if (!popup || popup.style.display === 'none') return;
+  if (popup.contains(ev.target) || (input && input.contains(ev.target))) return;
+  closePfDatePicker();
+});
+
 let expandedPlanDayTaskId = null;
 function togglePlanDayTaskDetail(taskId) {
   expandedPlanDayTaskId = expandedPlanDayTaskId === taskId ? null : taskId;
@@ -3118,7 +3200,12 @@ function addPlanTaskForCurrentDay() {
 function planTaskFormFields() {
   return `
     <div class="modal-row">
-      <div class="form-group"><label class="form-label">วันที่เริ่มงาน</label><input class="form-input" id="pf-date" type="date" onchange="updatePlanEndTime()"></div>
+      <div class="form-group"><label class="form-label">วันที่เริ่มงาน</label>
+        <div style="position:relative;">
+          <input class="form-input" id="pf-date" type="text" readonly style="cursor:pointer;" onclick="openPfDatePicker(event)">
+          <div id="pf-date-popup" class="plan-date-popup" style="display:none;"></div>
+        </div>
+      </div>
       <div class="form-group"><label class="form-label">วันที่จบงาน — คำนวณให้อัตโนมัติ</label><input class="form-input" id="pf-enddate" type="date"></div>
     </div>
     <div class="modal-row">
