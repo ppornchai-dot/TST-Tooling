@@ -1301,7 +1301,10 @@ canvas{display:block;}
 
       <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
         <button class="btn btn-ghost btn-sm" onclick="dailyNav(-1)">‹ ก่อนหน้า</button>
-        <input type="date" class="form-input" id="daily-date-input" style="width:auto;" onchange="setDailyViewDate(this.value)">
+        <div style="position:relative;display:inline-block;">
+          <input class="form-input" id="daily-date-input" type="text" readonly style="width:auto;cursor:pointer;" onclick="openDailyDatePicker(event)">
+          <div id="daily-date-popup" class="plan-date-popup" style="display:none;"></div>
+        </div>
         <button class="btn btn-ghost btn-sm" onclick="dailyNav(1)">ถัดไป ›</button>
         <button class="btn btn-ghost btn-sm" onclick="dailyGoToday()" style="margin-left:auto;">วันนี้</button>
       </div>
@@ -5781,6 +5784,98 @@ function dailyGoToday() {
   dailyViewDate = DAILY_TODAY_ISO;
   renderDailyTasks();
 }
+
+// วันที่ (iso) ที่มีงานตามแผน (CNC/ขัด Roll) อยู่แล้ว ตรงกับตัวกรองประเภทงาน/กะที่กำลังดูอยู่ในหน้างานประจำวัน — ใช้ทำจุดสีในปฏิทินป๊อปอัพเลือกวันที่ของหน้านี้
+function dailyDatesWithTasks() {
+  const set = new Set();
+  planTasks.forEach(t => {
+    if (currentDailyWorkTypeFilter && t.workType !== currentDailyWorkTypeFilter) return;
+    if (!shiftMatchesFilter(t.shift, currentDailyShiftFilter)) return;
+    set.add(taskDisplayDate(t));
+  });
+  return set;
+}
+// ปฏิทินป๊อปอัพเลือกวันที่ของหน้างานประจำวัน — ทำเองแทน input[type=date] เหมือนกับหน้าวางแผน เพื่อทำจุดบอกวันที่มีงานตามแผนอยู่แล้วได้
+let dailyDatePopupMonth = null;
+function openDailyDatePicker(ev) {
+  if (ev) ev.stopPropagation();
+  const cur = parseISODate(dailyViewDate) || new Date();
+  dailyDatePopupMonth = new Date(cur.getFullYear(), cur.getMonth(), 1);
+  renderDailyDatePopup();
+  document.getElementById('daily-date-popup').style.display = '';
+}
+function closeDailyDatePicker() {
+  const el = document.getElementById('daily-date-popup');
+  if (el) el.style.display = 'none';
+}
+function dailyDatePopupNav(dir) {
+  dailyDatePopupMonth = new Date(dailyDatePopupMonth.getFullYear(), dailyDatePopupMonth.getMonth() + dir, 1);
+  renderDailyDatePopup();
+}
+function pickDailyDate(iso) {
+  closeDailyDatePicker();
+  setDailyViewDate(iso);
+}
+function dailyDatePopupGoToday() {
+  closeDailyDatePicker();
+  dailyGoToday();
+}
+function renderDailyDatePopup() {
+  const el = document.getElementById('daily-date-popup');
+  if (!el || !dailyDatePopupMonth) return;
+  const year = dailyDatePopupMonth.getFullYear();
+  const month = dailyDatePopupMonth.getMonth();
+  const plannedDates = dailyDatesWithTasks();
+  const todayIso = DAILY_TODAY_ISO;
+  const selectedIso = dailyViewDate;
+
+  const firstWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+  let cells = '';
+  for (let i = 0; i < firstWeekday; i++) {
+    cells += `<div class="plan-date-popup-day other-month">${daysInPrevMonth - firstWeekday + i + 1}</div>`;
+  }
+  for (let day = 1; day <= daysInMonth; day++) {
+    const iso = toISODate(new Date(year, month, day));
+    const classes = ['plan-date-popup-day'];
+    if (iso === todayIso) classes.push('today');
+    if (iso === selectedIso) classes.push('selected');
+    if (plannedDates.has(iso)) classes.push('has-plan');
+    cells += `<div class="${classes.join(' ')}" onclick="pickDailyDate('${iso}')" title="${plannedDates.has(iso) ? 'มีแผนงานแล้ว' : ''}">${day}</div>`;
+  }
+  const totalCells = firstWeekday + daysInMonth;
+  const remainder = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
+  for (let i = 1; i <= remainder; i++) {
+    cells += `<div class="plan-date-popup-day other-month">${i}</div>`;
+  }
+
+  el.innerHTML = `
+    <div class="plan-date-popup-header">
+      <span>${THAI_MONTHS_FULL[month]} ${year + 543}</span>
+      <div class="plan-date-popup-nav">
+        <button type="button" onclick="dailyDatePopupNav(-1)">‹</button>
+        <button type="button" onclick="dailyDatePopupNav(1)">›</button>
+      </div>
+    </div>
+    <div class="plan-date-popup-grid">
+      ${TH_DOW.map(d => `<div class="plan-date-popup-dow">${d}</div>`).join('')}
+      ${cells}
+    </div>
+    <div class="plan-date-popup-footer">
+      <div class="plan-date-popup-legend"><span></span>มีแผนงานแล้ว</div>
+      <button type="button" onclick="dailyDatePopupGoToday()">วันนี้</button>
+    </div>
+  `;
+}
+document.addEventListener('click', function(ev) {
+  const popup = document.getElementById('daily-date-popup');
+  const input = document.getElementById('daily-date-input');
+  if (!popup || popup.style.display === 'none') return;
+  if (popup.contains(ev.target) || (input && input.contains(ev.target))) return;
+  closeDailyDatePicker();
+});
 
 function renderDailyTasks() {
   const tbody = document.getElementById('tbody-daily');
