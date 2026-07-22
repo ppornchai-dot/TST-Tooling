@@ -1348,7 +1348,7 @@ canvas{display:block;}
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th></th><th>เวลา</th><th>งาน</th><th>ประเภท</th><th>Tooling / เครื่องจักร</th><th>กะ</th><th>ผู้รับผิดชอบ</th><th>สถานะ</th><th>จัดการ</th></tr>
+              <tr><th></th><th>ลำดับ</th><th>SIZE ROLL</th><th>ชุดสี ROLL</th><th>รหัส</th><th>ชื่อ ROLL</th><th>กะ</th><th>ผู้รับผิดชอบ</th><th>เวลาแต่ง ROLL (นาที)</th><th>เริ่มงาน</th><th>จบงาน</th><th>สถานะ</th><th>จัดการ</th></tr>
             </thead>
             <tbody id="tbody-daily"></tbody>
           </table>
@@ -5894,31 +5894,30 @@ function renderDailyTasks() {
 
   // เช็คลิสต์ที่ผู้ใช้เพิ่มเอง (ทำซ้ำทุกวัน หรือเฉพาะวันที่เลือก) + งาน CNC/ขัด Roll ที่วางแผนไว้ในหน้า "วางแผน" สำหรับวันนี้โดยเฉพาะ — รวมเป็นรายการเดียวกัน เรียงตามเวลา
   // ตัวกรองประเภทงาน/กะ มีผลเฉพาะงานที่มาจากหน้าวางแผน (มี workType/shift จริง) — เช็คลิสต์ที่เพิ่มเองแสดงเสมอไม่ว่าจะกรองแบบไหน
+  // คอลัมน์ตารางให้เหมือนกับตารางแผนงานในหน้า "วางแผน" (SIZE ROLL/ชุดสี/รหัส/ชื่อ ROLL/กะ/เริ่ม-จบงาน) — เช็คลิสต์ที่เพิ่มเองไม่มีข้อมูล Roll จึงโชว์ "—" ในคอลัมน์เหล่านั้น ใช้ "ชื่อ ROLL" แสดงชื่องานแทน และ "รหัส" แสดง Tooling/เครื่องจักรอ้างอิงแทน
   const checklistItems = dailyChecklistTasks
     .filter(t => !t.date || t.date === dailyViewDate)
-    .map(t => ({ key: t.id, time: t.time, task: t.task, type: t.type, ref: t.ref, shiftLabel: '—', who: t.who, editable: true, expandable: false }));
+    .map(t => ({
+      key: t.id, startTime: t.time || '—', endTimeHtml: '—', duration: '—',
+      rollSet: '—', rollColor: '—', rollId: t.ref || '—', task: t.task,
+      shiftHtml: '—', who: t.who, editable: true, expandable: false,
+    }));
   const plannedItems = planTasks
     .filter(t => taskDisplayDate(t) === dailyViewDate)
     .filter(t => !currentDailyWorkTypeFilter || t.workType === currentDailyWorkTypeFilter)
     .filter(t => shiftMatchesFilter(t.shift, currentDailyShiftFilter))
-    .map(t => {
-      const workMeta = PLAN_WORKTYPE_META[t.workType];
-      return {
-        key: t.id,
-        time: t.startTime || '—',
-        task: t.rollName,
-        type: workMeta ? workMeta.label.replace('แผนงาน', '').trim() : t.workType,
-        ref: [t.rollSet, t.rollId].filter(Boolean).join(' — '),
-        shiftLabel: (SHIFTS[t.shift] || {}).label || '—',
-        who: workerName(t.workerId),
-        editable: false,
-        expandable: (t.rollIds || []).length > 1,
-        raw: t,
-      };
-    });
-  const allItems = checklistItems.concat(plannedItems).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    .map(t => ({
+      key: t.id,
+      startTime: t.startTime || '—',
+      endTimeHtml: `${escapeHtmlAttr(t.endTime || '—')}${t.endDate && t.endDate !== t.date ? ` <span style="color:var(--accent);font-weight:700;">(+${Math.round((parseISODate(t.endDate)-parseISODate(t.date))/86400000)} วัน)</span>` : ''}${t.otMinutes ? ` <span class="chip chip-red" title="เวลาทำงานนอกช่วงกะ">OT ${formatMinutesAsHm(t.otMinutes).replace('≈ ', '')}</span>` : ''}`,
+      duration: t.totalTime != null ? String(t.totalTime) : planMetricTime(t.rollId),
+      rollSet: t.rollSet, rollColor: planRollColorLabel(t), rollId: t.rollId, task: t.rollName,
+      shiftHtml: shiftChipHtml(t.shift), who: workerName(t.workerId),
+      editable: false, expandable: (t.rollIds || []).length > 1, raw: t,
+    }));
+  const allItems = checklistItems.concat(plannedItems).sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
 
-  tbody.innerHTML = allItems.map(item => {
+  tbody.innerHTML = allItems.map((item, i) => {
     const status = getDailyStatus(item.key);
     const meta = DAILY_STATUS_META[status];
     const actions = item.editable
@@ -5927,17 +5926,21 @@ function renderDailyTasks() {
     const expanded = item.expandable && expandedDailyTaskId === item.key;
     const row = `<tr${item.expandable ? ` style="cursor:pointer;" onclick="toggleDailyTaskDetail('${item.key}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : ''}>
       <td onclick="event.stopPropagation();"><input type="checkbox" ${status==='done'?'checked':''} onchange="toggleDailyTask('${item.key}')" style="width:16px;height:16px;cursor:pointer;"></td>
-      <td class="muted">${item.expandable ? `<span aria-hidden="true" style="display:inline-block;width:12px;transition:transform .15s;transform:rotate(${expanded ? 90 : 0}deg);">▸</span> ` : ''}${escapeHtmlAttr(item.time)}</td>
+      <td class="muted">${item.expandable ? `<span aria-hidden="true" style="display:inline-block;width:12px;transition:transform .15s;transform:rotate(${expanded ? 90 : 0}deg);">▸</span> ` : ''}${i + 1}</td>
+      <td>${escapeHtmlAttr(item.rollSet)}</td>
+      <td>${escapeHtmlAttr(item.rollColor)}</td>
+      <td class="muted">${escapeHtmlAttr(item.rollId)}</td>
       <td><strong>${escapeHtmlAttr(item.task)}</strong></td>
-      <td class="muted">${escapeHtmlAttr(item.type)}</td>
-      <td class="muted">${escapeHtmlAttr(item.ref)}</td>
-      <td class="muted">${escapeHtmlAttr(item.shiftLabel)}</td>
+      <td>${item.shiftHtml}</td>
       <td class="muted">${escapeHtmlAttr(item.who)}</td>
+      <td class="muted" style="text-align:right;">${escapeHtmlAttr(item.duration)}</td>
+      <td class="muted">${escapeHtmlAttr(item.startTime)}</td>
+      <td class="muted">${item.endTimeHtml}</td>
       <td><span class="chip ${meta.chip}">${meta.label}</span></td>
       <td onclick="event.stopPropagation();">${actions}</td>
     </tr>`;
-    return row + (expanded ? renderPlanDayTaskDetailRow(item.raw, 9, true) : '');
-  }).join('') || `<tr><td colspan="9" style="padding:32px;text-align:center;color:var(--text-3);">ยังไม่มีงานในวันนี้ — กด "+ เพิ่มงานเช็คลิสต์" เพื่อเริ่มสร้างเช็คลิสต์เอง</td></tr>`;
+    return row + (expanded ? renderPlanDayTaskDetailRow(item.raw, 13, true) : '');
+  }).join('') || `<tr><td colspan="13" style="padding:32px;text-align:center;color:var(--text-3);">ยังไม่มีงานในวันนี้ — กด "+ เพิ่มงานเช็คลิสต์" เพื่อเริ่มสร้างเช็คลิสต์เอง</td></tr>`;
 
   const statuses = allItems.map(item => getDailyStatus(item.key));
   document.getElementById('daily-kpi-total').textContent = allItems.length;
