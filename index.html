@@ -3503,13 +3503,16 @@ function initPlanCursorState(startTime, shiftKey, otCaps) {
   // งานที่ต่อเวลามาแบบนี้มักเริ่มกลาง OT ของงานก่อนหน้าอยู่แล้ว (ไม่ใช่เพิ่งออกจากกะพอดีเป๊ะ) — คำนวณเวลาที่ผ่านไปตั้งแต่กะนั้นจบจริง (หักพัก 20 นาทีที่จ่ายไปแล้วออกก่อน)
   // แล้วนับเป็นโควตา OT ที่ใช้ไปแล้วของ "รอบออกกะ" นี้ทันที กันไม่ให้งานถัดไปได้พัก 20 นาทีซ้ำ/ได้โควตา OT เต็มใหม่ทั้งที่จริงๆ เป็นการต่อเวลาของ OT รอบเดียวกัน
   let otUsedThisExit = 0, breakPaidThisExit = false;
+  const segments = {};
   if (lastExitedKey) {
     const exitedWindow = shift.windows.find(w => w.shiftKey === lastExitedKey);
     const elapsedSinceShiftEnd = exitedWindow ? ((minOfDay - exitedWindow.endMin) % 1440 + 1440) % 1440 : 0;
     breakPaidThisExit = elapsedSinceShiftEnd >= OT_BREAK_MIN;
     otUsedThisExit = Math.max(0, elapsedSinceShiftEnd - OT_BREAK_MIN);
+    // ตั้ง segment ของกะที่เพิ่งออกมาไว้ก่อนตั้งแต่ต้น (แม้ยังไม่มี OT เกิดขึ้นจริงในการเรียกครั้งนี้ เช่น โควตา OT ของกะนั้น = 0) กันไม่ให้ช่องจบงานของกะนั้นว่างเปล่า ทั้งที่ช่องเริ่มงานมีค่าอยู่แล้ว
+    segments[lastExitedKey] = { start: cursor, end: cursor };
   }
-  return { cursor, shift, otCaps: otCaps || {}, segments: {}, otMinutesByShift: {}, otMinutes: 0, lastExitedKey, otUsedThisExit, breakPaidThisExit };
+  return { cursor, shift, otCaps: otCaps || {}, segments, otMinutesByShift: {}, otMinutes: 0, lastExitedKey, otUsedThisExit, breakPaidThisExit };
 }
 
 // คำนวณวันที่/เวลาจบงาน + เวลา OT ที่ใช้จริง (รวม + แยกรายกะ) + ช่วงเวลาเริ่ม/จบของแต่ละกะ (segments)
