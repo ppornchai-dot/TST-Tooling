@@ -4053,6 +4053,60 @@ function openPlanTaskModal(mode, taskId, presetDate) {
       planTaskSeq++;
       planTasks.push({ id: 'PT-' + String(planTaskSeq).padStart(4, '0'), workType, ...data, splitGroupId: null });
     }
+    // งาน "2 กะ" ที่จบพอดีตรงขอบเขต OT (08:00/20:00) แปลว่าใช้เวลาเต็มทั้ง 2 กะแล้ว — ถ้า Roll set/สีเดียวกันนี้ยังมี Roll ที่ยังไม่ถูกวางแผนเหลืออยู่
+    // ให้สร้างงานวันถัดไปต่อให้อัตโนมัติทันที (ต่อเวลาจากตรงนี้พอดี ใช้ OT cap/ผู้ปฏิบัติงานเดิม) ไม่ต้องรอผู้ใช้กด "+ เพิ่มงาน" เอง — วนต่อไปเรื่อยๆ จนกว่าจะหมด Roll ที่ต้องวางแผน หรือจบไม่พอดีขอบเขตแล้ว
+    {
+      const finalGrp = splitGroups ? splitGroups[splitGroups.length - 1] : null;
+      let lastEndDate = finalGrp ? finalGrp.endDate : data.endDate;
+      let lastEndTime = finalGrp ? finalGrp.endTime : data.endTime;
+      let guard = 0;
+      while (shiftKey === 'both' && (lastEndTime === '08:00' || lastEndTime === '20:00') && ++guard <= 366) {
+        const matchedRolls = getMatchingRollsForPlan(setName, colorKey || null);
+        const planned = getPlannedRollIndexSet(setName, colorKey || null, workType, null);
+        const remainingIdx = matchedRolls.map((_, idx) => idx).filter(idx => !planned.has(idx)).sort((a, b) => a - b);
+        if (!remainingIdx.length) break;
+        const remainingRolls = remainingIdx.map(idx => matchedRolls[idx]);
+        const nextTotalTime = remainingRolls.reduce((sum, r) => sum + (parseFloat(r[field]) || 0), 0);
+        if (!nextTotalTime) break;
+        const nextSplit = splitPlanDataAcrossDays({ date: lastEndDate, shift: 'both', startTime: lastEndTime, otCapMinutesByShift, rollIds: remainingIdx }, remainingRolls, workType);
+        if (nextSplit) {
+          const grpId = 'SG-' + String(planTaskSeq + 1).padStart(4, '0');
+          nextSplit.forEach(grp => {
+            planTaskSeq++;
+            planTasks.push({
+              id: 'PT-' + String(planTaskSeq).padStart(4, '0'), workType,
+              date: grp.date, rollSet: setName, rollColor: colorKey || null,
+              rollIds: grp.rollIds, rollId: grp.rollId, rollName: grp.rollName, totalTime: grp.totalTime,
+              startTime: grp.startTime, endTime: grp.endTime, endDate: grp.endDate,
+              shift: 'both', otCapMinutesByShift,
+              otMinutes: grp.otMinutes, otMinutesByShift: grp.otMinutesByShift,
+              rollMinutesOverride: grp.rollMinutesOverride,
+              workerId: data.workerId,
+              splitGroupId: grpId,
+            });
+          });
+          const lastNextGrp = nextSplit[nextSplit.length - 1];
+          lastEndDate = lastNextGrp.endDate;
+          lastEndTime = lastNextGrp.endTime;
+        } else {
+          const nextComputed = computePlanEnd(lastEndDate, lastEndTime, nextTotalTime, 'both', otCapMinutesByShift);
+          planTaskSeq++;
+          planTasks.push({
+            id: 'PT-' + String(planTaskSeq).padStart(4, '0'), workType,
+            date: lastEndDate, rollSet: setName, rollColor: colorKey || null,
+            rollIds: remainingIdx, rollId: remainingRolls.length + ' Roll', rollName: remainingRolls.map(r => r.name).join(', '),
+            totalTime: nextTotalTime,
+            startTime: lastEndTime, endTime: nextComputed.time || '—', endDate: nextComputed.date || lastEndDate,
+            shift: 'both', otCapMinutesByShift,
+            otMinutes: nextComputed.otMinutes || 0, otMinutesByShift: nextComputed.otMinutesByShift || {},
+            workerId: data.workerId,
+            splitGroupId: null,
+          });
+          lastEndDate = nextComputed.date || lastEndDate;
+          lastEndTime = nextComputed.time || lastEndTime;
+        }
+      }
+    }
     autoFixPlanSequencing();
     mergeAdjacentPlanTasks();
     persistState();
