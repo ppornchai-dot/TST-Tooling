@@ -3676,16 +3676,20 @@ function setPlanShiftButtons(key) {
 // ผู้ใช้กดเลือกกะเอง — ถ้าเป็นการเพิ่มงานใหม่ (ไม่ใช่แก้ไขงานเดิม) ให้ลองต่อเวลาจากงานประเภทเดียวกันที่จบล่าสุดก่อนเสมอไม่ว่าจะกดเลือกกะไหน
 // (ตอนเปิดฟอร์มจะต่อเวลาให้เฉพาะช่องของกะที่เป็นค่าเริ่มต้นเท่านั้น — ถ้าผู้ใช้กดเปลี่ยนไปกะอื่นเอง ช่องนั้นจะยังว่างอยู่ ต้องลองต่อเวลาซ้ำตรงนี้ด้วย)
 // ถ้าไม่มีงานก่อนหน้าให้ต่อจริงๆ (chainFrom เป็น null) จึงค่อย fallback ไปใช้เวลาเริ่มมาตรฐานของกะ แต่ไม่ทับถ้าช่องมีค่าที่พิมพ์เองอยู่แล้ว
+// ต่อเวลาเข้าช่องเริ่มงานกะเช้าได้เฉพาะตอนงานก่อนหน้าเป็นกะเช้า/2 กะเท่านั้น (และช่องกะดึกก็ต้องเป็นกะดึก/2 กะของงานก่อนหน้าเช่นกัน) —
+// ถ้างานก่อนหน้าเป็นกะตรงข้ามล้วนๆ (เช่น กะดึกอย่างเดียว) เวลาที่จบมาไม่ใช่ช่วงของกะนี้จริง เอามาใส่จะสับสน (เช่น "เริ่มงานกะเช้า 01:10") ให้ใช้เวลาเริ่มมาตรฐานแทน
 function selectPlanShift(key) {
   setPlanShiftButtons(key);
   const startMorningEl = document.getElementById('pf-start-morning');
   const startNightEl = document.getElementById('pf-start-night');
   const chainFrom = !currentEditingPlanTaskId ? findLatestPlanTaskEnd(currentPlanWorkType) : null;
+  const chainMorning = chainFrom && (chainFrom.shift === 'morning' || chainFrom.shift === 'both') ? chainFrom.endTime : null;
+  const chainNight = chainFrom && (chainFrom.shift === 'night' || chainFrom.shift === 'both') ? chainFrom.endTime : null;
   if ((key === 'morning' || key === 'both') && startMorningEl) {
-    startMorningEl.value = chainFrom ? chainFrom.endTime : (startMorningEl.value || SHIFTS.morning.start);
+    startMorningEl.value = chainMorning || (startMorningEl.value || SHIFTS.morning.start);
   }
   if (key === 'night' && startNightEl) {
-    startNightEl.value = chainFrom ? chainFrom.endTime : (startNightEl.value || SHIFTS.night.start);
+    startNightEl.value = chainNight || (startNightEl.value || SHIFTS.night.start);
   }
   if (key === 'both') {
     clampOtCapInput(document.getElementById('pf-otcap-morning'));
