@@ -3610,7 +3610,8 @@ function splitPlanDataAcrossDays(base, rolls, workType) {
     let sinceBoundary = 0; // นาที "ทำงานจริง" (normal/ot เท่านั้น ไม่รวมพัก/รอกะ) ของชิ้นนี้ที่สะสมมาตั้งแต่จุดเริ่มวันใหม่ล่าสุด
     segs.forEach(seg => {
       const isNewSession = seg.type === 'normal' && (freshEntry || seg.shiftKey !== lastNormalShiftKey);
-      if (isNewSession) {
+      // ต้องสร้างกลุ่มแรกไว้ก่อนเสมอแม้ช่วงแรกสุดของทั้งตารางจะไม่ใช่ 'normal' ก็ตาม (เช่น งานต่อเวลามาเริ่มกลาง OT ของกะก่อนหน้าทันที ไม่มีช่วงปกติมาก่อนเลย) กัน cur เป็น null ตอนเจอ 'ot' ก่อน 'normal'
+      if (isNewSession || !cur) {
         if (cur && sinceBoundary > 0) cur.pieces.push({ idx: i, minutes: sinceBoundary }); // ส่วนก่อนจุดตัดของชิ้นนี้ (ถ้ามี) ปิดท้ายกลุ่มเดิม
         cur = { pieces: [], startDate: seg.startDate, startTime: seg.startTime, endDate: seg.endDate, endTime: seg.endTime, shiftKey: seg.shiftKey, otMinutes: 0, otMinutesByShift: {} };
         groups.push(cur);
