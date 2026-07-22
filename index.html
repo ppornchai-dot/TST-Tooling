@@ -3669,14 +3669,20 @@ function setPlanShiftButtons(key) {
   if (otMorningEl) { otMorningEl.disabled = !morningRelevant; if (!morningRelevant) otMorningEl.value = 0; }
   if (otNightEl) { otNightEl.disabled = !nightRelevant; if (!nightRelevant) otNightEl.value = 0; }
 }
-// ผู้ใช้กดเลือกกะเอง — ตั้งเวลาเริ่มงานเป็นเวลาเริ่มมาตรฐานของกะนั้น "เฉพาะตอนที่ช่องยังว่างอยู่เท่านั้น"
-// ถ้าช่องมีค่าอยู่แล้ว (เช่น ต่อเวลามาจากงานก่อนหน้าอัตโนมัติตอนเปิดฟอร์ม) ต้องไม่ทับ — ไม่งั้นแค่กดยืนยันปุ่มกะที่เลือกไว้แล้วซ้ำ (หรือสลับกะไปมา) จะเผลอรีเซ็ตเวลาต่อเนื่องที่ตั้งไว้ถูกแล้วทิ้งไป
+// ผู้ใช้กดเลือกกะเอง — ถ้าเป็นการเพิ่มงานใหม่ (ไม่ใช่แก้ไขงานเดิม) ให้ลองต่อเวลาจากงานประเภทเดียวกันที่จบล่าสุดก่อนเสมอไม่ว่าจะกดเลือกกะไหน
+// (ตอนเปิดฟอร์มจะต่อเวลาให้เฉพาะช่องของกะที่เป็นค่าเริ่มต้นเท่านั้น — ถ้าผู้ใช้กดเปลี่ยนไปกะอื่นเอง ช่องนั้นจะยังว่างอยู่ ต้องลองต่อเวลาซ้ำตรงนี้ด้วย)
+// ถ้าไม่มีงานก่อนหน้าให้ต่อจริงๆ (chainFrom เป็น null) จึงค่อย fallback ไปใช้เวลาเริ่มมาตรฐานของกะ แต่ไม่ทับถ้าช่องมีค่าที่พิมพ์เองอยู่แล้ว
 function selectPlanShift(key) {
   setPlanShiftButtons(key);
   const startMorningEl = document.getElementById('pf-start-morning');
   const startNightEl = document.getElementById('pf-start-night');
-  if ((key === 'morning' || key === 'both') && startMorningEl && !startMorningEl.value) startMorningEl.value = SHIFTS.morning.start;
-  if (key === 'night' && startNightEl && !startNightEl.value) startNightEl.value = SHIFTS.night.start;
+  const chainFrom = !currentEditingPlanTaskId ? findLatestPlanTaskEnd(currentPlanWorkType) : null;
+  if ((key === 'morning' || key === 'both') && startMorningEl) {
+    startMorningEl.value = chainFrom ? chainFrom.endTime : (startMorningEl.value || SHIFTS.morning.start);
+  }
+  if (key === 'night' && startNightEl) {
+    startNightEl.value = chainFrom ? chainFrom.endTime : (startNightEl.value || SHIFTS.night.start);
+  }
   if (key === 'both') {
     clampOtCapInput(document.getElementById('pf-otcap-morning'));
     clampOtCapInput(document.getElementById('pf-otcap-night'));
