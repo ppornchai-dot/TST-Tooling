@@ -1301,8 +1301,11 @@ canvas{display:block;}
 
       <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
         <button class="btn btn-ghost btn-sm" onclick="dailyNav(-1)">‹ ก่อนหน้า</button>
-        <div style="position:relative;display:inline-block;">
-          <input class="form-input" id="daily-date-input" type="text" readonly style="width:auto;cursor:pointer;" onclick="openDailyDatePicker(event)">
+        <div style="position:relative;display:inline-flex;">
+          <span id="daily-daterange-trigger" onclick="openDailyDatePicker(event)" title="คลิกเพื่อเลือกวันที่" style="padding:0 8px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">
+            <span aria-hidden="true">📅</span>
+            <span id="daily-daterange-label" style="font-size:13px;font-weight:700;color:var(--text-1);">2 ก.ค. 2569</span>
+          </span>
           <div id="daily-date-popup" class="plan-date-popup" style="display:none;"></div>
         </div>
         <button class="btn btn-ghost btn-sm" onclick="dailyNav(1)">ถัดไป ›</button>
@@ -5871,7 +5874,7 @@ function renderDailyDatePopup() {
 }
 document.addEventListener('click', function(ev) {
   const popup = document.getElementById('daily-date-popup');
-  const input = document.getElementById('daily-date-input');
+  const input = document.getElementById('daily-daterange-trigger');
   if (!popup || popup.style.display === 'none') return;
   if (popup.contains(ev.target) || (input && input.contains(ev.target))) return;
   closeDailyDatePicker();
@@ -5881,8 +5884,8 @@ function renderDailyTasks() {
   const tbody = document.getElementById('tbody-daily');
   if (!tbody) return;
 
-  const dateInput = document.getElementById('daily-date-input');
-  if (dateInput) dateInput.value = dailyViewDate;
+  const dateLabel = document.getElementById('daily-daterange-label');
+  if (dateLabel) dateLabel.textContent = fmtDateThai(parseISODate(dailyViewDate));
   const subText = 'เช็คลิสต์งานประจำวันของทีม Tooling — วันที่ ' + fmtDateThai(parseISODate(dailyViewDate));
   const subEl = document.getElementById('daily-section-sub');
   if (subEl) subEl.textContent = subText;
