@@ -3592,9 +3592,10 @@ function taskDisplayDate(t) {
   return sessionOwningDate(t.date, t.startTime || '', taskSessionShiftKey(t));
 }
 
-function splitPlanDataAcrossDays(base, rolls, workType) {
+// pieceMinutesListOverride (ถ้ามี) ใช้แทนเวลาแต่ง/ขัด Roll เต็มจากทะเบียน Tooling — ใช้ตอนวางแผนต่อของชิ้นที่ทำค้างไว้บางส่วนแล้ว (เหลือน้อยกว่าเวลาเต็ม)
+function splitPlanDataAcrossDays(base, rolls, workType, pieceMinutesListOverride) {
   const field = PLAN_WORKTYPE_META[workType].field;
-  const pieceMinutesList = rolls.map(r => parseFloat(r[field]) || 0);
+  const pieceMinutesList = pieceMinutesListOverride || rolls.map(r => parseFloat(r[field]) || 0);
   const schedule = computePlanPieceSchedule(base.date, base.startTime, pieceMinutesList, base.shift, base.otCapMinutesByShift || {});
   if (!schedule.length) return null;
 
@@ -4053,22 +4054,34 @@ function openPlanTaskModal(mode, taskId, presetDate) {
       planTaskSeq++;
       planTasks.push({ id: 'PT-' + String(planTaskSeq).padStart(4, '0'), workType, ...data, splitGroupId: null });
     }
-    // งาน "2 กะ" ที่จบพอดีตรงขอบเขต OT (08:00/20:00) แปลว่าใช้เวลาเต็มทั้ง 2 กะแล้ว — ถ้า Roll set/สีเดียวกันนี้ยังมี Roll ที่ยังไม่ถูกวางแผนเหลืออยู่
-    // ให้สร้างงานวันถัดไปต่อให้อัตโนมัติทันที (ต่อเวลาจากตรงนี้พอดี ใช้ OT cap/ผู้ปฏิบัติงานเดิม) ไม่ต้องรอผู้ใช้กด "+ เพิ่มงาน" เอง — วนต่อไปเรื่อยๆ จนกว่าจะหมด Roll ที่ต้องวางแผน หรือจบไม่พอดีขอบเขตแล้ว
+    // งาน "2 กะ" ที่จบพอดีตรงขอบเขต OT (08:00/20:00) แปลว่าใช้เวลาเต็มทั้ง 2 กะแล้ว — ถ้า Roll set/สีเดียวกันนี้ยังมีเวลาที่ต้องวางแผนเหลืออยู่
+    // (ทั้ง Roll ที่ยังไม่เคยแตะเลย และ Roll ที่ถูกตัดเวลาไว้แค่บางส่วนตอนชนขอบเขตกะ เช่น ชิ้นสุดท้ายที่ทำไปได้ไม่กี่นาทีก่อนหมดเวลา OT พอดี)
+    // ให้สร้างงานวันถัดไปต่อให้อัตโนมัติทันที (ต่อเวลาจากตรงนี้พอดี ใช้ OT cap/ผู้ปฏิบัติงานเดิม) ไม่ต้องรอผู้ใช้กด "+ เพิ่มงาน" เอง — วนต่อไปเรื่อยๆ จนกว่าจะหมดเวลาที่ต้องวางแผน หรือจบไม่พอดีขอบเขตแล้ว
     {
+      // เวลาที่ถูกวางแผนไปแล้วจริงของ Roll ตำแหน่ง idx หนึ่งๆ (รวมทุกงานของ Size Roll/สี/ประเภทงานเดียวกัน) — งานที่ตัดเวลาไว้บางส่วน (rollMinutesOverride) นับตามที่ตัดจริง ไม่ใช่เต็มเวลาทะเบียน
+      const usedMinutesForIdx = (idx, fullMinutes) => planTasks.reduce((sum, t) => {
+        if (t.workType !== workType || t.rollSet !== setName || t.rollColor !== (colorKey || null)) return sum;
+        if (!(t.rollIds || []).includes(idx)) return sum;
+        const override = t.rollMinutesOverride && t.rollMinutesOverride[idx];
+        return sum + (override != null ? override : fullMinutes);
+      }, 0);
       const finalGrp = splitGroups ? splitGroups[splitGroups.length - 1] : null;
       let lastEndDate = finalGrp ? finalGrp.endDate : data.endDate;
       let lastEndTime = finalGrp ? finalGrp.endTime : data.endTime;
       let guard = 0;
       while (shiftKey === 'both' && (lastEndTime === '08:00' || lastEndTime === '20:00') && ++guard <= 366) {
         const matchedRolls = getMatchingRollsForPlan(setName, colorKey || null);
-        const planned = getPlannedRollIndexSet(setName, colorKey || null, workType, null);
-        const remainingIdx = matchedRolls.map((_, idx) => idx).filter(idx => !planned.has(idx)).sort((a, b) => a - b);
-        if (!remainingIdx.length) break;
-        const remainingRolls = remainingIdx.map(idx => matchedRolls[idx]);
-        const nextTotalTime = remainingRolls.reduce((sum, r) => sum + (parseFloat(r[field]) || 0), 0);
+        const remainingList = matchedRolls.map((r, idx) => {
+          const full = parseFloat(r[field]) || 0;
+          return { idx, roll: r, full, remaining: Math.max(0, full - usedMinutesForIdx(idx, full)) };
+        }).filter(p => p.remaining > 0);
+        if (!remainingList.length) break;
+        const remainingIdx = remainingList.map(p => p.idx);
+        const remainingRolls = remainingList.map(p => p.roll);
+        const remainingMinutesList = remainingList.map(p => p.remaining);
+        const nextTotalTime = remainingMinutesList.reduce((a, b) => a + b, 0);
         if (!nextTotalTime) break;
-        const nextSplit = splitPlanDataAcrossDays({ date: lastEndDate, shift: 'both', startTime: lastEndTime, otCapMinutesByShift, rollIds: remainingIdx }, remainingRolls, workType);
+        const nextSplit = splitPlanDataAcrossDays({ date: lastEndDate, shift: 'both', startTime: lastEndTime, otCapMinutesByShift, rollIds: remainingIdx }, remainingRolls, workType, remainingMinutesList);
         if (nextSplit) {
           const grpId = 'SG-' + String(planTaskSeq + 1).padStart(4, '0');
           nextSplit.forEach(grp => {
@@ -4090,6 +4103,9 @@ function openPlanTaskModal(mode, taskId, presetDate) {
           lastEndTime = lastNextGrp.endTime;
         } else {
           const nextComputed = computePlanEnd(lastEndDate, lastEndTime, nextTotalTime, 'both', otCapMinutesByShift);
+          // งานนี้ทำ Roll แต่ละชิ้นในรายการจบครบในคราวเดียว (ไม่ถูกตัดข้ามวันอีก) แต่บางชิ้นอาจยังเป็น "ส่วนที่เหลือ" จากงานก่อนหน้าอยู่ (remaining < full) ต้องบันทึก override ไว้เพื่อให้ยังนับเป็นงานต่อเนื่อง/แสดงผลถูกต้อง
+          const rollMinutesOverride = {};
+          remainingList.forEach(p => { if (p.remaining !== p.full) rollMinutesOverride[p.idx] = p.remaining; });
           planTaskSeq++;
           planTasks.push({
             id: 'PT-' + String(planTaskSeq).padStart(4, '0'), workType,
@@ -4099,6 +4115,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
             startTime: lastEndTime, endTime: nextComputed.time || '—', endDate: nextComputed.date || lastEndDate,
             shift: 'both', otCapMinutesByShift,
             otMinutes: nextComputed.otMinutes || 0, otMinutesByShift: nextComputed.otMinutesByShift || {},
+            rollMinutesOverride: Object.keys(rollMinutesOverride).length ? rollMinutesOverride : undefined,
             workerId: data.workerId,
             splitGroupId: null,
           });
