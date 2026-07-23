@@ -1066,18 +1066,17 @@ canvas{display:block;}
 
       <!-- ── TAB: ROLL ── -->
       <div class="reg-panel active" id="regpanel-roll">
-        <div class="reg-kpi-row" id="roll-kpi-row" style="grid-template-columns:repeat(5,1fr);">
-          <div class="reg-kpi"><span class="reg-kpi-val" id="kpi-roll-total">0</span><span class="reg-kpi-lbl">รายการทั้งหมด</span></div>
+        <!-- นับเป็น "จำนวนชุด Roll" (Size Roll ชุดหนึ่ง x สีหนึ่ง = 1 ชุด) ไม่ใช่นับรายการ Roll ย่อยแบบเดิม — ดู updateRollKpi() -->
+        <div class="reg-kpi-row" id="roll-kpi-row" style="grid-template-columns:repeat(3,1fr);">
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--accent);" id="kpi-roll-forming">0</span><span class="reg-kpi-lbl">ชุด Roll หมวด Forming</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--amber);" id="kpi-roll-sizing">0</span><span class="reg-kpi-lbl">ชุด Roll หมวด Sizing</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--purple);" id="kpi-roll-th">0</span><span class="reg-kpi-lbl">ชุด Roll หมวด TH</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--accent);" id="kpi-roll-inuse">0</span><span class="reg-kpi-lbl">กำลังใช้งาน</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--green);" id="kpi-roll-ready">0</span><span class="reg-kpi-lbl">พร้อมใช้งาน</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:#0E9BB5;" id="kpi-roll-waiting">0</span><span class="reg-kpi-lbl">รอใช้งาน</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--amber);" id="kpi-roll-dress">0</span><span class="reg-kpi-lbl">แต่ง Roll</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:#A9752B;" id="kpi-roll-waitdress">0</span><span class="reg-kpi-lbl">รอแต่ง</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--purple);" id="kpi-roll-polish">0</span><span class="reg-kpi-lbl">ขัด Roll</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:#C2469E;" id="kpi-roll-waitpolish">0</span><span class="reg-kpi-lbl">รอขัด</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:#6B7280;" id="kpi-roll-noroll">0</span><span class="reg-kpi-lbl">ไม่มีลูกรีด</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-roll-expired">0</span><span class="reg-kpi-lbl">อายุ</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:#475569;" id="kpi-roll-cancelled">0</span><span class="reg-kpi-lbl">ยกเลิกใช้งาน</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:#6B7280;" id="kpi-roll-incomplete">0</span><span class="reg-kpi-lbl">ชุด Roll ไม่ครบ</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-roll-notready">0</span><span class="reg-kpi-lbl">ไม่พร้อมใช้งาน</span></div>
         </div>
         <div style="display:grid;grid-template-columns:210px 250px 1fr;gap:14px;align-items:start;">
           <!-- COL 1: Size Roll -->
@@ -2348,8 +2347,9 @@ function populateColorSelect(setName, currentColor) {
     return;
   }
   sel.disabled = false;
+  // ต้องเลือกสีจริงเสมอ ห้ามสร้าง Roll แบบ "ไม่ระบุสี" อีกต่อไป — ไม่มีตัวเลือกว่างให้เลือก ถ้ายังไม่เคยเลือกไว้ ให้เลือกสีแรกในชุดให้อัตโนมัติ
   const palette = getSetPalette(setName);
-  sel.innerHTML = '<option value="">— ไม่ระบุ —</option>' + palette.map(c =>
+  sel.innerHTML = palette.map(c =>
     `<option value="${c.key}"${c.key === currentColor ? ' selected' : ''}>${c.label}</option>`).join('');
 }
 
@@ -4417,7 +4417,19 @@ function setRollSetStatus(setName, status) {
   persistState();
   renderRollSetList();
   renderRollColorList();
+  updateRollKpi();
 }
+
+// สถานะของแต่ละ "ชุดสี Roll" (Size Roll + สี = 1 ชุด) — ใช้เป็นตัวแทนสถานะของทั้งชุด ไม่อิงจากสถานะของ Roll ย่อยแต่ละตัว (r.status)
+// ใช้กับ KPI "จำนวนชุด Roll" ด้านบนของหน้าทะเบียน Tooling — ไม่มี key = ค่าเริ่มต้น 'ready'
+const ROLL_COLOR_STATUS_META = {
+  inuse:      { label: 'กำลังใช้งาน',      color: 'var(--accent)', bg: 'var(--accent-glow)' },
+  ready:      { label: 'พร้อมใช้งาน',      color: 'var(--green)',  bg: 'var(--green-dim)' },
+  waitdress:  { label: 'รอแต่ง',           color: '#A9752B',       bg: 'var(--amber-dim)' },
+  waitpolish: { label: 'รอขัด',            color: '#C2469E',       bg: 'var(--purple-dim)' },
+  incomplete: { label: 'ชุด Roll ไม่ครบ',  color: '#6B7280',       bg: 'rgba(107,114,128,0.10)' },
+  'not-ready':{ label: 'ไม่พร้อมใช้งาน',   color: 'var(--red)',    bg: 'var(--red-dim)' },
+};
 
 // สถานะความพร้อมใช้งานของแต่ละ "ชุดสี Roll" — คีย์แยกตาม Size Roll + สี เพราะสีเป็นอิสระต่อกลุ่ม
 let rollColorStatus = {};
@@ -4429,6 +4441,7 @@ function setRollColorStatus(colorKey, status) {
   if (status === 'ready') delete rollColorStatus[k]; else rollColorStatus[k] = status;
   persistState();
   renderRollColorList();
+  updateRollKpi();
 }
 
 const DEFAULT_ROLL_COLORS = [
@@ -4893,11 +4906,20 @@ function renderRollColorList() {
     <span style="font-size:11px;color:var(--text-3);">ทุกสีใน${selectedRollSet ? 'กลุ่มนี้' : 'ระบบ'}</span>
   </div>`;
 
+  // ดรอปดาวน์สถานะของ "1 ชุดสี Roll" — ใช้เป็นตัวแทนสถานะของทั้งชุดสีนั้น (ดู ROLL_COLOR_STATUS_META / updateRollKpi)
+  const colorStatusSelectHtml = (key, st) => {
+    const stMeta = ROLL_COLOR_STATUS_META[st];
+    return `<select class="form-select" style="width:auto;padding:2px 8px;font-size:11px;font-weight:700;border-radius:6px;
+        background:${stMeta.bg};color:${stMeta.color};border:1px solid ${stMeta.color};"
+        onchange="setRollColorStatus('${key}', this.value)" title="สถานะของชุดสีนี้ — ใช้นับใน KPI จำนวนชุด Roll ด้านบน">
+        ${Object.entries(ROLL_COLOR_STATUS_META).map(([k, m]) => `<option value="${k}"${st===k?' selected':''}>● ${m.label}</option>`).join('')}
+      </select>`;
+  };
+
   html += groups.map(g => {
     const items = scope.filter(r => r.color === g.key);
     const active = g.key === selectedRollColor;
     const st = getRollColorStatus(g.key);
-    const stMeta = ROLL_SET_STATUS_META[st];
     return `<div style="margin-bottom:4px;">
       <div style="display:flex;align-items:center;gap:6px;">
         <div onclick="selectRollColor('${g.key}')" style="flex:1;${cardStyle(active)}">
@@ -4914,27 +4936,24 @@ function renderRollColorList() {
           <button class="btn btn-ghost btn-sm" style="padding:3px 6px;color:var(--red);" onclick="deleteColor('${g.key}')" title="ลบ">✕</button>
         </div>
       </div>
-      <div style="padding-left:2px;margin-top:4px;">
-        <select class="form-select" style="width:auto;padding:2px 8px;font-size:11px;font-weight:700;border-radius:6px;
-          background:${stMeta.bg};color:${stMeta.color};border:1px solid ${stMeta.color};"
-          onchange="setRollColorStatus('${g.key}', this.value)" title="สถานะความพร้อมใช้งานของชุดสีนี้">
-          <option value="ready"${st==='ready'?' selected':''}>● พร้อมใช้งาน</option>
-          <option value="not-ready"${st==='not-ready'?' selected':''}>● ไม่พร้อมใช้งาน</option>
-        </select>
-      </div>
+      <div style="padding-left:2px;margin-top:4px;">${colorStatusSelectHtml(g.key, st)}</div>
     </div>`;
   }).join('');
 
   if (noColorCount > 0) {
     const activeNoColor = selectedRollColor === NO_COLOR_KEY;
-    html += `<div onclick="selectRollColor('${NO_COLOR_KEY}')" style="${cardStyle(activeNoColor)}margin-top:2px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;">
-        <span style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:${activeNoColor?'var(--accent)':'var(--text-1)'};">
-          <span style="width:8px;height:8px;border-radius:50%;background:var(--text-3);flex-shrink:0;"></span>ไม่ระบุสี
-        </span>
-        <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;">${noColorCount}</span>
+    const noColorSt = getRollColorStatus(NO_COLOR_KEY);
+    html += `<div style="margin-bottom:4px;">
+      <div onclick="selectRollColor('${NO_COLOR_KEY}')" style="${cardStyle(activeNoColor)}margin-top:2px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:${activeNoColor?'var(--accent)':'var(--text-1)'};">
+            <span style="width:8px;height:8px;border-radius:50%;background:var(--text-3);flex-shrink:0;"></span>ไม่ระบุสี
+          </span>
+          <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;">${noColorCount}</span>
+        </div>
+        <span style="font-size:11px;color:var(--text-3);">Roll ที่ยังไม่ได้กำหนดสี ใน${selectedRollSet ? 'กลุ่มนี้' : 'ระบบ'}</span>
       </div>
-      <span style="font-size:11px;color:var(--text-3);">Roll ที่ยังไม่ได้กำหนดสี ใน${selectedRollSet ? 'กลุ่มนี้' : 'ระบบ'}</span>
+      <div style="padding-left:2px;margin-top:4px;">${colorStatusSelectHtml(NO_COLOR_KEY, noColorSt)}</div>
     </div>`;
   }
 
@@ -5116,20 +5135,38 @@ function switchRollDetailTab(tab) {
   document.getElementById('rolldetail-history').style.display = tab === 'history' ? '' : 'none';
 }
 
+// นับ KPI เป็น "จำนวนชุด Roll" ไม่ใช่จำนวนรายการ Roll ย่อย — 1 หน่วย = Size Roll ชุดหนึ่ง x สีที่ใช้จริงหนึ่งสี (รวม "ไม่ระบุสี" เป็นสีหนึ่งด้วย)
+// ถ้าชุด Size Roll ไหนมีสีเดียว (หรือยังไม่ได้แยกสีเลย) นับเป็น 1 ชุด ถ้ามีหลายสีที่ใช้จริง นับเป็นจำนวนเท่ากับสีนั้นๆ
+// สถานะของแต่ละหน่วยมาจาก rollColorStatusFor(set, color) (ตั้งค่าได้ที่ปุ่มดรอปดาวน์ในการ์ดชุดสี Roll) ไม่ใช่ r.status ของ Roll ย่อยแต่ละตัว
+const ROLL_KPI_CATEGORY_KEYS = { Forming: 'forming', Sizing: 'sizing', TH: 'th' };
+const ROLL_KPI_STATUS_KEYS = { inuse: 'inuse', ready: 'ready', waitdress: 'waitdress', waitpolish: 'waitpolish', incomplete: 'incomplete', 'not-ready': 'notready' };
+
 function updateRollKpi() {
   const d = toolingData.roll;
-  document.getElementById('kpi-roll-total').textContent = d.length;
-  document.getElementById('kpi-roll-inuse').textContent = d.filter(r=>r.status==='กำลังใช้งาน'||r.status==='ใช้งานอยู่').length;
-  document.getElementById('kpi-roll-ready').textContent = d.filter(r=>r.status==='พร้อมใช้งาน'||r.status==='พร้อมใช้').length;
-  document.getElementById('kpi-roll-waiting').textContent = d.filter(r=>r.status==='รอใช้งาน').length;
-  document.getElementById('kpi-roll-dress').textContent = d.filter(r=>r.status==='แต่ง Roll'||r.status==='Regrind').length;
-  document.getElementById('kpi-roll-waitdress').textContent = d.filter(r=>r.status==='รอแต่ง').length;
-  document.getElementById('kpi-roll-polish').textContent = d.filter(r=>r.status==='ขัด Roll'||r.status==='ซ่อมบำรุง').length;
-  document.getElementById('kpi-roll-waitpolish').textContent = d.filter(r=>r.status==='รอขัด').length;
-  document.getElementById('kpi-roll-noroll').textContent = d.filter(r=>r.status==='ไม่มีลูกรีด').length;
-  document.getElementById('kpi-roll-expired').textContent = d.filter(r=>r.status==='อายุ'||r.status==='หมดอายุ'||r.status==='มีปัญหา').length;
-  document.getElementById('kpi-roll-cancelled').textContent = d.filter(r=>r.status==='ยกเลิกใช้งาน').length;
   document.getElementById('cnt-roll').textContent = d.length;
+
+  const counts = { forming: 0, sizing: 0, th: 0, inuse: 0, ready: 0, waitdress: 0, waitpolish: 0, incomplete: 0, notready: 0 };
+  getRollSets().forEach(setName => {
+    const rows = d.filter(r => r.set === setName);
+    if (!rows.length) return;
+    const colorKeysUsed = new Set(rows.map(r => r.color || NO_COLOR_KEY));
+    const catKey = ROLL_KPI_CATEGORY_KEYS[parseSizeRollName(setName).category];
+    colorKeysUsed.forEach(colorKey => {
+      if (catKey) counts[catKey]++;
+      const stKey = ROLL_KPI_STATUS_KEYS[rollColorStatusFor(setName, colorKey)] || 'ready';
+      counts[stKey]++;
+    });
+  });
+
+  document.getElementById('kpi-roll-forming').textContent = counts.forming;
+  document.getElementById('kpi-roll-sizing').textContent = counts.sizing;
+  document.getElementById('kpi-roll-th').textContent = counts.th;
+  document.getElementById('kpi-roll-inuse').textContent = counts.inuse;
+  document.getElementById('kpi-roll-ready').textContent = counts.ready;
+  document.getElementById('kpi-roll-waitdress').textContent = counts.waitdress;
+  document.getElementById('kpi-roll-waitpolish').textContent = counts.waitpolish;
+  document.getElementById('kpi-roll-incomplete').textContent = counts.incomplete;
+  document.getElementById('kpi-roll-notready').textContent = counts.notready;
 }
 
 // รายการ Roll ที่กรองแล้วตามขอบเขต Size Roll / ชุดสี / คำค้นหา / สถานะที่เลือกอยู่ตอนนี้ — ใช้ร่วมกันทั้งตอน render ตารางและตอนหาตำแหน่งแทรกแถวใหม่
@@ -5495,12 +5532,14 @@ function generateRollTemplate() {
   });
 
   let addedCount = 0;
+  const skippedNoColor = [];
   targets.forEach(target => {
     const od = parseSizeRollName(target).od || '—';
-    // ถ้ากลุ่มปลายทางมีการเพิ่มชุดสีไว้แล้ว (ดูจาก rollSetPalettes ตรงๆ ไม่เรียก getSetPalette เพราะฟังก์ชันนั้นจะ auto-สร้างชุดสีเริ่มต้นให้ทันทีที่เรียก)
-    // ให้สร้างรายการครบชุดแยกไปตามแต่ละสีที่มีอยู่จริง — ถ้ายังไม่มีการเพิ่มชุดสีเลย ให้สร้างเป็นรายการไม่ระบุสีตามเดิม
+    // ต้องมีการเพิ่มชุดสีให้กลุ่มปลายทางไว้ก่อนแล้วเท่านั้น (ดูจาก rollSetPalettes ตรงๆ ไม่เรียก getSetPalette เพราะฟังก์ชันนั้นจะ auto-สร้างชุดสีเริ่มต้นให้ทันทีที่เรียก)
+    // ห้ามสร้างรายการ Roll แบบ "ไม่ระบุสี" อีกต่อไป — ถ้ากลุ่มปลายทางยังไม่มีชุดสีเลย ให้ข้ามกลุ่มนั้นไปและแจ้งเตือน
     const palette = rollSetPalettes[target];
-    const colorKeys = (palette && palette.length) ? palette.map(c => c.key) : [null];
+    if (!palette || !palette.length) { skippedNoColor.push(target); return; }
+    const colorKeys = palette.map(c => c.key);
     const existingCombos = new Set(toolingData.roll.filter(r => r.set === target).map(r => r.name + '|' + (r.color || '')));
     colorKeys.forEach(colorKey => {
       templateNames.forEach(name => {
@@ -5516,6 +5555,9 @@ function generateRollTemplate() {
       });
     });
   });
+  if (skippedNoColor.length) {
+    alert('ข้ามกลุ่มที่ยังไม่มีชุดสี (ต้องเพิ่มชุดสี Roll ให้กลุ่มก่อนถึงจะสร้างรายการได้):\n' + skippedNoColor.join('\n'));
+  }
 
   renderRollSetList();
   renderRollColorList();
@@ -6607,7 +6649,8 @@ function getRollSetsFor(machine, category) {
 function prodEntryCategoryFieldHtml(prefix, category, machine, selectedSet, selectedColor) {
   const sets = getRollSetsFor(machine, category);
   const setOptions = sets.map(s => `<option value="${escapeHtmlAttr(s)}"${s === selectedSet ? ' selected' : ''}>${escapeHtmlAttr(s)}</option>`).join('');
-  const palette = selectedSet ? getSetPalette(selectedSet).filter(c => rollColorStatusFor(selectedSet, c.key) !== 'not-ready') : [];
+  // เลือกใช้งานได้เฉพาะชุดสีที่พร้อมจริง (พร้อมใช้งาน/กำลังใช้งาน) — ชุดสีที่รอแต่ง/รอขัด/ไม่ครบ/ไม่พร้อม ไม่ควรถูกดึงมาวางแผนการผลิต
+  const palette = selectedSet ? getSetPalette(selectedSet).filter(c => ['ready','inuse'].includes(rollColorStatusFor(selectedSet, c.key))) : [];
   const colorOptions = palette.map(c => `<option value="${c.key}"${c.key === selectedColor ? ' selected' : ''}>${escapeHtmlAttr(c.label)}</option>`).join('');
   return `
     <div class="modal-row">
