@@ -2563,14 +2563,17 @@ const GANTT_CATEGORY_META = {
 let dailyChecklistTasks = [];
 let dailyChecklistSeq = 0;
 const DAILY_STATUS_META = {
-  done:    {label:'สำเร็จ',      chip:'chip-green'},
-  pending: {label:'รอดำเนินการ', chip:'chip-amber'},
-  overdue: {label:'เลยเวลา',     chip:'chip-red'},
+  done:        {label:'สำเร็จ',      chip:'chip-green'},
+  in_progress: {label:'กำลังทำ',     chip:'chip-blue'},
+  pending:     {label:'รอดำเนินการ', chip:'chip-amber'},
+  overdue:     {label:'เลยเวลา',     chip:'chip-red'},
 };
-const DAILY_TODAY_ISO = '2026-07-02'; // วันที่ใช้อ้างอิงเป็น "วันนี้" ของระบบ
+const DAILY_TODAY_ISO = toISODate(new Date()); // วันที่ใช้อ้างอิงเป็น "วันนี้" ของระบบ
 let dailyViewDate = DAILY_TODAY_ISO;
-// สถานะเช็คลิสต์แยกตามวันที่ที่ดู — { 'YYYY-MM-DD': { [taskKey]: 'done'|'pending'|'overdue' } } ค่าที่ไม่มีถือว่า 'pending'
+// สถานะเช็คลิสต์แยกตามวันที่ที่ดู — { 'YYYY-MM-DD': { [taskKey]: 'done'|'in_progress'|'pending'|'overdue' } } ค่าที่ไม่มีถือว่า 'pending'
 let dailyStatusByDate = {};
+// เวลาเริ่ม/จบงานจริงที่บันทึกจากปุ่ม "เริ่มงาน"/"จบงาน" ของงานตามแผน (CNC/ขัด Roll) แยกตามวันที่ที่ดู — { 'YYYY-MM-DD': { [planTaskId]: {startTime, endTime} } }
+let dailyActualTimes = {};
 let currentDailyWorkTypeFilter = null; // null = ทั้งหมด — กรองเฉพาะงานที่มาจากหน้าวางแผน (CNC/ขัด Roll) ไม่กรองเช็คลิสต์ที่เพิ่มเอง
 let currentDailyShiftFilter = null;    // null = ทั้งหมด
 let expandedDailyTaskId = null;        // งานที่กำลังกางดูเวลาแยกรายชิ้นอยู่ (ถ้ามี)
@@ -2797,7 +2800,7 @@ function getMonday(d) {
 }
 
 let currentPlanView = 'gantt';
-let planViewDate = parseISODate('2026-07-02');
+let planViewDate = parseISODate(toISODate(new Date()));
 
 function renderCurrentPlanView() {
   if (currentPlanView === 'day') renderPlanDay();
@@ -3051,7 +3054,7 @@ const PLAN_BREAK_TYPES = ['lunch', 'lunch_night', 'otbreak', 'shiftgap'];
 
 // แต่ละชิ้นอาจใช้เวลาคาบเกี่ยวมากกว่า 1 กะ/1 ประเภทเวลา (เช่น ทำต่อจากปกติเข้า OT หรือข้ามจากกะเช้าไปกะดึก) — แตกเป็นแถวย่อยตามช่วงเวลาจริงของชิ้นนั้น
 // รวมถึงช่วงพักเที่ยง/พักก่อน OT ที่แทรกอยู่ระหว่างกลาง ให้เห็นเป็นแถวของตัวเองชัดเจน แยกจากแถวเวลาทำงานจริง
-function renderPlanDayTaskDetailRow(t, colspan, interactive) {
+function renderPlanDayTaskDetailRow(t, colspan, interactive, locked) {
   colspan = colspan || 10;
   const pieces = planTaskPieceBreakdown(t);
   const pieceDoneMap = interactive ? ((dailyPieceStatus[dailyViewDate] || {})[t.id] || {}) : {};
@@ -3078,7 +3081,7 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive) {
         : `<td class="muted">${isFirstRow ? escapeHtmlAttr(p.roll.id) : ''}</td><td><strong>${isFirstRow ? escapeHtmlAttr(p.roll.name) : ''}</strong>${isFirstRow ? continuedBadge : ''}</td>`;
       // ช่องเช็ค "ทำทีละชิ้น" (เฉพาะโหมด interactive จากหน้างานประจำวัน) — โชว์แค่แถวแรกของชิ้นนั้น กดแล้วบันทึกขนาดที่วัดได้เป็นล็อกแยก
       const checkCell = interactive
-        ? (isBreak ? '' : (isFirstRow ? `<td onclick="event.stopPropagation();"><input type="checkbox" ${pieceDoneMap[rollIdx] ? 'checked' : ''} onchange="toggleDailyPieceDone('${t.id}','${rollIdx}')" style="width:16px;height:16px;cursor:pointer;"></td>` : '<td></td>'))
+        ? (isBreak ? '' : (isFirstRow ? `<td onclick="event.stopPropagation();">${locked ? `<input type="checkbox" ${pieceDoneMap[rollIdx] ? 'checked' : ''} disabled style="width:16px;height:16px;">` : `<input type="checkbox" ${pieceDoneMap[rollIdx] ? 'checked' : ''} onchange="toggleDailyPieceDone('${t.id}','${rollIdx}')" style="width:16px;height:16px;cursor:pointer;">`}</td>` : '<td></td>'))
         : '';
       return `<tr style="${groupBorder}${breakStyle}">
         <td class="muted" style="padding-left:36px;">${isFirstRow ? i + 1 : ''}</td>
@@ -4601,7 +4604,7 @@ function persistState() {
       toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus,
       planTasks, planTaskSeq, teamMembers, teamSeq,
       ganttTasks, ganttTaskSeq, planGanttWindowStart,
-      dailyStatusByDate, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
+      dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
       dailyPieceStatus, rollSizeLog, rollSizeLogSeq,
       prodBlockProducts, prodBlockSeq, prodBlockCells, prodBlockPM, prodBlockSummary,
       prodBlockEntries, prodBlockEntrySeq, prodBlockActiveMachine, prodBlockViewMonth
@@ -4632,6 +4635,7 @@ function restoreState() {
     if (typeof saved.ganttTaskSeq === 'number') ganttTaskSeq = saved.ganttTaskSeq;
     if (typeof saved.planGanttWindowStart === 'string') planGanttWindowStart = saved.planGanttWindowStart;
     if (saved.dailyStatusByDate) dailyStatusByDate = saved.dailyStatusByDate;
+    if (saved.dailyActualTimes) dailyActualTimes = saved.dailyActualTimes;
     if (Array.isArray(saved.dailyChecklistTasks)) dailyChecklistTasks = saved.dailyChecklistTasks;
     if (typeof saved.dailyChecklistSeq === 'number') dailyChecklistSeq = saved.dailyChecklistSeq;
     if (saved.dailyAutoContinuedDates) dailyAutoContinuedDates = saved.dailyAutoContinuedDates;
@@ -5651,6 +5655,39 @@ function toggleDailyTask(idx) {
   renderDailyTasks();
 }
 
+function getDailyActualTimes(idx) {
+  return (dailyActualTimes[dailyViewDate] || {})[idx] || {};
+}
+// เวลาจริงตอนนี้ (HH:MM ตามนาฬิกาเครื่อง) — ใช้บันทึกเวลาเริ่ม/จบงานจริงตอนกดปุ่ม ไม่ใช่เวลาตามแผนที่คำนวณไว้ล่วงหน้า
+function nowHHMM() {
+  const d = new Date();
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+// เริ่ม/จบงานตามแผน (CNC/ขัด Roll) ทำได้เฉพาะงานที่ระบุผู้ปฏิบัติงานตรงกับคนที่กำลังดูอยู่เท่านั้น (ดู effectiveWorkerId) — กันไม่ให้ช่างคนอื่นเผลอกดเริ่ม/จบงานที่ไม่ใช่ของตัวเอง
+function canActOnDailyItem(workerId) {
+  const restrictId = effectiveWorkerId();
+  return !restrictId || workerId == null || workerId === restrictId;
+}
+function startDailyTask(idx, workerId) {
+  if (!canActOnDailyItem(workerId)) return;
+  const dayMap = dailyStatusByDate[dailyViewDate] || (dailyStatusByDate[dailyViewDate] = {});
+  dayMap[idx] = 'in_progress';
+  const timesMap = dailyActualTimes[dailyViewDate] || (dailyActualTimes[dailyViewDate] = {});
+  timesMap[idx] = { ...(timesMap[idx] || {}), startTime: nowHHMM() };
+  persistState();
+  renderDailyTasks();
+}
+function finishDailyTask(idx, workerId) {
+  if (!canActOnDailyItem(workerId)) return;
+  const dayMap = dailyStatusByDate[dailyViewDate] || (dailyStatusByDate[dailyViewDate] = {});
+  dayMap[idx] = 'done';
+  const timesMap = dailyActualTimes[dailyViewDate] || (dailyActualTimes[dailyViewDate] = {});
+  timesMap[idx] = { ...(timesMap[idx] || {}), endTime: nowHHMM() };
+  maybeAutoContinueDailyPlan(dailyViewDate);
+  persistState();
+  renderDailyTasks();
+}
+
 function switchDailyWorkTypeFilter(type) {
   currentDailyWorkTypeFilter = type || null;
   document.querySelectorAll('.daily-worktype-btn').forEach(b => {
@@ -5903,7 +5940,7 @@ function renderDailyTasks() {
     .map(t => ({
       key: t.id, date: t.date || dailyViewDate, startTime: t.time || '—', endTimeHtml: '—', duration: '—',
       rollSet: '—', rollColor: '—', rollId: t.ref || '—', task: t.task,
-      shiftHtml: '—', who: t.who, editable: true, expandable: false,
+      shiftHtml: '—', who: t.who, workerId: null, editable: true, expandable: false,
     }));
   const plannedItems = planTasks
     .filter(t => taskDisplayDate(t) === dailyViewDate)
@@ -5916,21 +5953,34 @@ function renderDailyTasks() {
       endTimeHtml: `${escapeHtmlAttr(t.endTime || '—')}${t.endDate && t.endDate !== t.date ? ` <span style="color:var(--accent);font-weight:700;">(+${Math.round((parseISODate(t.endDate)-parseISODate(t.date))/86400000)} วัน)</span>` : ''}${t.otMinutes ? ` <span class="chip chip-red" title="เวลาทำงานนอกช่วงกะ">OT ${formatMinutesAsHm(t.otMinutes).replace('≈ ', '')}</span>` : ''}`,
       duration: t.totalTime != null ? String(t.totalTime) : planMetricTime(t.rollId),
       rollSet: t.rollSet, rollColor: planRollColorLabel(t), rollId: t.rollId, task: t.rollName,
-      shiftHtml: shiftChipHtml(t.shift), who: workerName(t.workerId),
+      shiftHtml: shiftChipHtml(t.shift), who: workerName(t.workerId), workerId: t.workerId,
       editable: false, expandable: (t.rollIds || []).length > 1, raw: t,
     }));
   // เรียงตามวันที่จริง+เวลาเริ่ม ไม่ใช่แค่ตัวอักษรเวลา (ดูเหตุผลเดียวกับ renderPlanDay/renderPlanWeek) — งานกะดึกที่ข้ามเที่ยงคืนมาแสดงในวันเดียวกัน (taskDisplayDate) แต่จริงๆ เป็นงานล่าสุดของรอบ ต้องอยู่ท้ายสุด ไม่ใช่ต้นสุด
   const allItems = checklistItems.concat(plannedItems).sort((a, b) => ((a.date||'') + a.startTime).localeCompare((b.date||'') + b.startTime));
+  const restrictWorkerId = effectiveWorkerId();
 
   tbody.innerHTML = allItems.map((item, i) => {
     const status = getDailyStatus(item.key);
     const meta = DAILY_STATUS_META[status];
-    const actions = item.editable
-      ? `<div style="display:flex;gap:4px;"><button class="btn btn-ghost btn-sm" onclick="openDailyChecklistModal('edit','${item.key}')">แก้ไข</button><button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteDailyChecklistTask('${item.key}')">ลบ</button></div>`
-      : '';
+    const isMine = !restrictWorkerId || item.workerId == null || item.workerId === restrictWorkerId;
+    const actual = getDailyActualTimes(item.key);
+    const startTimeDisplay = escapeHtmlAttr(item.startTime) + (actual.startTime ? ` <span class="muted" style="font-size:11px;">(จริง ${escapeHtmlAttr(actual.startTime)})</span>` : '');
+    const endTimeDisplay = item.endTimeHtml + (actual.endTime ? ` <span class="muted" style="font-size:11px;">(จริง ${escapeHtmlAttr(actual.endTime)})</span>` : '');
+    let actions;
+    if (item.editable) {
+      actions = `<div style="display:flex;gap:4px;"><button class="btn btn-ghost btn-sm" onclick="openDailyChecklistModal('edit','${item.key}')">แก้ไข</button><button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteDailyChecklistTask('${item.key}')">ลบ</button></div>`;
+    } else if (status === 'pending') {
+      actions = `<button class="btn btn-ghost btn-sm" ${isMine ? '' : 'disabled title="งานของช่างคนอื่น เริ่มงานนี้ไม่ได้"'} onclick="startDailyTask('${item.key}','${item.workerId || ''}')">▶ เริ่มงาน</button>`;
+    } else if (status === 'in_progress') {
+      actions = `<button class="btn btn-ghost btn-sm" style="color:var(--accent);" ${isMine ? '' : 'disabled title="งานของช่างคนอื่น จบงานนี้ไม่ได้"'} onclick="finishDailyTask('${item.key}','${item.workerId || ''}')">■ จบงาน</button>`;
+    } else {
+      actions = '';
+    }
     const expanded = item.expandable && expandedDailyTaskId === item.key;
-    const row = `<tr${item.expandable ? ` style="cursor:pointer;" onclick="toggleDailyTaskDetail('${item.key}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : ''}>
-      <td onclick="event.stopPropagation();"><input type="checkbox" ${status==='done'?'checked':''} onchange="toggleDailyTask('${item.key}')" style="width:16px;height:16px;cursor:pointer;"></td>
+    const rowOpacity = isMine ? '' : 'opacity:.55;';
+    const row = `<tr${item.expandable ? ` style="cursor:pointer;${rowOpacity}" onclick="toggleDailyTaskDetail('${item.key}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : (rowOpacity ? ` style="${rowOpacity}"` : '')}>
+      <td onclick="event.stopPropagation();">${item.editable ? `<input type="checkbox" ${status==='done'?'checked':''} onchange="toggleDailyTask('${item.key}')" style="width:16px;height:16px;cursor:pointer;">` : `<input type="checkbox" ${status==='done'?'checked':''} disabled style="width:16px;height:16px;">`}</td>
       <td class="muted">${item.expandable ? `<span aria-hidden="true" style="display:inline-block;width:12px;transition:transform .15s;transform:rotate(${expanded ? 90 : 0}deg);">▸</span> ` : ''}${i + 1}</td>
       <td>${escapeHtmlAttr(item.rollSet)}</td>
       <td>${escapeHtmlAttr(item.rollColor)}</td>
@@ -5939,18 +5989,18 @@ function renderDailyTasks() {
       <td>${item.shiftHtml}</td>
       <td class="muted">${escapeHtmlAttr(item.who)}</td>
       <td class="muted" style="text-align:right;">${escapeHtmlAttr(item.duration)}</td>
-      <td class="muted">${escapeHtmlAttr(item.startTime)}</td>
-      <td class="muted">${item.endTimeHtml}</td>
+      <td class="muted">${startTimeDisplay}</td>
+      <td class="muted">${endTimeDisplay}</td>
       <td><span class="chip ${meta.chip}">${meta.label}</span></td>
       <td onclick="event.stopPropagation();">${actions}</td>
     </tr>`;
-    return row + (expanded ? renderPlanDayTaskDetailRow(item.raw, 13, true) : '');
+    return row + (expanded ? renderPlanDayTaskDetailRow(item.raw, 13, true, !isMine) : '');
   }).join('') || `<tr><td colspan="13" style="padding:32px;text-align:center;color:var(--text-3);">ยังไม่มีงานในวันนี้ — กด "+ เพิ่มงานเช็คลิสต์" เพื่อเริ่มสร้างเช็คลิสต์เอง</td></tr>`;
 
   const statuses = allItems.map(item => getDailyStatus(item.key));
   document.getElementById('daily-kpi-total').textContent = allItems.length;
   document.getElementById('daily-kpi-done').textContent = statuses.filter(s=>s==='done').length;
-  document.getElementById('daily-kpi-pending').textContent = statuses.filter(s=>s==='pending').length;
+  document.getElementById('daily-kpi-pending').textContent = statuses.filter(s=>s==='pending'||s==='in_progress').length;
   document.getElementById('daily-kpi-overdue').textContent = statuses.filter(s=>s==='overdue').length;
 }
 
@@ -6024,8 +6074,6 @@ function deleteDailyChecklistTask(taskId) {
   persistState();
   renderDailyTasks();
 }
-
-renderDailyTasks();
 
 // Render all tables on load
 renderRollTable(1);
@@ -6950,6 +6998,15 @@ function effectiveRole() {
   }
   return currentUser.role;
 }
+// teamMembers.id ของ "คนที่กำลังดูอยู่จริง" ไม่ว่าจะล็อกอินเป็นตัวเองโดยตรง หรือ Admin กด "ดูเป็น" คนอื่นอยู่ — คืน null ถ้าเป็น Admin ที่ยังดูเป็นตัวเอง (มีสิทธิ์เต็มไม่จำกัด)
+// ใช้จำกัดว่างานตามแผน (CNC/ขัด Roll) ไหนที่คนนี้ควรกด "เริ่มงาน/จบงาน" ได้ — เฉพาะงานที่ระบุ ผู้ปฏิบัติงาน ตรงกับตัวเองเท่านั้น
+function effectiveWorkerId() {
+  if (!currentUser) return null;
+  const name = currentUser.role === 'admin' ? adminViewAsName : currentUser.name;
+  if (!name) return null;
+  const m = teamMembers.find(x => x.name === name);
+  return m ? m.id : null;
+}
 
 function loginAs(user) {
   currentUser = user;
@@ -7050,6 +7107,7 @@ function initAuth() {
 renderTeamGrid();
 renderProdBlock();
 initAuth();
+renderDailyTasks(); // ต้องเรียกหลัง initAuth() เสมอ เพราะ effectiveWorkerId()/effectiveRole() ที่ใช้ตอน render อ่านค่า currentUser/adminViewAsName ที่ initAuth() เป็นคนตั้งค่าให้
 </script>
 </body>
 </html>
