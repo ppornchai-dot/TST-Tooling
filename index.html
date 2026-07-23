@@ -1088,7 +1088,7 @@ canvas{display:block;}
             </div>
             <div style="padding:8px;">
               <input type="text" class="form-input" id="roll-set-search" placeholder="ค้นหากลุ่ม..." oninput="renderRollSetList()" style="width:100%;margin-bottom:6px;">
-              <button class="btn btn-ghost btn-sm" style="width:100%;" onclick="openRollTemplateModal()" title="คัดลอกรายชื่อ Roll จาก Size Roll กลุ่มอื่นที่มีอยู่แล้ว มาสร้างเป็นรายการเปล่าในกลุ่มที่เลือก">⧉ สร้างจากเทมเพลต</button>
+              <button class="btn btn-ghost btn-sm" style="width:100%;" onclick="openRollTemplateModal()" title="เลือกเทมเพลตของหมวด Forming/Sizing/TH (ตั้งไว้ล่วงหน้าด้วยปุ่ม ☆ ที่แต่ละกลุ่ม) มาสร้างเป็นรายการเปล่าในกลุ่มที่เลือก">⧉ สร้างจากเทมเพลต</button>
             </div>
             <div id="roll-set-list" style="max-height:480px;overflow-y:auto;padding:4px 8px 8px;"></div>
           </div>
@@ -4454,6 +4454,20 @@ function getSetPalette(setName) {
 
 const SIZE_ROLL_CATEGORIES = ['Forming', 'Sizing', 'TH'];
 
+// กลุ่ม Size Roll ที่ถูกตั้งเป็น "เทมเพลต" ของแต่ละหมวด — ผู้ใช้กำหนดเองทีละหมวดผ่านปุ่ม ★ ที่แต่ละกลุ่ม (ตั้งได้หมวดละ 1 กลุ่มเท่านั้น)
+let rollSetCategoryTemplates = {};
+function isRollSetTemplate(setName) {
+  const cat = parseSizeRollName(setName).category;
+  return !!cat && rollSetCategoryTemplates[cat] === setName;
+}
+function toggleRollSetTemplate(setName) {
+  const cat = parseSizeRollName(setName).category;
+  if (!cat) { alert('กลุ่มนี้ไม่ได้อยู่ในหมวด Forming/Sizing/TH จึงตั้งเป็นเทมเพลตไม่ได้'); return; }
+  rollSetCategoryTemplates[cat] = (rollSetCategoryTemplates[cat] === setName) ? null : setName;
+  persistState();
+  renderRollSetList();
+}
+
 function detectSizeRollCategory(name) {
   const trimmed = (name||'').trim();
   return SIZE_ROLL_CATEGORIES.find(cat => trimmed.toLowerCase().endsWith(cat.toLowerCase())) || '';
@@ -4521,6 +4535,10 @@ document.addEventListener('click', function(e) {
   const rollPanel = document.getElementById('pf-rollids-panel');
   if (rollPanel && rollPanel.style.display === 'block' && !e.target.closest('.roll-ms')) {
     rollPanel.style.display = 'none';
+  }
+  const tmplTargetsPanel = document.getElementById('tmpl-targets');
+  if (tmplTargetsPanel && tmplTargetsPanel.style.display === 'block' && !e.target.closest('.tmpl-targets-ms')) {
+    tmplTargetsPanel.style.display = 'none';
   }
 });
 
@@ -4601,7 +4619,7 @@ const STORAGE_KEY = 'tstToolingState_v1';
 function persistState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus,
+      toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollSetCategoryTemplates,
       planTasks, planTaskSeq, teamMembers, teamSeq,
       ganttTasks, ganttTaskSeq, planGanttWindowStart,
       dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
@@ -4628,6 +4646,7 @@ function restoreState() {
     if (saved.rollSetMachines) rollSetMachines = saved.rollSetMachines;
     if (saved.rollSetStatus) rollSetStatus = saved.rollSetStatus;
     if (saved.rollColorStatus) rollColorStatus = saved.rollColorStatus;
+    if (saved.rollSetCategoryTemplates) rollSetCategoryTemplates = saved.rollSetCategoryTemplates;
     if (typeof saved.rollColorSeq === 'number') rollColorSeq = saved.rollColorSeq;
     if (Array.isArray(saved.planTasks)) planTasks = saved.planTasks;
     if (typeof saved.planTaskSeq === 'number') planTaskSeq = saved.planTaskSeq;
@@ -5020,6 +5039,7 @@ function rollSetCardHtml(s, num) {
           ${setLabelHtml(s)}
           <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;">${rolls.length}</span>
         </div>
+        ${parseSizeRollName(s).category ? `<button class="btn btn-ghost btn-sm" style="padding:4px 7px;flex-shrink:0;color:${isRollSetTemplate(s) ? 'var(--amber)' : 'var(--text-3)'};" onclick="toggleRollSetTemplate('${esc}')" title="${isRollSetTemplate(s) ? 'เป็นเทมเพลตของหมวด ' + parseSizeRollName(s).category + ' อยู่ — กดเพื่อยกเลิก' : 'ตั้งเป็นเทมเพลตของหมวด ' + parseSizeRollName(s).category}">${isRollSetTemplate(s) ? '★' : '☆'}</button>` : ''}
         <button class="btn btn-ghost btn-sm" style="padding:4px 7px;flex-shrink:0;" onclick="openEditSetModal('${esc}')" title="แก้ไข">✏️</button>
         <button class="btn btn-ghost btn-sm" style="padding:4px 7px;flex-shrink:0;color:var(--red);" onclick="deleteSet('${esc}')" title="ลบ">✕</button>
       </div>
@@ -5339,6 +5359,10 @@ function openEditSetModal(oldName) {
         rollColorStatus[newName + k.slice(oldName.length)] = rollColorStatus[k];
         delete rollColorStatus[k];
       });
+      Object.keys(rollSetCategoryTemplates).forEach(cat => {
+        if (rollSetCategoryTemplates[cat] !== oldName) return;
+        rollSetCategoryTemplates[cat] = (parseSizeRollName(newName).category === cat) ? newName : null;
+      });
       if (selectedRollSet === oldName) { selectedRollSet = newName; }
     }
     if (machines.length) rollSetMachines[newName] = machines; else delete rollSetMachines[newName];
@@ -5367,6 +5391,9 @@ function deleteSet(setName) {
   delete rollSetPalettes[setName];
   delete rollSetStatus[setName];
   Object.keys(rollColorStatus).filter(k => k.startsWith(setName + '|')).forEach(k => delete rollColorStatus[k]);
+  Object.keys(rollSetCategoryTemplates).forEach(cat => {
+    if (rollSetCategoryTemplates[cat] === setName) rollSetCategoryTemplates[cat] = null;
+  });
   if (selectedRollSet === setName) { selectedRollSet = null; selectedRollColor = null; }
   renderRollSetList();
   renderRollColorList();
@@ -5377,20 +5404,29 @@ function deleteSet(setName) {
 // ─── สร้างรายการ Roll จากเทมเพลต — คัดลอกแค่ "ชื่อ Roll" จาก Set ต้นแบบที่มีอยู่แล้ว ไปสร้างเป็นแถวเปล่าในกลุ่มปลายทาง ───
 // ข้อมูลอื่นๆ (เส้นผ่าศูนย์กลาง/ความหนา/ตำแหน่ง ฯลฯ) ผู้ใช้กรอกเองทีหลัง — ข้ามชื่อที่มีอยู่แล้วในกลุ่มปลายทางเพื่อไม่ทับของเดิม
 function openRollTemplateModal() {
-  const setsWithRolls = getRollSets().filter(s => toolingData.roll.some(r => r.set === s));
-  if (!setsWithRolls.length) { alert('ยังไม่มี Size Roll กลุ่มไหนมีรายการ Roll อยู่ ให้ใช้เป็นเทมเพลตได้'); return; }
+  // เทมเพลตต้นแบบมีแค่ 3 หมวด (Forming/Sizing/TH) — แต่ละหมวดใช้กลุ่มที่ผู้ใช้ตั้งไว้ด้วยปุ่ม ★ (toggleRollSetTemplate) เท่านั้น ไม่ใช่กลุ่มไหนก็ได้เหมือนเดิม
+  const templateOptions = SIZE_ROLL_CATEGORIES
+    .map(cat => ({ cat, set: rollSetCategoryTemplates[cat] }))
+    .filter(o => o.set && toolingData.roll.some(r => r.set === o.set));
+  if (!templateOptions.length) { alert('ยังไม่ได้ตั้งเทมเพลตให้หมวดไหนเลย กรุณากดปุ่ม ☆ ที่กลุ่ม Size Roll ที่ต้องการ เพื่อตั้งเป็นเทมเพลตของหมวดนั้นก่อน (ต้องมีรายการ Roll อยู่ในกลุ่มนั้นด้วย)'); return; }
   document.getElementById('modal-title').textContent = 'สร้างรายการ Roll จากเทมเพลต';
   document.getElementById('modal-body').innerHTML = `
     <div class="modal-row full">
-      <div class="form-group"><label class="form-label">Set ต้นแบบ (คัดลอกชื่อ Roll จากที่นี่)</label>
+      <div class="form-group"><label class="form-label">เทมเพลตต้นแบบ (คัดลอกชื่อ Roll จากที่นี่)</label>
         <select class="form-select" id="tmpl-source" onchange="renderTemplateTargets()">
-          ${setsWithRolls.map(s => `<option value="${escapeHtmlAttr(s)}">${escapeHtmlAttr(s)} (${toolingData.roll.filter(r=>r.set===s).length} รายการ)</option>`).join('')}
+          ${templateOptions.map(o => `<option value="${escapeHtmlAttr(o.set)}">เทมเพลต ${escapeHtmlAttr(o.cat)} — ${escapeHtmlAttr(o.set)} (${toolingData.roll.filter(r=>r.set===o.set).length} รายการ)</option>`).join('')}
         </select>
       </div>
     </div>
     <div class="modal-row full">
       <div class="form-group"><label class="form-label">สร้างให้กับ Set ปลายทาง</label>
-        <div id="tmpl-targets" style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:6px;"></div>
+        <div class="tmpl-targets-ms" style="position:relative;">
+          <div class="form-select" id="tmpl-targets-toggle" onclick="toggleTmplTargetsDropdown(event)" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;gap:8px;">
+            <span id="tmpl-targets-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">— ยังไม่ได้เลือก Set ปลายทาง —</span>
+            <span style="opacity:.6;font-size:11px;flex-shrink:0;">▾</span>
+          </div>
+          <div id="tmpl-targets" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;box-shadow:0 6px 16px rgba(0,0,0,.15);z-index:20;padding:6px;max-height:260px;overflow-y:auto;"></div>
+        </div>
       </div>
     </div>
     <div style="font-size:11px;color:var(--text-3);">จะเพิ่มเฉพาะชื่อ Roll ที่ยังไม่มีอยู่ในกลุ่มปลายทางแต่ละกลุ่ม ข้อมูลอื่นๆ (เส้นผ่าศูนย์กลาง ความหนา ฯลฯ) จะเว้นว่างไว้ให้กรอกเอง — ถ้ากลุ่มปลายทางมีการเพิ่มชุดสีไว้แล้ว จะสร้างรายการครบชุดแยกให้ทุกสีที่มี แต่ถ้ายังไม่มีชุดสีจะสร้างเป็นรายการไม่ระบุสีตามปกติ</div>`;
@@ -5399,27 +5435,51 @@ function openRollTemplateModal() {
   document.querySelector('.modal-footer .btn-primary').onclick = generateRollTemplate;
 }
 
+function toggleTmplTargetsDropdown(ev) {
+  if (ev) ev.stopPropagation();
+  const panel = document.getElementById('tmpl-targets');
+  if (!panel) return;
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+// อัปเดตป้ายข้อความบนดรอปดาวน์ตามจำนวน Set ปลายทางที่ผู้ใช้ติ๊กเลือกไว้จริง — ไม่มีการติ๊กให้ล่วงหน้า ผู้ใช้ต้องเลือกเอง
+function updateTmplTargetsLabel() {
+  const label = document.getElementById('tmpl-targets-label');
+  if (!label) return;
+  const checked = document.querySelectorAll('.tmpl-target-cb:checked').length;
+  label.textContent = checked ? `เลือกไว้ ${checked} กลุ่ม` : '— ยังไม่ได้เลือก Set ปลายทาง —';
+}
+
+function toggleAllTmplTargets(checkbox) {
+  document.querySelectorAll('.tmpl-target-cb').forEach(b => { b.checked = checkbox.checked; });
+  updateTmplTargetsLabel();
+}
+
 function renderTemplateTargets() {
   const source = (document.getElementById('tmpl-source')||{}).value;
   const el = document.getElementById('tmpl-targets');
   if (!el) return;
-  if (!source) { el.innerHTML = ''; return; }
+  if (!source) { el.innerHTML = ''; updateTmplTargetsLabel(); return; }
   const sourceCat = parseSizeRollName(source).category;
   const others = getRollSets().filter(s => s !== source);
-  if (!others.length) { el.innerHTML = `<div style="font-size:12px;color:var(--text-3);padding:6px;">ไม่มี Set อื่นให้เลือก</div>`; return; }
+  if (!others.length) { el.innerHTML = `<div style="font-size:12px;color:var(--text-3);padding:6px;">ไม่มี Set อื่นให้เลือก</div>`; updateTmplTargetsLabel(); return; }
   const sameCat = others.filter(s => sourceCat && parseSizeRollName(s).category === sourceCat);
   const diffCat = others.filter(s => !sameCat.includes(s));
-  const rowHtml = (s, checked) => {
+  const rowHtml = s => {
     const cnt = toolingData.roll.filter(r => r.set === s).length;
     return `<label style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:5px;cursor:pointer;font-size:12px;">
-      <input type="checkbox" class="tmpl-target-cb" value="${escapeHtmlAttr(s)}"${checked ? ' checked' : ''} style="width:14px;height:14px;flex-shrink:0;">
+      <input type="checkbox" class="tmpl-target-cb" value="${escapeHtmlAttr(s)}" onchange="updateTmplTargetsLabel()" style="width:14px;height:14px;flex-shrink:0;">
       <span style="flex:1;">${escapeHtmlAttr(s)}</span>
       <span style="color:var(--text-3);">${cnt} รายการ</span>
     </label>`;
   };
   el.innerHTML =
-    (sameCat.length ? sameCat.map(s => rowHtml(s, true)).join('') : '') +
-    (diffCat.length ? `<div style="font-size:10px;color:var(--text-3);margin:6px 0 2px;padding:0 6px;">หมวดอื่น</div>` + diffCat.map(s => rowHtml(s, false)).join('') : '');
+    `<label style="display:flex;align-items:center;gap:8px;padding:6px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:700;border-bottom:1px solid var(--border-light);margin-bottom:2px;">
+      <input type="checkbox" onchange="toggleAllTmplTargets(this)" style="width:14px;height:14px;flex-shrink:0;">เลือกทั้งหมด (${others.length})
+    </label>` +
+    (sameCat.length ? sameCat.map(rowHtml).join('') : '') +
+    (diffCat.length ? `<div style="font-size:10px;color:var(--text-3);margin:6px 0 2px;padding:0 6px;">หมวดอื่น</div>` + diffCat.map(rowHtml).join('') : '');
+  updateTmplTargetsLabel();
 }
 
 function generateRollTemplate() {
