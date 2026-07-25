@@ -2514,7 +2514,7 @@ let currentDailyShiftFilter = null;    // null = ทั้งหมด
 let expandedDailyTaskId = null;        // งานที่กำลังกางดูเวลาแยกรายชิ้นอยู่ (ถ้ามี)
 // วันที่ (iso) ที่เคยสร้างแผนวันถัดไปต่อให้อัตโนมัติแล้ว (หลังเช็คลิสต์ของวันนั้นครบทุกรายการ) — กันไม่ให้สร้างซ้ำทุกครั้งที่ติ๊ก
 let dailyAutoContinuedDates = {};
-// เช็คงานทีละชิ้น Roll ในตารางแยกรายชิ้นของหน้างานประจำวัน — { 'YYYY-MM-DD': { [planTaskId]: { [rollIdx]: true } } } ค่าที่ไม่มีถือว่ายังไม่เสร็จ
+// เวลาเริ่ม/จบงานจริงแยกทีละชิ้น Roll ในตารางย่อยของหน้างานประจำวัน — { 'YYYY-MM-DD': { [planTaskId]: { [rollIdx]: {status,startTime,endTime} } } } ค่าที่ไม่มีถือว่า 'pending'
 let dailyPieceStatus = {};
 // ล็อกขนาดที่วัดได้จริงหลังแต่ง/ขัด Roll แต่ละชิ้น — เก็บแยกต่างหาก ไม่ทับข้อมูลเดิมในทะเบียน Tooling
 let rollSizeLog = [];
@@ -2992,9 +2992,9 @@ const PLAN_BREAK_TYPES = ['lunch', 'lunch_night', 'otbreak', 'shiftgap'];
 function renderPlanDayTaskDetailRow(t, colspan, interactive, locked) {
   colspan = colspan || 10;
   const pieces = planTaskPieceBreakdown(t);
-  const pieceDoneMap = interactive ? ((dailyPieceStatus[dailyViewDate] || {})[t.id] || {}) : {};
   const body = pieces.map((p, i) => {
     const rollIdx = t.rollIds[i];
+    const pieceEntry = interactive ? getDailyPieceEntry(t.id, rollIdx) : { status: 'pending' };
     const segs = (p.range.segments && p.range.segments.length)
       ? p.range.segments
       : [{ shiftKey: null, type: null, startDate: p.range.startDate, startTime: p.range.startTime, endDate: p.range.endDate, endTime: p.range.endTime, minutes: p.minutes }];
@@ -3003,6 +3003,7 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, locked) {
     return segs.map((s, si) => {
       const isBreak = PLAN_BREAK_TYPES.includes(s.type);
       const isFirstRow = si === (firstWorkIdx === -1 ? 0 : firstWorkIdx);
+      const isLastRow = si === segs.length - 1;
       const endBadge = s.endDate && s.startDate && s.endDate !== s.startDate
         ? ` <span style="color:var(--accent);font-weight:700;">(+${Math.round((parseISODate(s.endDate)-parseISODate(s.startDate))/86400000)} วัน)</span>` : '';
       const shiftChip = s.shiftKey ? `<span class="chip ${shiftChipClass(s.shiftKey)}">${SHIFTS[s.shiftKey].label}</span>` : '—';
@@ -3014,19 +3015,33 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, locked) {
       const rollCell = isBreak
         ? `<td colspan="2" class="muted" style="${breakStyle}">${escapeHtmlAttr(typeMeta.label)}</td>`
         : `<td class="muted">${isFirstRow ? escapeHtmlAttr(p.roll.id) : ''}</td><td><strong>${isFirstRow ? escapeHtmlAttr(p.roll.name) : ''}</strong>${isFirstRow ? continuedBadge : ''}</td>`;
-      // ช่องเช็ค "ทำทีละชิ้น" (เฉพาะโหมด interactive จากหน้างานประจำวัน) — โชว์แค่แถวแรกของชิ้นนั้น กดแล้วบันทึกขนาดที่วัดได้เป็นล็อกแยก
-      const checkCell = interactive
-        ? (isBreak ? '' : (isFirstRow ? `<td onclick="event.stopPropagation();">${locked ? `<input type="checkbox" ${pieceDoneMap[rollIdx] ? 'checked' : ''} disabled style="width:16px;height:16px;">` : `<input type="checkbox" ${pieceDoneMap[rollIdx] ? 'checked' : ''} onchange="toggleDailyPieceDone('${t.id}','${rollIdx}')" style="width:16px;height:16px;cursor:pointer;">`}</td>` : '<td></td>'))
-        : '';
+      // ปุ่ม "เริ่มงาน/จบงาน" แยกทีละชิ้น Roll (เฉพาะโหมด interactive จากหน้างานประจำวัน) — โชว์แค่แถวแรกของชิ้นนั้น กด "จบงาน" แล้วบันทึกขนาดที่วัดได้เป็นล็อกแยก
+      let actionCell = '';
+      if (interactive && !isBreak && isFirstRow) {
+        const pieceStatus = pieceEntry.status || 'pending';
+        let inner;
+        if (pieceStatus === 'done') {
+          inner = `<span class="chip chip-green">✓ เสร็จ</span>`;
+        } else if (pieceStatus === 'in_progress') {
+          inner = `<button class="btn btn-ghost btn-sm" style="color:var(--accent);" ${locked ? 'disabled title="งานของช่างคนอื่น จบงานนี้ไม่ได้"' : ''} onclick="finishDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">■ จบงาน</button>`;
+        } else {
+          inner = `<button class="btn btn-ghost btn-sm" ${locked ? 'disabled title="งานของช่างคนอื่น เริ่มงานนี้ไม่ได้"' : ''} onclick="startDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ เริ่มงาน</button>`;
+        }
+        actionCell = `<td onclick="event.stopPropagation();">${inner}</td>`;
+      } else if (interactive && !isBreak) {
+        actionCell = '<td></td>';
+      }
+      const actualStartSuffix = (interactive && isFirstRow && !isBreak && pieceEntry.startTime) ? ` <span class="muted" style="font-size:11px;">(จริง ${escapeHtmlAttr(pieceEntry.startTime)})</span>` : '';
+      const actualEndSuffix = (interactive && isLastRow && !isBreak && pieceEntry.endTime) ? ` <span class="muted" style="font-size:11px;">(จริง ${escapeHtmlAttr(pieceEntry.endTime)})</span>` : '';
       return `<tr style="${groupBorder}${breakStyle}">
         <td class="muted" style="padding-left:36px;">${isFirstRow ? i + 1 : ''}</td>
-        ${checkCell}
+        ${actionCell}
         ${rollCell}
         <td>${shiftChip}</td>
         <td>${typeChip}</td>
         <td class="muted" style="text-align:right;">${escapeHtmlAttr(String(s.minutes))}</td>
-        <td class="muted">${escapeHtmlAttr(s.startTime || '—')}</td>
-        <td class="muted">${escapeHtmlAttr(s.endTime || '—')}${endBadge}</td>
+        <td class="muted">${escapeHtmlAttr(s.startTime || '—')}${actualStartSuffix}</td>
+        <td class="muted">${escapeHtmlAttr(s.endTime || '—')}${endBadge}${actualEndSuffix}</td>
       </tr>`;
     }).join('');
   }).join('');
@@ -5750,37 +5765,50 @@ function toggleDailyTaskDetail(taskId) {
   renderDailyTasks();
 }
 
-// เช็คงานทีละชิ้น Roll ในตารางแยกรายชิ้นของงานประจำวัน — ติ๊กเสร็จต้องบันทึกขนาดที่วัดได้จริงเป็นล็อกแยกต่างหากด้วย (ไม่ทับข้อมูลเดิมในทะเบียน Tooling)
-// เมื่อติ๊กครบทุกชิ้นของงานนั้นแล้ว จะทำเครื่องหมายงานหลักเป็น "สำเร็จ" ให้อัตโนมัติ (และอาจไปกระตุ้นการวางแผนวันถัดไปอัตโนมัติต่อ ถ้าทั้งวันเสร็จครบพอดี)
-function toggleDailyPieceDone(taskId, rollIdx) {
-  const task = planTasks.find(t => t.id === taskId);
-  if (!task) return;
+// สถานะ "เริ่มงาน/จบงาน" ของ Roll แต่ละชิ้นในตารางแยกรายชิ้นของงานประจำวัน — เก็บใน dailyPieceStatus แยกทีละชิ้น ไม่ใช่รวมทั้งงาน
+// รองรับข้อมูลเก่าที่เคยเก็บเป็น boolean (ติ๊กเสร็จ/ไม่เสร็จ) ก่อนแยกเป็นปุ่มเริ่ม/จบงานทีละชิ้น
+function getDailyPieceEntry(taskId, rollIdx) {
+  const raw = ((dailyPieceStatus[dailyViewDate] || {})[taskId] || {})[rollIdx];
+  if (raw === true) return { status: 'done' };
+  if (raw == null || raw === false) return { status: 'pending' };
+  return raw;
+}
+function startDailyPiece(taskId, rollIdx, workerId) {
+  if (!canActOnDailyItem(workerId)) return;
   const dateMap = dailyPieceStatus[dailyViewDate] || (dailyPieceStatus[dailyViewDate] = {});
   const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
-  const wasDone = !!taskMap[rollIdx];
-  if (!wasDone) {
-    const scoped = getMatchingRollsForPlan(task.rollSet, task.rollColor);
-    const roll = scoped[rollIdx];
-    const label = roll ? roll.name + (roll.diameter ? ` (เดิม ${roll.diameter})` : '') : 'ชิ้นนี้';
-    const size = prompt(`บันทึกขนาดที่วัดได้จริงหลังแต่ง/ขัดของ "${label}":`, '');
-    if (size === null) return; // กดยกเลิก — ไม่ติ๊กและไม่บันทึกอะไร
-    taskMap[rollIdx] = true;
-    rollSizeLogSeq++;
-    rollSizeLog.push({
-      id: 'RSL-' + String(rollSizeLogSeq).padStart(4, '0'),
-      taskId, rollIdx, rollId: roll ? roll.id : null, rollName: roll ? roll.name : '—',
-      date: dailyViewDate, measuredSize: size,
-    });
-  } else {
-    taskMap[rollIdx] = false;
-  }
-  const allDone = (task.rollIds || []).every(idx => taskMap[idx]);
+  taskMap[rollIdx] = { status: 'in_progress', startTime: nowHHMM() };
+  const dayMap = dailyStatusByDate[dailyViewDate] || (dailyStatusByDate[dailyViewDate] = {});
+  if ((dayMap[taskId] || 'pending') === 'pending') dayMap[taskId] = 'in_progress';
+  persistState();
+  renderDailyTasks();
+}
+// จบงานชิ้นนี้ — ต้องบันทึกขนาดที่วัดได้จริงเป็นล็อกแยกต่างหากด้วย (ไม่ทับข้อมูลเดิมในทะเบียน Tooling)
+// เมื่อจบครบทุกชิ้นของงานนั้นแล้ว จะทำเครื่องหมายงานหลักเป็น "สำเร็จ" ให้อัตโนมัติ (และอาจไปกระตุ้นการวางแผนวันถัดไปอัตโนมัติต่อ ถ้าทั้งวันเสร็จครบพอดี)
+function finishDailyPiece(taskId, rollIdx, workerId) {
+  if (!canActOnDailyItem(workerId)) return;
+  const task = planTasks.find(t => t.id === taskId);
+  if (!task) return;
+  const scoped = getMatchingRollsForPlan(task.rollSet, task.rollColor);
+  const roll = scoped[rollIdx];
+  const label = roll ? roll.name + (roll.diameter ? ` (เดิม ${roll.diameter})` : '') : 'ชิ้นนี้';
+  const size = prompt(`บันทึกขนาดที่วัดได้จริงหลังแต่ง/ขัดของ "${label}":`, '');
+  if (size === null) return; // กดยกเลิก — ไม่จบงานและไม่บันทึกอะไร
+  const dateMap = dailyPieceStatus[dailyViewDate] || (dailyPieceStatus[dailyViewDate] = {});
+  const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
+  const prevEntry = getDailyPieceEntry(taskId, rollIdx);
+  taskMap[rollIdx] = { ...prevEntry, status: 'done', endTime: nowHHMM() };
+  rollSizeLogSeq++;
+  rollSizeLog.push({
+    id: 'RSL-' + String(rollSizeLogSeq).padStart(4, '0'),
+    taskId, rollIdx, rollId: roll ? roll.id : null, rollName: roll ? roll.name : '—',
+    date: dailyViewDate, measuredSize: size,
+  });
+  const allDone = (task.rollIds || []).every(idx => getDailyPieceEntry(taskId, idx).status === 'done');
   const dayMap = dailyStatusByDate[dailyViewDate] || (dailyStatusByDate[dailyViewDate] = {});
   if (allDone) {
     dayMap[taskId] = 'done';
     maybeAutoContinueDailyPlan(dailyViewDate);
-  } else if (dayMap[taskId] === 'done') {
-    dayMap[taskId] = 'pending';
   }
   persistState();
   renderDailyTasks();
@@ -6007,6 +6035,9 @@ function renderDailyTasks() {
     let actions;
     if (item.editable) {
       actions = `<div style="display:flex;gap:4px;"><button class="btn btn-ghost btn-sm" onclick="openDailyChecklistModal('edit','${item.key}')">แก้ไข</button><button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteDailyChecklistTask('${item.key}')">ลบ</button></div>`;
+    } else if (item.expandable) {
+      // งานที่มีหลาย Roll ให้กดเริ่ม/จบงานแยกทีละชิ้นในตารางย่อยด้านล่างแทน ไม่มีปุ่มรวมตรงนี้
+      actions = '';
     } else if (status === 'pending') {
       actions = `<button class="btn btn-ghost btn-sm" ${isMine ? '' : 'disabled title="งานของช่างคนอื่น เริ่มงานนี้ไม่ได้"'} onclick="startDailyTask('${item.key}','${item.workerId || ''}')">▶ เริ่มงาน</button>`;
     } else if (status === 'in_progress') {
