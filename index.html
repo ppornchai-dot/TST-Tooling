@@ -1514,17 +1514,16 @@ canvas{display:block;}
       <div style="display:flex;gap:10px;margin-bottom:16px;">
         <div class="search-bar" style="flex:1;margin-bottom:0;">
           <svg width="14" height="14" fill="none" stroke="var(--text-3)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" placeholder="ค้นหา WO / Tooling / ผู้ดำเนินการ...">
+          <input type="text" id="history-search" placeholder="ค้นหา WO / Tooling / ผู้ดำเนินการ..." oninput="renderHistory()">
         </div>
-        <input type="date" class="form-input" value="2026-06-01" style="width:150px;">
+        <input type="date" class="form-input" id="history-date-from" style="width:150px;" onchange="renderHistory()">
         <span style="align-self:center;color:var(--text-3);">—</span>
-        <input type="date" class="form-input" value="2026-06-30" style="width:150px;">
-        <select class="form-select" style="width:140px;">
-          <option>ทุกประเภท</option>
-          <option>PM</option>
-          <option>Regrind</option>
-          <option>ซ่อมแซม</option>
-          <option>Calibrate</option>
+        <input type="date" class="form-input" id="history-date-to" style="width:150px;" onchange="renderHistory()">
+        <select class="form-select" id="history-type" style="width:140px;" onchange="renderHistory()">
+          <option value="">ทุกประเภท</option>
+          <option value="cnc">แต่ง Roll (CNC)</option>
+          <option value="polish">ขัด Roll</option>
+          <option value="checklist">เช็คลิสต์อื่นๆ</option>
         </select>
       </div>
 
@@ -1534,13 +1533,13 @@ canvas{display:block;}
             <thead>
               <tr><th>วันที่</th><th>WO No.</th><th>ประเภทงาน</th><th>Tooling</th><th>รายละเอียด</th><th>ผู้ดำเนินการ</th><th>ชั่วโมงทำงาน</th><th>ผล</th></tr>
             </thead>
-            <tbody>
+            <tbody id="tbody-history">
               <tr><td colspan="8" style="padding:32px;text-align:center;color:var(--text-3);">ยังไม่มีประวัติการทำงาน</td></tr>
             </tbody>
           </table>
         </div>
         <div style="padding:12px 20px;border-top:1px solid var(--border-light);display:flex;justify-content:space-between;align-items:center;">
-          <span style="font-size:12px;color:var(--text-3);">แสดง 0 จาก 0 รายการ</span>
+          <span style="font-size:12px;color:var(--text-3);" id="history-count-label">แสดง 0 จาก 0 รายการ</span>
         </div>
       </div>
     </div>
@@ -1805,6 +1804,7 @@ function showPage(id) {
   try { localStorage.setItem(CURRENT_PAGE_STORAGE_KEY, id); } catch (e) { /* localStorage unavailable — แค่จำหน้าไม่ได้ตอนรีเฟรช ไม่กระทบการใช้งานอื่น */ }
   if (id === 'dashboard') initDashboard();
   if (id === 'daily') renderDailyTasks();
+  if (id === 'history') renderHistory();
 }
 
 function initDashboard() {
@@ -6117,6 +6117,65 @@ function renderDailyTasks() {
   document.getElementById('daily-kpi-done').textContent = statuses.filter(s=>s==='done').length;
   document.getElementById('daily-kpi-pending').textContent = statuses.filter(s=>s==='pending'||s==='in_progress').length;
   document.getElementById('daily-kpi-overdue').textContent = statuses.filter(s=>s==='overdue').length;
+}
+
+// ─── ประวัติการทำงาน (หน้า History) ───────────────────────────────────────
+// รวบรวมงานที่ "สำเร็จ" แล้วทั้งหมด จากงานตามแผน (CNC/ขัด Roll) + เช็คลิสต์ที่เพิ่มเอง ไล่ทุกวันที่เคยมีการบันทึกสถานะไว้ในหน้างานประจำวัน (ไม่ใช่แค่วันที่กำลังดูอยู่)
+function collectHistoryRecords() {
+  const records = [];
+  Object.keys(dailyStatusByDate).forEach(dateIso => {
+    const dayMap = dailyStatusByDate[dateIso] || {};
+    dailyChecklistTasks.filter(t => !t.date || t.date === dateIso).forEach(t => {
+      if (dayMap[t.id] !== 'done') return;
+      records.push({
+        date: dateIso, wo: t.id, typeKey: 'checklist', typeLabel: t.type || 'เช็คลิสต์',
+        tooling: t.ref || '—', detail: t.task, who: t.who || '—', hours: null, result: 'สำเร็จ',
+      });
+    });
+    planTasks.filter(t => taskDisplayDate(t) === dateIso).forEach(t => {
+      if (dayMap[t.id] !== 'done') return;
+      records.push({
+        date: dateIso, wo: t.id, typeKey: t.workType, typeLabel: t.workType === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)',
+        tooling: `${t.rollSet || '—'}${t.rollColor ? ' — ' + planRollColorLabel(t) : ''}`,
+        detail: t.rollName || '—', who: workerName(t.workerId),
+        hours: t.totalTime != null ? Math.round((t.totalTime / 60) * 10) / 10 : null,
+        result: 'สำเร็จ',
+      });
+    });
+  });
+  records.sort((a, b) => (b.date + b.wo).localeCompare(a.date + a.wo));
+  return records;
+}
+
+function renderHistory() {
+  const tbody = document.getElementById('tbody-history');
+  if (!tbody) return;
+  const search = (document.getElementById('history-search').value || '').trim().toLowerCase();
+  const fromIso = document.getElementById('history-date-from').value || null;
+  const toIso = document.getElementById('history-date-to').value || null;
+  const typeFilter = document.getElementById('history-type').value || '';
+
+  const records = collectHistoryRecords().filter(r => {
+    if (fromIso && r.date < fromIso) return false;
+    if (toIso && r.date > toIso) return false;
+    if (typeFilter && r.typeKey !== typeFilter) return false;
+    if (search && !`${r.wo} ${r.tooling} ${r.who}`.toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  tbody.innerHTML = records.map(r => `
+    <tr>
+      <td class="muted">${escapeHtmlAttr(fmtDateThai(parseISODate(r.date)))}</td>
+      <td class="muted">${escapeHtmlAttr(r.wo)}</td>
+      <td>${escapeHtmlAttr(r.typeLabel)}</td>
+      <td>${escapeHtmlAttr(r.tooling)}</td>
+      <td>${escapeHtmlAttr(r.detail)}</td>
+      <td class="muted">${escapeHtmlAttr(r.who)}</td>
+      <td class="muted">${r.hours != null ? r.hours + ' ชม.' : '—'}</td>
+      <td><span class="chip chip-green">${escapeHtmlAttr(r.result)}</span></td>
+    </tr>`).join('') || `<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--text-3);">ไม่พบประวัติการทำงานตามเงื่อนไขที่เลือก</td></tr>`;
+
+  document.getElementById('history-count-label').textContent = `แสดง ${records.length} จาก ${records.length} รายการ`;
 }
 
 function dailyChecklistFormFields() {
