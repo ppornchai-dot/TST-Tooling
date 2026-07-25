@@ -3012,9 +3012,12 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, locked) {
       const groupBorder = (si === 0 && i > 0) ? 'border-top:2px solid var(--border);' : '';
       const breakStyle = isBreak ? 'background:var(--bg-hover);font-style:italic;' : '';
       const continuedBadge = p.continued ? ' <span class="muted" style="font-weight:400;font-style:italic;">(ต่อ)</span>' : '';
+      // เทียบขนาดที่วัดได้จริงหลังแต่ง/ขัด (บันทึกตอนกด "จบงาน") กับเส้นผ่านศูนย์กลางเดิมในทะเบียน Tooling — โชว์แค่แถวแรกของชิ้นที่จบแล้ว
+      const measuredSizeLine = (interactive && isFirstRow && !isBreak && pieceEntry.measuredSize)
+        ? `<div class="muted" style="font-size:11px;font-weight:400;">วัดได้ ${escapeHtmlAttr(pieceEntry.measuredSize)}${pieceEntry.registryDiameter ? ` <span title="เส้นผ่านศูนย์กลางเดิมในทะเบียน Tooling">(ทะเบียน ${escapeHtmlAttr(pieceEntry.registryDiameter)})</span>` : ''}</div>` : '';
       const rollCell = isBreak
         ? `<td colspan="2" class="muted" style="${breakStyle}">${escapeHtmlAttr(typeMeta.label)}</td>`
-        : `<td class="muted">${isFirstRow ? escapeHtmlAttr(p.roll.id) : ''}</td><td><strong>${isFirstRow ? escapeHtmlAttr(p.roll.name) : ''}</strong>${isFirstRow ? continuedBadge : ''}</td>`;
+        : `<td class="muted">${isFirstRow ? escapeHtmlAttr(p.roll.id) : ''}</td><td><strong>${isFirstRow ? escapeHtmlAttr(p.roll.name) : ''}</strong>${isFirstRow ? continuedBadge : ''}${measuredSizeLine}</td>`;
       // ปุ่ม "เริ่มงาน/จบงาน" แยกทีละชิ้น Roll (เฉพาะโหมด interactive จากหน้างานประจำวัน) — โชว์แค่แถวแรกของชิ้นนั้น กด "จบงาน" แล้วบันทึกขนาดที่วัดได้เป็นล็อกแยก
       let actionCell = '';
       if (interactive && !isBreak && isFirstRow) {
@@ -5797,12 +5800,12 @@ function finishDailyPiece(taskId, rollIdx, workerId) {
   const dateMap = dailyPieceStatus[dailyViewDate] || (dailyPieceStatus[dailyViewDate] = {});
   const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
   const prevEntry = getDailyPieceEntry(taskId, rollIdx);
-  taskMap[rollIdx] = { ...prevEntry, status: 'done', endTime: nowHHMM() };
+  taskMap[rollIdx] = { ...prevEntry, status: 'done', endTime: nowHHMM(), measuredSize: size, registryDiameter: roll ? roll.diameter : null };
   rollSizeLogSeq++;
   rollSizeLog.push({
     id: 'RSL-' + String(rollSizeLogSeq).padStart(4, '0'),
     taskId, rollIdx, rollId: roll ? roll.id : null, rollName: roll ? roll.name : '—',
-    date: dailyViewDate, measuredSize: size,
+    date: dailyViewDate, measuredSize: size, registryDiameter: roll ? roll.diameter : null,
   });
   const allDone = (task.rollIds || []).every(idx => getDailyPieceEntry(taskId, idx).status === 'done');
   const dayMap = dailyStatusByDate[dailyViewDate] || (dailyStatusByDate[dailyViewDate] = {});
