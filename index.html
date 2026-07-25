@@ -2519,6 +2519,9 @@ let dailyPieceStatus = {};
 // ล็อกขนาดที่วัดได้จริงหลังแต่ง/ขัด Roll แต่ละชิ้น — เก็บแยกต่างหาก ไม่ทับข้อมูลเดิมในทะเบียน Tooling
 let rollSizeLog = [];
 let rollSizeLogSeq = 0;
+// ล็อกเหตุผลที่พักงานแต่ละครั้งของ Roll แต่ละชิ้น — เก็บประวัติไว้ทุกครั้งที่กดพักงาน แม้จะกดทำต่อแล้วก็ตาม
+let dailyPauseLog = [];
+let dailyPauseLogSeq = 0;
 
 // ─── TEAM MEMBERS (หน้าทีมงาน) — ข้อมูลอยู่ก่อน restoreState() เพื่อไม่ให้ชนกับ TDZ ─
 const TEAM_STATUS_META = {
@@ -3015,18 +3018,26 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, locked) {
       // เทียบขนาดที่วัดได้จริงหลังแต่ง/ขัด (บันทึกตอนกด "จบงาน") กับเส้นผ่านศูนย์กลางเดิมในทะเบียน Tooling — โชว์แค่แถวแรกของชิ้นที่จบแล้ว
       const measuredSizeLine = (interactive && isFirstRow && !isBreak && pieceEntry.measuredSize)
         ? `<div class="muted" style="font-size:11px;font-weight:400;">วัดได้ ${escapeHtmlAttr(pieceEntry.measuredSize)}${pieceEntry.registryDiameter ? ` <span title="เส้นผ่านศูนย์กลางเดิมในทะเบียน Tooling">(ทะเบียน ${escapeHtmlAttr(pieceEntry.registryDiameter)})</span>` : ''}</div>` : '';
+      // เหตุผลที่พักงานชิ้นนี้ (กด "⏸ พักงาน") — โชว์แค่แถวแรกของชิ้นนั้น จนกว่าจะกดทำต่อ
+      const pauseReasonLine = (interactive && isFirstRow && !isBreak && pieceEntry.status === 'paused' && pieceEntry.pauseReason)
+        ? `<div class="muted" style="font-size:11px;font-weight:400;color:var(--amber);">⏸ พักงาน: ${escapeHtmlAttr(pieceEntry.pauseReason)}${pieceEntry.pausedAt ? ` (${escapeHtmlAttr(pieceEntry.pausedAt)})` : ''}</div>` : '';
       const rollCell = isBreak
         ? `<td colspan="2" class="muted" style="${breakStyle}">${escapeHtmlAttr(typeMeta.label)}</td>`
-        : `<td class="muted">${isFirstRow ? escapeHtmlAttr(p.roll.id) : ''}</td><td><strong>${isFirstRow ? escapeHtmlAttr(p.roll.name) : ''}</strong>${isFirstRow ? continuedBadge : ''}${measuredSizeLine}</td>`;
-      // ปุ่ม "เริ่มงาน/จบงาน" แยกทีละชิ้น Roll (เฉพาะโหมด interactive จากหน้างานประจำวัน) — โชว์แค่แถวแรกของชิ้นนั้น กด "จบงาน" แล้วบันทึกขนาดที่วัดได้เป็นล็อกแยก
+        : `<td class="muted">${isFirstRow ? escapeHtmlAttr(p.roll.id) : ''}</td><td><strong>${isFirstRow ? escapeHtmlAttr(p.roll.name) : ''}</strong>${isFirstRow ? continuedBadge : ''}${measuredSizeLine}${pauseReasonLine}</td>`;
+      // ปุ่ม "เริ่มงาน/จบงาน/พักงาน" แยกทีละชิ้น Roll (เฉพาะโหมด interactive จากหน้างานประจำวัน) — โชว์แค่แถวแรกของชิ้นนั้น กด "จบงาน" แล้วบันทึกขนาดที่วัดได้เป็นล็อกแยก
       let actionCell = '';
       if (interactive && !isBreak && isFirstRow) {
         const pieceStatus = pieceEntry.status || 'pending';
         let inner;
         if (pieceStatus === 'done') {
           inner = `<span class="chip chip-green">✓ เสร็จ</span>`;
+        } else if (pieceStatus === 'paused') {
+          inner = `<span class="chip chip-amber">⏸ พักงาน</span> <button class="btn btn-ghost btn-sm" style="color:var(--accent);" ${locked ? 'disabled title="งานของช่างคนอื่น ทำต่อไม่ได้"' : ''} onclick="resumeDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ ทำต่อ</button>`;
         } else if (pieceStatus === 'in_progress') {
-          inner = `<button class="btn btn-ghost btn-sm" style="color:var(--accent);" ${locked ? 'disabled title="งานของช่างคนอื่น จบงานนี้ไม่ได้"' : ''} onclick="finishDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">■ จบงาน</button>`;
+          inner = `<div style="display:flex;gap:4px;">
+            <button class="btn btn-ghost btn-sm" style="color:var(--accent);" ${locked ? 'disabled title="งานของช่างคนอื่น จบงานนี้ไม่ได้"' : ''} onclick="finishDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">■ จบงาน</button>
+            <button class="btn btn-ghost btn-sm" ${locked ? 'disabled title="งานของช่างคนอื่น พักงานนี้ไม่ได้"' : ''} onclick="pauseDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">⏸ พักงาน</button>
+          </div>`;
         } else {
           inner = `<button class="btn btn-ghost btn-sm" ${locked ? 'disabled title="งานของช่างคนอื่น เริ่มงานนี้ไม่ได้"' : ''} onclick="startDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ เริ่มงาน</button>`;
         }
@@ -4589,7 +4600,7 @@ function persistState() {
       planTasks, planTaskSeq, teamMembers, teamSeq,
       ganttTasks, ganttTaskSeq, planGanttWindowStart,
       dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
-      dailyPieceStatus, rollSizeLog, rollSizeLogSeq,
+      dailyPieceStatus, rollSizeLog, rollSizeLogSeq, dailyPauseLog, dailyPauseLogSeq,
       prodBlockProducts, prodBlockSeq, prodBlockCells, prodBlockPM, prodBlockSummary,
       prodBlockEntries, prodBlockEntrySeq, prodBlockActiveMachine, prodBlockViewMonth
     }));
@@ -4627,6 +4638,8 @@ function restoreState() {
     if (saved.dailyPieceStatus) dailyPieceStatus = saved.dailyPieceStatus;
     if (Array.isArray(saved.rollSizeLog)) rollSizeLog = saved.rollSizeLog;
     if (typeof saved.rollSizeLogSeq === 'number') rollSizeLogSeq = saved.rollSizeLogSeq;
+    if (Array.isArray(saved.dailyPauseLog)) dailyPauseLog = saved.dailyPauseLog;
+    if (typeof saved.dailyPauseLogSeq === 'number') dailyPauseLogSeq = saved.dailyPauseLogSeq;
     if (Array.isArray(saved.teamMembers)) teamMembers = saved.teamMembers;
     if (typeof saved.teamSeq === 'number') teamSeq = saved.teamSeq;
     if (Array.isArray(saved.prodBlockProducts)) prodBlockProducts = saved.prodBlockProducts;
@@ -5813,6 +5826,35 @@ function finishDailyPiece(taskId, rollIdx, workerId) {
     dayMap[taskId] = 'done';
     maybeAutoContinueDailyPlan(dailyViewDate);
   }
+  persistState();
+  renderDailyTasks();
+}
+// พักงานชิ้นนี้ — ต้องระบุเหตุผลเสมอ (ยกเลิก/ปล่อยว่างไม่พักงาน) บันทึกเป็นล็อกแยกไว้ทุกครั้งที่พัก แม้จะกดทำต่อแล้วก็ตาม
+function pauseDailyPiece(taskId, rollIdx, workerId) {
+  if (!canActOnDailyItem(workerId)) return;
+  const reason = prompt('เหตุผลที่พักงานชิ้นนี้ (จำเป็นต้องระบุ):', '');
+  if (reason === null) return; // กดยกเลิก — ไม่พักงาน
+  if (!reason.trim()) { alert('กรุณาระบุเหตุผลที่พักงาน'); return; }
+  const dateMap = dailyPieceStatus[dailyViewDate] || (dailyPieceStatus[dailyViewDate] = {});
+  const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
+  const prevEntry = getDailyPieceEntry(taskId, rollIdx);
+  const pausedAt = nowHHMM();
+  taskMap[rollIdx] = { ...prevEntry, status: 'paused', pauseReason: reason.trim(), pausedAt };
+  dailyPauseLogSeq++;
+  dailyPauseLog.push({
+    id: 'PL-' + String(dailyPauseLogSeq).padStart(4, '0'),
+    taskId, rollIdx, date: dailyViewDate, reason: reason.trim(), pausedAt,
+  });
+  persistState();
+  renderDailyTasks();
+}
+// กดทำต่อหลังพักงาน — กลับไปสถานะ "กำลังทำ" ตามเดิม เหตุผลที่พักครั้งนั้นยังอยู่ใน dailyPauseLog เป็นประวัติ
+function resumeDailyPiece(taskId, rollIdx, workerId) {
+  if (!canActOnDailyItem(workerId)) return;
+  const dateMap = dailyPieceStatus[dailyViewDate] || (dailyPieceStatus[dailyViewDate] = {});
+  const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
+  const prevEntry = getDailyPieceEntry(taskId, rollIdx);
+  taskMap[rollIdx] = { ...prevEntry, status: 'in_progress', pauseReason: null, pausedAt: null };
   persistState();
   renderDailyTasks();
 }
