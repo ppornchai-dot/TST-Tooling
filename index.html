@@ -733,6 +733,7 @@ canvas{display:block;}
   background:var(--bg-base);
   display:flex;align-items:center;justify-content:center;
   padding:24px;
+  overflow-y:auto;
 }
 #login-overlay.hidden{display:none;}
 .login-card{
@@ -760,6 +761,56 @@ canvas{display:block;}
 .topbar-user-avatar{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:11px;flex-shrink:0;}
 .topbar-user-name{font-size:12px;font-weight:700;color:var(--text-1);line-height:1.2;}
 .topbar-user-role{font-size:10px;color:var(--text-3);line-height:1.2;}
+
+/* ─── MOBILE ────────────────────────────────── */
+.hamburger-btn{
+  display:none;
+  width:34px;height:34px;border-radius:var(--radius-sm);
+  border:1px solid var(--border);background:var(--bg-surface);
+  color:var(--text-2);cursor:pointer;align-items:center;justify-content:center;
+  flex-shrink:0;
+}
+.hamburger-btn:hover{background:var(--bg-hover);color:var(--text-1);}
+.sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(22,32,48,.45);z-index:99;}
+.sidebar-backdrop.open{display:block;}
+
+@media (max-width:900px){
+  .hamburger-btn{display:flex;}
+  .sidebar{transform:translateX(-100%);transition:transform .2s ease;box-shadow:0 0 24px rgba(0,0,0,.2);}
+  .sidebar.open{transform:translateX(0);}
+  .main{margin-left:0;}
+  /* topbar แคบเกินกว่าจะใส่หัวข้อ+ปุ่มมุมมอง+ผู้ใช้ในบรรทัดเดียว — ให้ตกไปบรรทัดที่ 2 แทนการบีบจนอ่านไม่ออก */
+  .topbar{height:auto;min-height:var(--topbar-h);flex-wrap:wrap;row-gap:8px;padding:10px 14px;}
+  .topbar-actions{flex-wrap:wrap;justify-content:flex-end;gap:6px;}
+  #admin-view-select-wrap select{max-width:160px;}
+  .topbar-user-name,.topbar-user-role{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .content{padding:14px;}
+  .section-title{font-size:16px;}
+
+  /* แถบเครื่องมือ/ปุ่มกรองที่มีหลายปุ่มเรียงกัน (ใส่ class="mobile-wrap" ไว้ที่ตัว container) ให้ตกบรรทัดแทนล้นจอแนวนอน — ไม่ใช้กฎกว้างๆ กับทุก display:flex เพราะจะไปพังแถวไอคอน+ข้อความสั้นๆ ที่ตั้งใจให้อยู่บรรทัดเดียว (เช่น หัวข้อหน้าบน topbar) */
+  .mobile-wrap{flex-wrap:wrap;}
+
+  /* กริดหลายคอลัมน์ต่างๆ ยุบเหลือคอลัมน์เดียว (หรือ 2 คอลัมน์สำหรับ KPI) บนจอแคบ */
+  .kpi-grid{grid-template-columns:repeat(2,1fr)!important;gap:10px;}
+  .grid-2,.grid-3-2,.grid-3,.spec-grid{grid-template-columns:1fr!important;}
+  .team-grid{grid-template-columns:1fr!important;}
+  .form-row{grid-template-columns:1fr!important;}
+  .modal-row,.modal-row.three,.modal-row.four,.modal-row.five{grid-template-columns:1fr!important;}
+  .reg-kpi-row{grid-template-columns:repeat(2,1fr)!important;}
+  .dash-cal-row{grid-template-columns:1fr!important;}
+  .dash-cal-row>div:first-child{border-right:none!important;border-bottom:1px solid var(--border-light);}
+  .reg-registry-grid{grid-template-columns:1fr!important;}
+  .reg-registry-grid>.card{position:static!important;}
+
+  .modal{width:96vw;}
+  .login-card{padding:20px;}
+  #login-overlay{align-items:flex-start;padding-top:28px;}
+}
+@media (max-width:480px){
+  .kpi-grid{grid-template-columns:1fr!important;}
+  .reg-kpi-row{grid-template-columns:repeat(2,1fr)!important;}
+  .kpi-value{font-size:26px;}
+}
 </style>
 </head>
 <body>
@@ -777,7 +828,8 @@ canvas{display:block;}
 </div>
 
 <!-- SIDEBAR -->
-<nav class="sidebar">
+<div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeMobileSidebar()"></div>
+<nav class="sidebar" id="sidebar">
   <div class="sidebar-logo">
     <div class="logo-mark">TS</div>
     <div class="logo-text">
@@ -841,9 +893,14 @@ canvas{display:block;}
 
   <!-- TOP BAR -->
   <div class="topbar">
-    <div>
-      <div class="topbar-title" id="page-title">Dashboard</div>
-      <div class="topbar-sub" id="page-sub">ภาพรวมระบบ Tooling — อัปเดต 30 มิ.ย. 2569</div>
+    <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+      <button class="hamburger-btn" id="hamburger-btn" onclick="toggleMobileSidebar()" aria-label="เปิดเมนู" title="เปิดเมนู">
+        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div style="min-width:0;">
+        <div class="topbar-title" id="page-title">Dashboard</div>
+        <div class="topbar-sub" id="page-sub">ภาพรวมระบบ Tooling — อัปเดต 30 มิ.ย. 2569</div>
+      </div>
     </div>
     <div class="topbar-actions">
       <div id="admin-view-select-wrap" style="display:none;align-items:center;">
@@ -948,7 +1005,7 @@ canvas{display:block;}
             </div>
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 260px;gap:0;">
+        <div class="dash-cal-row" style="display:grid;grid-template-columns:1fr 260px;gap:0;">
           <div style="padding:16px 16px 16px 16px;border-right:1px solid var(--border-light);">
             <div class="cal-grid" id="cal-grid"></div>
           </div>
@@ -1078,7 +1135,7 @@ canvas{display:block;}
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:#6B7280;" id="kpi-roll-incomplete">0</span><span class="reg-kpi-lbl">ชุด Roll ไม่ครบ</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-roll-notready">0</span><span class="reg-kpi-lbl">ไม่พร้อมใช้งาน</span></div>
         </div>
-        <div style="display:grid;grid-template-columns:210px 250px 1fr;gap:14px;align-items:start;">
+        <div class="reg-registry-grid" style="display:grid;grid-template-columns:210px 250px 1fr;gap:14px;align-items:start;">
           <!-- COL 1: Size Roll -->
           <div class="card" style="position:sticky;top:70px;">
             <div style="padding:12px 14px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
@@ -1248,7 +1305,7 @@ canvas{display:block;}
       <div class="section-sub">ปฏิทินวางแผนการผลิตตามการใช้ Roll แยกตามเครื่อง — ฝ่าย Production ใช้วางแผนงาน</div>
 
       <div id="stdpanel-prodblock">
-        <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <div class="mobile-wrap" style="display:flex;gap:8px;margin-bottom:12px;">
           <button class="btn btn-ghost btn-sm prodblock-machine-btn" data-machine="P1" onclick="switchProdBlockMachine('P1')" style="color:var(--accent);border-color:var(--accent);">P1</button>
           <button class="btn btn-ghost btn-sm prodblock-machine-btn" data-machine="P2" onclick="switchProdBlockMachine('P2')">P2</button>
           <button class="btn btn-ghost btn-sm prodblock-machine-btn" data-machine="P3" onclick="switchProdBlockMachine('P3')">P3</button>
@@ -1285,20 +1342,20 @@ canvas{display:block;}
       <div class="section-title">งานประจำวัน</div>
       <div class="section-sub" id="daily-section-sub">เช็คลิสต์งานประจำวันของทีม Tooling — วันที่ 2 ก.ค. 2569</div>
 
-      <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <div class="mobile-wrap" style="display:flex;gap:8px;margin-bottom:12px;">
         <button class="btn btn-ghost btn-sm daily-worktype-btn" data-worktype="" onclick="switchDailyWorkTypeFilter('')" style="color:var(--accent);border-color:var(--accent);">ทั้งหมด</button>
         <button class="btn btn-ghost btn-sm daily-worktype-btn" data-worktype="cnc" onclick="switchDailyWorkTypeFilter('cnc')">⚙ CNC</button>
         <button class="btn btn-ghost btn-sm daily-worktype-btn" data-worktype="polish" onclick="switchDailyWorkTypeFilter('polish')">✦ ขัด Roll</button>
       </div>
 
-      <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <div class="mobile-wrap" style="display:flex;gap:8px;margin-bottom:12px;">
         <button class="btn btn-ghost btn-sm daily-shift-btn" data-shift="" onclick="switchDailyShiftFilter('')" style="color:var(--accent);border-color:var(--accent);">ทั้งหมด</button>
         <button class="btn btn-ghost btn-sm daily-shift-btn" data-shift="morning" onclick="switchDailyShiftFilter('morning')">🌤 กะเช้า</button>
         <button class="btn btn-ghost btn-sm daily-shift-btn" data-shift="night" onclick="switchDailyShiftFilter('night')">🌙 กะดึก</button>
         <button class="btn btn-ghost btn-sm daily-shift-btn" data-shift="both" onclick="switchDailyShiftFilter('both')">🌤🌙 2 กะ</button>
       </div>
 
-      <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
+      <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
         <button class="btn btn-ghost btn-sm" onclick="dailyNav(-1)">‹ ก่อนหน้า</button>
         <div style="position:relative;display:inline-flex;">
           <span id="daily-daterange-trigger" onclick="openDailyDatePicker(event)" title="คลิกเพื่อเลือกวันที่" style="padding:0 8px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">
@@ -1366,12 +1423,12 @@ canvas{display:block;}
       <div class="section-title">วางแผน</div>
       <div class="section-sub">ตารางแผนการบำรุงรักษาและงาน Tooling ประจำปี 2569</div>
 
-      <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <div class="mobile-wrap" style="display:flex;gap:8px;margin-bottom:12px;">
         <button class="btn btn-ghost btn-sm plan-worktype-btn" data-worktype="cnc" onclick="switchPlanWorkType('cnc')" style="color:var(--accent);border-color:var(--accent);">⚙ CNC</button>
         <button class="btn btn-ghost btn-sm plan-worktype-btn" data-worktype="polish" onclick="switchPlanWorkType('polish')">✦ ขัด Roll</button>
       </div>
 
-      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
+      <div class="mobile-wrap" style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="" onclick="switchPlanShiftFilter('')" style="color:var(--accent);border-color:var(--accent);">ทั้งหมด</button>
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="morning" onclick="switchPlanShiftFilter('morning')">🌤 กะเช้า</button>
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="night" onclick="switchPlanShiftFilter('night')">🌙 กะดึก</button>
@@ -1379,7 +1436,7 @@ canvas{display:block;}
         <button class="btn btn-ghost btn-sm" style="margin-left:auto;color:var(--red);border-color:var(--red);" onclick="resetAllPlanTasks()">🗑 ล้างแผนทั้งหมด</button>
       </div>
 
-      <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
+      <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
         <button class="btn btn-ghost btn-sm" onclick="planNav(-1)">‹ ก่อนหน้า</button>
         <div style="position:relative;display:inline-flex;">
           <span id="plan-daterange-trigger" onclick="openPlanDatePicker()" title="คลิกเพื่อเลือกวันที่" style="padding:0 8px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">
@@ -1512,7 +1569,7 @@ canvas{display:block;}
       <div class="section-title">ประวัติการทำงาน</div>
       <div class="section-sub">บันทึกการดำเนินงานและบำรุงรักษา Tooling ทั้งหมด</div>
 
-      <div style="display:flex;gap:10px;margin-bottom:16px;">
+      <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;">
         <div class="search-bar" style="flex:1;margin-bottom:0;">
           <svg width="14" height="14" fill="none" stroke="var(--text-3)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input type="text" id="history-search" placeholder="ค้นหา WO / Tooling / ผู้ดำเนินการ..." oninput="renderHistory()">
@@ -1787,7 +1844,17 @@ const PAGE_META = {
   team:      { title: 'ทีมงาน', sub: 'บุคลากรฝ่าย Tooling 5 คน' },
 };
 
+function toggleMobileSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebar-backdrop').classList.toggle('open');
+}
+function closeMobileSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-backdrop').classList.remove('open');
+}
+
 function showPage(id) {
+  closeMobileSidebar(); // เลือกหน้าจากเมนูบนมือถือแล้วให้เมนูหุบกลับอัตโนมัติ
   syncRollStatusWithProdBlock();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
