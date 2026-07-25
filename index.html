@@ -822,7 +822,6 @@ canvas{display:block;}
       <button class="nav-item" onclick="showPage('pending')">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         งานค้าง
-        <span class="nav-badge" id="pending-badge">7</span>
       </button>
     </div>
     <div class="nav-section">
@@ -1560,7 +1559,7 @@ canvas{display:block;}
             <svg width="18" height="18" fill="none" stroke="var(--red)" stroke-width="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
           </div>
           <div class="kpi-label">เกินกำหนด</div>
-          <div class="kpi-value">3</div>
+          <div class="kpi-value">0</div>
           <div class="kpi-change down">ต้องดำเนินการทันที</div>
         </div>
         <div class="kpi-card amber">
@@ -1568,7 +1567,7 @@ canvas{display:block;}
             <svg width="18" height="18" fill="none" stroke="var(--amber)" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg>
           </div>
           <div class="kpi-label">รอดำเนินการ</div>
-          <div class="kpi-value">4</div>
+          <div class="kpi-value">0</div>
           <div class="kpi-change">กำหนดภายใน 7 วัน</div>
         </div>
         <div class="kpi-card blue">
@@ -1576,7 +1575,7 @@ canvas{display:block;}
             <svg width="18" height="18" fill="none" stroke="var(--accent)" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           </div>
           <div class="kpi-label">รอชิ้นส่วน / PO</div>
-          <div class="kpi-value">2</div>
+          <div class="kpi-value">0</div>
           <div class="kpi-change">ติดตามฝ่ายจัดซื้อ</div>
         </div>
       </div>
@@ -1596,55 +1595,7 @@ canvas{display:block;}
               <tr><th>ลำดับ</th><th>WO No.</th><th>ประเภทงาน</th><th>Tooling</th><th>สาเหตุค้าง</th><th>ผู้รับผิดชอบ</th><th>กำหนดเดิม</th><th>ค้างมา</th><th>ความสำคัญ</th><th>สถานะ</th></tr>
             </thead>
             <tbody>
-              <tr class="overdue-row">
-                <td class="muted">1</td><td class="muted">WO-1150</td><td>ซ่อมแซม</td><td>TL-0033 Boring Bar BR-16</td>
-                <td>รอสั่งซื้อชิ้นส่วน</td><td>วิรัตน์ ส.</td><td class="muted">15 มิ.ย.</td>
-                <td><span style="color:var(--red);font-weight:700;">15 วัน</span></td>
-                <td><span class="prio prio-high">● สูง</span></td>
-                <td><span class="chip chip-red">เกินกำหนด</span></td>
-              </tr>
-              <tr class="overdue-row">
-                <td class="muted">2</td><td class="muted">WO-1163</td><td>Regrind</td><td>TL-0078 Face Mill Ø63</td>
-                <td>ติดต่อ Vendor ไม่ได้</td><td>สมชาย ว.</td><td class="muted">20 มิ.ย.</td>
-                <td><span style="color:var(--red);font-weight:700;">10 วัน</span></td>
-                <td><span class="prio prio-high">● สูง</span></td>
-                <td><span class="chip chip-red">เกินกำหนด</span></td>
-              </tr>
-              <tr class="overdue-row">
-                <td class="muted">3</td><td class="muted">WO-1172</td><td>PM</td><td>TL-0115 Collet Chuck ER32</td>
-                <td>รอช่างเครื่องว่าง</td><td>อนุชา ท.</td><td class="muted">25 มิ.ย.</td>
-                <td><span style="color:var(--red);font-weight:700;">5 วัน</span></td>
-                <td><span class="prio prio-med">● กลาง</span></td>
-                <td><span class="chip chip-red">เกินกำหนด</span></td>
-              </tr>
-              <tr class="pending-row">
-                <td class="muted">4</td><td class="muted">WO-1204</td><td>ซ่อมแซม</td><td>Fixture F-07</td>
-                <td>รอชิ้นส่วนจากจัดซื้อ</td><td>ปิยะ ร.</td><td class="muted">5 ก.ค.</td>
-                <td><span style="color:var(--amber);font-weight:700;">5 วัน</span></td>
-                <td><span class="prio prio-high">● สูง</span></td>
-                <td><span class="chip chip-amber">รอชิ้นส่วน</span></td>
-              </tr>
-              <tr class="pending-row">
-                <td class="muted">5</td><td class="muted">WO-1205</td><td>ตรวจสอบ</td><td>TL-0067 Reamer Ø12</td>
-                <td>ยังไม่จัดสรรผู้รับผิดชอบ</td><td>—</td><td class="muted">7 ก.ค.</td>
-                <td><span style="color:var(--text-2);">7 วัน</span></td>
-                <td><span class="prio prio-med">● กลาง</span></td>
-                <td><span class="chip chip-amber">รอดำเนินการ</span></td>
-              </tr>
-              <tr class="pending-row">
-                <td class="muted">6</td><td class="muted">WO-1206</td><td>Calibrate</td><td>TL-0102 Micrometer Set</td>
-                <td>รอกำหนดการ Calibrate</td><td>อนุชา ท.</td><td class="muted">10 ก.ค.</td>
-                <td><span style="color:var(--text-2);">10 วัน</span></td>
-                <td><span class="prio prio-low">● ต่ำ</span></td>
-                <td><span class="chip chip-amber">รอดำเนินการ</span></td>
-              </tr>
-              <tr class="pending-row">
-                <td class="muted">7</td><td class="muted">WO-1207</td><td>สั่งซื้อ</td><td>End Mill Ø16 — Stock ต่ำ</td>
-                <td>รอ PR อนุมัติ</td><td>วิรัตน์ ส.</td><td class="muted">12 ก.ค.</td>
-                <td><span style="color:var(--text-2);">12 วัน</span></td>
-                <td><span class="prio prio-med">● กลาง</span></td>
-                <td><span class="chip chip-blue">รออนุมัติ</span></td>
-              </tr>
+              <tr><td colspan="10" style="padding:32px;text-align:center;color:var(--text-3);">ไม่มีงานค้าง</td></tr>
             </tbody>
           </table>
         </div>
@@ -1832,7 +1783,7 @@ const PAGE_META = {
   daily:     { title: 'งานประจำวัน', sub: 'เช็คลิสต์งานประจำวันของทีม Tooling — วันที่ 2 ก.ค. 2569' },
   plan:      { title: 'วางแผน', sub: 'ตารางแผนการบำรุงรักษาและงาน Tooling ประจำปี 2569' },
   history:   { title: 'ประวัติการทำงาน', sub: 'บันทึกการดำเนินงานและบำรุงรักษา Tooling ทั้งหมด' },
-  pending:   { title: 'งานค้าง', sub: 'รายการงานที่ต้องดำเนินการ 7 รายการ' },
+  pending:   { title: 'งานค้าง', sub: 'รายการงานที่ยังไม่ได้ดำเนินการหรือเกินกำหนด' },
   team:      { title: 'ทีมงาน', sub: 'บุคลากรฝ่าย Tooling 5 คน' },
 };
 
