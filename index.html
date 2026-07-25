@@ -3016,8 +3016,10 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, locked) {
       const breakStyle = isBreak ? 'background:var(--bg-hover);font-style:italic;' : '';
       const continuedBadge = p.continued ? ' <span class="muted" style="font-weight:400;font-style:italic;">(ต่อ)</span>' : '';
       // เทียบขนาดที่วัดได้จริงหลังแต่ง/ขัด (บันทึกตอนกด "จบงาน") กับเส้นผ่านศูนย์กลางเดิมในทะเบียน Tooling — โชว์แค่แถวแรกของชิ้นที่จบแล้ว
+      // เติมสัญลักษณ์ Ø หน้าตัวเลขให้เห็นชัดว่าเป็นเส้นผ่านศูนย์กลาง (ข้ามถ้ามี Ø ติดมากับค่าเดิมอยู่แล้ว กันซ้ำ)
+      const withDiaSymbol = v => { const s = String(v).trim(); return s.startsWith('Ø') ? s : 'Ø' + s; };
       const measuredSizeLine = (interactive && isFirstRow && !isBreak && pieceEntry.measuredSize)
-        ? `<div class="muted" style="font-size:11px;font-weight:400;">วัดได้ ${escapeHtmlAttr(pieceEntry.measuredSize)}${pieceEntry.registryDiameter ? ` <span title="เส้นผ่านศูนย์กลางเดิมในทะเบียน Tooling">(ทะเบียน ${escapeHtmlAttr(pieceEntry.registryDiameter)})</span>` : ''}</div>` : '';
+        ? `<div class="muted" style="font-size:11px;font-weight:400;">วัดได้ ${escapeHtmlAttr(withDiaSymbol(pieceEntry.measuredSize))}${pieceEntry.registryDiameter ? ` <span title="เส้นผ่านศูนย์กลางเดิมในทะเบียน Tooling">(ทะเบียน ${escapeHtmlAttr(withDiaSymbol(pieceEntry.registryDiameter))})</span>` : ''}</div>` : '';
       // เหตุผลที่พักงานชิ้นนี้ (กด "⏸ พักงาน") — โชว์แค่แถวแรกของชิ้นนั้น จนกว่าจะกดทำต่อ
       const pauseReasonLine = (interactive && isFirstRow && !isBreak && pieceEntry.status === 'paused' && pieceEntry.pauseReason)
         ? `<div class="muted" style="font-size:11px;font-weight:400;color:var(--amber);">⏸ พักงาน: ${escapeHtmlAttr(pieceEntry.pauseReason)}${pieceEntry.pausedAt ? ` (${escapeHtmlAttr(pieceEntry.pausedAt)})` : ''}</div>` : '';
