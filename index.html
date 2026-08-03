@@ -1511,13 +1511,13 @@ canvas{display:block;}
         <div class="card">
           <div class="card-header"><span class="card-title" id="plan-month-title">งานตามแผน — กรกฎาคม 2569</span></div>
           <div style="padding:14px 14px 0;display:grid;grid-template-columns:repeat(7,1fr);gap:8px;">
+            <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">อา</div>
             <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">จ</div>
             <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">อ</div>
             <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">พ</div>
             <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">พฤ</div>
             <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">ศ</div>
             <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">ส</div>
-            <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">อา</div>
           </div>
           <div id="plan-month-grid" style="padding:8px 14px 14px;display:grid;grid-template-columns:repeat(7,1fr);gap:8px;"></div>
         </div>
@@ -3213,7 +3213,7 @@ function renderPlanMonth() {
   const firstDay = new Date(year, month, 1);
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstWeekday = firstDay.getDay();
-  const leadingBlanks = firstWeekday === 0 ? 6 : firstWeekday - 1;
+  const leadingBlanks = firstWeekday;
 
   let html = '';
   for (let i = 0; i < leadingBlanks; i++) {
