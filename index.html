@@ -4115,7 +4115,15 @@ function mergeAdjacentPlanTasks() {
         const scoped = getMatchingRollsForPlan(prev.rollSet, prev.rollColor);
         const rolls = combinedRollIds.map(idx => scoped[idx]).filter(Boolean);
         if (rolls.length !== combinedRollIds.length) continue; // หา Roll บางตัวไม่เจอ ข้ามไปก่อนเพื่อความปลอดภัย
-        const wouldSplit = splitPlanDataAcrossDays({ date: prev.date, shift: prev.shift, startTime: prev.startTime, otCapMinutesByShift: prev.otCapMinutesByShift || {}, rollIds: combinedRollIds }, rolls, prev.workType);
+        // ต้องใช้นาทีจริงของแต่ละชิ้น (rollMinutesOverride ถ้ามี) ไม่ใช่เวลาเต็มจากทะเบียน Tooling เสมอไป — ไม่งั้นชิ้นที่ "(ต่อ)" มาจากงานก่อนหน้า (ทำมาแล้วบางส่วน เหลือน้อยกว่าเวลาเต็ม)
+        // จะถูกนับเวลาเกินจริง ทำให้เข้าใจผิดว่ารวมกันแล้วจะข้ามรอบกะ (wouldSplit) ทั้งที่จริงๆ รวมกันพอดีในกะเดียว เลยไม่ยอมรวมงานให้
+        const field = PLAN_WORKTYPE_META[prev.workType].field;
+        const combinedMinutesList = combinedRollIds.map((idx, i) => {
+          const override = (prev.rollMinutesOverride && prev.rollMinutesOverride[idx] != null) ? prev.rollMinutesOverride[idx]
+            : (cur.rollMinutesOverride && cur.rollMinutesOverride[idx] != null) ? cur.rollMinutesOverride[idx] : null;
+          return override != null ? override : (parseFloat(rolls[i][field]) || 0);
+        });
+        const wouldSplit = splitPlanDataAcrossDays({ date: prev.date, shift: prev.shift, startTime: prev.startTime, otCapMinutesByShift: prev.otCapMinutesByShift || {}, rollIds: combinedRollIds }, rolls, prev.workType, combinedMinutesList);
         if (wouldSplit) continue; // รวมแล้วจะข้ามรอบกะจริง ต้องแยกไว้ตามเดิม
         prev.rollIds = combinedRollIds;
         prev.rollId = combinedRollIds.length + ' Roll';
