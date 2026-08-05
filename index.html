@@ -824,6 +824,22 @@ canvas{display:block;}
       <p>เลือกชื่อของคุณเพื่อเข้าใช้งาน — หน้าจอที่แสดงจะปรับตามหน้าที่การทำงาน</p>
     </div>
     <div class="login-user-grid" id="login-user-grid"></div>
+    <div id="login-code-step" style="display:none;">
+      <button type="button" onclick="backToLoginGrid()" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:13px;padding:0;margin-bottom:14px;display:flex;align-items:center;gap:4px;">‹ กลับ</button>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+        <div class="login-user-avatar" id="login-code-avatar" style="width:44px;height:44px;font-size:15px;"></div>
+        <div>
+          <div style="font-weight:700;font-size:15px;" id="login-code-name"></div>
+          <div class="muted" style="font-size:12px;" id="login-code-role"></div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">รหัสเข้าใช้งาน</label>
+        <input class="form-input" id="login-code-input" type="password" inputmode="numeric" autocomplete="off" placeholder="กรอกรหัส" onkeydown="if(event.key==='Enter')submitLoginCode()">
+      </div>
+      <div id="login-code-error" style="color:var(--red);font-size:12px;min-height:16px;margin:6px 0 10px;"></div>
+      <button type="button" class="btn btn-primary" style="width:100%;justify-content:center;" onclick="submitLoginCode()">เข้าสู่ระบบ</button>
+    </div>
   </div>
 </div>
 
@@ -6678,7 +6694,15 @@ function teamMemberFormFields() {
     <div class="modal-row">
       <div class="form-group"><label class="form-label">On Time (%)</label><input class="form-input" id="tf-ontime" type="number" placeholder="0"></div>
       <div class="form-group"><label class="form-label">ทักษะ (คั่นด้วย , )</label><input class="form-input" id="tf-skills" placeholder="เช่น Cutting Tool, Regrind"></div>
-    </div>`;
+    </div>
+    ${currentUser && currentUser.role === 'admin' ? `
+    <div class="modal-row full">
+      <div class="form-group">
+        <label class="form-label">รหัสเข้าใช้งาน (PIN) — เฉพาะ Admin ตั้งได้</label>
+        <input class="form-input" id="tf-logincode" placeholder="เว้นว่างไว้ = ไม่ต้องใช้รหัส (คลิกชื่อเข้าใช้งานได้เลยเหมือนเดิม)" autocomplete="off">
+        <span style="font-size:11px;color:var(--text-3);">⚠ รหัสนี้เก็บ/ตรวจสอบในเบราว์เซอร์เท่านั้น ไม่ใช่ระบบความปลอดภัยจริง — ใช้กันคนเผลอกดเข้าเป็นชื่อคนอื่น ไม่ได้ป้องกันผู้ที่ตั้งใจเจาะระบบ</span>
+      </div>
+    </div>` : ''}`;
 }
 
 function openTeamMemberModal(mode, id) {
@@ -6694,6 +6718,8 @@ function openTeamMemberModal(mode, id) {
   document.getElementById('tf-pending').value = member && member.pendingTasks != null ? member.pendingTasks : '';
   document.getElementById('tf-ontime').value = member && member.onTimePct != null ? member.onTimePct : '';
   document.getElementById('tf-skills').value = member ? (member.skills || []).join(', ') : '';
+  const logincodeEl = document.getElementById('tf-logincode');
+  if (logincodeEl) logincodeEl.value = member ? (member.loginCode || '') : '';
   document.getElementById('modal-overlay').classList.add('open');
 
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
@@ -6713,6 +6739,9 @@ function openTeamMemberModal(mode, id) {
       onTimePct: g('tf-ontime') === '' ? null : parseFloat(g('tf-ontime')),
       skills: g('tf-skills') ? g('tf-skills').split(',').map(s => s.trim()).filter(Boolean) : []
     };
+    // ช่องรหัสเข้าใช้งานแสดงเฉพาะตอน Admin เปิดฟอร์มนี้ (ดู teamMemberFormFields) — ถ้าไม่มีช่องนี้ในฟอร์ม (คนแก้ไขไม่ใช่ Admin) ให้คงรหัสเดิมไว้ ไม่ไปลบทิ้ง
+    if (document.getElementById('tf-logincode')) data.loginCode = g('tf-logincode') || null;
+    else if (member) data.loginCode = member.loginCode || null;
     if (mode === 'edit') {
       Object.assign(member, data);
     } else {
@@ -7458,17 +7487,20 @@ function collectLoginUsers() {
     const nameEl = card.querySelector('.team-name');
     const avatarEl = card.querySelector('.team-avatar');
     if (!nameEl) return;
+    const teamMatch = teamMembers.find(m => m.name === nameEl.textContent.trim());
     users.push({
       name: nameEl.textContent.trim(),
       role,
       initials: avatarEl ? avatarEl.textContent.trim() : nameEl.textContent.trim().slice(0, 2),
-      avatarBg: avatarEl ? avatarEl.style.background : ''
+      avatarBg: avatarEl ? avatarEl.style.background : '',
+      loginCode: teamMatch ? (teamMatch.loginCode || '') : ''
     });
   });
   return users;
 }
 
 function renderLoginOptions() {
+  backToLoginGrid();
   const grid = document.getElementById('login-user-grid');
   const users = collectLoginUsers();
   grid.innerHTML = users.map((u, i) => `
@@ -7478,8 +7510,44 @@ function renderLoginOptions() {
       <div class="login-user-role">${escapeHtmlAttr(roleLabel(u.role))}</div>
     </button>`).join('');
   grid.querySelectorAll('.login-user-btn').forEach((btn, i) => {
-    btn.addEventListener('click', () => loginAs(users[i]));
+    btn.addEventListener('click', () => requestLogin(users[i]));
   });
+}
+
+// รหัสเข้าใช้งาน (PIN) ตรวจสอบแค่ฝั่งเบราว์เซอร์เท่านั้น (ดูคำเตือนในฟอร์มแก้ไขสมาชิกทีม) — ไม่ใช่ระบบความปลอดภัยจริง แค่กันคนเผลอกดเข้าเป็นชื่อคนอื่น
+let pendingLoginUser = null;
+function requestLogin(user) {
+  if (!user.loginCode) { loginAs(user); return; }
+  pendingLoginUser = user;
+  document.getElementById('login-user-grid').style.display = 'none';
+  const step = document.getElementById('login-code-step');
+  step.style.display = 'block';
+  document.getElementById('login-code-avatar').textContent = user.initials;
+  document.getElementById('login-code-avatar').style.background = user.avatarBg || roleColor(user.role);
+  document.getElementById('login-code-name').textContent = user.name;
+  document.getElementById('login-code-role').textContent = roleLabel(user.role);
+  document.getElementById('login-code-error').textContent = '';
+  const input = document.getElementById('login-code-input');
+  input.value = '';
+  input.focus();
+}
+function backToLoginGrid() {
+  pendingLoginUser = null;
+  const grid = document.getElementById('login-user-grid');
+  const step = document.getElementById('login-code-step');
+  if (grid) grid.style.display = '';
+  if (step) step.style.display = 'none';
+}
+function submitLoginCode() {
+  if (!pendingLoginUser) return;
+  const entered = document.getElementById('login-code-input').value;
+  if (entered !== pendingLoginUser.loginCode) {
+    document.getElementById('login-code-error').textContent = 'รหัสไม่ถูกต้อง ลองอีกครั้ง';
+    document.getElementById('login-code-input').value = '';
+    document.getElementById('login-code-input').focus();
+    return;
+  }
+  loginAs(pendingLoginUser);
 }
 
 let adminViewAsName = null; // Admin-only: preview the UI as another team member, without actually switching login
@@ -7509,6 +7577,7 @@ function defaultPageForRole(role) {
 function loginAs(user) {
   currentUser = user;
   adminViewAsName = null;
+  pendingLoginUser = null;
   try { localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(currentUser)); } catch (e) { /* localStorage unavailable */ }
   document.getElementById('login-overlay').classList.add('hidden');
   applyRoleUI();
