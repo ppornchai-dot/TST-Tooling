@@ -4072,10 +4072,16 @@ function autoFixPlanSequencing() {
         });
       for (let i = 1; i < tasks.length; i++) {
         const prev = tasks[i - 1], cur = tasks[i];
-        if (cur.date === prev.endDate && cur.startTime === prev.endTime) continue;
-        cur.date = prev.endDate;
+        let targetDate = prev.endDate, targetTime = prev.endTime;
+        // งาน "2 กะ" ที่จบพอดีจุดหมดกะ (17:00 จบกะเช้า / 05:00 จบกะดึก) ไม่มีใครทำงานจริงตรงจุดนั้น — เลื่อนจุดต่อเวลาไปเริ่มกะถัดไปตรงๆ (20:00/08:00 วันเดียวกัน) แทน
+        // กันงานถัดไปมี startTime ค้างอยู่ตรงจุดที่ยังไม่ถึงเวลาเริ่มกะจริง (แม้ endTime ที่คำนวณได้จะถูกต้องอยู่แล้วเพราะ computePlanEnd ข้ามช่วงว่างให้เองก็ตาม แต่ startTime ที่แสดงจะดูสับสน)
+        if (prev.shift === 'both' && (targetTime === '17:00' || targetTime === '05:00')) {
+          targetTime = targetTime === '17:00' ? '20:00' : '08:00';
+        }
+        if (cur.date === targetDate && cur.startTime === targetTime) continue;
+        cur.date = targetDate;
         cur.shift = prev.shift;
-        cur.startTime = prev.endTime;
+        cur.startTime = targetTime;
         const computed = computePlanEnd(cur.date, cur.startTime, cur.totalTime, cur.shift, cur.otCapMinutesByShift || {});
         cur.endTime = computed.time;
         cur.endDate = computed.date || cur.date;
