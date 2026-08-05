@@ -1433,7 +1433,8 @@ canvas{display:block;}
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="morning" onclick="switchPlanShiftFilter('morning')">🌤 กะเช้า</button>
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="night" onclick="switchPlanShiftFilter('night')">🌙 กะดึก</button>
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="both" onclick="switchPlanShiftFilter('both')">🌤🌙 2 กะ</button>
-        <button class="btn btn-ghost btn-sm" style="margin-left:auto;color:var(--red);border-color:var(--red);" onclick="resetAllPlanTasks()">🗑 ล้างแผนทั้งหมด</button>
+        <button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="openCompanyHolidaysModal()">📅 วันหยุดบริษัท</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--red);border-color:var(--red);" onclick="resetAllPlanTasks()">🗑 ล้างแผนทั้งหมด</button>
       </div>
 
       <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
@@ -2549,6 +2550,81 @@ const toolingData = {
 let planTasks = [];
 let planTaskSeq = 9;
 
+// ─── วันหยุดบริษัท (หน้าวางแผน) — วันที่กำหนดไว้ที่นี่ ระบบวางแผนงานอัตโนมัติ (ต่องานวันถัดไป/แบ่งงานข้ามวัน) จะข้ามไปเลย เหมือนวันอาทิตย์ ───
+let companyHolidays = []; // [{ id, date: 'YYYY-MM-DD', name }]
+let companyHolidaySeq = 0;
+function isCompanyHoliday(iso) { return companyHolidays.some(h => h.date === iso); }
+// วันที่ระบบวางแผนงานอัตโนมัติ (CNC/ขัด Roll) ห้ามเริ่ม/วางงานใหม่ — วันอาทิตย์ (เหมือน isDayOff ของ Production Block) หรือวันหยุดบริษัทที่กำหนดไว้เอง
+function isPlanDayOff(iso) { return parseISODate(iso).getDay() === 0 || isCompanyHoliday(iso); }
+
+function renderCompanyHolidaysList() {
+  const wrap = document.getElementById('ch-list-wrap');
+  if (!wrap) return;
+  const sorted = [...companyHolidays].sort((a, b) => a.date.localeCompare(b.date));
+  wrap.innerHTML = sorted.length ? `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>วันที่</th><th>ชื่อวันหยุด</th><th></th></tr></thead>
+        <tbody>
+          ${sorted.map(h => `
+            <tr>
+              <td>${fmtDateThai(parseISODate(h.date))}</td>
+              <td>${escapeHtmlAttr(h.name || '—')}</td>
+              <td style="text-align:right;"><button type="button" class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteCompanyHoliday('${h.id}')">ลบ</button></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : `<div style="font-size:12px;color:var(--text-3);">ยังไม่มีวันหยุดบริษัทที่กำหนดไว้</div>`;
+}
+
+function addCompanyHoliday() {
+  const dateEl = document.getElementById('ch-date');
+  const nameEl = document.getElementById('ch-name');
+  const date = dateEl.value;
+  if (!date) { alert('กรุณาเลือกวันที่'); return; }
+  const name = nameEl.value.trim();
+  const existing = companyHolidays.find(h => h.date === date);
+  if (existing) {
+    existing.name = name;
+  } else {
+    companyHolidaySeq++;
+    companyHolidays.push({ id: 'HD-' + String(companyHolidaySeq).padStart(4, '0'), date, name });
+  }
+  persistState();
+  dateEl.value = '';
+  nameEl.value = '';
+  renderCompanyHolidaysList();
+  if (currentPlanView === 'month') renderCurrentPlanView();
+}
+
+function deleteCompanyHoliday(id) {
+  if (!confirm('ลบวันหยุดนี้?')) return;
+  companyHolidays = companyHolidays.filter(h => h.id !== id);
+  persistState();
+  renderCompanyHolidaysList();
+  if (currentPlanView === 'month') renderCurrentPlanView();
+}
+
+function openCompanyHolidaysModal() {
+  document.getElementById('modal-title').textContent = 'วันหยุดบริษัท';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="modal-row full" style="font-size:12px;color:var(--text-3);">
+      วันที่กำหนดไว้ที่นี่จะถูกข้ามในระบบวางแผนงานอัตโนมัติ (CNC/ขัด Roll) เหมือนวันอาทิตย์ — ระบบจะไม่วางแผนงานในวันนั้น และเลื่อนไปเริ่มวันทำงานถัดไปแทน
+    </div>
+    <div class="modal-row">
+      <div class="form-group"><label class="form-label">วันที่</label><input class="form-input" id="ch-date" type="date"></div>
+      <div class="form-group"><label class="form-label">ชื่อวันหยุด</label><input class="form-input" id="ch-name" type="text" placeholder="เช่น วันสงกรานต์"></div>
+    </div>
+    <div class="modal-row full" style="text-align:right;margin-top:-8px;">
+      <button type="button" class="btn btn-primary btn-sm" onclick="addCompanyHoliday()">+ เพิ่มวันหยุด</button>
+    </div>
+    <div class="modal-row full" id="ch-list-wrap" style="margin-top:4px;"></div>
+  `;
+  document.getElementById('modal-overlay').classList.add('open');
+  document.querySelector('.modal-footer .btn-primary').onclick = closeModal;
+  renderCompanyHolidaysList();
+}
+
 // ─── GANTT TASKS (หน้าวางแผน — มุมมอง Gantt) ───────────────────────────────────
 let ganttTasks = [];
 let ganttTaskSeq = 0;
@@ -3222,11 +3298,14 @@ function renderPlanMonth() {
   for (let day = 1; day <= daysInMonth; day++) {
     const d = new Date(year, month, day);
     const iso = toISODate(d);
+    const holidayName = companyHolidays.find(h => h.date === iso)?.name || null;
+    const isSunday = d.getDay() === 0;
+    const dayOffBg = (isSunday || holidayName) ? 'background:#FDF3D8;' : '';
     const tasks = planTasks.filter(t => taskDisplayDate(t) === iso && matchesCurrentPlanFilter(t)).sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
     const chips = tasks.map(t =>
       `<span class="chip ${shiftChipClass(t.shift)}" style="font-size:10px;cursor:pointer;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(SHIFTS[t.shift]?.label || '')} — ${escapeHtmlAttr(t.rollId)} — ${escapeHtmlAttr(t.rollName)}">${escapeHtmlAttr(t.rollId)}</span>`
     ).join('');
-    html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;">
+    html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;${dayOffBg}" title="${holidayName ? escapeHtmlAttr(holidayName) : ''}">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <strong style="font-size:12px;">${day}</strong>
         <button title="เพิ่มงาน" onclick="openPlanTaskModal('add', null, '${iso}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:13px;line-height:1;padding:0;">+</button>
@@ -3499,11 +3578,17 @@ function fillPlanRollReadonly(setName, colorKey, presetSelectedIndexes, excludeT
 const OT_BREAK_MIN = 20; // พักก่อนเริ่ม OT (นาที) ไม่นับเป็นเวลาทำงาน
 // หาเวลา (นาทีสัมบูรณ์ >= fromCursor) ที่เข้ากะปกติครั้งถัดไป — ใช้ตอนออกนอกทุกช่วงกะแล้วต้องรอเริ่มกะถัดไป (อาจเป็น window ที่สองของวันเดียวกัน เช่น "2 กะ" ที่รอต่อจากกะเช้าไปกะดึก หรือกะแรกของวันถัดไป)
 // พิจารณาทุก window ของกะนี้ (ไม่กรองเฉพาะกะที่เพิ่งออกมา) — งาน "2 กะ" ต้องไหลต่อไปกะตรงข้ามที่ใกล้ที่สุดตามเวลาจริง ไม่ใช่รอกะเดิมย้อนกลับมาก่อน
-function nextShiftEntry(fromCursor, shift) {
+// refDate (วันที่เริ่มงานจริง, ใช้แปลง candidate นาทีสัมบูรณ์กลับเป็นวันปฏิทิน) ใช้ข้ามวันอาทิตย์/วันหยุดบริษัท —
+// ถ้า candidate ของ window นั้นตกอยู่ในวันหยุด ให้เลื่อนไปอีก 1 วัน (วนซ้ำได้ กันเคสวันหยุดติดกันหลายวัน) แทนที่จะปล่อยให้เริ่มกะใหม่ในวันหยุด
+function nextShiftEntry(fromCursor, shift, refDate) {
   let best = Infinity;
   shift.windows.forEach(w => {
     let candidate = w.startMin;
     while (candidate < fromCursor) candidate += 1440;
+    if (refDate) {
+      let guard = 0;
+      while (isPlanDayOff(addDaysIso(refDate, Math.floor(candidate / 1440))) && guard < 60) { candidate += 1440; guard++; }
+    }
     if (candidate < best) best = candidate;
   });
   return best;
@@ -3574,7 +3659,7 @@ function advancePlanCursor(state, minutes) {
     const inAnyShiftWindow = state.shift.windows.some(w => isMinuteInWindow(curMinOfDay, w));
     if (remaining > 0 && !inAnyShiftWindow) {
       const gapStart = state.cursor;
-      state.cursor = nextShiftEntry(state.cursor, state.shift);
+      state.cursor = nextShiftEntry(state.cursor, state.shift, state.startDate);
       pushChunk(null, 'shiftgap', gapStart, state.cursor); // ช่วงรอกะถัดไป ไม่ใช่ของกะไหนกะหนึ่งโดยเฉพาะ (ไม่มีคนทำงานอยู่เลยในช่วงนี้)
     }
   }
@@ -3582,7 +3667,7 @@ function advancePlanCursor(state, minutes) {
 }
 
 // เตรียม state เริ่มต้นสำหรับเดินเวลา — ใช้ร่วมกันทั้ง computePlanEnd และ computePlanPieceSchedule
-function initPlanCursorState(startTime, shiftKey, otCaps) {
+function initPlanCursorState(startDate, startTime, shiftKey, otCaps) {
   const [h, m] = startTime.split(':').map(Number);
   if (Number.isNaN(h) || Number.isNaN(m)) return null;
   const shift = SHIFTS[shiftKey] || null;
@@ -3610,7 +3695,7 @@ function initPlanCursorState(startTime, shiftKey, otCaps) {
     // ตั้ง segment ของกะที่เพิ่งออกมาไว้ก่อนตั้งแต่ต้น (แม้ยังไม่มี OT เกิดขึ้นจริงในการเรียกครั้งนี้ เช่น โควตา OT ของกะนั้น = 0) กันไม่ให้ช่องจบงานของกะนั้นว่างเปล่า ทั้งที่ช่องเริ่มงานมีค่าอยู่แล้ว
     segments[lastExitedKey] = { start: cursor, end: cursor };
   }
-  return { cursor, shift, otCaps: otCaps || {}, segments, otMinutesByShift: {}, otMinutes: 0, lastExitedKey, otUsedThisExit, breakPaidThisExit };
+  return { cursor, shift, otCaps: otCaps || {}, segments, otMinutesByShift: {}, otMinutes: 0, lastExitedKey, otUsedThisExit, breakPaidThisExit, startDate };
 }
 
 // คำนวณวันที่/เวลาจบงาน + เวลา OT ที่ใช้จริง (รวม + แยกรายกะ) + ช่วงเวลาเริ่ม/จบของแต่ละกะ (segments)
@@ -3618,7 +3703,7 @@ function initPlanCursorState(startTime, shiftKey, otCaps) {
 // otCaps = { morning: นาที, night: นาที } — โควตา OT ต่อวันแยกกันของแต่ละกะ เพราะ OT ที่ต่อจากกะเช้ากับกะดึกอาจกำหนดไว้ไม่เท่ากัน
 function computePlanEnd(startDate, startTime, totalMinutes, shiftKey, otCaps) {
   if (!startTime || !totalMinutes) return { date: '', time: '', otMinutes: 0, otMinutesByShift: {}, segments: {} };
-  const state = initPlanCursorState(startTime, shiftKey, otCaps);
+  const state = initPlanCursorState(startDate, startTime, shiftKey, otCaps);
   if (!state) return { date: '', time: '', otMinutes: 0, otMinutesByShift: {}, segments: {} };
   advancePlanCursor(state, totalMinutes);
   const daysElapsed = Math.floor(state.cursor / 1440);
@@ -3632,7 +3717,7 @@ function computePlanEnd(startDate, startTime, totalMinutes, shiftKey, otCaps) {
 // pieceMinutesList = [นาทีต่อชิ้น, ...] ตามลำดับที่จะทำ — คืน [{startDate, startTime, endDate, endTime}, ...] ความยาวเท่ากับ pieceMinutesList
 function computePlanPieceSchedule(startDate, startTime, pieceMinutesList, shiftKey, otCaps) {
   if (!startTime || !pieceMinutesList || !pieceMinutesList.length) return [];
-  const state = initPlanCursorState(startTime, shiftKey, otCaps);
+  const state = initPlanCursorState(startDate, startTime, shiftKey, otCaps);
   if (!state) return [];
   return pieceMinutesList.map(minutes => {
     const startAbs = state.cursor;
@@ -4668,7 +4753,7 @@ function persistState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollSetCategoryTemplates,
-      planTasks, planTaskSeq, teamMembers, teamSeq,
+      planTasks, planTaskSeq, companyHolidays, companyHolidaySeq, teamMembers, teamSeq,
       ganttTasks, ganttTaskSeq, planGanttWindowStart,
       dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
       dailyPieceStatus, rollSizeLog, rollSizeLogSeq, dailyPauseLog, dailyPauseLogSeq,
@@ -4698,6 +4783,8 @@ function restoreState() {
     if (typeof saved.rollColorSeq === 'number') rollColorSeq = saved.rollColorSeq;
     if (Array.isArray(saved.planTasks)) planTasks = saved.planTasks;
     if (typeof saved.planTaskSeq === 'number') planTaskSeq = saved.planTaskSeq;
+    if (Array.isArray(saved.companyHolidays)) companyHolidays = saved.companyHolidays;
+    if (typeof saved.companyHolidaySeq === 'number') companyHolidaySeq = saved.companyHolidaySeq;
     if (Array.isArray(saved.ganttTasks)) ganttTasks = saved.ganttTasks;
     if (typeof saved.ganttTaskSeq === 'number') ganttTaskSeq = saved.ganttTaskSeq;
     if (typeof saved.planGanttWindowStart === 'string') planGanttWindowStart = saved.planGanttWindowStart;
@@ -5947,7 +6034,9 @@ function maybeAutoContinueDailyPlan(dateIso) {
   if (!allDone) return;
   dailyAutoContinuedDates[dateIso] = true;
   if (!plannedForDay.length) return;
-  const nextDate = addDaysIso(dateIso, 1);
+  let nextDate = addDaysIso(dateIso, 1);
+  let dayOffGuard = 0;
+  while (isPlanDayOff(nextDate) && dayOffGuard < 30) { nextDate = addDaysIso(nextDate, 1); dayOffGuard++; } // ข้ามวันอาทิตย์/วันหยุดบริษัท ไปเริ่มวันทำงานถัดไปแทน
   let createdCount = 0;
   plannedForDay.forEach(t => {
     const alreadyExists = planTasks.some(x => x.workType === t.workType && x.rollSet === t.rollSet && x.rollColor === t.rollColor && x.date === nextDate);
