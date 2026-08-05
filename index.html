@@ -4977,6 +4977,25 @@ syncRollStatusWithProdBlock();
   persistState();
 })();
 
+// migration: งานวางแผนเก่าบางงานเคยถูกคำนวณเวลาจบผิดตอนตัดแบ่งข้ามกะ (เผลอรวมช่วง "รอกะถัดไป" เข้าไปในเวลาจบด้วย ก่อนจะแก้ที่ splitPlanDataAcrossDays)
+// รีคำนวณเวลาจบ/OT ของทุกงานใหม่จาก date/startTime/totalTime/shift ที่เก็บไว้จริงเสมอ (computePlanEnd ไม่เคยมีบั๊กนี้) กันค่าที่เคยผิดพลาดค้างอยู่ ทำให้งานถัดไปที่ต่อเวลามาต่อผิดจุดตามไปด้วย
+(function refreshPlanTaskEndTimes() {
+  let anyChanged = false;
+  planTasks.forEach(t => {
+    if (!t.date || !t.startTime || t.startTime === '—' || !t.totalTime) return;
+    const computed = computePlanEnd(t.date, t.startTime, t.totalTime, t.shift, t.otCapMinutesByShift || {});
+    if (!computed.time) return;
+    const newEndDate = computed.date || t.date;
+    if (t.endTime !== computed.time || t.endDate !== newEndDate) {
+      t.endTime = computed.time;
+      t.endDate = newEndDate;
+      t.otMinutes = computed.otMinutes || 0;
+      t.otMinutesByShift = computed.otMinutesByShift || {};
+      anyChanged = true;
+    }
+  });
+  if (anyChanged) persistState();
+})();
 // migration: งานวางแผนเก่าที่เคยทับเวลากัน/ไม่ต่อเนื่องกัน (ก่อนมีระบบต่อเวลาอัตโนมัติ) ให้ต่อเวลาให้เรียบร้อยตั้งแต่ตอนโหลดแอปเลย ไม่ต้องรอให้ผู้ใช้กดปุ่ม "ต่อเวลา" เอง
 if (autoFixPlanSequencing()) persistState();
 // migration: รวมงานเก่าที่ต่อเวลากันสนิทแต่ถูกสร้างแยกไว้คนละแถว (เช่น เพิ่มงานทีละล็อต) ให้เป็นงานเดียวกันตั้งแต่ตอนโหลดแอปเลย
