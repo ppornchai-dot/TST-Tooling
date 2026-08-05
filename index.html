@@ -4148,6 +4148,84 @@ function mergeAdjacentPlanTasks() {
   return anyChanged;
 }
 
+// สร้างงานต่อให้อัตโนมัติสำหรับ Roll ที่ยังเหลือเวลาไม่ครบของ Size Roll/สี/ประเภทงานเดียวกัน (workType/setName/colorKey) โดยเริ่มจาก (anchorDate, anchorTime) ที่กำหนด
+// ใช้ตอนพอดีจบที่ขอบเขตกะ (08:00/17:00/20:00/05:00) แล้วไม่มีเวลาทำงานต่อในจุดนั้น — เรียกทั้งตอนบันทึกงานใหม่ (savePlanTask) และตอน migration กวาดหางานที่เคยตกหล่นตอนโหลดแอป
+// คืนค่าจำนวนงานที่สร้างเพิ่ม (0 ถ้าไม่มีอะไรต้องต่อ)
+function autoContinueRemainingRollTime(workType, setName, colorKey, otCapMinutesByShift, workerId, anchorDate, anchorTime) {
+  const field = PLAN_WORKTYPE_META[workType].field;
+  // เวลาที่ถูกวางแผนไปแล้วจริงของ Roll ตำแหน่ง idx หนึ่งๆ (รวมทุกงานของ Size Roll/สี/ประเภทงานเดียวกัน) — งานที่ตัดเวลาไว้บางส่วน (rollMinutesOverride) นับตามที่ตัดจริง ไม่ใช่เต็มเวลาทะเบียน
+  const usedMinutesForIdx = (idx, fullMinutes) => planTasks.reduce((sum, t) => {
+    if (t.workType !== workType || t.rollSet !== setName || t.rollColor !== (colorKey || null)) return sum;
+    if (!(t.rollIds || []).includes(idx)) return sum;
+    const override = t.rollMinutesOverride && t.rollMinutesOverride[idx];
+    return sum + (override != null ? override : fullMinutes);
+  }, 0);
+  let lastEndDate = anchorDate, lastEndTime = anchorTime;
+  let createdCount = 0;
+  let guard = 0;
+  while (['08:00', '17:00', '20:00', '05:00'].includes(lastEndTime) && ++guard <= 366) {
+    // ถ้าจบพอดีตรงจุด "หมดกะ" (17:00 จบกะเช้า / 05:00 จบกะดึก) ให้ขยับไปเริ่มงานต่อที่ "เริ่มกะถัดไป" ตรงๆ (20:00/08:00 วันเดียวกัน) แทนที่จะให้งานใหม่มีเวลาเริ่มตรงจุดที่ยังไม่มีใครทำงานอยู่
+    // (ถ้าปล่อยให้ startTime เป็น 17:00/05:00 เป๊ะ ตารางกะของงานนั้นจะเริ่มด้วยช่วง "รอกะถัดไป" ล้วนๆ ก่อนมีงานจริงเลยสักนาที ทำให้ splitPlanDataAcrossDays สร้างกลุ่มแรกที่ไม่มี Roll ไม่มีเวลาว่างเปล่าติดมาด้วย)
+    if (lastEndTime === '17:00') lastEndTime = '20:00';
+    else if (lastEndTime === '05:00') lastEndTime = '08:00';
+    const matchedRolls = getMatchingRollsForPlan(setName, colorKey || null);
+    const remainingList = matchedRolls.map((r, idx) => {
+      const full = parseFloat(r[field]) || 0;
+      return { idx, roll: r, full, remaining: Math.max(0, full - usedMinutesForIdx(idx, full)) };
+    }).filter(p => p.remaining > 0);
+    if (!remainingList.length) break;
+    const remainingIdx = remainingList.map(p => p.idx);
+    const remainingRolls = remainingList.map(p => p.roll);
+    const remainingMinutesList = remainingList.map(p => p.remaining);
+    const nextTotalTime = remainingMinutesList.reduce((a, b) => a + b, 0);
+    if (!nextTotalTime) break;
+    const nextSplit = splitPlanDataAcrossDays({ date: lastEndDate, shift: 'both', startTime: lastEndTime, otCapMinutesByShift, rollIds: remainingIdx }, remainingRolls, workType, remainingMinutesList);
+    if (nextSplit) {
+      const grpId = 'SG-' + String(planTaskSeq + 1).padStart(4, '0');
+      nextSplit.forEach(grp => {
+        planTaskSeq++;
+        planTasks.push({
+          id: 'PT-' + String(planTaskSeq).padStart(4, '0'), workType,
+          date: grp.date, rollSet: setName, rollColor: colorKey || null,
+          rollIds: grp.rollIds, rollId: grp.rollId, rollName: grp.rollName, totalTime: grp.totalTime,
+          startTime: grp.startTime, endTime: grp.endTime, endDate: grp.endDate,
+          shift: 'both', otCapMinutesByShift,
+          otMinutes: grp.otMinutes, otMinutesByShift: grp.otMinutesByShift,
+          rollMinutesOverride: grp.rollMinutesOverride,
+          workerId,
+          splitGroupId: grpId,
+        });
+        createdCount++;
+      });
+      const lastNextGrp = nextSplit[nextSplit.length - 1];
+      lastEndDate = lastNextGrp.endDate;
+      lastEndTime = lastNextGrp.endTime;
+    } else {
+      const nextComputed = computePlanEnd(lastEndDate, lastEndTime, nextTotalTime, 'both', otCapMinutesByShift);
+      // งานนี้ทำ Roll แต่ละชิ้นในรายการจบครบในคราวเดียว (ไม่ถูกตัดข้ามวันอีก) แต่บางชิ้นอาจยังเป็น "ส่วนที่เหลือ" จากงานก่อนหน้าอยู่ (remaining < full) ต้องบันทึก override ไว้เพื่อให้ยังนับเป็นงานต่อเนื่อง/แสดงผลถูกต้อง
+      const rollMinutesOverride = {};
+      remainingList.forEach(p => { if (p.remaining !== p.full) rollMinutesOverride[p.idx] = p.remaining; });
+      planTaskSeq++;
+      planTasks.push({
+        id: 'PT-' + String(planTaskSeq).padStart(4, '0'), workType,
+        date: lastEndDate, rollSet: setName, rollColor: colorKey || null,
+        rollIds: remainingIdx, rollId: remainingRolls.length + ' Roll', rollName: remainingRolls.map(r => r.name).join(', '),
+        totalTime: nextTotalTime,
+        startTime: lastEndTime, endTime: nextComputed.time || '—', endDate: nextComputed.date || lastEndDate,
+        shift: 'both', otCapMinutesByShift,
+        otMinutes: nextComputed.otMinutes || 0, otMinutesByShift: nextComputed.otMinutesByShift || {},
+        rollMinutesOverride: Object.keys(rollMinutesOverride).length ? rollMinutesOverride : undefined,
+        workerId,
+        splitGroupId: null,
+      });
+      createdCount++;
+      lastEndDate = nextComputed.date || lastEndDate;
+      lastEndTime = nextComputed.time || lastEndTime;
+    }
+  }
+  return createdCount;
+}
+
 function openPlanTaskModal(mode, taskId, presetDate) {
   const task = mode === 'edit' ? planTasks.find(t => t.id === taskId) : null;
   currentEditingPlanTaskId = task ? task.id : null;
@@ -4247,80 +4325,10 @@ function openPlanTaskModal(mode, taskId, presetDate) {
       planTaskSeq++;
       planTasks.push({ id: 'PT-' + String(planTaskSeq).padStart(4, '0'), workType, ...data, splitGroupId: null });
     }
-    // งาน "2 กะ" ที่จบพอดีตรงขอบเขตกะ (08:00/17:00/20:00/05:00 — เริ่ม/จบกะเช้าหรือกะดึกพอดี ไม่มี OT ต่อ) แปลว่าไม่มีเวลาทำงานต่อในจุดนั้นแล้ว — ถ้า Roll set/สีเดียวกันนี้ยังมีเวลาที่ต้องวางแผนเหลืออยู่
-    // (ทั้ง Roll ที่ยังไม่เคยแตะเลย และ Roll ที่ถูกตัดเวลาไว้แค่บางส่วนตอนชนขอบเขตกะ เช่น ชิ้นสุดท้ายที่ทำไปได้ไม่กี่นาทีก่อนหมดเวลา OT พอดี)
-    // ให้สร้างงานต่อให้อัตโนมัติทันที โดยเริ่มจากเวลาขอบเขตนั้นตรงๆ (ใช้ OT cap/ผู้ปฏิบัติงานเดิม) — ถ้าจุดนั้นยังไม่ถึงเวลาเริ่มกะจริง (เช่น 17:00/05:00) เครื่องคำนวณกะ (computePlanEnd/splitPlanDataAcrossDays) จะรอข้ามช่วงว่างไปเริ่มกะถัดไปให้เองอัตโนมัติอยู่แล้ว
-    // ไม่ต้องรอผู้ใช้กด "+ เพิ่มงาน" เอง — วนต่อไปเรื่อยๆ จนกว่าจะหมดเวลาที่ต้องวางแผน หรือจบไม่พอดีขอบเขตแล้ว
-    {
-      // เวลาที่ถูกวางแผนไปแล้วจริงของ Roll ตำแหน่ง idx หนึ่งๆ (รวมทุกงานของ Size Roll/สี/ประเภทงานเดียวกัน) — งานที่ตัดเวลาไว้บางส่วน (rollMinutesOverride) นับตามที่ตัดจริง ไม่ใช่เต็มเวลาทะเบียน
-      const usedMinutesForIdx = (idx, fullMinutes) => planTasks.reduce((sum, t) => {
-        if (t.workType !== workType || t.rollSet !== setName || t.rollColor !== (colorKey || null)) return sum;
-        if (!(t.rollIds || []).includes(idx)) return sum;
-        const override = t.rollMinutesOverride && t.rollMinutesOverride[idx];
-        return sum + (override != null ? override : fullMinutes);
-      }, 0);
+    // งาน "2 กะ" ที่จบพอดีตรงขอบเขตกะ (08:00/17:00/20:00/05:00) แปลว่าไม่มีเวลาทำงานต่อในจุดนั้นแล้ว — ถ้า Roll set/สีเดียวกันนี้ยังมีเวลาที่ต้องวางแผนเหลืออยู่ ให้สร้างงานต่อให้อัตโนมัติทันที (ดู autoContinueRemainingRollTime)
+    if (shiftKey === 'both') {
       const finalGrp = splitGroups ? splitGroups[splitGroups.length - 1] : null;
-      let lastEndDate = finalGrp ? finalGrp.endDate : data.endDate;
-      let lastEndTime = finalGrp ? finalGrp.endTime : data.endTime;
-      let guard = 0;
-      while (shiftKey === 'both' && ['08:00', '17:00', '20:00', '05:00'].includes(lastEndTime) && ++guard <= 366) {
-        // ถ้าจบพอดีตรงจุด "หมดกะ" (17:00 จบกะเช้า / 05:00 จบกะดึก) ให้ขยับไปเริ่มงานต่อที่ "เริ่มกะถัดไป" ตรงๆ (20:00/08:00 วันเดียวกัน) แทนที่จะให้งานใหม่มีเวลาเริ่มตรงจุดที่ยังไม่มีใครทำงานอยู่
-        // (ถ้าปล่อยให้ startTime เป็น 17:00/05:00 เป๊ะ ตารางกะของงานนั้นจะเริ่มด้วยช่วง "รอกะถัดไป" ล้วนๆ ก่อนมีงานจริงเลยสักนาที ทำให้ splitPlanDataAcrossDays สร้างกลุ่มแรกที่ไม่มี Roll ไม่มีเวลาว่างเปล่าติดมาด้วย)
-        if (lastEndTime === '17:00') lastEndTime = '20:00';
-        else if (lastEndTime === '05:00') lastEndTime = '08:00';
-        const matchedRolls = getMatchingRollsForPlan(setName, colorKey || null);
-        const remainingList = matchedRolls.map((r, idx) => {
-          const full = parseFloat(r[field]) || 0;
-          return { idx, roll: r, full, remaining: Math.max(0, full - usedMinutesForIdx(idx, full)) };
-        }).filter(p => p.remaining > 0);
-        if (!remainingList.length) break;
-        const remainingIdx = remainingList.map(p => p.idx);
-        const remainingRolls = remainingList.map(p => p.roll);
-        const remainingMinutesList = remainingList.map(p => p.remaining);
-        const nextTotalTime = remainingMinutesList.reduce((a, b) => a + b, 0);
-        if (!nextTotalTime) break;
-        const nextSplit = splitPlanDataAcrossDays({ date: lastEndDate, shift: 'both', startTime: lastEndTime, otCapMinutesByShift, rollIds: remainingIdx }, remainingRolls, workType, remainingMinutesList);
-        if (nextSplit) {
-          const grpId = 'SG-' + String(planTaskSeq + 1).padStart(4, '0');
-          nextSplit.forEach(grp => {
-            planTaskSeq++;
-            planTasks.push({
-              id: 'PT-' + String(planTaskSeq).padStart(4, '0'), workType,
-              date: grp.date, rollSet: setName, rollColor: colorKey || null,
-              rollIds: grp.rollIds, rollId: grp.rollId, rollName: grp.rollName, totalTime: grp.totalTime,
-              startTime: grp.startTime, endTime: grp.endTime, endDate: grp.endDate,
-              shift: 'both', otCapMinutesByShift,
-              otMinutes: grp.otMinutes, otMinutesByShift: grp.otMinutesByShift,
-              rollMinutesOverride: grp.rollMinutesOverride,
-              workerId: data.workerId,
-              splitGroupId: grpId,
-            });
-          });
-          const lastNextGrp = nextSplit[nextSplit.length - 1];
-          lastEndDate = lastNextGrp.endDate;
-          lastEndTime = lastNextGrp.endTime;
-        } else {
-          const nextComputed = computePlanEnd(lastEndDate, lastEndTime, nextTotalTime, 'both', otCapMinutesByShift);
-          // งานนี้ทำ Roll แต่ละชิ้นในรายการจบครบในคราวเดียว (ไม่ถูกตัดข้ามวันอีก) แต่บางชิ้นอาจยังเป็น "ส่วนที่เหลือ" จากงานก่อนหน้าอยู่ (remaining < full) ต้องบันทึก override ไว้เพื่อให้ยังนับเป็นงานต่อเนื่อง/แสดงผลถูกต้อง
-          const rollMinutesOverride = {};
-          remainingList.forEach(p => { if (p.remaining !== p.full) rollMinutesOverride[p.idx] = p.remaining; });
-          planTaskSeq++;
-          planTasks.push({
-            id: 'PT-' + String(planTaskSeq).padStart(4, '0'), workType,
-            date: lastEndDate, rollSet: setName, rollColor: colorKey || null,
-            rollIds: remainingIdx, rollId: remainingRolls.length + ' Roll', rollName: remainingRolls.map(r => r.name).join(', '),
-            totalTime: nextTotalTime,
-            startTime: lastEndTime, endTime: nextComputed.time || '—', endDate: nextComputed.date || lastEndDate,
-            shift: 'both', otCapMinutesByShift,
-            otMinutes: nextComputed.otMinutes || 0, otMinutesByShift: nextComputed.otMinutesByShift || {},
-            rollMinutesOverride: Object.keys(rollMinutesOverride).length ? rollMinutesOverride : undefined,
-            workerId: data.workerId,
-            splitGroupId: null,
-          });
-          lastEndDate = nextComputed.date || lastEndDate;
-          lastEndTime = nextComputed.time || lastEndTime;
-        }
-      }
+      autoContinueRemainingRollTime(workType, setName, colorKey || null, otCapMinutesByShift, data.workerId, finalGrp ? finalGrp.endDate : data.endDate, finalGrp ? finalGrp.endTime : data.endTime);
     }
     autoFixPlanSequencing();
     mergeAdjacentPlanTasks();
@@ -5014,6 +5022,28 @@ syncRollStatusWithProdBlock();
 if (autoFixPlanSequencing()) persistState();
 // migration: รวมงานเก่าที่ต่อเวลากันสนิทแต่ถูกสร้างแยกไว้คนละแถว (เช่น เพิ่มงานทีละล็อต) ให้เป็นงานเดียวกันตั้งแต่ตอนโหลดแอปเลย
 if (mergeAdjacentPlanTasks()) persistState();
+// migration: งานเก่าบางงานจบพอดีตรงขอบเขตกะ (17:00/05:00) ตั้งแต่ก่อนที่ระบบจะรู้จักขอบเขตทั้ง 2 จุดนี้ (เดิมรู้จักแค่ 08:00/20:00)
+// ทำให้ Roll ที่ยังเหลือเวลาไม่ครบของ Size Roll/สีนั้นตกหล่นไป ไม่ถูกต่อแผนให้อัตโนมัติ — กวาดหาทุกกลุ่ม (workType/rollSet/rollColor) ที่งานล่าสุดจบพอดีขอบเขตกะแต่ยังมีเวลาเหลือ แล้วต่อแผนที่ขาดไปให้ครบ
+(function backfillMissedPlanContinuations() {
+  const groups = new Map();
+  planTasks.forEach(t => {
+    const key = [t.workType, t.rollSet, t.rollColor].join('|');
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(t);
+  });
+  let anyCreated = false;
+  groups.forEach(tasks => {
+    const latest = tasks.reduce((a, b) => (b.endDate + ' ' + b.endTime) > (a.endDate + ' ' + a.endTime) ? b : a);
+    if (latest.shift !== 'both' || !['08:00', '17:00', '20:00', '05:00'].includes(latest.endTime)) return;
+    const created = autoContinueRemainingRollTime(latest.workType, latest.rollSet, latest.rollColor, latest.otCapMinutesByShift || {}, latest.workerId, latest.endDate, latest.endTime);
+    if (created) anyCreated = true;
+  });
+  if (anyCreated) {
+    autoFixPlanSequencing();
+    mergeAdjacentPlanTasks();
+    persistState();
+  }
+})();
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 // เรียกหลัง restoreState() เสมอ เพื่อให้ Dashboard แสดงข้อมูลที่กู้คืนจาก localStorage ได้ถูกต้อง
