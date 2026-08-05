@@ -3801,7 +3801,8 @@ function splitPlanDataAcrossDays(base, rolls, workType, pieceMinutesListOverride
         groups.push(cur);
         sinceBoundary = 0;
       }
-      if (cur) { cur.endDate = seg.endDate; cur.endTime = seg.endTime; }
+      // ไม่ให้ช่วง 'shiftgap' (รอกะถัดไป) ดันเวลาจบของกลุ่มปัจจุบันเลยไป — ไม่งั้นกลุ่มก่อนหน้าจะโชว์เวลาจบผิดเป็นตอน "เริ่มกะถัดไป" (เช่น 08:00) แทนที่จะเป็นตอนที่หยุดทำงานจริง (เช่น 05:00 ที่กะดึกหมดเวลา) เพราะ 'shiftgap' เกิดขึ้นก่อนที่จะรู้ว่าเซสชันถัดไปต้องแยกกลุ่มใหม่
+      if (cur && seg.type !== 'shiftgap') { cur.endDate = seg.endDate; cur.endTime = seg.endTime; }
       if (seg.type === 'ot') {
         cur.otMinutes += seg.minutes;
         cur.otMinutesByShift[seg.shiftKey] = (cur.otMinutesByShift[seg.shiftKey] || 0) + seg.minutes;
