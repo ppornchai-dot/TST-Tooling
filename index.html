@@ -1450,7 +1450,7 @@ canvas{display:block;}
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="night" onclick="switchPlanShiftFilter('night')">🌙 กะดึก</button>
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="both" onclick="switchPlanShiftFilter('both')">🌤🌙 2 กะ</button>
         <button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="openCompanyHolidaysModal()">📅 วันหยุดบริษัท</button>
-        <button class="btn btn-ghost btn-sm" style="color:var(--red);border-color:var(--red);" onclick="resetAllPlanTasks()">🗑 ล้างแผนทั้งหมด</button>
+        <button class="btn btn-ghost btn-sm plan-edit-only" style="color:var(--red);border-color:var(--red);" onclick="resetAllPlanTasks()">🗑 ล้างแผนทั้งหมด</button>
       </div>
 
       <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
@@ -1476,7 +1476,7 @@ canvas{display:block;}
         <div class="card">
           <div class="card-header">
             <span class="card-title" id="plan-day-title">งานตามแผน — วันที่ 2 ก.ค. 2569</span>
-            <button class="btn btn-primary btn-sm" onclick="addPlanTaskForCurrentDay()">+ เพิ่มงาน</button>
+            <button class="btn btn-primary btn-sm plan-edit-only" onclick="addPlanTaskForCurrentDay()">+ เพิ่มงาน</button>
           </div>
           <div class="table-wrap">
             <table>
@@ -1544,7 +1544,7 @@ canvas{display:block;}
       <div class="card">
         <div class="card-header">
           <span class="card-title">แผน Gantt</span>
-          <button class="btn btn-primary btn-sm" onclick="openGanttTaskModal('add')">+ เพิ่มงาน</button>
+          <button class="btn btn-primary btn-sm plan-edit-only" onclick="openGanttTaskModal('add')">+ เพิ่มงาน</button>
         </div>
         <div class="gantt-wrap">
           <div style="min-width:860px;">
@@ -3338,13 +3338,13 @@ function renderPlanDay() {
       <td class="muted">${escapeHtmlAttr(t.startTime || '—')}</td>
       <td class="muted">${escapeHtmlAttr(t.endTime || '—')}${t.endDate && t.endDate !== t.date ? ` <span style="color:var(--accent);font-weight:700;">(+${Math.round((parseISODate(t.endDate)-parseISODate(t.date))/86400000)} วัน)</span>` : ''}${t.otMinutes ? ` <span class="chip chip-red" title="เวลาทำงานนอกช่วงกะ">OT ${formatMinutesAsHm(t.otMinutes).replace('≈ ', '')}</span>` : ''}</td>
       <td style="display:flex;gap:4px;" onclick="event.stopPropagation();">
-        ${(() => {
+        ${!canEditPlan() ? '<span class="muted">—</span>' : (() => {
           const prev = findPrecedingPlanTask(t);
           const outOfSequence = prev && (t.date !== prev.endDate || t.startTime !== prev.endTime);
           return outOfSequence ? `<button class="btn btn-ghost btn-sm" style="color:var(--accent);" title="ย้ายให้เริ่มต่อจากงานก่อนหน้าทันที" onclick="resequencePlanTask('${t.id}')">ต่อเวลา</button>` : '';
         })()}
-        <button class="btn btn-ghost btn-sm" onclick="openPlanTaskModal('edit','${t.id}')">แก้ไข</button>
-        <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deletePlanTask('${t.id}')">ลบ</button>
+        ${canEditPlan() ? `<button class="btn btn-ghost btn-sm" onclick="openPlanTaskModal('edit','${t.id}')">แก้ไข</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deletePlanTask('${t.id}')">ลบ</button>` : ''}
       </td>
     </tr>`;
     return row + (expanded ? renderPlanDayTaskDetailRow(t) : '');
@@ -3366,15 +3366,16 @@ function renderPlanWeek() {
   document.getElementById('plan-week-tbody').innerHTML = days.map(d => {
     const iso = toISODate(d);
     const tasks = planTasks.filter(t => taskDisplayDate(t) === iso && matchesCurrentPlanFilter(t)).sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
+    const editable = canEditPlan();
     const items = tasks.map(t => `
       <div style="display:flex;align-items:center;gap:4px;">
-        <span class="chip ${shiftChipClass(t.shift)}" style="cursor:pointer;flex:1;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(SHIFTS[t.shift]?.label || '')} — ${escapeHtmlAttr(t.rollId)} — ${escapeHtmlAttr(t.rollName)}">${escapeHtmlAttr(t.rollId)}</span>
-        <button title="ลบ" onclick="deletePlanTask('${t.id}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:11px;padding:0;">✕</button>
+        <span class="chip ${shiftChipClass(t.shift)}" style="${editable ? 'cursor:pointer;' : ''}flex:1;" ${editable ? `onclick="openPlanTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(SHIFTS[t.shift]?.label || '')} — ${escapeHtmlAttr(t.rollId)} — ${escapeHtmlAttr(t.rollName)}">${escapeHtmlAttr(t.rollId)}</span>
+        ${editable ? `<button title="ลบ" onclick="deletePlanTask('${t.id}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:11px;padding:0;">✕</button>` : ''}
       </div>`).join('');
     return `<td style="min-width:110px;">
       <div style="display:flex;flex-direction:column;gap:4px;">
         ${items || '<span class="muted">—</span>'}
-        <button class="btn btn-ghost btn-sm" style="padding:2px 6px;font-size:11px;" onclick="openPlanTaskModal('add', null, '${iso}')">+ เพิ่ม</button>
+        ${editable ? `<button class="btn btn-ghost btn-sm" style="padding:2px 6px;font-size:11px;" onclick="openPlanTaskModal('add', null, '${iso}')">+ เพิ่ม</button>` : ''}
       </div>
     </td>`;
   }).join('');
@@ -3392,6 +3393,7 @@ function renderPlanMonth() {
   const firstWeekday = firstDay.getDay();
   const leadingBlanks = firstWeekday;
 
+  const editable = canEditPlan();
   let html = '';
   for (let i = 0; i < leadingBlanks; i++) {
     html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"></div>`;
@@ -3404,12 +3406,12 @@ function renderPlanMonth() {
     const dayOffBg = (isSunday || holidayName) ? 'background:#FDF3D8;' : '';
     const tasks = planTasks.filter(t => taskDisplayDate(t) === iso && matchesCurrentPlanFilter(t)).sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
     const chips = tasks.map(t =>
-      `<span class="chip ${shiftChipClass(t.shift)}" style="font-size:10px;cursor:pointer;" onclick="openPlanTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(SHIFTS[t.shift]?.label || '')} — ${escapeHtmlAttr(t.rollId)} — ${escapeHtmlAttr(t.rollName)}">${escapeHtmlAttr(t.rollId)}</span>`
+      `<span class="chip ${shiftChipClass(t.shift)}" style="font-size:10px;${editable ? 'cursor:pointer;' : ''}" ${editable ? `onclick="openPlanTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(SHIFTS[t.shift]?.label || '')} — ${escapeHtmlAttr(t.rollId)} — ${escapeHtmlAttr(t.rollName)}">${escapeHtmlAttr(t.rollId)}</span>`
     ).join('');
     html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;${dayOffBg}" title="${holidayName ? escapeHtmlAttr(holidayName) : ''}">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <strong style="font-size:12px;">${day}</strong>
-        <button title="เพิ่มงาน" onclick="openPlanTaskModal('add', null, '${iso}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:13px;line-height:1;padding:0;">+</button>
+        ${editable ? `<button title="เพิ่มงาน" onclick="openPlanTaskModal('add', null, '${iso}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:13px;line-height:1;padding:0;">+</button>` : ''}
       </div>
       <div style="margin-top:6px;display:flex;flex-direction:column;gap:4px;">${chips}</div>
     </div>`;
@@ -4137,6 +4139,7 @@ function findPrecedingPlanTask(task) {
 }
 
 function resequencePlanTask(taskId) {
+  if (!canEditPlan()) return;
   const task = planTasks.find(t => t.id === taskId);
   if (!task) return;
   const prev = findPrecedingPlanTask(task);
@@ -4334,6 +4337,7 @@ function autoContinueRemainingRollTime(workType, setName, colorKey, otCapMinutes
 }
 
 function openPlanTaskModal(mode, taskId, presetDate) {
+  if (!canEditPlan()) return;
   const task = mode === 'edit' ? planTasks.find(t => t.id === taskId) : null;
   currentEditingPlanTaskId = task ? task.id : null;
   const workType = task ? task.workType : currentPlanWorkType;
@@ -4450,6 +4454,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
 }
 
 function deletePlanTask(taskId) {
+  if (!canEditPlan()) return;
   const t = planTasks.find(x => x.id === taskId);
   if (!t) return;
   if (!confirm('ลบงาน "' + t.rollId + ' — ' + t.rollName + '" ออกจากแผน?')) return;
@@ -4462,6 +4467,7 @@ function deletePlanTask(taskId) {
 
 // ล้างงานวางแผนทั้งหมด (CNC + ขัด Roll) ทิ้ง เริ่มตารางวางแผนใหม่ตั้งแต่ต้น — ไม่แตะเช็คลิสต์งานประจำวันที่เพิ่มเอง หรือล็อกขนาดที่วัดได้เดิม
 function resetAllPlanTasks() {
+  if (!canEditPlan()) return;
   if (!planTasks.length) { alert('ยังไม่มีงานวางแผนอยู่เลย'); return; }
   if (!confirm(`ยืนยันลบงานวางแผนทั้งหมด (${planTasks.length} รายการ) ออกจากตาราง แล้วเริ่มต้นใหม่ทั้งหมด?\n\nการกระทำนี้ไม่สามารถย้อนกลับได้`)) return;
   planTasks = [];
@@ -4499,7 +4505,7 @@ function renderPlanGantt() {
 
   if (!tasks.length) {
     rowsBody.innerHTML = '';
-    document.getElementById('gantt-empty-state-text').textContent = 'ยังไม่มีงานในแผน — กด "+ เพิ่มงาน" เพื่อเริ่มวางแผนใหม่';
+    document.getElementById('gantt-empty-state-text').textContent = canEditPlan() ? 'ยังไม่มีงานในแผน — กด "+ เพิ่มงาน" เพื่อเริ่มวางแผนใหม่' : 'ยังไม่มีงานในแผน';
     emptyState.style.display = '';
     return;
   }
@@ -4513,6 +4519,7 @@ function renderPlanGantt() {
   }
   emptyState.style.display = 'none';
 
+  const editable = canEditPlan();
   rowsBody.innerHTML = visible.map(t => {
     const cat = GANTT_CATEGORY_META[t.category] || GANTT_CATEGORY_META.inspect;
     const barStart = new Date(Math.max(parseISODate(t.startDate).getTime(), windowStart.getTime()));
@@ -4527,9 +4534,9 @@ function renderPlanGantt() {
         </div>
         <div class="gantt-timeline">
           <div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div>
-          <div class="gantt-bar" style="left:${leftPct}%;width:${widthPct}%;background:${cat.color};" onclick="openGanttTaskModal('edit','${t.id}')" title="${escapeHtmlAttr(t.name)}">
+          <div class="gantt-bar" style="left:${leftPct}%;width:${widthPct}%;background:${cat.color};${editable ? '' : 'cursor:default;'}" ${editable ? `onclick="openGanttTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(t.name)}">
             <span class="gantt-bar-label">${escapeHtmlAttr(cat.label)}</span>
-            <button type="button" class="gantt-bar-del" title="ลบ" onclick="event.stopPropagation();deleteGanttTask('${t.id}')">✕</button>
+            ${editable ? `<button type="button" class="gantt-bar-del" title="ลบ" onclick="event.stopPropagation();deleteGanttTask('${t.id}')">✕</button>` : ''}
           </div>
         </div>
       </div>`;
@@ -4568,6 +4575,7 @@ function ganttTaskFormFields() {
 }
 
 function openGanttTaskModal(mode, taskId) {
+  if (!canEditPlan()) return;
   const task = mode === 'edit' ? ganttTasks.find(t => t.id === taskId) : null;
   document.getElementById('modal-title').textContent = mode === 'edit' ? 'แก้ไขงานในแผน' : 'เพิ่มงานใหม่ในแผน';
   document.getElementById('modal-body').innerHTML = ganttTaskFormFields();
@@ -4605,6 +4613,7 @@ function openGanttTaskModal(mode, taskId) {
 }
 
 function deleteGanttTask(taskId) {
+  if (!canEditPlan()) return;
   const t = ganttTasks.find(x => x.id === taskId);
   if (!t) return;
   if (!confirm('ลบงาน "' + t.name + '" ออกจากแผน?')) return;
@@ -5182,6 +5191,11 @@ if (mergeAdjacentPlanTasks()) persistState();
     persistState();
   }
 })();
+
+// currentUser/adminViewAsName ต้องประกาศไว้ก่อนจุดนี้ (ก่อน initDashboard()/renderPlanGantt() ที่เรียกด้านล่าง) เพราะ renderPlanGantt() เรียก canEditPlan() ซึ่งอ่านค่าทั้งสองตัวนี้ผ่าน effectiveRole()
+// ตัวแปรจริงยังอยู่ที่หมวด LOGIN / ROLE-BASED UI ท้ายไฟล์เหมือนเดิม ย้ายมาแค่การประกาศ (let ... = null) มาไว้ตรงนี้
+let currentUser = null;
+let adminViewAsName = null; // Admin-only: preview the UI as another team member, without actually switching login
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 // เรียกหลัง restoreState() เสมอ เพื่อให้ Dashboard แสดงข้อมูลที่กู้คืนจาก localStorage ได้ถูกต้อง
@@ -7610,7 +7624,6 @@ function onProdBlockExcelSelected(event) {
 
 // ─── LOGIN / ROLE-BASED UI (UX only — ไม่ใช่ระบบความปลอดภัยจริง) ─────────────
 const AUTH_STORAGE_KEY = 'tstCurrentUser';
-let currentUser = null;
 
 const ROLE_LABELS = { admin: 'Admin', lead: 'หัวหน้า', cnc: 'ช่าง CNC', polish: 'ช่างขัด Roll', operator: 'ช่างเครื่อง' };
 const ROLE_COLORS = { admin: 'var(--red)', lead: 'var(--accent)', cnc: 'var(--purple)', polish: 'var(--amber)', operator: 'var(--green)' };
@@ -7666,8 +7679,6 @@ function submitLoginForm() {
   loginAs(match);
 }
 
-let adminViewAsName = null; // Admin-only: preview the UI as another team member, without actually switching login
-
 function effectiveRole() {
   if (!currentUser) return null;
   if (currentUser.role === 'admin' && adminViewAsName) {
@@ -7675,6 +7686,11 @@ function effectiveRole() {
     if (target) return target.role;
   }
   return currentUser.role;
+}
+// สิทธิ์แก้ไขหน้า "วางแผน" (เพิ่ม/แก้ไข/ลบ/ล้างงานตามแผน) — เฉพาะ admin/lead เท่านั้น ช่าง (cnc/polish/operator) ดูได้อย่างเดียว
+function canEditPlan() {
+  const role = effectiveRole();
+  return role === 'admin' || role === 'lead';
 }
 // teamMembers.id ของ "คนที่กำลังดูอยู่จริง" ไม่ว่าจะล็อกอินเป็นตัวเองโดยตรง หรือ Admin กด "ดูเป็น" คนอื่นอยู่ — คืน null ถ้าเป็น Admin ที่ยังดูเป็นตัวเอง (มีสิทธิ์เต็มไม่จำกัด)
 // ใช้จำกัดว่างานตามแผน (CNC/ขัด Roll) ไหนที่คนนี้ควรกด "เริ่มงาน/จบงาน" ได้ — เฉพาะงานที่ระบุ ผู้ปฏิบัติงาน ตรงกับตัวเองเท่านั้น
@@ -7741,6 +7757,12 @@ function applyRoleUI() {
       viewSelectWrap.style.display = 'none';
     }
   }
+
+  // ปุ่มเพิ่ม/ลบ/ล้างแผนที่เป็น HTML คงที่ (ไม่ได้ render ใหม่ทุกครั้งที่เปลี่ยนมุมมอง/เลื่อนวันที่) — ซ่อนไว้ถ้าไม่ใช่ admin/lead
+  const allowEditPlan = canEditPlan();
+  document.querySelectorAll('.plan-edit-only').forEach(el => { el.style.display = allowEditPlan ? '' : 'none'; });
+  // มุมมองที่กำลังเปิดอยู่ตอนนี้ (รายวัน/สัปดาห์/เดือน/Gantt) เช็คสิทธิ์เองในฟังก์ชัน render ตรงๆ อยู่แล้ว — แค่สั่ง render ใหม่ให้ตรงกับสิทธิ์ล่าสุด
+  if (typeof renderCurrentPlanView === 'function' && document.getElementById('gantt-rows-body')) renderCurrentPlanView();
 
   document.querySelectorAll('.nav-item[data-roles]').forEach(btn => {
     const allowed = btn.getAttribute('data-roles').split(',');
