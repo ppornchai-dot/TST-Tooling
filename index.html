@@ -4265,7 +4265,9 @@ function mergeAdjacentPlanTasks() {
 // สร้างงานต่อให้อัตโนมัติสำหรับ Roll ที่ยังเหลือเวลาไม่ครบของ Size Roll/สี/ประเภทงานเดียวกัน (workType/setName/colorKey) โดยเริ่มจาก (anchorDate, anchorTime) ที่กำหนด
 // ใช้ตอนพอดีจบที่ขอบเขตกะ (08:00/17:00/20:00/05:00) แล้วไม่มีเวลาทำงานต่อในจุดนั้น — เรียกทั้งตอนบันทึกงานใหม่ (savePlanTask) และตอน migration กวาดหางานที่เคยตกหล่นตอนโหลดแอป
 // คืนค่าจำนวนงานที่สร้างเพิ่ม (0 ถ้าไม่มีอะไรต้องต่อ)
-function autoContinueRemainingRollTime(workType, setName, colorKey, otCapMinutesByShift, workerId, anchorDate, anchorTime) {
+// skipInitialBoundaryCheck: ข้ามการเช็ค "จุดเริ่มต้องเป็นขอบเขตกะพอดี" เฉพาะรอบแรกรอบเดียว — ใช้ตอน migration กวาดหา Roll ที่ตกหล่นค้างมาจากกลางคิว
+// (ซึ่งจุดที่ควรต่อไม่ใช่ขอบเขตกะพอดีอีกต่อไปแล้ว เพราะมีงานอื่นถูกเพิ่มเข้ามาทีหลังจนคิวเลยจุดนั้นไปแล้ว) รอบถัดๆ ไปในลูปเดียวกันยังเช็คขอบเขตกะตามปกติ
+function autoContinueRemainingRollTime(workType, setName, colorKey, otCapMinutesByShift, workerId, anchorDate, anchorTime, skipInitialBoundaryCheck) {
   const field = PLAN_WORKTYPE_META[workType].field;
   // เวลาที่ถูกวางแผนไปแล้วจริงของ Roll ตำแหน่ง idx หนึ่งๆ (รวมทุกงานของ Size Roll/สี/ประเภทงานเดียวกัน) — งานที่ตัดเวลาไว้บางส่วน (rollMinutesOverride) นับตามที่ตัดจริง ไม่ใช่เต็มเวลาทะเบียน
   const usedMinutesForIdx = (idx, fullMinutes) => planTasks.reduce((sum, t) => {
@@ -4277,7 +4279,9 @@ function autoContinueRemainingRollTime(workType, setName, colorKey, otCapMinutes
   let lastEndDate = anchorDate, lastEndTime = anchorTime;
   let createdCount = 0;
   let guard = 0;
-  while (['08:00', '17:00', '20:00', '05:00'].includes(lastEndTime) && ++guard <= 366) {
+  let isFirstIteration = true;
+  while ((isFirstIteration && skipInitialBoundaryCheck ? true : ['08:00', '17:00', '20:00', '05:00'].includes(lastEndTime)) && ++guard <= 366) {
+    isFirstIteration = false;
     // ถ้าจบพอดีตรงจุด "หมดกะ" (17:00 จบกะเช้า / 05:00 จบกะดึก) ให้ขยับไปเริ่มงานต่อที่ "เริ่มกะถัดไป" ตรงๆ (20:00/08:00 วันเดียวกัน) แทนที่จะให้งานใหม่มีเวลาเริ่มตรงจุดที่ยังไม่มีใครทำงานอยู่
     // (ถ้าปล่อยให้ startTime เป็น 17:00/05:00 เป๊ะ ตารางกะของงานนั้นจะเริ่มด้วยช่วง "รอกะถัดไป" ล้วนๆ ก่อนมีงานจริงเลยสักนาที ทำให้ splitPlanDataAcrossDays สร้างกลุ่มแรกที่ไม่มี Roll ไม่มีเวลาว่างเปล่าติดมาด้วย)
     if (lastEndTime === '17:00') lastEndTime = '20:00';
@@ -5173,8 +5177,8 @@ syncRollStatusWithProdBlock();
 if (autoFixPlanSequencing()) persistState();
 // migration: รวมงานเก่าที่ต่อเวลากันสนิทแต่ถูกสร้างแยกไว้คนละแถว (เช่น เพิ่มงานทีละล็อต) ให้เป็นงานเดียวกันตั้งแต่ตอนโหลดแอปเลย
 if (mergeAdjacentPlanTasks()) persistState();
-// migration: งานเก่าบางงานจบพอดีตรงขอบเขตกะ (17:00/05:00) ตั้งแต่ก่อนที่ระบบจะรู้จักขอบเขตทั้ง 2 จุดนี้ (เดิมรู้จักแค่ 08:00/20:00)
-// ทำให้ Roll ที่ยังเหลือเวลาไม่ครบของ Size Roll/สีนั้นตกหล่นไป ไม่ถูกต่อแผนให้อัตโนมัติ — กวาดหาทุกกลุ่ม (workType/rollSet/rollColor) ที่งานล่าสุดจบพอดีขอบเขตกะแต่ยังมีเวลาเหลือ แล้วต่อแผนที่ขาดไปให้ครบ
+// migration: Roll ที่เคยถูกวางแผนไปแล้วบางส่วน (มี rollMinutesOverride ค้างอยู่ในงานใดงานหนึ่ง) แต่ยังไม่ครบเวลาเต็มจากทะเบียน Tooling และไม่มีงานไหนต่อเวลาส่วนที่เหลือให้เลย — กวาดหาทุกกลุ่ม (workType/rollSet/rollColor) แล้วต่อแผนที่ขาดไปให้ครบ
+// แก้จากเดิมที่เช็คแค่ "งานล่าสุดของกลุ่มจบพอดีขอบเขตกะไหม" ซึ่งพลาดเคสที่มีงานอื่นถูกเพิ่มเข้ามาทีหลัง (จบไม่ตรงขอบเขตกะ) บัง Roll ที่ตกหล่นไว้กลางคิวไม่ให้ migration นี้เห็น — ตอนนี้เช็คตรงๆ ว่ามี Roll ไหนเหลือเวลาไม่ครบทั้งกลุ่มบ้าง ไม่สนว่างานล่าสุดจบตรงขอบเขตกะหรือเปล่า
 (function backfillMissedPlanContinuations() {
   const groups = new Map();
   planTasks.forEach(t => {
@@ -5185,8 +5189,23 @@ if (mergeAdjacentPlanTasks()) persistState();
   let anyCreated = false;
   groups.forEach(tasks => {
     const latest = tasks.reduce((a, b) => (b.endDate + ' ' + b.endTime) > (a.endDate + ' ' + a.endTime) ? b : a);
-    if (latest.shift !== 'both' || !['08:00', '17:00', '20:00', '05:00'].includes(latest.endTime)) return;
-    const created = autoContinueRemainingRollTime(latest.workType, latest.rollSet, latest.rollColor, latest.otCapMinutesByShift || {}, latest.workerId, latest.endDate, latest.endTime);
+    if (latest.shift !== 'both') return;
+    const field = PLAN_WORKTYPE_META[latest.workType].field;
+    const matchedRolls = getMatchingRollsForPlan(latest.rollSet, latest.rollColor);
+    const usedMinutesForIdx = (idx, fullMinutes) => tasks.reduce((sum, t) => {
+      if (!(t.rollIds || []).includes(idx)) return sum;
+      const override = t.rollMinutesOverride && t.rollMinutesOverride[idx];
+      return sum + (override != null ? override : fullMinutes);
+    }, 0);
+    // เฉพาะ Roll ที่ "เริ่มทำไปแล้วบางส่วน" (used > 0) แต่ยังไม่ครบ (used < full) — ไม่แตะ Roll ที่ยังไม่เคยถูกวางแผนเลย (used === 0) เพราะนั่นเป็นของที่ผู้ใช้ยังไม่ได้ตั้งใจวางแผน ไม่ใช่ของตกหล่น
+    const hasStuckRoll = matchedRolls.some((r, idx) => {
+      const full = parseFloat(r[field]) || 0;
+      if (!full) return false;
+      const used = usedMinutesForIdx(idx, full);
+      return used > 0 && used < full;
+    });
+    if (!hasStuckRoll) return;
+    const created = autoContinueRemainingRollTime(latest.workType, latest.rollSet, latest.rollColor, latest.otCapMinutesByShift || {}, latest.workerId, latest.endDate, latest.endTime, true);
     if (created) anyCreated = true;
   });
   if (anyCreated) {
