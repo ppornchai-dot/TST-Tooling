@@ -4225,17 +4225,27 @@ function mergeAdjacentPlanTasks() {
       for (let i = 1; i < sorted.length; i++) {
         const prev = sorted[i - 1], cur = sorted[i];
         if (cur.date !== prev.endDate || cur.startTime !== prev.endTime) continue;
-        const combinedRollIds = (prev.rollIds || []).concat(cur.rollIds || []);
+        // Roll ตัวเดียวกันอาจอยู่ทั้งสองงาน (เช่น งานเดิมที่ได้เวลาไปบางส่วน มาเจอกับงานต่อของตัวมันเองที่เพิ่งแทรกเข้ามาติดกันพอดี) —
+        // ห้าม concat ตรงๆ เพราะจะเห็น Roll ตัวนั้นซ้ำสองชิ้นในงานเดียว ต้องรวมนาทีของมันเข้าด้วยกันเป็นชิ้นเดียวแทน
+        const prevIds = prev.rollIds || [];
+        const curIds = cur.rollIds || [];
+        const combinedRollIds = prevIds.concat(curIds.filter(idx => !prevIds.includes(idx)));
         const scoped = getMatchingRollsForPlan(prev.rollSet, prev.rollColor);
         const rolls = combinedRollIds.map(idx => scoped[idx]).filter(Boolean);
         if (rolls.length !== combinedRollIds.length) continue; // หา Roll บางตัวไม่เจอ ข้ามไปก่อนเพื่อความปลอดภัย
         // ต้องใช้นาทีจริงของแต่ละชิ้น (rollMinutesOverride ถ้ามี) ไม่ใช่เวลาเต็มจากทะเบียน Tooling เสมอไป — ไม่งั้นชิ้นที่ "(ต่อ)" มาจากงานก่อนหน้า (ทำมาแล้วบางส่วน เหลือน้อยกว่าเวลาเต็ม)
         // จะถูกนับเวลาเกินจริง ทำให้เข้าใจผิดว่ารวมกันแล้วจะข้ามรอบกะ (wouldSplit) ทั้งที่จริงๆ รวมกันพอดีในกะเดียว เลยไม่ยอมรวมงานให้
         const field = PLAN_WORKTYPE_META[prev.workType].field;
+        const minutesForTaskIdx = (task, idx, fullMinutes) => {
+          const override = task.rollMinutesOverride && task.rollMinutesOverride[idx];
+          return override != null ? override : fullMinutes;
+        };
         const combinedMinutesList = combinedRollIds.map((idx, i) => {
-          const override = (prev.rollMinutesOverride && prev.rollMinutesOverride[idx] != null) ? prev.rollMinutesOverride[idx]
-            : (cur.rollMinutesOverride && cur.rollMinutesOverride[idx] != null) ? cur.rollMinutesOverride[idx] : null;
-          return override != null ? override : (parseFloat(rolls[i][field]) || 0);
+          const full = parseFloat(rolls[i][field]) || 0;
+          let minutes = 0;
+          if (prevIds.includes(idx)) minutes += minutesForTaskIdx(prev, idx, full);
+          if (curIds.includes(idx)) minutes += minutesForTaskIdx(cur, idx, full);
+          return minutes;
         });
         const wouldSplit = splitPlanDataAcrossDays({ date: prev.date, shift: prev.shift, startTime: prev.startTime, otCapMinutesByShift: prev.otCapMinutesByShift || {}, rollIds: combinedRollIds }, rolls, prev.workType, combinedMinutesList);
         if (wouldSplit) continue; // รวมแล้วจะข้ามรอบกะจริง ต้องแยกไว้ตามเดิม
@@ -4250,7 +4260,13 @@ function mergeAdjacentPlanTasks() {
         prev.endDate = mergedComputed.date || prev.date;
         prev.otMinutes = mergedComputed.otMinutes || 0;
         prev.otMinutesByShift = mergedComputed.otMinutesByShift || {};
-        if (cur.rollMinutesOverride || prev.rollMinutesOverride) prev.rollMinutesOverride = { ...(prev.rollMinutesOverride || {}), ...(cur.rollMinutesOverride || {}) };
+        // สร้าง rollMinutesOverride ใหม่ทั้งหมดสดๆ จาก combinedMinutesList (ไม่ใช่ spread ของเก่าจากทั้งสองงานตรงๆ) — กัน key เก่าที่ไม่ตรงกับ Roll ไหนใน rollIds ของงานนี้อีกต่อไป ค้างติดมาเรื่อยๆ ข้ามการรวมหลายรอบ
+        const newOverride = {};
+        combinedRollIds.forEach((idx, i) => {
+          const full = parseFloat(rolls[i][field]) || 0;
+          if (combinedMinutesList[i] !== full) newOverride[idx] = combinedMinutesList[i];
+        });
+        prev.rollMinutesOverride = Object.keys(newOverride).length ? newOverride : undefined;
         prev.splitGroupId = null;
         planTasks = planTasks.filter(t => t.id !== cur.id);
         changed = true;
@@ -4263,11 +4279,10 @@ function mergeAdjacentPlanTasks() {
 }
 
 // สร้างงานต่อให้อัตโนมัติสำหรับ Roll ที่ยังเหลือเวลาไม่ครบของ Size Roll/สี/ประเภทงานเดียวกัน (workType/setName/colorKey) โดยเริ่มจาก (anchorDate, anchorTime) ที่กำหนด
-// ใช้ตอนพอดีจบที่ขอบเขตกะ (08:00/17:00/20:00/05:00) แล้วไม่มีเวลาทำงานต่อในจุดนั้น — เรียกทั้งตอนบันทึกงานใหม่ (savePlanTask) และตอน migration กวาดหางานที่เคยตกหล่นตอนโหลดแอป
+// ใช้ตอนพอดีจบที่ขอบเขตกะ (08:00/17:00/20:00/05:00) แล้วไม่มีเวลาทำงานต่อในจุดนั้น — เรียกตอนบันทึกงานใหม่ (savePlanTask) เท่านั้น
+// (ดู backfillMissedPlanContinuations สำหรับกรณี migration กวาดหา Roll ที่ตกหล่นค้างมาจากกลางคิว ซึ่งใช้วิธีแทรก+ดันคิวแยกต่างหาก ไม่ใช้ฟังก์ชันนี้)
 // คืนค่าจำนวนงานที่สร้างเพิ่ม (0 ถ้าไม่มีอะไรต้องต่อ)
-// skipInitialBoundaryCheck: ข้ามการเช็ค "จุดเริ่มต้องเป็นขอบเขตกะพอดี" เฉพาะรอบแรกรอบเดียว — ใช้ตอน migration กวาดหา Roll ที่ตกหล่นค้างมาจากกลางคิว
-// (ซึ่งจุดที่ควรต่อไม่ใช่ขอบเขตกะพอดีอีกต่อไปแล้ว เพราะมีงานอื่นถูกเพิ่มเข้ามาทีหลังจนคิวเลยจุดนั้นไปแล้ว) รอบถัดๆ ไปในลูปเดียวกันยังเช็คขอบเขตกะตามปกติ
-function autoContinueRemainingRollTime(workType, setName, colorKey, otCapMinutesByShift, workerId, anchorDate, anchorTime, skipInitialBoundaryCheck) {
+function autoContinueRemainingRollTime(workType, setName, colorKey, otCapMinutesByShift, workerId, anchorDate, anchorTime) {
   const field = PLAN_WORKTYPE_META[workType].field;
   // เวลาที่ถูกวางแผนไปแล้วจริงของ Roll ตำแหน่ง idx หนึ่งๆ (รวมทุกงานของ Size Roll/สี/ประเภทงานเดียวกัน) — งานที่ตัดเวลาไว้บางส่วน (rollMinutesOverride) นับตามที่ตัดจริง ไม่ใช่เต็มเวลาทะเบียน
   const usedMinutesForIdx = (idx, fullMinutes) => planTasks.reduce((sum, t) => {
@@ -4279,9 +4294,7 @@ function autoContinueRemainingRollTime(workType, setName, colorKey, otCapMinutes
   let lastEndDate = anchorDate, lastEndTime = anchorTime;
   let createdCount = 0;
   let guard = 0;
-  let isFirstIteration = true;
-  while ((isFirstIteration && skipInitialBoundaryCheck ? true : ['08:00', '17:00', '20:00', '05:00'].includes(lastEndTime)) && ++guard <= 366) {
-    isFirstIteration = false;
+  while (['08:00', '17:00', '20:00', '05:00'].includes(lastEndTime) && ++guard <= 366) {
     // ถ้าจบพอดีตรงจุด "หมดกะ" (17:00 จบกะเช้า / 05:00 จบกะดึก) ให้ขยับไปเริ่มงานต่อที่ "เริ่มกะถัดไป" ตรงๆ (20:00/08:00 วันเดียวกัน) แทนที่จะให้งานใหม่มีเวลาเริ่มตรงจุดที่ยังไม่มีใครทำงานอยู่
     // (ถ้าปล่อยให้ startTime เป็น 17:00/05:00 เป๊ะ ตารางกะของงานนั้นจะเริ่มด้วยช่วง "รอกะถัดไป" ล้วนๆ ก่อนมีงานจริงเลยสักนาที ทำให้ splitPlanDataAcrossDays สร้างกลุ่มแรกที่ไม่มี Roll ไม่มีเวลาว่างเปล่าติดมาด้วย)
     if (lastEndTime === '17:00') lastEndTime = '20:00';
@@ -5177,8 +5190,8 @@ syncRollStatusWithProdBlock();
 if (autoFixPlanSequencing()) persistState();
 // migration: รวมงานเก่าที่ต่อเวลากันสนิทแต่ถูกสร้างแยกไว้คนละแถว (เช่น เพิ่มงานทีละล็อต) ให้เป็นงานเดียวกันตั้งแต่ตอนโหลดแอปเลย
 if (mergeAdjacentPlanTasks()) persistState();
-// migration: Roll ที่เคยถูกวางแผนไปแล้วบางส่วน (มี rollMinutesOverride ค้างอยู่ในงานใดงานหนึ่ง) แต่ยังไม่ครบเวลาเต็มจากทะเบียน Tooling และไม่มีงานไหนต่อเวลาส่วนที่เหลือให้เลย — กวาดหาทุกกลุ่ม (workType/rollSet/rollColor) แล้วต่อแผนที่ขาดไปให้ครบ
-// แก้จากเดิมที่เช็คแค่ "งานล่าสุดของกลุ่มจบพอดีขอบเขตกะไหม" ซึ่งพลาดเคสที่มีงานอื่นถูกเพิ่มเข้ามาทีหลัง (จบไม่ตรงขอบเขตกะ) บัง Roll ที่ตกหล่นไว้กลางคิวไม่ให้ migration นี้เห็น — ตอนนี้เช็คตรงๆ ว่ามี Roll ไหนเหลือเวลาไม่ครบทั้งกลุ่มบ้าง ไม่สนว่างานล่าสุดจบตรงขอบเขตกะหรือเปล่า
+// migration: Roll ที่เคยถูกวางแผนไปแล้วบางส่วน (มี rollMinutesOverride ค้างอยู่ในงานใดงานหนึ่ง) แต่ยังไม่ครบเวลาเต็มจากทะเบียน Tooling และไม่มีงานไหนต่อเวลาส่วนที่เหลือให้เลย
+// แทรกเวลาที่เหลือกลับไปต่อ "ทันทีที่จุดที่มันถูกขัดไว้" (ไม่ใช่ต่อท้ายคิวทั้งหมด) แล้วดันงานประเภทเดียวกันที่วางคิวไว้ก่อนหน้า (ซึ่งจะไปทับเวลากับจุดที่เพิ่งแทรก) ให้ขยับไปต่อจากงานที่แทรกนี้แทนทั้งคิว
 (function backfillMissedPlanContinuations() {
   const groups = new Map();
   planTasks.forEach(t => {
@@ -5186,7 +5199,10 @@ if (mergeAdjacentPlanTasks()) persistState();
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(t);
   });
-  let anyCreated = false;
+
+  // เก็บ Roll ที่ตกหล่นทั้งหมดจากทุกกลุ่ม พร้อมงานที่ให้เวลาไปล่าสุด (จุดที่ควรต่อกลับไป) — เรียงจากจุดที่ต้องต่อเก่าสุดไปใหม่สุด
+  // เพื่อแทรก+ดันคิวทีละจุดตามลำดับเวลาจริง ไม่ให้แทรกจุดหลังไปทับจุดก่อนหน้าที่เพิ่งขยับเสร็จ
+  const pending = [];
   groups.forEach(tasks => {
     const latest = tasks.reduce((a, b) => (b.endDate + ' ' + b.endTime) > (a.endDate + ' ' + a.endTime) ? b : a);
     if (latest.shift !== 'both') return;
@@ -5197,22 +5213,73 @@ if (mergeAdjacentPlanTasks()) persistState();
       const override = t.rollMinutesOverride && t.rollMinutesOverride[idx];
       return sum + (override != null ? override : fullMinutes);
     }, 0);
-    // เฉพาะ Roll ที่ "เริ่มทำไปแล้วบางส่วน" (used > 0) แต่ยังไม่ครบ (used < full) — ไม่แตะ Roll ที่ยังไม่เคยถูกวางแผนเลย (used === 0) เพราะนั่นเป็นของที่ผู้ใช้ยังไม่ได้ตั้งใจวางแผน ไม่ใช่ของตกหล่น
-    const hasStuckRoll = matchedRolls.some((r, idx) => {
+    matchedRolls.forEach((r, idx) => {
       const full = parseFloat(r[field]) || 0;
-      if (!full) return false;
+      if (!full) return;
       const used = usedMinutesForIdx(idx, full);
-      return used > 0 && used < full;
+      // เฉพาะ Roll ที่ "เริ่มทำไปแล้วบางส่วน" (used > 0) แต่ยังไม่ครบ (used < full) — ไม่แตะ Roll ที่ยังไม่เคยถูกวางแผนเลย (used === 0) เพราะนั่นเป็นของที่ผู้ใช้ยังไม่ได้ตั้งใจวางแผน ไม่ใช่ของตกหล่น
+      if (!(used > 0 && used < full)) return;
+      const owner = tasks.filter(t => (t.rollIds || []).includes(idx))
+        .reduce((a, b) => (b.endDate + ' ' + b.endTime) > (a.endDate + ' ' + a.endTime) ? b : a);
+      pending.push({ workType: latest.workType, rollSet: latest.rollSet, rollColor: latest.rollColor, roll: r, idx, remaining: full - used, owner });
     });
-    if (!hasStuckRoll) return;
-    const created = autoContinueRemainingRollTime(latest.workType, latest.rollSet, latest.rollColor, latest.otCapMinutesByShift || {}, latest.workerId, latest.endDate, latest.endTime, true);
-    if (created) anyCreated = true;
   });
-  if (anyCreated) {
-    autoFixPlanSequencing();
-    mergeAdjacentPlanTasks();
-    persistState();
+  if (!pending.length) return;
+  pending.sort((a, b) => (a.owner.endDate + ' ' + a.owner.endTime).localeCompare(b.owner.endDate + ' ' + b.owner.endTime));
+
+  // ดันงานประเภทเดียวกันทั้งคิว (ไม่ใช่แค่ Size Roll/สีเดียวกัน — เครื่อง/คิวช่างประเภทเดียวกันใช้ตารางเวลารวมกัน) ให้ต่อเวลากันสนิทอีกครั้ง หลังแทรกงานใหม่เข้าไป
+  // ต่างจาก autoFixPlanSequencing ตรงที่งานที่เพิ่ง "แทรก" เข้าไปใหม่ (priorityTaskId) ต้องมาก่อนงานอื่นเสมอถ้าเวลาเริ่มชนกันพอดี — ไม่ใช่เรียงตาม id ตามปกติ เพราะงานที่แทรกทีหลังจะมี id ใหม่กว่าเสมอทั้งที่ควรได้คิวก่อน (เป็น Roll ที่ค้างรออยู่นานกว่า)
+  function cascadeWithPriority(workType, priorityTaskId) {
+    let changed = true, guard = 0;
+    while (changed && guard++ < 2000) {
+      changed = false;
+      const chain = planTasks
+        .filter(t => t.workType === workType && t.endDate && t.endTime && t.endTime !== '—')
+        .sort((a, b) => {
+          const ak = a.date + ' ' + (a.startTime || ''), bk = b.date + ' ' + (b.startTime || '');
+          if (ak !== bk) return ak.localeCompare(bk);
+          if (a.id === priorityTaskId) return -1;
+          if (b.id === priorityTaskId) return 1;
+          return a.id < b.id ? -1 : 1;
+        });
+      for (let i = 1; i < chain.length; i++) {
+        const prev = chain[i - 1], cur = chain[i];
+        let targetDate = prev.endDate, targetTime = prev.endTime;
+        if (prev.shift === 'both' && (targetTime === '17:00' || targetTime === '05:00')) {
+          targetTime = targetTime === '17:00' ? '20:00' : '08:00';
+        }
+        const curKey = cur.date + ' ' + cur.startTime, targetKey = targetDate + ' ' + targetTime;
+        if (curKey >= targetKey) continue;
+        cur.date = targetDate; cur.shift = prev.shift; cur.startTime = targetTime;
+        const computed = computePlanEnd(cur.date, cur.startTime, cur.totalTime, cur.shift, cur.otCapMinutesByShift || {});
+        cur.endTime = computed.time; cur.endDate = computed.date || cur.date;
+        cur.otMinutes = computed.otMinutes || 0; cur.otMinutesByShift = computed.otMinutesByShift || {};
+        changed = true;
+      }
+    }
   }
+
+  pending.forEach(p => {
+    // p.owner อาจถูกขยับเวลาไปแล้วจากการแทรก Roll ตัวก่อนหน้าในลูปนี้ — ใช้ object เดิม ค่า endDate/endTime จะเป็นค่าล่าสุดเสมอเพราะ cascadeWithPriority แก้ไข object ตรงๆ ไม่ได้สร้างใหม่
+    const computed = computePlanEnd(p.owner.endDate, p.owner.endTime, p.remaining, 'both', p.owner.otCapMinutesByShift || {});
+    planTaskSeq++;
+    const newTask = {
+      id: 'PT-' + String(planTaskSeq).padStart(4, '0'), workType: p.workType,
+      date: p.owner.endDate, rollSet: p.rollSet, rollColor: p.rollColor,
+      rollIds: [p.idx], rollId: '1 Roll', rollName: p.roll.name,
+      totalTime: p.remaining,
+      startTime: p.owner.endTime, endTime: computed.time || '—', endDate: computed.date || p.owner.endDate,
+      shift: 'both', otCapMinutesByShift: p.owner.otCapMinutesByShift || {},
+      otMinutes: computed.otMinutes || 0, otMinutesByShift: computed.otMinutesByShift || {},
+      rollMinutesOverride: { [p.idx]: p.remaining },
+      workerId: p.owner.workerId,
+      splitGroupId: null,
+    };
+    planTasks.push(newTask);
+    cascadeWithPriority(p.workType, newTask.id);
+  });
+  mergeAdjacentPlanTasks();
+  persistState();
 })();
 
 // currentUser/adminViewAsName ต้องประกาศไว้ก่อนจุดนี้ (ก่อน initDashboard()/renderPlanGantt() ที่เรียกด้านล่าง) เพราะ renderPlanGantt() เรียก canEditPlan() ซึ่งอ่านค่าทั้งสองตัวนี้ผ่าน effectiveRole()
