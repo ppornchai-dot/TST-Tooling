@@ -7806,6 +7806,22 @@ function applyRoleUI() {
       cncTabBtn.style.display = ''; polishTabBtn.style.display = '';
     }
   }
+
+  // ช่าง CNC / ช่างขัด Roll เห็นเฉพาะแผนงานประเภทของตัวเองในหน้า "งานประจำวัน" — ซ่อนทั้งปุ่ม "ทั้งหมด" และปุ่มอีกประเภทหนึ่งไปเลย
+  const dailyAllBtn = document.querySelector('.daily-worktype-btn[data-worktype=""]');
+  const dailyCncBtn = document.querySelector('.daily-worktype-btn[data-worktype="cnc"]');
+  const dailyPolishBtn = document.querySelector('.daily-worktype-btn[data-worktype="polish"]');
+  if (dailyAllBtn && dailyCncBtn && dailyPolishBtn) {
+    if (role === 'cnc') {
+      dailyAllBtn.style.display = 'none'; dailyCncBtn.style.display = ''; dailyPolishBtn.style.display = 'none';
+      switchDailyWorkTypeFilter('cnc');
+    } else if (role === 'polish') {
+      dailyAllBtn.style.display = 'none'; dailyCncBtn.style.display = 'none'; dailyPolishBtn.style.display = '';
+      switchDailyWorkTypeFilter('polish');
+    } else {
+      dailyAllBtn.style.display = ''; dailyCncBtn.style.display = ''; dailyPolishBtn.style.display = '';
+    }
+  }
 }
 
 function initAuth() {
