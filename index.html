@@ -787,6 +787,7 @@ canvas{display:block;}
   .modal-row,.modal-row.three,.modal-row.four,.modal-row.five{grid-template-columns:1fr!important;}
   .reg-kpi-row{grid-template-columns:repeat(2,1fr)!important;}
   .dash-cal-row{grid-template-columns:1fr!important;}
+  .dash-rollinuse-grid{grid-template-columns:1fr!important;}
   .dash-cal-row>div:first-child{border-right:none!important;border-bottom:1px solid var(--border-light);}
   .reg-registry-grid{grid-template-columns:1fr!important;}
   .reg-registry-grid>.card{position:static!important;}
@@ -1929,6 +1930,21 @@ function goToRollSetColor(setName, colorKey) {
   selectRollColor(colorKey);
 }
 
+function dashRollInUseChipHtml(e) {
+  const esc = e.set.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  const escColor = e.colorKey.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  return `<div onclick="goToRollSetColor('${esc}','${escColor}')"
+    style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;cursor:pointer;
+           border:1px solid var(--border-light);background:var(--accent-glow);transition:filter .12s;margin-bottom:6px;"
+    onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
+    title="ดูรายละเอียดในทะเบียน Tooling">
+    <span style="width:9px;height:9px;border-radius:50%;background:${e.dot};flex-shrink:0;"></span>
+    <span style="font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(e.set)}</span>
+    <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr(e.colorLabel)}</span>
+    ${e.machines.length ? `<span style="font-size:11px;color:var(--accent);font-weight:700;background:var(--bg-surface);padding:1px 8px;border-radius:10px;">${e.machines.join(' / ')}</span>` : ''}
+  </div>`;
+}
+
 function renderDashboardInUseRoll() {
   const el = document.getElementById('dash-roll-inuse-list');
   if (!el) return;
@@ -1938,20 +1954,22 @@ function renderDashboardInUseRoll() {
     el.innerHTML = `<div style="padding:8px 4px;color:var(--text-3);font-size:13px;">ไม่มีชุด Roll ที่กำลังใช้งานอยู่ตอนนี้</div>`;
     return;
   }
-  el.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:8px;">${entries.map(e => {
-    const esc = e.set.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    const escColor = e.colorKey.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    return `<div onclick="goToRollSetColor('${esc}','${escColor}')"
-      style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;cursor:pointer;
-             border:1px solid var(--border-light);background:var(--accent-glow);transition:filter .12s;"
-      onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
-      title="ดูรายละเอียดในทะเบียน Tooling">
-      <span style="width:9px;height:9px;border-radius:50%;background:${e.dot};flex-shrink:0;"></span>
-      <span style="font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(e.set)}</span>
-      <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr(e.colorLabel)}</span>
-      ${e.machines.length ? `<span style="font-size:11px;color:var(--accent);font-weight:700;background:var(--bg-surface);padding:1px 8px;border-radius:10px;">${e.machines.join(' / ')}</span>` : ''}
-    </div>`;
-  }).join('')}</div>`;
+
+  // แบ่งเป็นคอลัมน์ตามหมวด Forming/Sizing/TH เหมือนหน้าทะเบียน Tooling — ชื่อที่พาร์สหมวดไม่ได้ตกไปอยู่คอลัมน์ "อื่นๆ" ท้ายสุด
+  const buckets = { Forming: [], Sizing: [], TH: [], other: [] };
+  entries.forEach(e => {
+    const cat = parseSizeRollName(e.set).category;
+    (buckets[cat] || buckets.other).push(e);
+  });
+  const columns = [['Forming', buckets.Forming], ['Sizing', buckets.Sizing], ['TH', buckets.TH]];
+  if (buckets.other.length) columns.push(['อื่นๆ', buckets.other]);
+
+  el.innerHTML = `<div class="dash-rollinuse-grid" style="display:grid;grid-template-columns:repeat(${columns.length},1fr);gap:16px;">
+    ${columns.map(([label, list]) => `<div>
+      ${rollSetSectionHeaderHtml(label, list.length, ROLL_SET_SECTION_COLORS[label])}
+      ${list.length ? list.map(dashRollInUseChipHtml).join('') : `<div style="padding:4px;color:var(--text-3);font-size:12px;">ไม่มี</div>`}
+    </div>`).join('')}
+  </div>`;
 }
 
 // ─── DASHBOARD: สถานะ Tooling (Roll / Roll SQ / ใบเลื่อย / มีดสลิตเตอร์) ──────
