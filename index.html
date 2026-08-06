@@ -1418,7 +1418,7 @@ canvas{display:block;}
       <div class="card">
         <div class="card-header">
           <span class="card-title">เช็คลิสต์งานวันนี้</span>
-          <button class="btn btn-primary btn-sm" onclick="openDailyChecklistModal('add')">+ เพิ่มงานเช็คลิสต์</button>
+          <button class="btn btn-primary btn-sm" onclick="openDailyChecklistModal('add')">+ เพิ่มงานแทรก</button>
         </div>
         <div class="table-wrap">
           <table>
@@ -6487,7 +6487,7 @@ function renderDailyTasks() {
       <td onclick="event.stopPropagation();">${actions}</td>
     </tr>`;
     return row + (expanded ? renderPlanDayTaskDetailRow(item.raw, 13, true, !isMine) : '');
-  }).join('') || `<tr><td colspan="13" style="padding:32px;text-align:center;color:var(--text-3);">ยังไม่มีงานในวันนี้ — กด "+ เพิ่มงานเช็คลิสต์" เพื่อเริ่มสร้างเช็คลิสต์เอง</td></tr>`;
+  }).join('') || `<tr><td colspan="13" style="padding:32px;text-align:center;color:var(--text-3);">ยังไม่มีงานในวันนี้ — กด "+ เพิ่มงานแทรก" เพื่อเริ่มสร้างงานแทรกเอง</td></tr>`;
 
   const statuses = allItems.map(item => getDailyStatus(item.key));
   document.getElementById('daily-kpi-total').textContent = allItems.length;
@@ -6666,7 +6666,7 @@ function dailyChecklistFormFields() {
 
 function openDailyChecklistModal(mode, taskId) {
   const task = mode === 'edit' ? dailyChecklistTasks.find(t => t.id === taskId) : null;
-  document.getElementById('modal-title').textContent = mode === 'edit' ? 'แก้ไขงานเช็คลิสต์' : 'เพิ่มงานเช็คลิสต์ใหม่';
+  document.getElementById('modal-title').textContent = mode === 'edit' ? 'แก้ไขงานแทรก' : 'เพิ่มงานแทรกใหม่';
   document.getElementById('modal-body').innerHTML = dailyChecklistFormFields();
   document.getElementById('dcf-task').value = task ? task.task : '';
   document.getElementById('dcf-time').value = task ? task.time : '';
@@ -6708,7 +6708,7 @@ function openDailyChecklistModal(mode, taskId) {
 function deleteDailyChecklistTask(taskId) {
   const t = dailyChecklistTasks.find(x => x.id === taskId);
   if (!t) return;
-  if (!confirm('ลบงานเช็คลิสต์ "' + t.task + '" ออกจากรายการ?')) return;
+  if (!confirm('ลบงานแทรก "' + t.task + '" ออกจากรายการ?')) return;
   dailyChecklistTasks = dailyChecklistTasks.filter(x => x.id !== taskId);
   persistState();
   renderDailyTasks();
