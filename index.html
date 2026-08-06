@@ -5210,6 +5210,64 @@ if (autoFixPlanSequencing()) persistState();
 if (mergeAdjacentPlanTasks()) persistState();
 // migration: Roll ที่เคยถูกวางแผนไปแล้วบางส่วน (มี rollMinutesOverride ค้างอยู่ในงานใดงานหนึ่ง) แต่ยังไม่ครบเวลาเต็มจากทะเบียน Tooling และไม่มีงานไหนต่อเวลาส่วนที่เหลือให้เลย
 // แทรกเวลาที่เหลือกลับไปต่อ "ทันทีที่จุดที่มันถูกขัดไว้" (ไม่ใช่ต่อท้ายคิวทั้งหมด) แล้วดันงานประเภทเดียวกันที่วางคิวไว้ก่อนหน้า (ซึ่งจะไปทับเวลากับจุดที่เพิ่งแทรก) ให้ขยับไปต่อจากงานที่แทรกนี้แทนทั้งคิว
+// ชิ้นสุดท้ายของงานที่มี rollMinutesOverride (ถูกตัดไว้เพราะชนขอบเขตกะ) อาจได้เวลาน้อยกว่าที่ควรจะได้จริง ถ้ามีงานอื่นถูกแทรกเข้ามาก่อนหน้าทีหลัง
+// (เช่น แทรก Roll ที่ตกหล่นตัวอื่นเข้ามาก่อนงานนี้ ทำให้เวลาเริ่มของงานนี้ขยับ แต่ค่าที่ตัดไว้เดิมไม่ได้คำนวณใหม่ตาม) — คำนวณสดใหม่ว่าชิ้นสุดท้ายควรได้กี่นาทีจริงก่อนชนขอบเขตกะ/วันหยุดถัดไป
+// แล้วปรับ totalTime/endTime ของงานนี้ + ปรับงานต่อของ Roll ตัวเดียวกัน (ถ้ามี) ให้เวลาที่เหลือ/เวลาเริ่มตรงกันพอดี คืนค่า true ถ้ามีการแก้ไขเกิดขึ้น
+function reconcileLastPieceBoundary(workType, rollSet, rollColor) {
+  let anyFixed = false;
+  const field = PLAN_WORKTYPE_META[workType].field;
+  const matchedRolls = getMatchingRollsForPlan(rollSet, rollColor);
+  const tasks = planTasks.filter(t => t.workType === workType && t.rollSet === rollSet && t.rollColor === rollColor && t.shift === 'both');
+  // งานที่เพิ่งถูกปรับให้เป็น "งานต่อ" ของอีกงานหนึ่งในรอบนี้แล้ว (ค่าที่ปรับให้คือค่าที่ถูกต้องสดๆ) — ห้ามตรวจซ้ำอีกครั้งในลูปเดียวกัน
+  // ไม่งั้นจะเจอ Roll ตัวเดียวกันซ้ำเป็น "ชิ้นสุดท้าย" ของทั้งสองงาน แล้วคำนวณสดใหม่ทับค่าที่เพิ่งปรับถูกต้องไปแล้วเป็นค่าอื่นที่ผิด
+  const alreadyReconciled = new Set();
+  tasks.forEach(t => {
+    if (alreadyReconciled.has(t.id)) return;
+    if (!t.rollIds || !t.rollIds.length || !t.rollMinutesOverride) return;
+    const lastIdx = t.rollIds[t.rollIds.length - 1];
+    const stored = t.rollMinutesOverride[lastIdx];
+    if (stored == null) return; // ชิ้นสุดท้ายไม่ได้ถูกตัดไว้ (ได้เต็มอยู่แล้ว) ไม่ต้องแก้
+    const full = parseFloat((matchedRolls[lastIdx] || {})[field]) || 0;
+    if (!full || stored >= full) return;
+    // คำนวณสดว่าถ้าปล่อยให้ชิ้นสุดท้ายนี้ใช้เวลาได้เต็มที่ (full แทนค่าที่ตัดไว้เดิม) จะได้กี่นาทีจริงก่อนชนขอบเขตกะ/วันถัดไป
+    const pieceMinutesFresh = t.rollIds.map((idx, i) => i === t.rollIds.length - 1 ? full
+      : (t.rollMinutesOverride && t.rollMinutesOverride[idx] != null ? t.rollMinutesOverride[idx] : (parseFloat((matchedRolls[idx] || {})[field]) || 0)));
+    const schedule = computePlanPieceSchedule(t.date, t.startTime, pieceMinutesFresh, t.shift, t.otCapMinutesByShift || {});
+    const lastSchedule = schedule[schedule.length - 1];
+    const gapIdx = lastSchedule.segments.findIndex(s => s.type === 'shiftgap');
+    const relevantSegs = gapIdx === -1 ? lastSchedule.segments : lastSchedule.segments.slice(0, gapIdx);
+    const usedBeforeGap = relevantSegs.filter(s => s.type === 'normal' || s.type === 'ot').reduce((sum, s) => sum + s.minutes, 0);
+    if (usedBeforeGap === stored) return; // ตรงกับที่มีอยู่แล้ว ไม่ต้องแก้
+    if (usedBeforeGap >= full) delete t.rollMinutesOverride[lastIdx]; else t.rollMinutesOverride[lastIdx] = usedBeforeGap;
+    t.totalTime = t.rollIds.reduce((sum, idx) => sum + (t.rollMinutesOverride && t.rollMinutesOverride[idx] != null ? t.rollMinutesOverride[idx] : (parseFloat((matchedRolls[idx] || {})[field]) || 0)), 0);
+    const recomputed = computePlanEnd(t.date, t.startTime, t.totalTime, t.shift, t.otCapMinutesByShift || {});
+    t.endTime = recomputed.time; t.endDate = recomputed.date || t.date;
+    t.otMinutes = recomputed.otMinutes || 0; t.otMinutesByShift = recomputed.otMinutesByShift || {};
+    anyFixed = true;
+    // ปรับงานที่เป็น "งานต่อ" ของ Roll ตัวนี้ (ถ้ามี — ต้องมีแค่ Roll เดียวกันนี้ตัวเดียวในงานนั้น) ให้เวลาที่เหลือ/เวลาเริ่มตรงกับที่คำนวณใหม่
+    const diff = stored - usedBeforeGap; // ถ้า usedBeforeGap มากกว่าค่าเดิม diff จะติดลบ = เวลาที่งานต่อต้องลดลง (เพราะงานนี้ทำไปมากขึ้นแล้ว)
+    const continuation = planTasks.find(ct => ct.id !== t.id && ct.workType === workType && ct.rollSet === rollSet && ct.rollColor === rollColor
+      && (ct.rollIds || []).length === 1 && ct.rollIds[0] === lastIdx);
+    if (continuation) {
+      const newRemaining = (continuation.totalTime || 0) + diff;
+      if (newRemaining <= 0) {
+        planTasks = planTasks.filter(x => x.id !== continuation.id);
+      } else {
+        const anchor = nextValidPlanContinuePoint(t.shift, t.endDate, t.endTime);
+        continuation.date = anchor.date;
+        continuation.startTime = anchor.time;
+        continuation.totalTime = newRemaining;
+        continuation.rollMinutesOverride = { [lastIdx]: newRemaining };
+        const cComputed = computePlanEnd(anchor.date, anchor.time, newRemaining, 'both', continuation.otCapMinutesByShift || {});
+        continuation.endTime = cComputed.time; continuation.endDate = cComputed.date || anchor.date;
+        continuation.otMinutes = cComputed.otMinutes || 0; continuation.otMinutesByShift = cComputed.otMinutesByShift || {};
+      }
+      alreadyReconciled.add(continuation.id);
+    }
+  });
+  return anyFixed;
+}
+
 (function backfillMissedPlanContinuations() {
   const groups = new Map();
   planTasks.forEach(t => {
@@ -5297,6 +5355,19 @@ if (mergeAdjacentPlanTasks()) persistState();
     cascadeWithPriority(p.workType, newTask.id);
   });
   mergeAdjacentPlanTasks();
+
+  // หลังแทรก+ดันคิว งานที่เคยถูกตัดไว้ที่ขอบเขตกะอยู่แล้วอาจได้เวลาไม่ตรงกับที่ควรจะเป็นจริง (เพราะจุดเริ่มขยับจากการแทรกงานอื่นก่อนหน้า) — ไล่ตรวจ+แก้ทุกกลุ่มจนกว่าจะนิ่ง (แก้จุดหนึ่งอาจกระทบจุดถัดไปในคิวเดียวกันต่อ)
+  let reconcileGuard = 0;
+  let reconcileChanged = true;
+  while (reconcileChanged && reconcileGuard++ < 50) {
+    reconcileChanged = false;
+    const keysToCheck = new Set(pending.map(p => [p.workType, p.rollSet, p.rollColor].join('|')));
+    keysToCheck.forEach(key => {
+      const [workType, rollSet, rollColor] = key.split('|');
+      if (reconcileLastPieceBoundary(workType, rollSet, rollColor === '' ? null : rollColor)) reconcileChanged = true;
+    });
+    if (reconcileChanged) { autoFixPlanSequencing(); mergeAdjacentPlanTasks(); }
+  }
   persistState();
 })();
 
