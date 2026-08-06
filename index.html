@@ -3238,7 +3238,7 @@ const PLAN_BREAK_TYPES = ['lunch', 'lunch_night', 'otbreak', 'shiftgap'];
 
 // แต่ละชิ้นอาจใช้เวลาคาบเกี่ยวมากกว่า 1 กะ/1 ประเภทเวลา (เช่น ทำต่อจากปกติเข้า OT หรือข้ามจากกะเช้าไปกะดึก) — แตกเป็นแถวย่อยตามช่วงเวลาจริงของชิ้นนั้น
 // รวมถึงช่วงพักเที่ยง/พักก่อน OT ที่แทรกอยู่ระหว่างกลาง ให้เห็นเป็นแถวของตัวเองชัดเจน แยกจากแถวเวลาทำงานจริง
-function renderPlanDayTaskDetailRow(t, colspan, interactive, locked) {
+function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
   colspan = colspan || 10;
   const pieces = planTaskPieceBreakdown(t);
   const body = pieces.map((p, i) => {
@@ -3280,14 +3280,14 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, locked) {
         if (pieceStatus === 'done') {
           inner = `<span class="chip chip-green">✓ เสร็จ</span>`;
         } else if (pieceStatus === 'paused') {
-          inner = `<span class="chip chip-amber">⏸ พักงาน</span> <button class="btn btn-ghost btn-sm" style="color:var(--accent);" ${locked ? 'disabled title="งานของช่างคนอื่น ทำต่อไม่ได้"' : ''} onclick="resumeDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ ทำต่อ</button>`;
+          inner = `<span class="chip chip-amber">⏸ พักงาน</span> <button class="btn btn-ghost btn-sm" style="color:var(--accent);" ${lockReason ? `disabled title="${lockReason} — ทำต่อไม่ได้"` : ''} onclick="resumeDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ ทำต่อ</button>`;
         } else if (pieceStatus === 'in_progress') {
           inner = `<div style="display:flex;gap:4px;">
-            <button class="btn btn-ghost btn-sm" style="color:var(--accent);" ${locked ? 'disabled title="งานของช่างคนอื่น จบงานนี้ไม่ได้"' : ''} onclick="finishDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">■ จบงาน</button>
-            <button class="btn btn-ghost btn-sm" ${locked ? 'disabled title="งานของช่างคนอื่น พักงานนี้ไม่ได้"' : ''} onclick="pauseDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">⏸ พักงาน</button>
+            <button class="btn btn-ghost btn-sm" style="color:var(--accent);" ${lockReason ? `disabled title="${lockReason} — จบงานนี้ไม่ได้"` : ''} onclick="finishDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">■ จบงาน</button>
+            <button class="btn btn-ghost btn-sm" ${lockReason ? `disabled title="${lockReason} — พักงานนี้ไม่ได้"` : ''} onclick="pauseDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">⏸ พักงาน</button>
           </div>`;
         } else {
-          inner = `<button class="btn btn-ghost btn-sm" ${locked ? 'disabled title="งานของช่างคนอื่น เริ่มงานนี้ไม่ได้"' : ''} onclick="startDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ เริ่มงาน</button>`;
+          inner = `<button class="btn btn-ghost btn-sm" ${lockReason ? `disabled title="${lockReason} — เริ่มงานนี้ไม่ได้"` : ''} onclick="startDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ เริ่มงาน</button>`;
         }
         actionCell = `<td onclick="event.stopPropagation();">${inner}</td>`;
       } else if (interactive && !isBreak) {
@@ -6123,10 +6123,17 @@ function nowHHMM() {
   const d = new Date();
   return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
 }
+// ช่าง (cnc/polish/operator) กดเริ่ม/จบ/พักงานได้เฉพาะตอนดูวันปัจจุบันจริงเท่านั้น — กันกดย้อนหลัง/ล่วงหน้าให้วันอื่นโดยไม่ตั้งใจ
+// admin/lead ไม่ถูกจำกัด เผื่อต้องแก้ไขบันทึกย้อนหลังหรือทดสอบข้อมูล
+function canActOnDailyDate() {
+  const role = effectiveRole();
+  return role === 'admin' || role === 'lead' || dailyViewDate === DAILY_TODAY_ISO;
+}
 // เริ่ม/จบงานตามแผน (CNC/ขัด Roll) ทำได้เฉพาะงานที่ระบุผู้ปฏิบัติงานตรงกับคนที่กำลังดูอยู่เท่านั้น (ดู effectiveWorkerId) — กันไม่ให้ช่างคนอื่นเผลอกดเริ่ม/จบงานที่ไม่ใช่ของตัวเอง
+// และต้องอยู่ในวันปัจจุบันจริงด้วย (ดู canActOnDailyDate) ถ้าเป็นช่าง
 function canActOnDailyItem(workerId) {
   const restrictId = effectiveWorkerId();
-  return !restrictId || workerId == null || workerId === restrictId;
+  return (!restrictId || workerId == null || workerId === restrictId) && canActOnDailyDate();
 }
 function startDailyTask(idx, workerId) {
   if (!canActOnDailyItem(workerId)) return;
@@ -6471,6 +6478,8 @@ function renderDailyTasks() {
     const status = getDailyStatus(item.key);
     const meta = DAILY_STATUS_META[status];
     const isMine = !restrictWorkerId || item.workerId == null || item.workerId === restrictWorkerId;
+    const dateOk = canActOnDailyDate();
+    const blockReason = !isMine ? 'งานของช่างคนอื่น' : (!dateOk ? 'ดูอยู่วันอื่น ไม่ใช่วันนี้' : '');
     const actual = getDailyActualTimes(item.key);
     const startTimeDisplay = escapeHtmlAttr(item.startTime) + (actual.startTime ? ` <span class="muted" style="font-size:11px;">(จริง ${escapeHtmlAttr(actual.startTime)})</span>` : '');
     const endTimeDisplay = item.endTimeHtml + (actual.endTime ? ` <span class="muted" style="font-size:11px;">(จริง ${escapeHtmlAttr(actual.endTime)})</span>` : '');
@@ -6481,9 +6490,9 @@ function renderDailyTasks() {
       // งานที่มีหลาย Roll ให้กดเริ่ม/จบงานแยกทีละชิ้นในตารางย่อยด้านล่างแทน ไม่มีปุ่มรวมตรงนี้
       actions = '';
     } else if (status === 'pending') {
-      actions = `<button class="btn btn-ghost btn-sm" ${isMine ? '' : 'disabled title="งานของช่างคนอื่น เริ่มงานนี้ไม่ได้"'} onclick="startDailyTask('${item.key}','${item.workerId || ''}')">▶ เริ่มงาน</button>`;
+      actions = `<button class="btn btn-ghost btn-sm" ${blockReason ? `disabled title="${blockReason} — เริ่มงานนี้ไม่ได้"` : ''} onclick="startDailyTask('${item.key}','${item.workerId || ''}')">▶ เริ่มงาน</button>`;
     } else if (status === 'in_progress') {
-      actions = `<button class="btn btn-ghost btn-sm" style="color:var(--accent);" ${isMine ? '' : 'disabled title="งานของช่างคนอื่น จบงานนี้ไม่ได้"'} onclick="finishDailyTask('${item.key}','${item.workerId || ''}')">■ จบงาน</button>`;
+      actions = `<button class="btn btn-ghost btn-sm" style="color:var(--accent);" ${blockReason ? `disabled title="${blockReason} — จบงานนี้ไม่ได้"` : ''} onclick="finishDailyTask('${item.key}','${item.workerId || ''}')">■ จบงาน</button>`;
     } else {
       actions = '';
     }
@@ -6504,7 +6513,7 @@ function renderDailyTasks() {
       <td><span class="chip ${meta.chip}">${meta.label}</span></td>
       <td onclick="event.stopPropagation();">${actions}</td>
     </tr>`;
-    return row + (expanded ? renderPlanDayTaskDetailRow(item.raw, 13, true, !isMine) : '');
+    return row + (expanded ? renderPlanDayTaskDetailRow(item.raw, 13, true, blockReason) : '');
   }).join('') || `<tr><td colspan="13" style="padding:32px;text-align:center;color:var(--text-3);">ยังไม่มีงานในวันนี้ — กด "+ เพิ่มงานแทรก" เพื่อเริ่มสร้างงานแทรกเอง</td></tr>`;
 
   const statuses = allItems.map(item => getDailyStatus(item.key));
