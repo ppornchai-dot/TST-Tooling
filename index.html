@@ -1934,16 +1934,24 @@ function goToRollSetColor(setName, colorKey) {
 function dashRollInUseChipHtml(e) {
   const esc = e.set.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
   const escColor = e.colorKey.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  const machineLabel = e.machines.length ? e.machines.join('/') : '—';
   return `<div onclick="goToRollSetColor('${esc}','${escColor}')"
-    style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;cursor:pointer;
+    style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;cursor:pointer;
            border:1px solid var(--border-light);background:var(--accent-glow);transition:filter .12s;margin-bottom:6px;"
     onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
     title="ดูรายละเอียดในทะเบียน Tooling">
+    <span style="font-size:15px;font-weight:800;color:#fff;background:var(--accent);padding:3px 11px;border-radius:6px;flex-shrink:0;letter-spacing:.02em;">${escapeHtmlAttr(machineLabel)}</span>
     <span style="width:9px;height:9px;border-radius:50%;background:${e.dot};flex-shrink:0;"></span>
     <span style="font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(e.set)}</span>
     <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr(e.colorLabel)}</span>
-    ${e.machines.length ? `<span style="font-size:11px;color:var(--accent);font-weight:700;background:var(--bg-surface);padding:1px 8px;border-radius:10px;">${e.machines.join(' / ')}</span>` : ''}
   </div>`;
+}
+
+// เรียงลำดับตามเครื่อง P1→P4 (ตามลำดับใน ROLL_MACHINES) ให้ดูง่ายว่าเครื่องไหนใช้สีอะไรอยู่ — ชุดที่ไม่ได้ผูกเครื่องไว้เลยตกไปท้ายสุด
+function dashRollInUseMachineSortKey(e) {
+  if (!e.machines.length) return ROLL_MACHINES.length;
+  const idxs = e.machines.map(m => ROLL_MACHINES.indexOf(m)).filter(i => i >= 0);
+  return idxs.length ? Math.min(...idxs) : ROLL_MACHINES.length;
 }
 
 function renderDashboardInUseRoll() {
@@ -1966,10 +1974,13 @@ function renderDashboardInUseRoll() {
   if (buckets.other.length) columns.push(['อื่นๆ', buckets.other]);
 
   el.innerHTML = `<div class="dash-rollinuse-grid" style="display:grid;grid-template-columns:repeat(${columns.length},1fr);gap:16px;">
-    ${columns.map(([label, list]) => `<div>
+    ${columns.map(([label, list]) => {
+      const sorted = list.slice().sort((a, b) => dashRollInUseMachineSortKey(a) - dashRollInUseMachineSortKey(b));
+      return `<div>
       ${rollSetSectionHeaderHtml(label, list.length, ROLL_SET_SECTION_COLORS[label])}
-      ${list.length ? list.map(dashRollInUseChipHtml).join('') : `<div style="padding:4px;color:var(--text-3);font-size:12px;">ไม่มี</div>`}
-    </div>`).join('')}
+      ${sorted.length ? sorted.map(dashRollInUseChipHtml).join('') : `<div style="padding:4px;color:var(--text-3);font-size:12px;">ไม่มี</div>`}
+    </div>`;
+    }).join('')}
   </div>`;
 }
 
