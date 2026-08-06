@@ -1911,12 +1911,13 @@ function getInUseRollColorEntries() {
     colorKeysUsed.forEach(colorKey => {
       if (rollColorStatusFor(setName, colorKey) !== 'inuse') return;
       const colorMeta = colorKey === NO_COLOR_KEY ? null : getSetPalette(setName).find(c => c.key === colorKey);
+      const activeMachine = rollColorActiveMachineFor(setName, colorKey);
       entries.push({
         set: setName,
         colorKey,
         colorLabel: colorMeta ? colorMeta.label : 'ไม่ระบุสี',
         dot: colorMeta ? colorMeta.dot : '#9CA3AF',
-        machines: rollSetMachines[setName] || [],
+        machines: activeMachine ? [activeMachine] : (rollSetMachines[setName] || []),
       });
     });
   });
@@ -4682,6 +4683,20 @@ function setRollColorStatus(colorKey, status) {
   updateRollKpi();
 }
 
+// เครื่องที่กำลังใช้ "ชุดสี Roll" นี้อยู่จริง — เลือกได้เฉพาะตอน Size Roll ผูกไว้กับมากกว่า 1 เครื่อง (เช่น P2/P3) เพื่อบอกว่าตอนนี้ใช้อยู่ที่เครื่องไหน
+// ใช้แสดงในการ์ด "ชุด Roll กำลังใช้งาน" หน้า Dashboard — ถ้าไม่ได้เลือกไว้ จะ fallback ไปแสดงทุกเครื่องที่ผูกกับ Size Roll นี้แทน
+let rollColorActiveMachine = {};
+function rollColorActiveMachineFor(setName, colorKey) { return rollColorActiveMachine[setName + '|' + colorKey] || null; }
+function setRollColorActiveMachine(colorKey, machine) {
+  if (!selectedRollSet) return;
+  const k = selectedRollSet + '|' + colorKey;
+  const current = rollColorActiveMachine[k];
+  if (current === machine) delete rollColorActiveMachine[k]; else rollColorActiveMachine[k] = machine;
+  persistState();
+  renderRollColorList();
+  renderDashboardInUseRoll();
+}
+
 const DEFAULT_ROLL_COLORS = [
   {key:'blue',   label:'สีฟ้า',   dot:'#3B82F6'},
   {key:'yellow', label:'สีเหลือง', dot:'#EAB308'},
@@ -4874,7 +4889,7 @@ const STORAGE_KEY = 'tstToolingState_v1';
 function persistState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollSetCategoryTemplates,
+      toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollColorActiveMachine, rollSetCategoryTemplates,
       planTasks, planTaskSeq, companyHolidays, companyHolidaySeq, teamMembers, teamSeq,
       ganttTasks, ganttTaskSeq, planGanttWindowStart,
       dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
@@ -4901,6 +4916,7 @@ function restoreState() {
     if (saved.rollSetMachines) rollSetMachines = saved.rollSetMachines;
     if (saved.rollSetStatus) rollSetStatus = saved.rollSetStatus;
     if (saved.rollColorStatus) rollColorStatus = saved.rollColorStatus;
+    if (saved.rollColorActiveMachine) rollColorActiveMachine = saved.rollColorActiveMachine;
     if (saved.rollSetCategoryTemplates) rollSetCategoryTemplates = saved.rollSetCategoryTemplates;
     if (typeof saved.rollColorSeq === 'number') rollColorSeq = saved.rollColorSeq;
     if (Array.isArray(saved.planTasks)) planTasks = saved.planTasks;
@@ -5215,6 +5231,22 @@ function renderRollColorList() {
       </select>`;
   };
 
+  // เลือกว่าตอนนี้ "กำลังใช้งานอยู่ที่เครื่องไหน" — แสดงเฉพาะตอน Size Roll นี้ผูกไว้กับมากกว่า 1 เครื่อง (ถ้ามีเครื่องเดียว ใช้เครื่องนั้นแน่นอนอยู่แล้ว ไม่ต้องเลือก)
+  // ผลลัพธ์เอาไปใช้แสดงในการ์ด "ชุด Roll กำลังใช้งาน" หน้า Dashboard ให้รู้ว่าใช้อยู่ที่เครื่องไหนจริง ไม่ใช่โชว์รวมทุกเครื่องที่ผูกไว้
+  const machineButtonsHtml = (colorKey) => {
+    const machines = rollSetMachines[selectedRollSet] || [];
+    if (machines.length < 2) return '';
+    const activeMachine = rollColorActiveMachineFor(selectedRollSet, colorKey);
+    return `<div style="display:flex;align-items:center;gap:4px;margin-top:4px;">
+      <span style="font-size:10px;color:var(--text-3);">ใช้อยู่ที่:</span>
+      ${machines.map(m => `<button type="button" class="btn btn-sm" onclick="event.stopPropagation();setRollColorActiveMachine('${colorKey}','${m}')"
+        style="padding:2px 10px;border-radius:6px;font-size:11px;font-weight:700;
+        border:1px solid ${activeMachine===m?'var(--accent)':'var(--border)'};
+        background:${activeMachine===m?'var(--accent-glow)':'var(--bg-surface)'};
+        color:${activeMachine===m?'var(--accent)':'var(--text-3)'};" title="ทำเครื่องหมายว่าชุดสีนี้กำลังใช้งานอยู่ที่เครื่อง ${m}">${m}</button>`).join('')}
+    </div>`;
+  };
+
   html += groups.map(g => {
     const items = scope.filter(r => r.color === g.key);
     const active = g.key === selectedRollColor;
@@ -5235,7 +5267,7 @@ function renderRollColorList() {
           <button class="btn btn-ghost btn-sm" style="padding:3px 6px;color:var(--red);" onclick="deleteColor('${g.key}')" title="ลบ">✕</button>
         </div>
       </div>
-      <div style="padding-left:2px;margin-top:4px;">${colorStatusSelectHtml(g.key, st)}</div>
+      <div style="padding-left:2px;margin-top:4px;">${colorStatusSelectHtml(g.key, st)}${machineButtonsHtml(g.key)}</div>
     </div>`;
   }).join('');
 
@@ -5252,7 +5284,7 @@ function renderRollColorList() {
         </div>
         <span style="font-size:11px;color:var(--text-3);">Roll ที่ยังไม่ได้กำหนดสี ใน${selectedRollSet ? 'กลุ่มนี้' : 'ระบบ'}</span>
       </div>
-      <div style="padding-left:2px;margin-top:4px;">${colorStatusSelectHtml(NO_COLOR_KEY, noColorSt)}</div>
+      <div style="padding-left:2px;margin-top:4px;">${colorStatusSelectHtml(NO_COLOR_KEY, noColorSt)}${machineButtonsHtml(NO_COLOR_KEY)}</div>
     </div>`;
   }
 
