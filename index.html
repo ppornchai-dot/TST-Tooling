@@ -986,6 +986,17 @@ canvas{display:block;}
         </div>
       </div>
 
+      <!-- ROLL IN USE -->
+      <div class="card" style="margin-bottom:18px;">
+        <div class="card-header">
+          <span class="card-title">ชุด Roll กำลังใช้งาน</span>
+          <span style="margin-left:auto;font-size:12px;color:var(--text-3);">
+            <span id="dash-roll-inuse-count" style="font-weight:700;color:var(--accent);">0</span> ชุด
+          </span>
+        </div>
+        <div id="dash-roll-inuse-list" style="padding:12px 14px;"></div>
+      </div>
+
       <!-- CALENDAR -->
       <div class="card" style="margin-bottom:18px;">
         <div class="card-header">
@@ -1883,8 +1894,64 @@ function showPage(id) {
 
 function initDashboard() {
   renderToolingStatusTable();
+  renderDashboardInUseRoll();
   renderCal();
   renderCalDetail(null);
+}
+
+// ─── DASHBOARD: ชุด Roll กำลังใช้งาน ──────────────────────────────────────────
+// 1 หน่วย = Size Roll ชุดหนึ่ง x สีที่ใช้จริงหนึ่งสี ที่ถูกตั้งสถานะ 'inuse' ไว้ที่การ์ดชุดสี Roll ในหน้าทะเบียน Tooling
+function getInUseRollColorEntries() {
+  const entries = [];
+  getRollSets().forEach(setName => {
+    const rows = toolingData.roll.filter(r => r.set === setName);
+    if (!rows.length) return;
+    const colorKeysUsed = new Set(rows.map(r => r.color || NO_COLOR_KEY));
+    colorKeysUsed.forEach(colorKey => {
+      if (rollColorStatusFor(setName, colorKey) !== 'inuse') return;
+      const colorMeta = colorKey === NO_COLOR_KEY ? null : getSetPalette(setName).find(c => c.key === colorKey);
+      entries.push({
+        set: setName,
+        colorKey,
+        colorLabel: colorMeta ? colorMeta.label : 'ไม่ระบุสี',
+        dot: colorMeta ? colorMeta.dot : '#9CA3AF',
+        machines: rollSetMachines[setName] || [],
+      });
+    });
+  });
+  return entries;
+}
+
+function goToRollSetColor(setName, colorKey) {
+  showPage('registry');
+  switchRegTab('roll');
+  selectRollSet(setName);
+  selectRollColor(colorKey);
+}
+
+function renderDashboardInUseRoll() {
+  const el = document.getElementById('dash-roll-inuse-list');
+  if (!el) return;
+  const entries = getInUseRollColorEntries();
+  document.getElementById('dash-roll-inuse-count').textContent = entries.length;
+  if (!entries.length) {
+    el.innerHTML = `<div style="padding:8px 4px;color:var(--text-3);font-size:13px;">ไม่มีชุด Roll ที่กำลังใช้งานอยู่ตอนนี้</div>`;
+    return;
+  }
+  el.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:8px;">${entries.map(e => {
+    const esc = e.set.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const escColor = e.colorKey.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return `<div onclick="goToRollSetColor('${esc}','${escColor}')"
+      style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;cursor:pointer;
+             border:1px solid var(--border-light);background:var(--accent-glow);transition:filter .12s;"
+      onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
+      title="ดูรายละเอียดในทะเบียน Tooling">
+      <span style="width:9px;height:9px;border-radius:50%;background:${e.dot};flex-shrink:0;"></span>
+      <span style="font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(e.set)}</span>
+      <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr(e.colorLabel)}</span>
+      ${e.machines.length ? `<span style="font-size:11px;color:var(--accent);font-weight:700;background:var(--bg-surface);padding:1px 8px;border-radius:10px;">${e.machines.join(' / ')}</span>` : ''}
+    </div>`;
+  }).join('')}</div>`;
 }
 
 // ─── DASHBOARD: สถานะ Tooling (Roll / Roll SQ / ใบเลื่อย / มีดสลิตเตอร์) ──────
