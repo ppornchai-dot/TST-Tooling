@@ -4444,13 +4444,13 @@ function openPlanTaskModal(mode, taskId, presetDate) {
       otMinutes: computedEnd.otMinutes || 0,
       otMinutesByShift: computedEnd.otMinutesByShift || {},
       workerId: g('pf-worker') || null,
+      // totalTime ด้านบนคำนวณจากเวลาเต็มของแต่ละ Roll เสมอ (ไม่ใช่เวลาที่ถูกตัดบางส่วนไว้เดิม) — ถ้าไม่ต้องตัดวัน (splitGroups เป็น null ด้านล่าง)
+      // แปลว่าทุก Roll ได้เวลาเต็มจริง ต้องล้างค่า rollMinutesOverride เดิมทิ้งด้วย ไม่งั้นจะค้างเป็นค่าที่ไม่ตรงกับ totalTime ใหม่
+      rollMinutesOverride: undefined,
     };
     // ถ้าเวลาทำงานยาวข้ามคืนไปมากกว่า 1 วันปฏิทิน ตัดเป็นงานแยกทีละวันจริงแทนที่จะเก็บเป็นงานก้อนเดียว
-    // แก้ไขงานที่เคยถูกตัดวันไว้แล้ว (มี splitGroupId) ต้องลบ "พี่น้อง" เดิมทั้งกลุ่มทิ้งด้วย ไม่ใช่แค่ตัวเองที่กำลังแก้ — กันเศษงานเก่าตกค้างซ้ำกับชุดใหม่ที่คำนวณใหม่
-    if (mode === 'edit' && task.splitGroupId) {
-      const priorGroupId = task.splitGroupId;
-      planTasks = planTasks.filter(x => x.id === task.id || x.splitGroupId !== priorGroupId);
-    }
+    // แก้ไขงานที่มี splitGroupId (เคยถูกตัดวันไว้แล้ว) ต้องแก้ "เฉพาะงานที่กำลังแก้ไข" เท่านั้น ห้ามลบ/คำนวณใหม่ทับ "พี่น้อง" วันอื่นในกลุ่มเดียวกัน
+    // (เดิมเคยลบพี่น้องทั้งกลุ่มทิ้งด้วย ทำให้แก้ไข/ลบงานวันเดียวกลับไปเปลี่ยนข้อมูลของวันอื่นที่ไม่เกี่ยวข้องโดยไม่ตั้งใจ)
     const splitGroups = splitPlanDataAcrossDays({ date, shift: shiftKey, startTime, otCapMinutesByShift, rollIds: selectedIndexes }, rolls, workType);
     if (splitGroups) {
       if (mode === 'edit') planTasks = planTasks.filter(x => x.id !== task.id);
