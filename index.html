@@ -4705,6 +4705,10 @@ function getSetPalette(setName) {
 
 const SIZE_ROLL_CATEGORIES = ['Forming', 'Sizing', 'TH'];
 
+// สีประจำหมวด — ใช้แยก Forming/Sizing/TH ให้เห็นต่างกันชัดๆ ตั้งแต่หัวข้อคั่นหมวด ไม่ปนกับสี accent ที่ใช้บอกกลุ่มที่กำลังเลือกอยู่
+// ประกาศไว้ตรงนี้ (ก่อน initDashboard() ตัวแรกที่ถูกเรียกตอนโหลดหน้า ที่บรรทัดท้ายไฟล์) เพราะ renderDashboardInUseRoll() ต้องใช้ค่านี้ตั้งแต่รอบแรกที่หน้าโหลด
+const ROLL_SET_SECTION_COLORS = { Forming: C_BLUE, Sizing: C_AMBER, TH: C_PURPLE };
+
 // กลุ่ม Size Roll ที่ถูกตั้งเป็น "เทมเพลต" ของแต่ละหมวด — ผู้ใช้กำหนดเองทีละหมวดผ่านปุ่ม ★ ที่แต่ละกลุ่ม (ตั้งได้หมวดละ 1 กลุ่มเท่านั้น)
 let rollSetCategoryTemplates = {};
 function isRollSetTemplate(setName) {
@@ -5367,9 +5371,6 @@ function rollSetCardHtml(s, num) {
       </div>
     </div>`;
 }
-
-// สีประจำหมวด — ใช้แยก Forming/Sizing/TH ให้เห็นต่างกันชัดๆ ตั้งแต่หัวข้อคั่นหมวด ไม่ปนกับสี accent ที่ใช้บอกกลุ่มที่กำลังเลือกอยู่
-const ROLL_SET_SECTION_COLORS = { Forming: C_BLUE, Sizing: C_AMBER, TH: C_PURPLE };
 
 function rollSetSectionHeaderHtml(label, count, color) {
   const c = color || 'var(--text-3)';
