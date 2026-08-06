@@ -2658,6 +2658,22 @@ function isCompanyHoliday(iso) { return companyHolidays.some(h => h.date === iso
 // วันที่ระบบวางแผนงานอัตโนมัติ (CNC/ขัด Roll) ห้ามเริ่ม/วางงานใหม่ — วันอาทิตย์ (เหมือน isDayOff ของ Production Block) หรือวันหยุดบริษัทที่กำหนดไว้เอง
 function isPlanDayOff(iso) { return parseISODate(iso).getDay() === 0 || isCompanyHoliday(iso); }
 
+// หาจุดต่อเวลาที่ถูกต้องจริง ให้งานประเภทเดียวกัน (CNC/ขัด Roll) ต่อกันสนิทเมื่องานก่อนหน้าจบพอดีจุดหมดกะ (17:00/05:00) หรือจุดจบทั่วไป —
+// ใช้ตอนดันคิวงานที่ทับซ้อน/แทรกงานต่อกลับเข้าคิว (ดู autoFixPlanSequencing และ backfillMissedPlanContinuations)
+// 1) ถ้าจบพอดีจุดหมดกะ เลื่อนไปเริ่มกะถัดไปตรงๆ (20:00/08:00 วันเดียวกัน) ก่อน
+// 2) ถ้าจุดที่ได้ (หลังข้อ 1 หรือจุดจบเดิมเลยถ้าไม่ตรงขอบเขตกะ) ไปตกวันหยุด (อาทิตย์/วันหยุดบริษัท) ไม่มีใครทำงานอยู่แล้ว เลื่อนไปเริ่มกะเช้าของวันทำงานถัดไปแทน (ข้ามทั้งวันหยุดนั้นไปเลย ทั้งกะเช้า+กะดึก)
+function nextValidPlanContinuePoint(shift, date, time) {
+  let targetDate = date, targetTime = time;
+  if (shift === 'both' && (targetTime === '17:00' || targetTime === '05:00')) {
+    targetTime = targetTime === '17:00' ? '20:00' : '08:00';
+  }
+  while (isPlanDayOff(targetDate)) {
+    targetDate = addDaysIso(targetDate, 1);
+    targetTime = '08:00';
+  }
+  return { date: targetDate, time: targetTime };
+}
+
 function renderCompanyHolidaysList() {
   const wrap = document.getElementById('ch-list-wrap');
   if (!wrap) return;
@@ -4145,9 +4161,10 @@ function resequencePlanTask(taskId) {
   const prev = findPrecedingPlanTask(task);
   if (!prev) { alert('ไม่พบงานประเภทเดียวกันงานอื่นที่มาก่อนหน้างานนี้ให้ต่อเวลาด้วย'); return; }
   if (!confirm(`ย้ายงานนี้ให้เริ่มต่อจาก "${prev.rollName}" (จบ ${fmtDateThai(parseISODate(prev.endDate))} ${prev.endTime}) เลยไหม?`)) return;
-  task.date = prev.endDate;
+  const target = nextValidPlanContinuePoint(prev.shift, prev.endDate, prev.endTime);
+  task.date = target.date;
   task.shift = prev.shift;
-  task.startTime = prev.endTime;
+  task.startTime = target.time;
   const computed = computePlanEnd(task.date, task.startTime, task.totalTime, task.shift, task.otCapMinutesByShift || {});
   task.endTime = computed.time;
   task.endDate = computed.date || task.date;
@@ -4177,12 +4194,11 @@ function autoFixPlanSequencing() {
         });
       for (let i = 1; i < tasks.length; i++) {
         const prev = tasks[i - 1], cur = tasks[i];
-        let targetDate = prev.endDate, targetTime = prev.endTime;
         // งาน "2 กะ" ที่จบพอดีจุดหมดกะ (17:00 จบกะเช้า / 05:00 จบกะดึก) ไม่มีใครทำงานจริงตรงจุดนั้น — เลื่อนจุดต่อเวลาไปเริ่มกะถัดไปตรงๆ (20:00/08:00 วันเดียวกัน) แทน
         // กันงานถัดไปมี startTime ค้างอยู่ตรงจุดที่ยังไม่ถึงเวลาเริ่มกะจริง (แม้ endTime ที่คำนวณได้จะถูกต้องอยู่แล้วเพราะ computePlanEnd ข้ามช่วงว่างให้เองก็ตาม แต่ startTime ที่แสดงจะดูสับสน)
-        if (prev.shift === 'both' && (targetTime === '17:00' || targetTime === '05:00')) {
-          targetTime = targetTime === '17:00' ? '20:00' : '08:00';
-        }
+        // และถ้าจุดที่ได้ไปตกวันหยุด (อาทิตย์/วันหยุดบริษัท) เลื่อนไปเริ่มกะเช้าของวันทำงานถัดไปแทน (ดู nextValidPlanContinuePoint)
+        const target = nextValidPlanContinuePoint(prev.shift, prev.endDate, prev.endTime);
+        const targetDate = target.date, targetTime = target.time;
         // เทียบเป็น "ทับซ้อนจริงไหม" ไม่ใช่แค่ "ต่างจากจุดต่อเนื่องพอดีไหม" — เริ่มพอดี (เท่ากับ) หรือเริ่มทีหลัง (มีช่องว่างที่ตั้งใจเว้นไว้) ถือว่าไม่ทับซ้อน ปล่อยผ่านไม่แก้ให้
         const curKey = cur.date + ' ' + cur.startTime;
         const targetKey = targetDate + ' ' + targetTime;
@@ -4297,8 +4313,10 @@ function autoContinueRemainingRollTime(workType, setName, colorKey, otCapMinutes
   while (['08:00', '17:00', '20:00', '05:00'].includes(lastEndTime) && ++guard <= 366) {
     // ถ้าจบพอดีตรงจุด "หมดกะ" (17:00 จบกะเช้า / 05:00 จบกะดึก) ให้ขยับไปเริ่มงานต่อที่ "เริ่มกะถัดไป" ตรงๆ (20:00/08:00 วันเดียวกัน) แทนที่จะให้งานใหม่มีเวลาเริ่มตรงจุดที่ยังไม่มีใครทำงานอยู่
     // (ถ้าปล่อยให้ startTime เป็น 17:00/05:00 เป๊ะ ตารางกะของงานนั้นจะเริ่มด้วยช่วง "รอกะถัดไป" ล้วนๆ ก่อนมีงานจริงเลยสักนาที ทำให้ splitPlanDataAcrossDays สร้างกลุ่มแรกที่ไม่มี Roll ไม่มีเวลาว่างเปล่าติดมาด้วย)
-    if (lastEndTime === '17:00') lastEndTime = '20:00';
-    else if (lastEndTime === '05:00') lastEndTime = '08:00';
+    // และถ้าจุดที่ได้ไปตกวันหยุด (อาทิตย์/วันหยุดบริษัท) เลื่อนไปเริ่มกะเช้าของวันทำงานถัดไปแทน (ดู nextValidPlanContinuePoint)
+    const boundaryFix = nextValidPlanContinuePoint('both', lastEndDate, lastEndTime);
+    lastEndDate = boundaryFix.date;
+    lastEndTime = boundaryFix.time;
     const matchedRolls = getMatchingRollsForPlan(setName, colorKey || null);
     const remainingList = matchedRolls.map((r, idx) => {
       const full = parseFloat(r[field]) || 0;
@@ -5244,10 +5262,8 @@ if (mergeAdjacentPlanTasks()) persistState();
         });
       for (let i = 1; i < chain.length; i++) {
         const prev = chain[i - 1], cur = chain[i];
-        let targetDate = prev.endDate, targetTime = prev.endTime;
-        if (prev.shift === 'both' && (targetTime === '17:00' || targetTime === '05:00')) {
-          targetTime = targetTime === '17:00' ? '20:00' : '08:00';
-        }
+        const target = nextValidPlanContinuePoint(prev.shift, prev.endDate, prev.endTime);
+        const targetDate = target.date, targetTime = target.time;
         const curKey = cur.date + ' ' + cur.startTime, targetKey = targetDate + ' ' + targetTime;
         if (curKey >= targetKey) continue;
         cur.date = targetDate; cur.shift = prev.shift; cur.startTime = targetTime;
@@ -5261,14 +5277,16 @@ if (mergeAdjacentPlanTasks()) persistState();
 
   pending.forEach(p => {
     // p.owner อาจถูกขยับเวลาไปแล้วจากการแทรก Roll ตัวก่อนหน้าในลูปนี้ — ใช้ object เดิม ค่า endDate/endTime จะเป็นค่าล่าสุดเสมอเพราะ cascadeWithPriority แก้ไข object ตรงๆ ไม่ได้สร้างใหม่
-    const computed = computePlanEnd(p.owner.endDate, p.owner.endTime, p.remaining, 'both', p.owner.otCapMinutesByShift || {});
+    // จุดที่ควรแทรกกลับไปต่อจริงอาจไม่ใช่ p.owner.endDate/endTime ตรงๆ ถ้าจบพอดีขอบเขตกะหรือไปตกวันหยุด (ดู nextValidPlanContinuePoint)
+    const anchor = nextValidPlanContinuePoint('both', p.owner.endDate, p.owner.endTime);
+    const computed = computePlanEnd(anchor.date, anchor.time, p.remaining, 'both', p.owner.otCapMinutesByShift || {});
     planTaskSeq++;
     const newTask = {
       id: 'PT-' + String(planTaskSeq).padStart(4, '0'), workType: p.workType,
-      date: p.owner.endDate, rollSet: p.rollSet, rollColor: p.rollColor,
+      date: anchor.date, rollSet: p.rollSet, rollColor: p.rollColor,
       rollIds: [p.idx], rollId: '1 Roll', rollName: p.roll.name,
       totalTime: p.remaining,
-      startTime: p.owner.endTime, endTime: computed.time || '—', endDate: computed.date || p.owner.endDate,
+      startTime: anchor.time, endTime: computed.time || '—', endDate: computed.date || anchor.date,
       shift: 'both', otCapMinutesByShift: p.owner.otCapMinutesByShift || {},
       otMinutes: computed.otMinutes || 0, otMinutesByShift: computed.otMinutesByShift || {},
       rollMinutesOverride: { [p.idx]: p.remaining },
