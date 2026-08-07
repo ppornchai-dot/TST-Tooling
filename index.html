@@ -6428,6 +6428,15 @@ function nowHHMM() {
 }
 // ช่าง (cnc/polish/operator) กดเริ่ม/จบ/พักงานได้เฉพาะตอนดูวันปัจจุบันจริงเท่านั้น — กันกดย้อนหลัง/ล่วงหน้าให้วันอื่นโดยไม่ตั้งใจ
 // admin/lead ไม่ถูกจำกัด เผื่อต้องแก้ไขบันทึกย้อนหลังหรือทดสอบข้อมูล
+// มุมมองช่าง (CNC/ขัด Roll/ช่างเครื่อง): เหลือแค่ Size Roll + ชุดสี Roll เป็นตัวระบุงาน ซ่อนคอลัมน์รายละเอียดที่ดูได้จากการกดขยายแถวอยู่แล้ว
+// ต้องเรียกทั้งจาก renderDailyTasks() และ applyRoleUI() — เพราะตอน Admin สลับ "ดูเป็น" คนอื่น applyRoleUI() ไม่ได้ render ตารางใหม่ ถ้าไม่เรียกที่นี่ class จะค้างมุมมองเดิมไว้
+function applyDailyTechView() {
+  const t = document.getElementById('tbl-daily');
+  if (!t) return;
+  const r = effectiveRole();
+  t.classList.toggle('daily-tech-view', r === 'cnc' || r === 'polish' || r === 'operator');
+}
+
 function canActOnDailyDate() {
   const role = effectiveRole();
   return role === 'admin' || role === 'lead' || dailyViewDate === DAILY_TODAY_ISO;
@@ -6780,12 +6789,7 @@ function renderDailyTasks() {
   const allItems = checklistItems.concat(plannedItems).sort((a, b) => ((a.date||'') + a.startTime).localeCompare((b.date||'') + b.startTime));
   const restrictWorkerId = effectiveWorkerId();
 
-  // มุมมองช่าง (CNC/ขัด Roll/ช่างเครื่อง): เหลือแค่ Size Roll + ชุดสี Roll เป็นตัวระบุงาน ซ่อนคอลัมน์รายละเอียดที่ดูได้จากการกดขยายแถวอยู่แล้ว
-  const dailyTable = document.getElementById('tbl-daily');
-  if (dailyTable) {
-    const r = effectiveRole();
-    dailyTable.classList.toggle('daily-tech-view', r === 'cnc' || r === 'polish' || r === 'operator');
-  }
+  applyDailyTechView();
 
   tbody.innerHTML = allItems.map((item, i) => {
     const status = getDailyStatus(item.key);
@@ -8071,6 +8075,7 @@ function onAdminViewChange() {
 function applyRoleUI() {
   if (!currentUser) return;
   const role = effectiveRole();
+  applyDailyTechView(); // สลับมุมมอง (เช่น Admin กด "ดูเป็น" ช่าง) ต้องอัปเดตคอลัมน์ที่ซ่อนในตารางงานประจำวันตามไปด้วย
 
   document.getElementById('topbar-user-avatar').textContent = currentUser.initials || currentUser.name.slice(0, 2);
   document.getElementById('topbar-user-avatar').style.background = currentUser.avatarBg || roleColor(currentUser.role);
