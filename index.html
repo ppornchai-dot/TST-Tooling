@@ -8135,6 +8135,9 @@ function refreshAfterCloudUpdate() {
   renderProdBlock();
   showPage(currentPage);
   renderDailyTasks();
+  // ต้องเรียกหลัง renderTeamGrid() เสมอ เพราะ dropdown "ดูเป็น" อ่านรายชื่อจากการ์ดในหน้าทีมงานที่เพิ่ง render ใหม่
+  // ถ้าไม่เรียกตรงนี้ dropdown จะค้างรายชื่อตั้งต้นที่ถูกสร้างตอน initAuth() (ก่อนข้อมูลจาก cloud มาถึง) ไว้ตลอด
+  if (currentUser) applyRoleUI();
 }
 
 async function initCloudSync() {
