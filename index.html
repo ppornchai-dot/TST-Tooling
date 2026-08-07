@@ -806,11 +806,27 @@ canvas{display:block;}
   .modal{width:96vw;}
   .login-card{padding:20px;}
   #login-overlay{align-items:flex-start;padding-top:28px;}
+
+  /* หัวข้อ/คำอธิบายในตัวหน้า ซ้ำกับที่ topbar แสดงอยู่แล้วเป๊ะๆ (ตั้งค่าจาก PAGE_META ชุดเดียวกัน) — ซ่อนบนจอแคบเพื่อไม่ให้เสียพื้นที่ไปกับข้อความซ้ำ */
+  .page > .section-title, .page > .section-sub{display:none;}
+
+  /* การ์ด KPI บนจอแคบ: บีบให้เตี้ยลง ซ่อนไอคอน (กันไอคอนทับตัวเลขตอนการ์ดแคบ) และทำตัวหนังสือให้เข้มอ่านชัดขึ้น */
+  .kpi-card{padding:12px 14px;}
+  .kpi-icon{display:none;}
+  .kpi-label{font-size:12px;color:var(--text-2);letter-spacing:0;text-transform:none;margin-bottom:4px;}
+  .kpi-value{font-size:26px;}
+
+  /* ตารางบนมือถือ: ตัวหนังสือใหญ่/เข้มขึ้นให้อ่านชัด และบีบระยะขอบในช่องลงเพื่อให้เห็นคอลัมน์ได้มากขึ้นต่อหนึ่งหน้าจอ */
+  table{font-size:14px;}
+  thead th{font-size:12px;color:var(--text-2);letter-spacing:0;padding:9px 10px;}
+  tbody td{padding:9px 10px;}
+  .chip{font-size:12px;}
 }
 @media (max-width:480px){
-  .kpi-grid{grid-template-columns:1fr!important;}
+  /* คง 2 คอลัมน์ไว้ (ไม่ยุบเหลือ 1) ไม่งั้นการ์ด KPI 4 อันจะยาวเต็มจอจนต้องเลื่อนหาตารางงาน */
+  .kpi-grid{grid-template-columns:repeat(2,1fr)!important;gap:8px;}
   .reg-kpi-row{grid-template-columns:repeat(2,1fr)!important;}
-  .kpi-value{font-size:26px;}
+  .kpi-value{font-size:24px;}
 }
 </style>
 </head>
@@ -1349,13 +1365,6 @@ canvas{display:block;}
         <button class="btn btn-ghost btn-sm daily-worktype-btn" data-worktype="" onclick="switchDailyWorkTypeFilter('')" style="color:var(--accent);border-color:var(--accent);">ทั้งหมด</button>
         <button class="btn btn-ghost btn-sm daily-worktype-btn" data-worktype="cnc" onclick="switchDailyWorkTypeFilter('cnc')">⚙ CNC</button>
         <button class="btn btn-ghost btn-sm daily-worktype-btn" data-worktype="polish" onclick="switchDailyWorkTypeFilter('polish')">✦ ขัด Roll</button>
-      </div>
-
-      <div class="mobile-wrap" style="display:flex;gap:8px;margin-bottom:12px;">
-        <button class="btn btn-ghost btn-sm daily-shift-btn" data-shift="" onclick="switchDailyShiftFilter('')" style="color:var(--accent);border-color:var(--accent);">ทั้งหมด</button>
-        <button class="btn btn-ghost btn-sm daily-shift-btn" data-shift="morning" onclick="switchDailyShiftFilter('morning')">🌤 กะเช้า</button>
-        <button class="btn btn-ghost btn-sm daily-shift-btn" data-shift="night" onclick="switchDailyShiftFilter('night')">🌙 กะดึก</button>
-        <button class="btn btn-ghost btn-sm daily-shift-btn" data-shift="both" onclick="switchDailyShiftFilter('both')">🌤🌙 2 กะ</button>
       </div>
 
       <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
