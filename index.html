@@ -1323,7 +1323,18 @@ canvas{display:block;}
     <div class="page" id="page-prodWeight">
       <div class="section-title">น้ำหนักผลิต</div>
       <div class="section-sub">เทียบน้ำหนักผลิตจริงกับยอดใช้งานสะสมของแต่ละชุด Roll</div>
-      <div class="grid-3" id="prodweight-grid" style="margin-top:16px;"></div>
+      <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-top:14px;margin-bottom:6px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">จากวันที่</label>
+          <input class="form-input" type="date" id="prodweight-date-from" style="width:160px;">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">ถึงวันที่</label>
+          <input class="form-input" type="date" id="prodweight-date-to" style="width:160px;">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="renderProdWeight()">ค้นหา</button>
+      </div>
+      <div class="grid-3" id="prodweight-grid" style="margin-top:10px;"></div>
     </div>
 
 
@@ -4618,9 +4629,6 @@ function ensureRollSetOrder(sets) {
   sets.forEach(s => { if (!rollSetOrder.includes(s)) rollSetOrder.push(s); });
 }
 
-// น้ำหนักผลิตจริง (ตัน) กรอกเองต่อชุด Roll — เทียบกับยอด usage สะสมของ Roll ในทะเบียน Tooling
-let rollSetProducedWeight = {};
-
 // เครื่องจักรที่ผูกกับแต่ละ Size Roll — เลือกได้สูงสุด MAX_ROLL_MACHINES เครื่องต่อกลุ่ม
 let rollSetMachines = {};
 const ROLL_MACHINES = ['P1', 'P2', 'P3', 'P4'];
@@ -4887,7 +4895,7 @@ let cloudSyncReady = false;
 
 function buildStateSnapshot() {
   return {
-    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollColorActiveMachine, rollSetCategoryTemplates, rollSetProducedWeight,
+    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollColorActiveMachine, rollSetCategoryTemplates,
     planTasks, planTaskSeq, companyHolidays, companyHolidaySeq, teamMembers, teamSeq,
     ganttTasks, ganttTaskSeq, planGanttWindowStart,
     dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
@@ -4921,7 +4929,6 @@ function applyState(saved) {
   if (saved.rollColorStatus) rollColorStatus = saved.rollColorStatus;
   if (saved.rollColorActiveMachine) rollColorActiveMachine = saved.rollColorActiveMachine;
   if (saved.rollSetCategoryTemplates) rollSetCategoryTemplates = saved.rollSetCategoryTemplates;
-  if (saved.rollSetProducedWeight) rollSetProducedWeight = saved.rollSetProducedWeight;
   if (typeof saved.rollColorSeq === 'number') rollColorSeq = saved.rollColorSeq;
   if (Array.isArray(saved.planTasks)) planTasks = saved.planTasks;
   if (typeof saved.planTaskSeq === 'number') planTaskSeq = saved.planTaskSeq;
@@ -5387,9 +5394,9 @@ function rollSetFgKey(setName) {
 
 let fgWeightFetchError = null;
 
-async function fetchFgWeightByKey() {
+async function fetchFgWeightByKey(fromDate, toDate) {
   try {
-    const res = await fetch(FG_API_URL + '?from=2020-01-01&to=2099-12-31');
+    const res = await fetch(FG_API_URL + '?from=' + fromDate + '&to=' + toDate);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
     const rows = json.rows || [];
@@ -5409,17 +5416,29 @@ async function fetchFgWeightByKey() {
 
 // รวม Roll Set ที่เป็นขนาดเดียวกัน (ต่างกันแค่ขั้นตอน Forming/Sizing/TH) ไว้เป็นการ์ดเดียว — ใช้ usage สูงสุดในกลุ่มแทนการรวม
 // เพราะเป็นเนื้อเหล็กชิ้นเดียวกันที่ไหลผ่านแต่ละขั้นตอนต่อกัน ไม่ใช่ Roll ที่ทำงานคู่ขนานแยกกัน
-let prodWeightGroupOrder = [];
-
 function rollSetGroupDisplayName(setName) {
   return String(setName).replace(/\s+(Forming|Sizing|TH)\s*$/i, '').trim();
+}
+
+function prodWeightStatusMeta(pct) {
+  if (pct === null) return { color: 'var(--text-3)', chip: '' };
+  if (pct >= 85) return { color: 'var(--green)', chip: 'chip-green' };
+  if (pct >= 50) return { color: 'var(--amber)', chip: 'chip-amber' };
+  return { color: 'var(--red)', chip: 'chip-red' };
 }
 
 async function renderProdWeight() {
   const grid = document.getElementById('prodweight-grid');
   if (!grid) return;
+  const fromInput = document.getElementById('prodweight-date-from');
+  const toInput = document.getElementById('prodweight-date-to');
+  if (fromInput && !fromInput.value) fromInput.value = '2020-01-01';
+  if (toInput && !toInput.value) toInput.value = new Date().toISOString().slice(0, 10);
+  const fromDate = fromInput ? fromInput.value : '2020-01-01';
+  const toDate = toInput ? toInput.value : new Date().toISOString().slice(0, 10);
+
   grid.innerHTML = `<div style="text-align:center;color:var(--text-3);font-size:13px;padding:24px 0;grid-column:1/-1;">กำลังโหลดน้ำหนักผลิตจากระบบ Production...</div>`;
-  const fgByKey = await fetchFgWeightByKey();
+  const fgByKey = await fetchFgWeightByKey(fromDate, toDate);
   const sets = getRollSets();
   if (!sets.length) {
     grid.innerHTML = `<div style="text-align:center;color:var(--text-3);font-size:13px;padding:24px 0;grid-column:1/-1;">ยังไม่มีชุด Roll ในทะเบียน Tooling</div>`;
@@ -5427,70 +5446,51 @@ async function renderProdWeight() {
   }
 
   const groups = {};
-  prodWeightGroupOrder = [];
+  const groupOrder = [];
   sets.forEach(setName => {
     const fgKey = rollSetFgKey(setName);
     const groupKey = fgKey || setName;
     if (!groups[groupKey]) {
       groups[groupKey] = { displayName: rollSetGroupDisplayName(setName), fgKey, usage: 0 };
-      prodWeightGroupOrder.push(groupKey);
+      groupOrder.push(groupKey);
     }
     const usage = rollSetUsageTon(setName);
     if (usage > groups[groupKey].usage) groups[groupKey].usage = usage;
   });
 
-  const errorBanner = fgByKey ? '' : `<div style="grid-column:1/-1;background:var(--red-dim);color:var(--red);border-radius:8px;padding:10px 14px;font-size:12px;margin-bottom:4px;">ดึงข้อมูลจากระบบ Production ไม่สำเร็จ (${escapeHtmlAttr(fgWeightFetchError || '')}) — แสดงค่าที่กรอกไว้เองแทน</div>`;
-  grid.innerHTML = errorBanner + prodWeightGroupOrder.map((groupKey, i) => {
+  const errorBanner = fgByKey ? '' : `<div style="grid-column:1/-1;background:var(--red-dim);color:var(--red);border-radius:8px;padding:10px 14px;font-size:12px;margin-bottom:4px;">ดึงข้อมูลจากระบบ Production ไม่สำเร็จ (${escapeHtmlAttr(fgWeightFetchError || '')})</div>`;
+  grid.innerHTML = errorBanner + groupOrder.map(groupKey => {
     const g = groups[groupKey];
     const usage = g.usage;
     const autoKg = g.fgKey && fgByKey ? fgByKey[g.fgKey] : null;
-    const isAuto = autoKg !== null && autoKg !== undefined;
-    const produced = isAuto ? autoKg / 1000 : (rollSetProducedWeight[groupKey] || 0);
-    const maxVal = Math.max(usage, produced, 1);
-    const usagePct = Math.round(usage / maxVal * 100);
-    const producedPct = Math.round(produced / maxVal * 100);
-    const diffPct = usage ? Math.round((produced - usage) / usage * 100) : null;
-    const diffColor = diffPct === null ? 'var(--text-3)' : diffPct >= 0 ? 'var(--green)' : 'var(--red)';
-    const diffLabel = diffPct === null ? '—' : (diffPct >= 0 ? '+' : '') + diffPct + '%';
-    const producedLabel = isAuto
-      ? `${produced.toLocaleString(undefined,{maximumFractionDigits:2})} ตัน <span style="font-size:10px;color:var(--text-3);font-weight:400;">(อัตโนมัติ)</span>`
-      : `${produced.toLocaleString()} ตัน`;
-    const inputHtml = isAuto
-      ? ''
-      : `<div style="display:flex;gap:6px;margin-top:4px;">
-          <input class="form-input" type="number" min="0" step="1" id="pw-input-${i}" placeholder="กรอกน้ำหนักผลิต (ตัน)" value="${produced || ''}" style="flex:1;">
-          <button class="btn btn-primary btn-sm" onclick="saveProdWeight(${i})">บันทึก</button>
-        </div>`;
+    const hasData = autoKg !== null && autoKg !== undefined;
+    const produced = hasData ? autoKg / 1000 : 0;
+    const pct = usage ? Math.round(produced / usage * 100) : null;
+    const barPct = pct === null ? 0 : Math.min(pct, 100);
+    const meta = prodWeightStatusMeta(pct);
+    const statusText = !hasData ? 'ยังไม่มีข้อมูลการผลิต' : (pct === null ? '—' : `ผลิตได้ ${pct}% ของ usage`);
     return `<div class="card">
-      <div class="card-header"><span class="card-title" style="font-size:13px;">${escapeHtmlAttr(g.displayName)}</span></div>
-      <div class="card-body" style="display:flex;flex-direction:column;gap:10px;">
-        <div>
-          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-3);margin-bottom:3px;"><span>น้ำหนักผลิตจริง</span><span style="font-weight:700;color:var(--text-1);">${producedLabel}</span></div>
-          <div style="background:var(--bg-panel);border-radius:4px;height:8px;overflow:hidden;"><div style="height:100%;width:${producedPct}%;background:var(--accent);border-radius:4px;"></div></div>
+      <div class="card-body" style="padding:16px;">
+        <div style="font-size:13px;font-weight:700;color:var(--text-1);margin-bottom:14px;">${escapeHtmlAttr(g.displayName)}</div>
+        <div style="display:flex;gap:16px;margin-bottom:12px;">
+          <div style="flex:1;">
+            <div style="font-size:11px;color:var(--text-3);margin-bottom:2px;">ผลิตจริง</div>
+            <div style="font-size:19px;font-weight:800;color:var(--text-1);">${hasData ? produced.toLocaleString(undefined,{maximumFractionDigits:2}) : '—'} <span style="font-size:12px;font-weight:500;color:var(--text-3);">ตัน</span></div>
+          </div>
+          <div style="flex:1;text-align:right;">
+            <div style="font-size:11px;color:var(--text-3);margin-bottom:2px;">Usage สะสม</div>
+            <div style="font-size:19px;font-weight:800;color:var(--text-1);">${usage.toLocaleString()} <span style="font-size:12px;font-weight:500;color:var(--text-3);">ตัน</span></div>
+          </div>
         </div>
-        <div>
-          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-3);margin-bottom:3px;"><span>Usage สะสมของ Roll</span><span style="font-weight:700;color:var(--text-1);">${usage.toLocaleString()} ตัน</span></div>
-          <div style="background:var(--bg-panel);border-radius:4px;height:8px;overflow:hidden;"><div style="height:100%;width:${usagePct}%;background:var(--amber);border-radius:4px;"></div></div>
+        <div style="background:var(--bg-panel);border-radius:5px;height:10px;overflow:hidden;margin-bottom:10px;">
+          <div style="height:100%;width:${barPct}%;background:${meta.color};border-radius:5px;"></div>
         </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding-top:4px;border-top:1px solid var(--border-light);">
-          <span style="color:var(--text-3);">ส่วนต่าง (ผลิต − usage)</span>
-          <span style="font-weight:700;color:${diffColor};">${diffLabel}</span>
+        <div style="display:flex;justify-content:flex-end;">
+          <span class="chip ${meta.chip}" style="font-size:11px;">${statusText}</span>
         </div>
-        ${inputHtml}
       </div>
     </div>`;
   }).join('');
-}
-
-function saveProdWeight(index) {
-  const groupKey = prodWeightGroupOrder[index];
-  if (!groupKey) return;
-  const input = document.getElementById('pw-input-' + index);
-  if (!input) return;
-  const val = parseFloat(input.value);
-  rollSetProducedWeight[groupKey] = isNaN(val) ? 0 : val;
-  persistState();
-  renderProdWeight();
 }
 
 function rollSetScope() {
