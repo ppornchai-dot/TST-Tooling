@@ -5360,28 +5360,90 @@ function rollSetUsageTon(setName) {
   return max;
 }
 
-function renderProdWeight() {
+// ─── น้ำหนักผลิตจริง — ดึงอัตโนมัติจากระบบ Production (tstproduction.vercel.app) ───────────
+// รหัสสินค้า (product_code) 7 ตัวแรก: ตัวที่ 2-6 (เช่น "SQG30") = กลุ่ม+ขนาด, ตัวที่ 7 = "0" คือเกรด GI, ตัวอื่น (ไม่ใช่ 0) คือเกรด GS
+const FG_API_URL = 'https://tstproduction.vercel.app/api/trans/fg';
+const FG_FAMILY_SIZE_KEY = { SQG10:'1x1', SQG15:'1.5x1.5', SQG20:'2x2', SQG30:'3x3', SQG40:'4x4', RTG20:'2x1', RTG30:'3x1.5', RTG40:'4x2', RTG60:'6x2' };
+
+function fgProductCodeToKey(productCode) {
+  if (!productCode || productCode.length < 7) return null;
+  const familyCode = productCode.slice(1, 6);
+  const sizeKey = FG_FAMILY_SIZE_KEY[familyCode];
+  if (!sizeKey) return null;
+  const grade = productCode[6] === '0' ? 'GI' : 'GS';
+  return grade + '|' + sizeKey;
+}
+
+// แปลงชื่อ Roll Set (เช่น GI 3"x1-1/2" (75x38) Forming) ให้เป็น key รูปแบบเดียวกับ fgProductCodeToKey เพื่อจับคู่กัน
+function rollSetFgKey(setName) {
+  const m = String(setName).match(/^(GI|GS)\s+([0-9"x\-\/.]+)/i);
+  if (!m) return null;
+  const grade = m[1].toUpperCase();
+  let dim = m[2].replace(/"/g, '').trim();
+  dim = dim.replace(/(\d+)-1\/2/g, (_, n) => (parseInt(n, 10) + 0.5).toString());
+  if (!dim.includes('x')) dim = dim + 'x' + dim;
+  return grade + '|' + dim.toLowerCase();
+}
+
+let fgWeightFetchError = null;
+
+async function fetchFgWeightByKey() {
+  try {
+    const res = await fetch(FG_API_URL + '?from=2020-01-01&to=2099-12-31');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    const rows = json.rows || [];
+    const byKey = {};
+    rows.forEach(r => {
+      const key = fgProductCodeToKey(r.product_code);
+      if (!key) return;
+      byKey[key] = (byKey[key] || 0) + (parseFloat(r.weight_kg) || 0);
+    });
+    fgWeightFetchError = null;
+    return byKey;
+  } catch (e) {
+    fgWeightFetchError = e.message;
+    return null;
+  }
+}
+
+async function renderProdWeight() {
   const grid = document.getElementById('prodweight-grid');
   if (!grid) return;
+  grid.innerHTML = `<div style="text-align:center;color:var(--text-3);font-size:13px;padding:24px 0;grid-column:1/-1;">กำลังโหลดน้ำหนักผลิตจากระบบ Production...</div>`;
+  const fgByKey = await fetchFgWeightByKey();
   const sets = getRollSets();
   if (!sets.length) {
     grid.innerHTML = `<div style="text-align:center;color:var(--text-3);font-size:13px;padding:24px 0;grid-column:1/-1;">ยังไม่มีชุด Roll ในทะเบียน Tooling</div>`;
     return;
   }
-  grid.innerHTML = sets.map((setName, i) => {
+  const errorBanner = fgByKey ? '' : `<div style="grid-column:1/-1;background:var(--red-dim);color:var(--red);border-radius:8px;padding:10px 14px;font-size:12px;margin-bottom:4px;">ดึงข้อมูลจากระบบ Production ไม่สำเร็จ (${escapeHtmlAttr(fgWeightFetchError || '')}) — แสดงค่าที่กรอกไว้เองแทน</div>`;
+  grid.innerHTML = errorBanner + sets.map((setName, i) => {
     const usage = rollSetUsageTon(setName);
-    const produced = rollSetProducedWeight[setName] || 0;
+    const key = rollSetFgKey(setName);
+    const autoKg = key && fgByKey ? fgByKey[key] : null;
+    const isAuto = autoKg !== null && autoKg !== undefined;
+    const produced = isAuto ? autoKg / 1000 : (rollSetProducedWeight[setName] || 0);
     const maxVal = Math.max(usage, produced, 1);
     const usagePct = Math.round(usage / maxVal * 100);
     const producedPct = Math.round(produced / maxVal * 100);
     const diffPct = usage ? Math.round((produced - usage) / usage * 100) : null;
     const diffColor = diffPct === null ? 'var(--text-3)' : diffPct >= 0 ? 'var(--green)' : 'var(--red)';
     const diffLabel = diffPct === null ? '—' : (diffPct >= 0 ? '+' : '') + diffPct + '%';
+    const producedLabel = isAuto
+      ? `${produced.toLocaleString(undefined,{maximumFractionDigits:2})} ตัน <span style="font-size:10px;color:var(--text-3);font-weight:400;">(อัตโนมัติ)</span>`
+      : `${produced.toLocaleString()} ตัน`;
+    const inputHtml = isAuto
+      ? ''
+      : `<div style="display:flex;gap:6px;margin-top:4px;">
+          <input class="form-input" type="number" min="0" step="1" id="pw-input-${i}" placeholder="กรอกน้ำหนักผลิต (ตัน)" value="${produced || ''}" style="flex:1;">
+          <button class="btn btn-primary btn-sm" onclick="saveProdWeight(${i})">บันทึก</button>
+        </div>`;
     return `<div class="card">
       <div class="card-header"><span class="card-title" style="font-size:13px;">${escapeHtmlAttr(setName)}</span></div>
       <div class="card-body" style="display:flex;flex-direction:column;gap:10px;">
         <div>
-          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-3);margin-bottom:3px;"><span>น้ำหนักผลิตจริง</span><span style="font-weight:700;color:var(--text-1);">${produced.toLocaleString()} ตัน</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-3);margin-bottom:3px;"><span>น้ำหนักผลิตจริง</span><span style="font-weight:700;color:var(--text-1);">${producedLabel}</span></div>
           <div style="background:var(--bg-panel);border-radius:4px;height:8px;overflow:hidden;"><div style="height:100%;width:${producedPct}%;background:var(--accent);border-radius:4px;"></div></div>
         </div>
         <div>
@@ -5392,10 +5454,7 @@ function renderProdWeight() {
           <span style="color:var(--text-3);">ส่วนต่าง (ผลิต − usage)</span>
           <span style="font-weight:700;color:${diffColor};">${diffLabel}</span>
         </div>
-        <div style="display:flex;gap:6px;margin-top:4px;">
-          <input class="form-input" type="number" min="0" step="1" id="pw-input-${i}" placeholder="กรอกน้ำหนักผลิต (ตัน)" value="${produced || ''}" style="flex:1;">
-          <button class="btn btn-primary btn-sm" onclick="saveProdWeight(${i})">บันทึก</button>
-        </div>
+        ${inputHtml}
       </div>
     </div>`;
   }).join('');
