@@ -4922,6 +4922,10 @@ let supabaseClient = null;
 try {
   supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 } catch (e) { /* Supabase SDK โหลด/เชื่อมต่อไม่ได้ — แอปทำงานต่อแบบออฟไลน์ด้วย localStorage อย่างเดียว */ }
+// เครื่องที่ยังไม่มีข้อมูลใน localStorage เลย จะรัน migration หลายตัวตอนบูตซึ่งเรียก persistState() ทันที —
+// ถ้าปล่อยให้ส่งขึ้น Supabase ตอนนั้น จะเอาข้อมูลตั้งต้นเปล่าๆ ไปทับข้อมูลจริงของเครื่องอื่นที่เคย sync ไว้แล้ว
+// ต้องรอให้ initCloudSync() ดึงข้อมูลจริงลงมาใช้ก่อน (หรือส่งขึ้นไปตั้งต้นเองถ้ายังไม่มีเลย) ค่อยเปิดให้ persistState() ส่งขึ้น cloud ได้
+let cloudSyncReady = false;
 
 function buildStateSnapshot() {
   return {
@@ -4939,7 +4943,7 @@ function persistState() {
   const snapshot = buildStateSnapshot();
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot)); } catch (e) { /* localStorage unavailable — edits stay in-memory only */ }
   // ส่งขึ้น Supabase ด้วยทุกครั้งที่บันทึก เพื่อให้เครื่อง/บัญชีอื่นเห็นข้อมูลชุดเดียวกัน — ถ้าออฟไลน์ก็ข้ามไปเงียบๆ ข้อมูลใน localStorage ปลอดภัยอยู่แล้ว
-  if (supabaseClient) {
+  if (supabaseClient && cloudSyncReady) {
     supabaseClient.from('app_state').upsert({ id: 'main', data: snapshot, updated_at: new Date().toISOString() })
       .then(({ error }) => { /* ออฟไลน์/เชื่อมต่อไม่ได้ตอนนี้ก็ปล่อยผ่าน — จะลองใหม่ตอนแก้ไขครั้งถัดไป */ });
   }
@@ -8037,13 +8041,15 @@ async function initCloudSync() {
     const { data: row, error: readError } = await supabaseClient.from('app_state').select('data').eq('id', 'main').maybeSingle();
     if (readError) throw readError;
     if (row) {
+      // มีข้อมูลจริงบน cloud อยู่แล้ว — ใช้ข้อมูลนั้นทับของเครื่องนี้ทิ้งไปเลย (เครื่องนี้อาจมีแค่ค่าเริ่มต้นที่ยังไม่ได้ migrate)
       applyState(row.data);
       syncRollStatusWithProdBlock();
       refreshAfterCloudUpdate();
     } else {
-      // เครื่องแรกที่เชื่อมต่อสำเร็จ — ส่งข้อมูลที่มีอยู่ในเครื่องนี้ขึ้นไปตั้งต้นบน Supabase
+      // ยังไม่มีข้อมูลบน cloud เลย — เครื่องนี้เป็นเครื่องแรกที่เชื่อมต่อสำเร็จ ส่งข้อมูลที่มีอยู่ในเครื่องนี้ขึ้นไปตั้งต้น
       await supabaseClient.from('app_state').upsert({ id: 'main', data: buildStateSnapshot(), updated_at: new Date().toISOString() });
     }
+    cloudSyncReady = true; // เปิดให้ persistState() ส่งขึ้น cloud ได้ตั้งแต่ตอนนี้ — ก่อนหน้านี้ยังไม่รู้ว่าข้อมูลจริงบน cloud คืออะไร จึงห้ามส่งทับ
     supabaseClient
       .channel('app_state_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state', filter: 'id=eq.main' }, payload => {
