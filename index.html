@@ -1314,36 +1314,9 @@ canvas{display:block;}
     ══════════════════════════════════════════ -->
     <div class="page" id="page-standard">
       <div class="section-title">Production Block</div>
-      <div class="section-sub">ปฏิทินวางแผนการผลิตตามการใช้ Roll แยกตามเครื่อง — ฝ่าย Production ใช้วางแผนงาน</div>
+      <div class="section-sub">ตารางบล็อกแผนผลิต — ดึงมาจากระบบ Production (อ่านอย่างเดียว)</div>
 
-      <div id="stdpanel-prodblock">
-        <div class="mobile-wrap" style="display:flex;gap:8px;margin-bottom:12px;">
-          <button class="btn btn-ghost btn-sm prodblock-machine-btn" data-machine="P1" onclick="switchProdBlockMachine('P1')" style="color:var(--accent);border-color:var(--accent);">P1</button>
-          <button class="btn btn-ghost btn-sm prodblock-machine-btn" data-machine="P2" onclick="switchProdBlockMachine('P2')">P2</button>
-          <button class="btn btn-ghost btn-sm prodblock-machine-btn" data-machine="P3" onclick="switchProdBlockMachine('P3')">P3</button>
-          <button class="btn btn-ghost btn-sm prodblock-machine-btn" data-machine="P4" onclick="switchProdBlockMachine('P4')">P4</button>
-        </div>
-
-        <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;flex-wrap:wrap;">
-          <button class="btn btn-ghost btn-sm" onclick="prodBlockNav(-1)">‹ ก่อนหน้า</button>
-          <span id="prodblock-daterange-label" style="font-size:13px;font-weight:700;color:var(--text-1);padding:0 8px;"></span>
-          <button class="btn btn-ghost btn-sm" onclick="prodBlockNav(1)">ถัดไป ›</button>
-          <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('prodblock-excel-input').click()">
-              <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              นำเข้า Excel
-            </button>
-            <input type="file" id="prodblock-excel-input" accept=".xlsx,.xls" style="display:none;" onchange="onProdBlockExcelSelected(event)">
-            <button class="btn btn-primary btn-sm" onclick="openProdProductModal('add')">+ เพิ่ม Size Roll</button>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header"><span class="card-title" id="prodblock-month-title">Production Block</span></div>
-          <div class="cal-grid" id="prodblock-month-grid"></div>
-        </div>
-      </div>
-
+      <iframe id="prodblock-external-iframe" title="Production Block" style="width:100%;height:80vh;border:none;border-radius:8px;background:var(--bg-panel);"></iframe>
     </div>
 
 
@@ -1899,6 +1872,14 @@ function showPage(id) {
   if (id === 'history') renderHistory();
   if (id === 'pending') renderPending();
   if (id === 'prodWeight') renderProdWeight();
+  if (id === 'standard') loadProdBlockIframe();
+}
+
+// โหลด URL เข้า iframe สดใหม่ทุกครั้งที่เปิดแท็บนี้ (ไม่เก็บ src ค้างไว้ในไฟล์) กัน iframe แสดงข้อมูลเก่าค้างจาก cache
+function loadProdBlockIframe() {
+  const frame = document.getElementById('prodblock-external-iframe');
+  if (!frame) return;
+  frame.src = 'https://tstproduction.vercel.app/plan-view/block?k=wms-block-k7n3x9p2q5&_r=' + Date.now();
 }
 
 function initDashboard() {
