@@ -8033,8 +8033,7 @@ function refreshAfterCloudUpdate() {
 async function initCloudSync() {
   if (!supabaseClient) return;
   try {
-    const { error: authError } = await supabaseClient.auth.signInAnonymously();
-    if (authError) throw authError;
+    // เข้าถึงตารางตรงด้วย anon key (ไม่ผ่าน Supabase Auth) — ความปลอดภัยของหน้าเว็บอยู่ที่หน้า login ของแอปเอง (username/รหัสผ่านพนักงาน) แยกกันคนละชั้น
     const { data: row, error: readError } = await supabaseClient.from('app_state').select('data').eq('id', 'main').maybeSingle();
     if (readError) throw readError;
     if (row) {
