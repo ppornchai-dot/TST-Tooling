@@ -5022,6 +5022,14 @@ syncRollStatusWithProdBlock();
   persistState();
 })();
 
+// migration: เติมสมาชิก "Pakkanun (COO)" ให้บราวเซอร์ที่มีข้อมูลทีมเดิม (ก่อนเพิ่มคนนี้) อยู่แล้ว
+(function seedCooTeamMember() {
+  if (teamMembers.some(m => m.roleLabel === 'COO')) return;
+  teamSeq++;
+  teamMembers.push({ id: 'TM-' + String(teamSeq).padStart(4, '0'), name: 'Pakkanun', role: 'lead', roleLabel: 'COO', avatarInitials: 'PK', avatarColor: 'var(--accent)', status: 'available', monthTasks: null, pendingTasks: null, onTimePct: null, skills: [] });
+  persistState();
+})();
+
 // migration: หน้า login เปลี่ยนจากคลิกการ์ดชื่อ มาเป็นกรอกชื่อผู้ใช้/รหัสผ่านแทน — ทุกคนต้องมีทั้งสองอย่างถึงจะเข้าระบบได้
 // เติม username/รหัสผ่านตั้งต้นให้สมาชิกเก่าที่ยังไม่เคยตั้งไว้ (username = รหัสสมาชิกในระบบ, รหัสผ่าน = "1234") กันไม่ให้ใครเข้าระบบไม่ได้เลยหลังอัปเดต
 // Admin ควรเข้าไปเปลี่ยนเป็นรหัสพนักงานจริง/รหัสผ่านของตัวเองที่หน้า "ทีมงาน" ทันทีหลังใช้รหัสตั้งต้นนี้เข้าระบบครั้งแรก
