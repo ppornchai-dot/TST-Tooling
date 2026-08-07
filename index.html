@@ -866,6 +866,10 @@ canvas{display:block;}
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="4" x2="8" y2="20"/></svg>
         Production Block
       </button>
+      <button class="nav-item" data-roles="admin,lead" onclick="showPage('prodWeight')">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+        น้ำหนักผลิต
+      </button>
     </div>
     <div class="nav-section">
       <div class="nav-label">การปฏิบัติงาน</div>
@@ -1340,6 +1344,16 @@ canvas{display:block;}
         </div>
       </div>
 
+    </div>
+
+
+    <!-- ══════════════════════════════════════════
+         PAGE: PRODUCTION WEIGHT
+    ══════════════════════════════════════════ -->
+    <div class="page" id="page-prodWeight">
+      <div class="section-title">น้ำหนักผลิต</div>
+      <div class="section-sub">เทียบน้ำหนักผลิตจริงกับยอดใช้งานสะสมของแต่ละชุด Roll</div>
+      <div class="grid-3" id="prodweight-grid" style="margin-top:16px;"></div>
     </div>
 
 
@@ -1846,6 +1860,7 @@ const PAGE_META = {
   dashboard: { title: 'Dashboard', sub: 'ภาพรวมระบบ Tooling — อัปเดต 30 มิ.ย. 2569' },
   registry:  { title: 'ทะเบียน Tooling', sub: 'รายการเครื่องมือและอุปกรณ์ทั้งหมด 248 รายการ' },
   standard:  { title: 'Production Block', sub: 'ตารางวางแผนการผลิตตามการใช้ Roll — ฝ่าย Production ใช้วางแผนงาน' },
+  prodWeight: { title: 'น้ำหนักผลิต', sub: 'เทียบน้ำหนักผลิตจริงกับยอดใช้งานสะสมของแต่ละชุด Roll' },
   daily:     { title: 'งานประจำวัน', sub: 'เช็คลิสต์งานประจำวันของทีม Tooling — วันที่ 2 ก.ค. 2569' },
   plan:      { title: 'วางแผน', sub: 'ตารางแผนการบำรุงรักษาและงาน Tooling ประจำปี 2569' },
   history:   { title: 'ประวัติการทำงาน', sub: 'บันทึกการดำเนินงานและบำรุงรักษา Tooling ทั้งหมด' },
@@ -1883,6 +1898,7 @@ function showPage(id) {
   if (id === 'daily') renderDailyTasks();
   if (id === 'history') renderHistory();
   if (id === 'pending') renderPending();
+  if (id === 'prodWeight') renderProdWeight();
 }
 
 function initDashboard() {
@@ -4624,6 +4640,9 @@ function ensureRollSetOrder(sets) {
   sets.forEach(s => { if (!rollSetOrder.includes(s)) rollSetOrder.push(s); });
 }
 
+// น้ำหนักผลิตจริง (ตัน) กรอกเองต่อชุด Roll — เทียบกับยอด usage สะสมของ Roll ในทะเบียน Tooling
+let rollSetProducedWeight = {};
+
 // เครื่องจักรที่ผูกกับแต่ละ Size Roll — เลือกได้สูงสุด MAX_ROLL_MACHINES เครื่องต่อกลุ่ม
 let rollSetMachines = {};
 const ROLL_MACHINES = ['P1', 'P2', 'P3', 'P4'];
@@ -4890,7 +4909,7 @@ let cloudSyncReady = false;
 
 function buildStateSnapshot() {
   return {
-    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollColorActiveMachine, rollSetCategoryTemplates,
+    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollColorActiveMachine, rollSetCategoryTemplates, rollSetProducedWeight,
     planTasks, planTaskSeq, companyHolidays, companyHolidaySeq, teamMembers, teamSeq,
     ganttTasks, ganttTaskSeq, planGanttWindowStart,
     dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
@@ -4924,6 +4943,7 @@ function applyState(saved) {
   if (saved.rollColorStatus) rollColorStatus = saved.rollColorStatus;
   if (saved.rollColorActiveMachine) rollColorActiveMachine = saved.rollColorActiveMachine;
   if (saved.rollSetCategoryTemplates) rollSetCategoryTemplates = saved.rollSetCategoryTemplates;
+  if (saved.rollSetProducedWeight) rollSetProducedWeight = saved.rollSetProducedWeight;
   if (typeof saved.rollColorSeq === 'number') rollColorSeq = saved.rollColorSeq;
   if (Array.isArray(saved.planTasks)) planTasks = saved.planTasks;
   if (typeof saved.planTaskSeq === 'number') planTaskSeq = saved.planTaskSeq;
@@ -5349,6 +5369,69 @@ function getRollSets() {
   extraRollSets.forEach(s => { if (!sets.includes(s)) sets.push(s); });
   ensureRollSetOrder(sets);
   return rollSetOrder.filter(s => sets.includes(s));
+}
+
+// ─── PRODUCTION WEIGHT (หน้าน้ำหนักผลิต) — เทียบน้ำหนักผลิตจริงที่กรอกเองกับยอด usage สะสมของ Roll ─────
+// Roll คู่ (บน/ล่าง) ในชุดเดียวกันมักบันทึก usage เท่ากันเสมอ (รับน้ำหนักไปด้วยกัน) จึงใช้ค่าสูงสุดแทนการรวม เพื่อไม่ให้นับซ้ำ
+function rollSetUsageTon(setName) {
+  let max = 0;
+  toolingData.roll.filter(r => r.set === setName).forEach(r => {
+    const n = parseFloat(String(r.usage || '').replace(/[^0-9.]/g, ''));
+    if (!isNaN(n) && n > max) max = n;
+  });
+  return max;
+}
+
+function renderProdWeight() {
+  const grid = document.getElementById('prodweight-grid');
+  if (!grid) return;
+  const sets = getRollSets();
+  if (!sets.length) {
+    grid.innerHTML = `<div style="text-align:center;color:var(--text-3);font-size:13px;padding:24px 0;grid-column:1/-1;">ยังไม่มีชุด Roll ในทะเบียน Tooling</div>`;
+    return;
+  }
+  grid.innerHTML = sets.map((setName, i) => {
+    const usage = rollSetUsageTon(setName);
+    const produced = rollSetProducedWeight[setName] || 0;
+    const maxVal = Math.max(usage, produced, 1);
+    const usagePct = Math.round(usage / maxVal * 100);
+    const producedPct = Math.round(produced / maxVal * 100);
+    const diffPct = usage ? Math.round((produced - usage) / usage * 100) : null;
+    const diffColor = diffPct === null ? 'var(--text-3)' : diffPct >= 0 ? 'var(--green)' : 'var(--red)';
+    const diffLabel = diffPct === null ? '—' : (diffPct >= 0 ? '+' : '') + diffPct + '%';
+    return `<div class="card">
+      <div class="card-header"><span class="card-title" style="font-size:13px;">${escapeHtmlAttr(setName)}</span></div>
+      <div class="card-body" style="display:flex;flex-direction:column;gap:10px;">
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-3);margin-bottom:3px;"><span>น้ำหนักผลิตจริง</span><span style="font-weight:700;color:var(--text-1);">${produced.toLocaleString()} ตัน</span></div>
+          <div style="background:var(--bg-panel);border-radius:4px;height:8px;overflow:hidden;"><div style="height:100%;width:${producedPct}%;background:var(--accent);border-radius:4px;"></div></div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-3);margin-bottom:3px;"><span>Usage สะสมของ Roll</span><span style="font-weight:700;color:var(--text-1);">${usage.toLocaleString()} ตัน</span></div>
+          <div style="background:var(--bg-panel);border-radius:4px;height:8px;overflow:hidden;"><div style="height:100%;width:${usagePct}%;background:var(--amber);border-radius:4px;"></div></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding-top:4px;border-top:1px solid var(--border-light);">
+          <span style="color:var(--text-3);">ส่วนต่าง (ผลิต − usage)</span>
+          <span style="font-weight:700;color:${diffColor};">${diffLabel}</span>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:4px;">
+          <input class="form-input" type="number" min="0" step="1" id="pw-input-${i}" placeholder="กรอกน้ำหนักผลิต (ตัน)" value="${produced || ''}" style="flex:1;">
+          <button class="btn btn-primary btn-sm" onclick="saveProdWeight(${i})">บันทึก</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function saveProdWeight(index) {
+  const setName = getRollSets()[index];
+  if (!setName) return;
+  const input = document.getElementById('pw-input-' + index);
+  if (!input) return;
+  const val = parseFloat(input.value);
+  rollSetProducedWeight[setName] = isNaN(val) ? 0 : val;
+  persistState();
+  renderProdWeight();
 }
 
 function rollSetScope() {
