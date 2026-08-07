@@ -6412,7 +6412,10 @@ function canActOnDailyDate() {
 // และต้องอยู่ในวันปัจจุบันจริงด้วย (ดู canActOnDailyDate) ถ้าเป็นช่าง
 function canActOnDailyItem(workerId) {
   const restrictId = effectiveWorkerId();
-  return (!restrictId || workerId == null || workerId === restrictId) && canActOnDailyDate();
+  // ปุ่มใน onclick ส่งค่ามาเป็น `t.workerId || ''` งานที่ไม่ระบุผู้ปฏิบัติงาน (null) จึงมาถึงที่นี่เป็นสตริงว่าง ไม่ใช่ null
+  // ต้องแปลงกลับให้เป็น null ก่อนเทียบ ไม่งั้นช่างจะกดเริ่ม/จบงานที่ยังไม่ระบุผู้ปฏิบัติงานไม่ได้เลย (ปุ่มกดได้แต่ไม่มีอะไรเกิดขึ้น)
+  const assigned = workerId || null;
+  return (!restrictId || assigned === null || assigned === restrictId) && canActOnDailyDate();
 }
 function startDailyTask(idx, workerId) {
   if (!canActOnDailyItem(workerId)) return;
