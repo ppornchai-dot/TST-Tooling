@@ -279,6 +279,21 @@ tbody td.muted{color:var(--text-2);}
 tbody tr.roll-row-selected{background:var(--accent-glow);box-shadow:inset 3px 0 0 var(--accent);}
 tbody tr.roll-row-selected:hover{background:var(--accent-glow);}
 
+/* ─── มุมมองช่างในตารางงานประจำวัน ─────────────────
+   ซ่อนคอลัมน์ 1 (ช่องติ๊ก), 5 (รหัส), 6 (ชื่อ ROLL รายชิ้น), 8 (ผู้รับผิดชอบ), 9 (เวลาแต่ง) เหลือ ลำดับ/SIZE ROLL/ชุดสี ROLL/กะ/เริ่ม-จบงาน/สถานะ/จัดการ
+   ข้อมูลรายชิ้นดูได้จากการกดขยายแถว — ไม่ซ่อนคอลัมน์ท้าย (จัดการ) เพราะเป็นที่อยู่ของปุ่มเริ่ม/จบงานของงานชิ้นเดียว
+   ใช้ > เจาะจงลูกตรงเท่านั้น กันกฎรั่วไปโดนตารางย่อยรายชิ้นที่ซ้อนอยู่ข้างใน และ :not([colspan]) กันไปซ่อนแถวรายละเอียด/แถว "ยังไม่มีงาน" ที่ใช้ colspan */
+table.daily-tech-view > thead > tr > th:nth-child(1),
+table.daily-tech-view > thead > tr > th:nth-child(5),
+table.daily-tech-view > thead > tr > th:nth-child(6),
+table.daily-tech-view > thead > tr > th:nth-child(8),
+table.daily-tech-view > thead > tr > th:nth-child(9),
+table.daily-tech-view > tbody > tr > td:nth-child(1):not([colspan]),
+table.daily-tech-view > tbody > tr > td:nth-child(5):not([colspan]),
+table.daily-tech-view > tbody > tr > td:nth-child(6):not([colspan]),
+table.daily-tech-view > tbody > tr > td:nth-child(8):not([colspan]),
+table.daily-tech-view > tbody > tr > td:nth-child(9):not([colspan]){display:none;}
+
 /* ─── STATUS CHIPS ───────────────────────────── */
 .chip{
   display:inline-flex;align-items:center;gap:5px;
@@ -1417,7 +1432,7 @@ canvas{display:block;}
           <button class="btn btn-primary btn-sm" onclick="openDailyChecklistModal('add')">+ เพิ่มงานแทรก</button>
         </div>
         <div class="table-wrap">
-          <table>
+          <table id="tbl-daily">
             <thead>
               <tr><th></th><th>ลำดับ</th><th>SIZE ROLL</th><th>ชุดสี ROLL</th><th>รหัส</th><th>ชื่อ ROLL</th><th>กะ</th><th>ผู้รับผิดชอบ</th><th>เวลาแต่ง ROLL (นาที)</th><th>เริ่มงาน</th><th>จบงาน</th><th>สถานะ</th><th>จัดการ</th></tr>
             </thead>
@@ -6765,6 +6780,13 @@ function renderDailyTasks() {
   const allItems = checklistItems.concat(plannedItems).sort((a, b) => ((a.date||'') + a.startTime).localeCompare((b.date||'') + b.startTime));
   const restrictWorkerId = effectiveWorkerId();
 
+  // มุมมองช่าง (CNC/ขัด Roll/ช่างเครื่อง): เหลือแค่ Size Roll + ชุดสี Roll เป็นตัวระบุงาน ซ่อนคอลัมน์รายละเอียดที่ดูได้จากการกดขยายแถวอยู่แล้ว
+  const dailyTable = document.getElementById('tbl-daily');
+  if (dailyTable) {
+    const r = effectiveRole();
+    dailyTable.classList.toggle('daily-tech-view', r === 'cnc' || r === 'polish' || r === 'operator');
+  }
+
   tbody.innerHTML = allItems.map((item, i) => {
     const status = getDailyStatus(item.key);
     const meta = DAILY_STATUS_META[status];
@@ -6789,13 +6811,18 @@ function renderDailyTasks() {
     }
     const expanded = item.expandable && expandedDailyTaskId === item.key;
     const rowOpacity = isMine ? '' : 'opacity:.55;';
+    // งานหลายชิ้นไม่ดัมป์ชื่อ Roll ทั้งหมดลงแถวสรุป (21 ชื่อทำให้แถวเดียวสูงเต็มจอบนมือถือ) — โชว์ 2 ชื่อแรกแล้วบอกจำนวนที่เหลือ รายชิ้นครบดูได้จากการกดขยายแถว
+    const rollNames = item.expandable ? String(item.task).split(',').map(s => s.trim()).filter(Boolean) : [];
+    const taskLabel = rollNames.length > 2
+      ? escapeHtmlAttr(rollNames.slice(0, 2).join(', ')) + ` <span class="muted" style="font-weight:400;">…อีก ${rollNames.length - 2} ชิ้น</span>`
+      : escapeHtmlAttr(item.task);
     const row = `<tr${item.expandable ? ` style="cursor:pointer;${rowOpacity}" onclick="toggleDailyTaskDetail('${item.key}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : (rowOpacity ? ` style="${rowOpacity}"` : '')}>
       <td onclick="event.stopPropagation();">${item.editable ? `<input type="checkbox" ${status==='done'?'checked':''} onchange="toggleDailyTask('${item.key}')" style="width:16px;height:16px;cursor:pointer;">` : `<input type="checkbox" ${status==='done'?'checked':''} disabled style="width:16px;height:16px;">`}</td>
       <td class="muted">${item.expandable ? `<span aria-hidden="true" style="display:inline-block;width:12px;transition:transform .15s;transform:rotate(${expanded ? 90 : 0}deg);">▸</span> ` : ''}${i + 1}</td>
       <td>${escapeHtmlAttr(item.rollSet)}</td>
       <td>${escapeHtmlAttr(item.rollColor)}</td>
       <td class="muted">${escapeHtmlAttr(item.rollId)}</td>
-      <td><strong>${escapeHtmlAttr(item.task)}</strong></td>
+      <td><strong>${taskLabel}</strong></td>
       <td>${item.shiftHtml}</td>
       <td class="muted">${escapeHtmlAttr(item.who)}</td>
       <td class="muted" style="text-align:right;">${escapeHtmlAttr(item.duration)}</td>
