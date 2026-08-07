@@ -5407,6 +5407,14 @@ async function fetchFgWeightByKey() {
   }
 }
 
+// รวม Roll Set ที่เป็นขนาดเดียวกัน (ต่างกันแค่ขั้นตอน Forming/Sizing/TH) ไว้เป็นการ์ดเดียว — ใช้ usage สูงสุดในกลุ่มแทนการรวม
+// เพราะเป็นเนื้อเหล็กชิ้นเดียวกันที่ไหลผ่านแต่ละขั้นตอนต่อกัน ไม่ใช่ Roll ที่ทำงานคู่ขนานแยกกัน
+let prodWeightGroupOrder = [];
+
+function rollSetGroupDisplayName(setName) {
+  return String(setName).replace(/\s+(Forming|Sizing|TH)\s*$/i, '').trim();
+}
+
 async function renderProdWeight() {
   const grid = document.getElementById('prodweight-grid');
   if (!grid) return;
@@ -5417,13 +5425,27 @@ async function renderProdWeight() {
     grid.innerHTML = `<div style="text-align:center;color:var(--text-3);font-size:13px;padding:24px 0;grid-column:1/-1;">ยังไม่มีชุด Roll ในทะเบียน Tooling</div>`;
     return;
   }
-  const errorBanner = fgByKey ? '' : `<div style="grid-column:1/-1;background:var(--red-dim);color:var(--red);border-radius:8px;padding:10px 14px;font-size:12px;margin-bottom:4px;">ดึงข้อมูลจากระบบ Production ไม่สำเร็จ (${escapeHtmlAttr(fgWeightFetchError || '')}) — แสดงค่าที่กรอกไว้เองแทน</div>`;
-  grid.innerHTML = errorBanner + sets.map((setName, i) => {
+
+  const groups = {};
+  prodWeightGroupOrder = [];
+  sets.forEach(setName => {
+    const fgKey = rollSetFgKey(setName);
+    const groupKey = fgKey || setName;
+    if (!groups[groupKey]) {
+      groups[groupKey] = { displayName: rollSetGroupDisplayName(setName), fgKey, usage: 0 };
+      prodWeightGroupOrder.push(groupKey);
+    }
     const usage = rollSetUsageTon(setName);
-    const key = rollSetFgKey(setName);
-    const autoKg = key && fgByKey ? fgByKey[key] : null;
+    if (usage > groups[groupKey].usage) groups[groupKey].usage = usage;
+  });
+
+  const errorBanner = fgByKey ? '' : `<div style="grid-column:1/-1;background:var(--red-dim);color:var(--red);border-radius:8px;padding:10px 14px;font-size:12px;margin-bottom:4px;">ดึงข้อมูลจากระบบ Production ไม่สำเร็จ (${escapeHtmlAttr(fgWeightFetchError || '')}) — แสดงค่าที่กรอกไว้เองแทน</div>`;
+  grid.innerHTML = errorBanner + prodWeightGroupOrder.map((groupKey, i) => {
+    const g = groups[groupKey];
+    const usage = g.usage;
+    const autoKg = g.fgKey && fgByKey ? fgByKey[g.fgKey] : null;
     const isAuto = autoKg !== null && autoKg !== undefined;
-    const produced = isAuto ? autoKg / 1000 : (rollSetProducedWeight[setName] || 0);
+    const produced = isAuto ? autoKg / 1000 : (rollSetProducedWeight[groupKey] || 0);
     const maxVal = Math.max(usage, produced, 1);
     const usagePct = Math.round(usage / maxVal * 100);
     const producedPct = Math.round(produced / maxVal * 100);
@@ -5440,7 +5462,7 @@ async function renderProdWeight() {
           <button class="btn btn-primary btn-sm" onclick="saveProdWeight(${i})">บันทึก</button>
         </div>`;
     return `<div class="card">
-      <div class="card-header"><span class="card-title" style="font-size:13px;">${escapeHtmlAttr(setName)}</span></div>
+      <div class="card-header"><span class="card-title" style="font-size:13px;">${escapeHtmlAttr(g.displayName)}</span></div>
       <div class="card-body" style="display:flex;flex-direction:column;gap:10px;">
         <div>
           <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-3);margin-bottom:3px;"><span>น้ำหนักผลิตจริง</span><span style="font-weight:700;color:var(--text-1);">${producedLabel}</span></div>
@@ -5461,12 +5483,12 @@ async function renderProdWeight() {
 }
 
 function saveProdWeight(index) {
-  const setName = getRollSets()[index];
-  if (!setName) return;
+  const groupKey = prodWeightGroupOrder[index];
+  if (!groupKey) return;
   const input = document.getElementById('pw-input-' + index);
   if (!input) return;
   const val = parseFloat(input.value);
-  rollSetProducedWeight[setName] = isNaN(val) ? 0 : val;
+  rollSetProducedWeight[groupKey] = isNaN(val) ? 0 : val;
   persistState();
   renderProdWeight();
 }
