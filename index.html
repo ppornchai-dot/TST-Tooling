@@ -6565,16 +6565,78 @@ function startDailyPiece(taskId, rollIdx, workerId) {
   persistState();
   renderDailyTasks();
 }
+// ─── กล่องกรอกข้อความพร้อมปุ่มพูดแทนพิมพ์ (ใช้แทน prompt เดิม) ─────────────────
+// กดปุ่มไมค์แล้วพูด ระบบถอดเสียงเป็นข้อความภาษาไทยพิมพ์ลงช่องให้ (Web Speech API)
+// เบราว์เซอร์ที่ไม่รองรับการถอดเสียง (เช่น Firefox) จะไม่แสดงปุ่มไมค์ — พิมพ์เองได้ตามปกติ
+function voicePrompt(title, placeholder) {
+  return new Promise(resolve => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,20,30,.45);z-index:2000;display:flex;align-items:center;justify-content:center;padding:16px;';
+    overlay.innerHTML = `
+      <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:12px;padding:18px;width:100%;max-width:420px;box-shadow:0 12px 40px rgba(0,0,0,.25);">
+        <div style="font-size:14px;font-weight:700;color:var(--text-1);margin-bottom:12px;">${escapeHtmlAttr(title)}</div>
+        <div style="display:flex;gap:8px;align-items:stretch;">
+          <input class="form-input" data-vp-input type="text" placeholder="${escapeHtmlAttr(placeholder || '')}" style="flex:1;font-size:16px;">
+          <button data-vp-mic class="btn btn-ghost" style="display:none;width:46px;font-size:19px;padding:0;flex-shrink:0;" title="กดแล้วพูด — ระบบจะพิมพ์ให้">🎤</button>
+        </div>
+        <div data-vp-hint style="font-size:11px;color:var(--text-3);margin-top:6px;min-height:15px;"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+          <button data-vp-cancel class="btn btn-ghost">ยกเลิก</button>
+          <button data-vp-ok class="btn btn-primary">ตกลง</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('[data-vp-input]');
+    const micBtn = overlay.querySelector('[data-vp-mic]');
+    const hint = overlay.querySelector('[data-vp-hint]');
+    let recognition = null;
+
+    const close = (value) => {
+      if (recognition) { try { recognition.stop(); } catch (e) { /* หยุดไปแล้ว */ } }
+      overlay.remove();
+      resolve(value);
+    };
+    overlay.querySelector('[data-vp-ok]').onclick = () => close(input.value);
+    overlay.querySelector('[data-vp-cancel]').onclick = () => close(null);
+    overlay.onclick = (e) => { if (e.target === overlay) close(null); };
+    input.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); close(input.value); } };
+
+    if (SR) {
+      micBtn.style.display = 'block';
+      let listening = false;
+      let baseText = '';
+      micBtn.onclick = () => {
+        if (listening) { try { recognition.stop(); } catch (e) { /* หยุดไปแล้ว */ } return; }
+        recognition = new SR();
+        recognition.lang = 'th-TH';
+        recognition.interimResults = true; // โชว์ข้อความระหว่างพูดแบบสดๆ ไม่ต้องรอพูดจบ
+        baseText = input.value ? input.value.trim() + ' ' : '';
+        recognition.onstart = () => { listening = true; micBtn.textContent = '⏹'; micBtn.style.color = 'var(--red)'; micBtn.style.borderColor = 'var(--red)'; hint.textContent = '🔴 กำลังฟัง... พูดได้เลย (กด ⏹ เพื่อหยุด)'; };
+        recognition.onresult = (ev) => {
+          let text = '';
+          for (const r of ev.results) text += r[0].transcript;
+          input.value = baseText + text;
+        };
+        recognition.onerror = (ev) => { hint.textContent = ev.error === 'not-allowed' ? 'ไม่ได้รับอนุญาตให้ใช้ไมโครโฟน — เปิดสิทธิ์ไมค์ให้เบราว์เซอร์ก่อน' : 'ถอดเสียงไม่สำเร็จ ลองใหม่หรือพิมพ์เอง'; };
+        recognition.onend = () => { listening = false; micBtn.textContent = '🎤'; micBtn.style.color = ''; micBtn.style.borderColor = ''; if (!hint.textContent.includes('ไม่')) hint.textContent = ''; };
+        try { recognition.start(); } catch (e) { hint.textContent = 'เปิดไมโครโฟนไม่สำเร็จ ลองใหม่อีกครั้ง'; }
+      };
+    }
+    setTimeout(() => input.focus(), 50);
+  });
+}
+
 // จบงานชิ้นนี้ — ต้องบันทึกขนาดที่วัดได้จริงเป็นล็อกแยกต่างหากด้วย (ไม่ทับข้อมูลเดิมในทะเบียน Tooling)
 // เมื่อจบครบทุกชิ้นของงานนั้นแล้ว จะทำเครื่องหมายงานหลักเป็น "สำเร็จ" ให้อัตโนมัติ (และอาจไปกระตุ้นการวางแผนวันถัดไปอัตโนมัติต่อ ถ้าทั้งวันเสร็จครบพอดี)
-function finishDailyPiece(taskId, rollIdx, workerId) {
+async function finishDailyPiece(taskId, rollIdx, workerId) {
   if (!canActOnDailyItem(workerId)) return;
   const task = planTasks.find(t => t.id === taskId);
   if (!task) return;
   const scoped = getMatchingRollsForPlan(task.rollSet, task.rollColor);
   const roll = scoped[rollIdx];
   const label = roll ? roll.name + (roll.diameter ? ` (เดิม ${roll.diameter})` : '') : 'ชิ้นนี้';
-  const size = prompt(`บันทึกขนาดที่วัดได้จริงหลังแต่ง/ขัดของ "${label}":`, '');
+  const size = await voicePrompt(`บันทึกขนาดที่วัดได้จริงหลังแต่ง/ขัดของ "${label}":`, 'พิมพ์ หรือกด 🎤 แล้วพูด');
   if (size === null) return; // กดยกเลิก — ไม่จบงานและไม่บันทึกอะไร
   const dateMap = dailyPieceStatus[dailyViewDate] || (dailyPieceStatus[dailyViewDate] = {});
   const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
@@ -6596,9 +6658,9 @@ function finishDailyPiece(taskId, rollIdx, workerId) {
   renderDailyTasks();
 }
 // พักงานชิ้นนี้ — ต้องระบุเหตุผลเสมอ (ยกเลิก/ปล่อยว่างไม่พักงาน) บันทึกเป็นล็อกแยกไว้ทุกครั้งที่พัก แม้จะกดทำต่อแล้วก็ตาม
-function pauseDailyPiece(taskId, rollIdx, workerId) {
+async function pauseDailyPiece(taskId, rollIdx, workerId) {
   if (!canActOnDailyItem(workerId)) return;
-  const reason = prompt('เหตุผลที่พักงานชิ้นนี้ (จำเป็นต้องระบุ):', '');
+  const reason = await voicePrompt('เหตุผลที่พักงานชิ้นนี้ (จำเป็นต้องระบุ):', 'พิมพ์ หรือกด 🎤 แล้วพูด');
   if (reason === null) return; // กดยกเลิก — ไม่พักงาน
   if (!reason.trim()) { alert('กรุณาระบุเหตุผลที่พักงาน'); return; }
   const dateMap = dailyPieceStatus[dailyViewDate] || (dailyPieceStatus[dailyViewDate] = {});
