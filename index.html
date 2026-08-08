@@ -1383,16 +1383,16 @@ canvas{display:block;}
       </div>
 
       <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
-        <button class="btn btn-ghost btn-sm" onclick="dailyNav(-1)">‹ ก่อนหน้า</button>
+        <button class="btn btn-ghost btn-sm daily-datenav-btn" onclick="dailyNav(-1)">‹ ก่อนหน้า</button>
         <div style="position:relative;display:inline-flex;">
-          <span id="daily-daterange-trigger" onclick="openDailyDatePicker(event)" title="คลิกเพื่อเลือกวันที่" style="padding:0 8px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">
-            <span aria-hidden="true">📅</span>
-            <span id="daily-daterange-label" style="font-size:13px;font-weight:700;color:var(--text-1);">2 ก.ค. 2569</span>
+          <span id="daily-daterange-trigger" onclick="openDailyDatePicker(event)" title="คลิกเพื่อเลือกวันที่" style="padding:0 8px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;">
+            <span aria-hidden="true" style="font-size:18px;">📅</span>
+            <span id="daily-daterange-label" style="font-size:19px;font-weight:800;color:var(--text-1);">2 ก.ค. 2569</span>
           </span>
           <div id="daily-date-popup" class="plan-date-popup" style="display:none;"></div>
         </div>
-        <button class="btn btn-ghost btn-sm" onclick="dailyNav(1)">ถัดไป ›</button>
-        <button class="btn btn-ghost btn-sm" onclick="dailyGoToday()" style="margin-left:auto;">วันนี้</button>
+        <button class="btn btn-ghost btn-sm daily-datenav-btn" onclick="dailyNav(1)">ถัดไป ›</button>
+        <button class="btn btn-ghost btn-sm daily-datenav-btn" onclick="dailyGoToday()" style="margin-left:auto;">วันนี้</button>
       </div>
 
       <div class="kpi-grid">
@@ -6479,11 +6479,25 @@ function nowHHMM() {
 // admin/lead ไม่ถูกจำกัด เผื่อต้องแก้ไขบันทึกย้อนหลังหรือทดสอบข้อมูล
 // มุมมองช่าง (CNC/ขัด Roll/ช่างเครื่อง): เหลือแค่ Size Roll + ชุดสี Roll เป็นตัวระบุงาน ซ่อนคอลัมน์รายละเอียดที่ดูได้จากการกดขยายแถวอยู่แล้ว
 // ต้องเรียกทั้งจาก renderDailyTasks() และ applyRoleUI() — เพราะตอน Admin สลับ "ดูเป็น" คนอื่น applyRoleUI() ไม่ได้ render ตารางใหม่ ถ้าไม่เรียกที่นี่ class จะค้างมุมมองเดิมไว้
-function applyDailyTechView() {
-  const t = document.getElementById('tbl-daily');
-  if (!t) return;
+// ช่าง (CNC/ขัด Roll/ช่างเครื่อง) — ดูได้เฉพาะวันปัจจุบัน เลื่อนไปวันอื่นไม่ได้ (สอดคล้องกับ canActOnDailyDate ที่ให้กดเริ่ม/จบงานได้แค่วันนี้อยู่แล้ว)
+function isDailyTechRole() {
   const r = effectiveRole();
-  t.classList.toggle('daily-tech-view', r === 'cnc' || r === 'polish' || r === 'operator');
+  return r === 'cnc' || r === 'polish' || r === 'operator';
+}
+
+function applyDailyTechView() {
+  const tech = isDailyTechRole();
+  const t = document.getElementById('tbl-daily');
+  if (t) t.classList.toggle('daily-tech-view', tech);
+
+  // ซ่อนปุ่มเลื่อนวัน และปิดการกดปฏิทินเลือกวันที่สำหรับช่าง
+  document.querySelectorAll('.daily-datenav-btn').forEach(b => { b.style.display = tech ? 'none' : ''; });
+  const trigger = document.getElementById('daily-daterange-trigger');
+  if (trigger) {
+    trigger.style.cursor = tech ? 'default' : 'pointer';
+    trigger.title = tech ? 'ดูได้เฉพาะงานของวันนี้' : 'คลิกเพื่อเลือกวันที่';
+  }
+  if (tech) closeDailyDatePicker();
 }
 
 function canActOnDailyDate() {
@@ -6765,6 +6779,7 @@ function setDailyViewDate(iso) {
 }
 
 function dailyNav(dir) {
+  if (isDailyTechRole()) return; // ช่างเลื่อนวันไม่ได้ — กันไว้ที่ตัวฟังก์ชันด้วย ไม่ใช่แค่ซ่อนปุ่ม
   dailyViewDate = addDaysIso(dailyViewDate, dir);
   renderDailyTasks();
 }
@@ -6788,6 +6803,7 @@ function dailyDatesWithTasks() {
 let dailyDatePopupMonth = null;
 function openDailyDatePicker(ev) {
   if (ev) ev.stopPropagation();
+  if (isDailyTechRole()) return; // ช่างเลือกวันอื่นไม่ได้
   const cur = parseISODate(dailyViewDate) || new Date();
   dailyDatePopupMonth = new Date(cur.getFullYear(), cur.getMonth(), 1);
   renderDailyDatePopup();
@@ -6869,6 +6885,9 @@ document.addEventListener('click', function(ev) {
 function renderDailyTasks() {
   const tbody = document.getElementById('tbody-daily');
   if (!tbody) return;
+
+  // ช่างเห็นได้เฉพาะวันปัจจุบัน — ดึงกลับมาวันนี้เสมอ กันกรณีค้างวันอื่นไว้ (เช่น Admin เลื่อนวันไว้แล้วสลับมุมมองเป็นช่าง)
+  if (isDailyTechRole() && dailyViewDate !== DAILY_TODAY_ISO) dailyViewDate = DAILY_TODAY_ISO;
 
   const dateLabel = document.getElementById('daily-daterange-label');
   if (dateLabel) dateLabel.textContent = fmtDateThai(parseISODate(dailyViewDate));
