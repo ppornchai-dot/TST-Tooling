@@ -7112,52 +7112,35 @@ function renderPending() {
   updatePendingBadge();
 }
 
-function dailyChecklistFormFields() {
+// ชื่อของ "คนที่กำลังทำงานอยู่จริง" — Admin ที่กด "ดูเป็น" คนอื่นถือเป็นคนนั้น เหมือนกับที่ effectiveWorkerId() ใช้ตัดสินสิทธิ์กดเริ่ม/จบงาน
+function effectiveUserName() {
+  if (!currentUser) return '—';
+  return (currentUser.role === 'admin' && adminViewAsName) ? adminViewAsName : currentUser.name;
+}
+
+// ฟอร์มงานแทรกกรอกแค่ชื่องาน — เวลานับจากตอนกดบันทึก และผู้รับผิดชอบใช้ชื่อคนที่เพิ่มงานนั้นเอง
+function dailyChecklistFormFields(mode) {
   return `
     <div class="modal-row full">
       <div class="form-group"><label class="form-label">ชื่องาน</label><input class="form-input" id="dcf-task" placeholder="เช่น ตรวจสอบ Runout Work Roll Stand 1"></div>
     </div>
-    <div class="modal-row three">
-      <div class="form-group"><label class="form-label">เวลา</label><input class="form-input" id="dcf-time" type="text" inputmode="numeric" placeholder="เช่น 08:00" maxlength="5" onchange="normalizeTimeInput(this)"></div>
-      <div class="form-group"><label class="form-label">ประเภท</label><input class="form-input" id="dcf-type" placeholder="เช่น ตรวจสอบ, PM, ทำความสะอาด"></div>
-      <div class="form-group"><label class="form-label">ผู้รับผิดชอบ</label><input class="form-input" id="dcf-who" placeholder="เช่น สมชาย ว."></div>
-    </div>
-    <div class="modal-row">
-      <div class="form-group"><label class="form-label">Tooling / เครื่องจักร</label><input class="form-input" id="dcf-ref" placeholder="เช่น Mill-01 Stand 1"></div>
-      <div class="form-group"><label class="form-label">ความถี่</label>
-        <select class="form-select" id="dcf-repeat">
-          <option value="daily">ทำซ้ำทุกวัน</option>
-          <option value="once">เฉพาะวันที่กำลังดูอยู่</option>
-        </select>
-      </div>
-    </div>`;
+    ${mode === 'edit' ? '' : `<div class="muted" style="font-size:12px;margin-top:-4px;">บันทึกเป็นงานของวันที่กำลังดูอยู่ · เวลาใช้ตอนกดบันทึก · ผู้รับผิดชอบ: <strong>${escapeHtmlAttr(effectiveUserName())}</strong></div>`}`;
 }
 
 function openDailyChecklistModal(mode, taskId) {
   const task = mode === 'edit' ? dailyChecklistTasks.find(t => t.id === taskId) : null;
   document.getElementById('modal-title').textContent = mode === 'edit' ? 'แก้ไขงานแทรก' : 'เพิ่มงานแทรกใหม่';
-  document.getElementById('modal-body').innerHTML = dailyChecklistFormFields();
+  document.getElementById('modal-body').innerHTML = dailyChecklistFormFields(mode);
   document.getElementById('dcf-task').value = task ? task.task : '';
-  document.getElementById('dcf-time').value = task ? task.time : '';
-  document.getElementById('dcf-type').value = task ? task.type : '';
-  document.getElementById('dcf-who').value = task ? task.who : '';
-  document.getElementById('dcf-ref').value = task ? task.ref : '';
-  document.getElementById('dcf-repeat').value = task ? (task.date ? 'once' : 'daily') : 'daily';
   document.getElementById('modal-overlay').classList.add('open');
 
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
-    const g = id => document.getElementById(id).value.trim();
-    const taskName = g('dcf-task');
-    const time = g('dcf-time');
-    if (!taskName || !time) { alert('กรุณากรอกชื่องานและเวลา'); return; }
-    const data = {
-      task: taskName,
-      time,
-      type: g('dcf-type') || '—',
-      who: g('dcf-who') || '—',
-      ref: g('dcf-ref') || '—',
-      date: document.getElementById('dcf-repeat').value === 'once' ? dailyViewDate : null,
-    };
+    const taskName = document.getElementById('dcf-task').value.trim();
+    if (!taskName) { alert('กรุณากรอกชื่องาน'); return; }
+    // แก้ไข: เปลี่ยนแค่ชื่องาน ค่าอื่นที่บันทึกไว้เดิม (เวลา/ผู้รับผิดชอบ/ประเภท) คงไว้ ไม่ทับทิ้ง
+    const data = mode === 'edit'
+      ? { task: taskName }
+      : { task: taskName, time: nowHHMM(), type: '—', who: effectiveUserName(), ref: '—', date: dailyViewDate };
     if (mode === 'edit') {
       Object.assign(task, data);
     } else {
