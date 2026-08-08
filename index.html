@@ -2976,7 +2976,23 @@ function switchPlanView(mode) {
   document.querySelectorAll('.plan-view-btn').forEach(b => {
     b.classList.toggle('active', b.getAttribute('data-view') === mode);
   });
+  if (mode === 'gantt') snapGanttWindowToTasks();
   renderCurrentPlanView();
+}
+
+// ตอนเข้ามุมมอง Gantt ถ้ามีงานอยู่แต่ไม่มีงานไหนตกอยู่ในหน้าต่าง 6 เดือนที่ค้างไว้ (ค่าตั้งต้นคือ ม.ค. 2569 ซึ่งมักไม่ตรงกับเดือนที่วางงานจริง)
+// ให้เลื่อนหน้าต่างไปครอบเดือนของงานที่เร็วที่สุดให้เลย ไม่ต้องกด "ถัดไป" หาเอง — ทำแค่ตอนเข้ามุมมอง ไม่แทรกตอนผู้ใช้กดเลื่อนเอง
+function snapGanttWindowToTasks() {
+  const rows = ganttTasks.filter(t => t.workType === currentPlanWorkType).concat(planTasksAsGanttRows());
+  if (!rows.length) return;
+  const months = ganttWindowMonths();
+  const windowStart = months[0];
+  const windowEnd = new Date(months[5].getFullYear(), months[5].getMonth() + 1, 1);
+  const anyVisible = rows.some(t => parseISODate(t.endDate) >= windowStart && parseISODate(t.startDate) < windowEnd);
+  if (anyVisible) return;
+  const earliest = rows.map(t => t.startDate).sort()[0];
+  const d = parseISODate(earliest);
+  planGanttWindowStart = toISODate(new Date(d.getFullYear(), d.getMonth(), 1));
 }
 
 function planNav(dir) {
@@ -4533,6 +4549,30 @@ function ganttWindowMonths() {
   return months;
 }
 
+// งานที่วางไว้ในหน้า "วางแผน" (รายวัน/สัปดาห์/เดือน) เอามาแสดงเป็นแถวใน Gantt ด้วย — แปลงเพื่อแสดงผลเท่านั้น ไม่เขียนลง ganttTasks
+// จึงไม่มีข้อมูลซ้ำสองที่และไม่ต้องคอยซิงค์ให้ตรงกัน ส่วนงานที่เพิ่มจากปุ่ม "+ เพิ่มงาน" ของ Gantt ยังอยู่ใน ganttTasks ตามเดิม
+function planTasksAsGanttRows() {
+  return planTasks
+    .filter(t => t.workType === currentPlanWorkType)
+    .map(t => {
+      const color = planRollColorLabel(t);
+      const rollCount = (t.rollIds || []).length;
+      return {
+        id: t.id,
+        fromPlan: true,
+        name: t.rollSet + (color && color !== '—' ? ' · ' + color : ''),
+        assignee: workerName(t.workerId) + (rollCount ? ` · ${rollCount} Roll` : ''),
+        workType: t.workType,
+        // หมวดใช้เลือกแค่สีแท่ง — ป้ายบนแท่งเขียนทับด้วยชื่อประเภทงานจริง (แต่ง/ขัด Roll) ให้อ่านตรงกว่าชื่อหมวดของ Gantt
+        category: t.workType === 'cnc' ? 'regrind' : 'pm',
+        barLabel: t.workType === 'cnc' ? 'แต่ง Roll' : 'ขัด Roll',
+        startDate: t.date,
+        endDate: t.endDate || t.date,
+      };
+    })
+    .sort((a, b) => (a.startDate + a.name).localeCompare(b.startDate + b.name));
+}
+
 function renderPlanGantt() {
   const months = ganttWindowMonths();
   const windowStart = months[0];
@@ -4547,7 +4587,7 @@ function renderPlanGantt() {
   const endLabel = THAI_MONTHS_ABBR[months[5].getMonth()] + ' ' + (months[5].getFullYear() + 543);
   document.getElementById('plan-daterange-label').textContent = `${startLabel} – ${endLabel}`;
 
-  const tasks = ganttTasks.filter(t => t.workType === currentPlanWorkType);
+  const tasks = ganttTasks.filter(t => t.workType === currentPlanWorkType).concat(planTasksAsGanttRows());
   const rowsBody = document.getElementById('gantt-rows-body');
   const emptyState = document.getElementById('gantt-empty-state');
 
@@ -4574,17 +4614,20 @@ function renderPlanGantt() {
     const barEndExclusive = new Date(Math.min(parseISODate(t.endDate).getTime() + 86400000, windowEnd.getTime()));
     const leftPct = (barStart - windowStart) / 86400000 / totalDays * 100;
     const widthPct = Math.max((barEndExclusive - barStart) / 86400000 / totalDays * 100, 2.5);
+    // แถวที่มาจากหน้าวางแผนแก้/ลบที่นี่ไม่ได้ (openGanttTaskModal/deleteGanttTask ทำงานกับ ganttTasks เท่านั้น) — ต้องไปแก้ที่มุมมองรายวัน/สัปดาห์/เดือน
+    const barEditable = editable && !t.fromPlan;
+    const rangeTitle = t.startDate === t.endDate ? t.startDate : `${t.startDate} → ${t.endDate}`;
     return `
       <div class="gantt-row">
         <div class="gantt-row-label">
-          <strong>${escapeHtmlAttr(t.name)}</strong>
+          <strong>${escapeHtmlAttr(t.name)}</strong>${t.fromPlan ? ` <span class="chip chip-blue" style="font-size:10px;" title="งานจากหน้าวางแผน — แก้ไขได้ที่มุมมองรายวัน/สัปดาห์/เดือน">จากแผน</span>` : ''}
           <div><span>${escapeHtmlAttr(t.assignee || '—')}</span></div>
         </div>
         <div class="gantt-timeline">
           <div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div>
-          <div class="gantt-bar" style="left:${leftPct}%;width:${widthPct}%;background:${cat.color};${editable ? '' : 'cursor:default;'}" ${editable ? `onclick="openGanttTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(t.name)}">
-            <span class="gantt-bar-label">${escapeHtmlAttr(cat.label)}</span>
-            ${editable ? `<button type="button" class="gantt-bar-del" title="ลบ" onclick="event.stopPropagation();deleteGanttTask('${t.id}')">✕</button>` : ''}
+          <div class="gantt-bar" style="left:${leftPct}%;width:${widthPct}%;background:${cat.color};${barEditable ? '' : 'cursor:default;'}" ${barEditable ? `onclick="openGanttTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(t.name + ' · ' + rangeTitle)}">
+            <span class="gantt-bar-label">${escapeHtmlAttr(t.barLabel || cat.label)}</span>
+            ${barEditable ? `<button type="button" class="gantt-bar-del" title="ลบ" onclick="event.stopPropagation();deleteGanttTask('${t.id}')">✕</button>` : ''}
           </div>
         </div>
       </div>`;
