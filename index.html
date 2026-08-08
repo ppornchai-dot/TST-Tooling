@@ -6627,7 +6627,8 @@ function voicePrompt(title, placeholder) {
   });
 }
 
-// จบงานชิ้นนี้ — ต้องบันทึกขนาดที่วัดได้จริงเป็นล็อกแยกต่างหากด้วย (ไม่ทับข้อมูลเดิมในทะเบียน Tooling)
+// จบงานชิ้นนี้ — งานแต่ง Roll (CNC) ต้องบันทึกขนาดที่วัดได้จริงเป็นล็อกแยกต่างหากด้วย (ไม่ทับข้อมูลเดิมในทะเบียน Tooling)
+// งานขัด Roll ไม่ต้องวัดขนาด (ขัดผิวไม่ได้เปลี่ยนขนาด) กดจบงานได้ทันทีโดยไม่ถามอะไร
 // เมื่อจบครบทุกชิ้นของงานนั้นแล้ว จะทำเครื่องหมายงานหลักเป็น "สำเร็จ" ให้อัตโนมัติ (และอาจไปกระตุ้นการวางแผนวันถัดไปอัตโนมัติต่อ ถ้าทั้งวันเสร็จครบพอดี)
 async function finishDailyPiece(taskId, rollIdx, workerId) {
   if (!canActOnDailyItem(workerId)) return;
@@ -6635,19 +6636,27 @@ async function finishDailyPiece(taskId, rollIdx, workerId) {
   if (!task) return;
   const scoped = getMatchingRollsForPlan(task.rollSet, task.rollColor);
   const roll = scoped[rollIdx];
-  const label = roll ? roll.name + (roll.diameter ? ` (เดิม ${roll.diameter})` : '') : 'ชิ้นนี้';
-  const size = await voicePrompt(`บันทึกขนาดที่วัดได้จริงหลังแต่ง/ขัดของ "${label}":`, 'พิมพ์ หรือกด 🎤 แล้วพูด');
-  if (size === null) return; // กดยกเลิก — ไม่จบงานและไม่บันทึกอะไร
+  const needsMeasuredSize = task.workType !== 'polish';
+  let size = null;
+  if (needsMeasuredSize) {
+    const label = roll ? roll.name + (roll.diameter ? ` (เดิม ${roll.diameter})` : '') : 'ชิ้นนี้';
+    size = await voicePrompt(`บันทึกขนาดที่วัดได้จริงหลังแต่ง Roll ของ "${label}":`, 'พิมพ์ หรือกด 🎤 แล้วพูด');
+    if (size === null) return; // กดยกเลิก — ไม่จบงานและไม่บันทึกอะไร
+  }
   const dateMap = dailyPieceStatus[dailyViewDate] || (dailyPieceStatus[dailyViewDate] = {});
   const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
   const prevEntry = getDailyPieceEntry(taskId, rollIdx);
-  taskMap[rollIdx] = { ...prevEntry, status: 'done', endTime: nowHHMM(), measuredSize: size, registryDiameter: roll ? roll.diameter : null };
-  rollSizeLogSeq++;
-  rollSizeLog.push({
-    id: 'RSL-' + String(rollSizeLogSeq).padStart(4, '0'),
-    taskId, rollIdx, rollId: roll ? roll.id : null, rollName: roll ? roll.name : '—',
-    date: dailyViewDate, measuredSize: size, registryDiameter: roll ? roll.diameter : null,
-  });
+  taskMap[rollIdx] = needsMeasuredSize
+    ? { ...prevEntry, status: 'done', endTime: nowHHMM(), measuredSize: size, registryDiameter: roll ? roll.diameter : null }
+    : { ...prevEntry, status: 'done', endTime: nowHHMM() };
+  if (needsMeasuredSize) {
+    rollSizeLogSeq++;
+    rollSizeLog.push({
+      id: 'RSL-' + String(rollSizeLogSeq).padStart(4, '0'),
+      taskId, rollIdx, rollId: roll ? roll.id : null, rollName: roll ? roll.name : '—',
+      date: dailyViewDate, measuredSize: size, registryDiameter: roll ? roll.diameter : null,
+    });
+  }
   const allDone = (task.rollIds || []).every(idx => getDailyPieceEntry(taskId, idx).status === 'done');
   const dayMap = dailyStatusByDate[dailyViewDate] || (dailyStatusByDate[dailyViewDate] = {});
   if (allDone) {
