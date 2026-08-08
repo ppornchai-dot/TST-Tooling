@@ -3293,12 +3293,58 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
   </td></tr>`;
 }
 
+// งานที่ทำล้นข้ามไปวันถัดไป: แตกเป็น "ส่วนของแต่ละวัน" เพื่อการแสดงผลเท่านั้น (อ่านค่า ไม่แก้ไข planTasks)
+// ส่วนที่ทำในวันถัดไปจะไปโผล่ในวันนั้น ไม่ห้อยอยู่กับวันที่เริ่มงาน — ตั้งใจไม่ตัดข้อมูลจริง เพราะการตัดซ้ำทำให้งานงอกไม่จบ (ต้องพึ่ง pass ล้างซ้ำตอนบูตเท่านั้น)
+// แต่ละส่วนถูก spread ทับ field ของงานจริง (date/startTime/endTime/rollIds/totalTime/rollMinutesOverride ฯลฯ) จึงส่งเข้าตัว render เดิมได้ตรงๆ และ id ยังเป็นของงานจริงเพื่อให้ปุ่มแก้ไข/ลบทำงานกับงานทั้งก้อน
+function planTaskDayParts(t) {
+  const scoped = getMatchingRollsForPlan(t.rollSet, t.rollColor);
+  const rolls = (t.rollIds || []).map(i => scoped[i]).filter(Boolean);
+  if (!rolls.length) return [t];
+  const pieceMinutes = (t.rollIds || []).map(idx => {
+    const ov = t.rollMinutesOverride && t.rollMinutesOverride[idx];
+    return ov != null ? ov : (parseFloat((scoped[idx] || {})[PLAN_WORKTYPE_META[t.workType].field]) || 0);
+  });
+  let groups = null;
+  try {
+    groups = splitPlanDataAcrossDays(
+      { date: t.date, shift: t.shift, startTime: t.startTime, otCapMinutesByShift: t.otCapMinutesByShift || {}, rollIds: t.rollIds },
+      rolls, t.workType, pieceMinutes
+    );
+  } catch (e) { groups = null; } // คำนวณไม่ได้ (ข้อมูลไม่ครบ) — แสดงเป็นงานก้อนเดียวตามเดิม
+  if (!groups || groups.length <= 1) return [t];
+
+  // ตัวตัดวันข้ามชิ้นที่ใช้เวลา 0 นาที (ยังไม่ได้กรอกเวลาแต่ง/ขัดในทะเบียน) ทำให้ Roll ชิ้นนั้นไม่ไปอยู่ในกลุ่มไหนเลยและหายจากหน้าจอ
+  // เติมกลับเข้ากลุ่มที่ครอบลำดับก่อนหน้าชิ้นนั้นอยู่ เพื่อให้ยังเห็นครบ — ถ้าเติมแล้วยังไม่ครบ ไม่ตัดเลยดีกว่า แสดงเป็นก้อนเดียวตามเดิม (ยอมให้ดูยากกว่า แต่ไม่ทำข้อมูลหายจากสายตา)
+  const shown = new Set(groups.flatMap(g => g.rollIds));
+  const repaired = new Set();
+  (t.rollIds || []).forEach(idx => {
+    if (shown.has(idx)) return;
+    let target = groups[0];
+    groups.forEach(g => { if (g.rollIds.some(r => r < idx)) target = g; });
+    target.rollIds = target.rollIds.concat(idx).sort((a, b) => a - b);
+    shown.add(idx);
+    repaired.add(target);
+  });
+  if ((t.rollIds || []).some(idx => !shown.has(idx))) return [t];
+  // ป้ายจำนวน Roll/รายชื่อ Roll ของกลุ่มที่เพิ่งเติมชิ้นเข้าไป ต้องคำนวณใหม่ให้ตรงกับ rollIds ที่เปลี่ยน
+  repaired.forEach(g => {
+    g.rollId = g.rollIds.length + ' Roll';
+    g.rollName = g.rollIds.map(idx => (scoped[idx] || {}).name).filter(Boolean).join(', ');
+  });
+
+  return groups.map((g, i) => ({ ...t, ...g, __origin: t, __partIndex: i, __partCount: groups.length }));
+}
+
 function renderPlanDay() {
   const iso = toISODate(planViewDate);
   const meta = PLAN_WORKTYPE_META[currentPlanWorkType];
   document.getElementById('plan-daterange-label').textContent = fmtDateThai(planViewDate);
   document.getElementById('plan-day-title').textContent = meta.label + ' — วันที่ ' + fmtDateThai(planViewDate);
-  const tasks = planTasks.filter(t => taskDisplayDate(t) === iso && matchesCurrentPlanFilter(t)).sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
+  const tasks = planTasks
+    .filter(t => matchesCurrentPlanFilter(t))
+    .flatMap(t => planTaskDayParts(t))
+    .filter(p => taskDisplayDate(p) === iso)
+    .sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
   document.getElementById('plan-day-tbody').innerHTML = tasks.map((t, i) => {
     const expandable = (t.rollIds || []).length > 1;
     const expanded = expandable && expandedPlanDayTaskId === t.id;
@@ -3308,16 +3354,19 @@ function renderPlanDay() {
       <td>${escapeHtmlAttr(t.rollSet)}</td>
       <td>${escapeHtmlAttr(planRollColorLabel(t))}</td>
       <td class="muted">${escapeHtmlAttr(t.rollId)}</td>
-      <td><strong>${escapeHtmlAttr(t.rollName)}</strong></td>
+      <td><strong>${escapeHtmlAttr(t.rollName)}</strong>${t.__partCount > 1 ? ` <span class="chip chip-blue" title="งานก้อนนี้ทำข้ามวัน — แสดงแยกเฉพาะส่วนที่ทำในวันนี้">ส่วนที่ ${t.__partIndex + 1}/${t.__partCount}</span>` : ''}</td>
       <td>${shiftChipHtml(t.shift)}</td>
       <td class="muted" style="text-align:right;">${escapeHtmlAttr(t.totalTime != null ? String(t.totalTime) : planMetricTime(t.rollId))}</td>
       <td class="muted">${escapeHtmlAttr(t.startTime || '—')}</td>
       <td class="muted">${escapeHtmlAttr(t.endTime || '—')}${t.endDate && t.endDate !== t.date ? ` <span style="color:var(--accent);font-weight:700;">(+${Math.round((parseISODate(t.endDate)-parseISODate(t.date))/86400000)} วัน)</span>` : ''}${t.otMinutes ? ` <span class="chip chip-red" title="เวลาทำงานนอกช่วงกะ">OT ${formatMinutesAsHm(t.otMinutes).replace('≈ ', '')}</span>` : ''}</td>
       <td style="display:flex;gap:4px;" onclick="event.stopPropagation();">
         ${!canEditPlan() ? '<span class="muted">—</span>' : (() => {
-          const prev = findPrecedingPlanTask(t);
-          const outOfSequence = prev && (t.date !== prev.endDate || t.startTime !== prev.endTime);
-          return outOfSequence ? `<button class="btn btn-ghost btn-sm" style="color:var(--accent);" title="ย้ายให้เริ่มต่อจากงานก่อนหน้าทันที" onclick="resequencePlanTask('${t.id}')">ต่อเวลา</button>` : '';
+          // เทียบลำดับกับ "งานจริงทั้งก้อน" เสมอ ไม่ใช่ส่วนย่อยที่แตกไว้เพื่อแสดงผล — ไม่งั้นส่วนต่อของวันถัดไปจะถูกมองว่าหลุดลำดับทุกครั้ง
+          const origin = t.__origin || t;
+          if (t.__partIndex > 0) return ''; // ส่วนต่อของวันถัดไปไม่ต้องมีปุ่มต่อเวลา เพราะเวลาของมันมาจากงานก้อนเดียวกันอยู่แล้ว
+          const prev = findPrecedingPlanTask(origin);
+          const outOfSequence = prev && (origin.date !== prev.endDate || origin.startTime !== prev.endTime);
+          return outOfSequence ? `<button class="btn btn-ghost btn-sm" style="color:var(--accent);" title="ย้ายให้เริ่มต่อจากงานก่อนหน้าทันที" onclick="resequencePlanTask('${origin.id}')">ต่อเวลา</button>` : '';
         })()}
         ${canEditPlan() ? `<button class="btn btn-ghost btn-sm" onclick="openPlanTaskModal('edit','${t.id}')">แก้ไข</button>
         <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deletePlanTask('${t.id}')">ลบ</button>` : ''}
