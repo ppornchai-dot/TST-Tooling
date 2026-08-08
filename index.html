@@ -1558,7 +1558,7 @@ canvas{display:block;}
           <button class="btn btn-primary btn-sm plan-edit-only" onclick="openGanttTaskModal('add')">+ เพิ่มงาน</button>
         </div>
         <div class="gantt-wrap">
-          <div style="min-width:860px;">
+          <div style="min-width:1180px;">
 
             <div class="gantt-header">
               <div class="gantt-label-col">งาน / Tooling</div>
@@ -2976,30 +2976,33 @@ function switchPlanView(mode) {
   document.querySelectorAll('.plan-view-btn').forEach(b => {
     b.classList.toggle('active', b.getAttribute('data-view') === mode);
   });
-  if (mode === 'gantt') snapGanttWindowToTasks();
   renderCurrentPlanView();
 }
 
-// ตอนเข้ามุมมอง Gantt ถ้ามีงานอยู่แต่ไม่มีงานไหนตกอยู่ในหน้าต่าง 6 เดือนที่ค้างไว้ (ค่าตั้งต้นคือ ม.ค. 2569 ซึ่งมักไม่ตรงกับเดือนที่วางงานจริง)
-// ให้เลื่อนหน้าต่างไปครอบเดือนของงานที่เร็วที่สุดให้เลย ไม่ต้องกด "ถัดไป" หาเอง — ทำแค่ตอนเข้ามุมมอง ไม่แทรกตอนผู้ใช้กดเลื่อนเอง
+let ganttWindowUserMoved = false; // true เมื่อผู้ใช้กดเลื่อนปีเอง
+
+// ตอนเข้ามุมมอง Gantt ถ้ามีงานอยู่แต่ไม่มีงานไหนตกอยู่ในปีที่ค้างไว้ ให้เลื่อนไปปีของงานที่เร็วที่สุดให้เลย ไม่ต้องกดหาเอง
+// ทำแค่ตอนเข้ามุมมอง/ตอนบูต ไม่แทรกตอนผู้ใช้กดเลื่อนเอง — และจัดให้หน้าต่างเริ่มที่เดือน ม.ค. เสมอ เพื่อให้เห็นเป็นปีปฏิทินเต็มปี
 function snapGanttWindowToTasks() {
+  const startOfYear = iso => { const d = parseISODate(iso); return toISODate(new Date(d.getFullYear(), 0, 1)); };
+  if (parseISODate(planGanttWindowStart).getMonth() !== 0) planGanttWindowStart = startOfYear(planGanttWindowStart);
   const rows = ganttTasks.filter(t => t.workType === currentPlanWorkType).concat(planTasksAsGanttRows());
   if (!rows.length) return;
   const months = ganttWindowMonths();
+  const last = months[months.length - 1];
   const windowStart = months[0];
-  const windowEnd = new Date(months[5].getFullYear(), months[5].getMonth() + 1, 1);
+  const windowEnd = new Date(last.getFullYear(), last.getMonth() + 1, 1);
   const anyVisible = rows.some(t => parseISODate(t.endDate) >= windowStart && parseISODate(t.startDate) < windowEnd);
   if (anyVisible) return;
-  const earliest = rows.map(t => t.startDate).sort()[0];
-  const d = parseISODate(earliest);
-  planGanttWindowStart = toISODate(new Date(d.getFullYear(), d.getMonth(), 1));
+  planGanttWindowStart = startOfYear(rows.map(t => t.startDate).sort()[0]);
 }
 
 function planNav(dir) {
   if (currentPlanView === 'gantt') {
     const d = parseISODate(planGanttWindowStart);
-    d.setMonth(d.getMonth() + dir * 6);
+    d.setMonth(d.getMonth() + dir * GANTT_MONTH_COUNT); // เลื่อนทีละปีเต็ม เพราะแสดง 12 เดือนพร้อมกัน
     planGanttWindowStart = toISODate(d);
+    ganttWindowUserMoved = true; // ผู้ใช้เลือกปีเองแล้ว — หยุดเลื่อนอัตโนมัติไปหาปีที่มีงาน ไม่ให้แย่งกัน
     renderPlanGantt();
     return;
   }
@@ -4542,10 +4545,12 @@ function resetAllPlanTasks() {
 }
 
 // ─── GANTT: render/เพิ่ม/แก้ไข/ลบ งานในหน้าวางแผน (มุมมอง Gantt) ────────────────
+// แสดงครบ 12 เดือนในหน้าเดียว (ม.ค.–ธ.ค. ของปีนั้น) — เลื่อนทีละปี ไม่ต้องเลื่อนหาเดือนทีละครึ่งปีเหมือนก่อน
+const GANTT_MONTH_COUNT = 12;
 function ganttWindowMonths() {
   const start = parseISODate(planGanttWindowStart);
   const months = [];
-  for (let i = 0; i < 6; i++) months.push(new Date(start.getFullYear(), start.getMonth() + i, 1));
+  for (let i = 0; i < GANTT_MONTH_COUNT; i++) months.push(new Date(start.getFullYear(), start.getMonth() + i, 1));
   return months;
 }
 
@@ -4574,17 +4579,20 @@ function planTasksAsGanttRows() {
 }
 
 function renderPlanGantt() {
+  // เลื่อนไปปีที่มีงานให้อัตโนมัติ จนกว่าผู้ใช้จะกดเลือกปีเอง — ครอบทุกทางเข้า (ตอนบูต, สลับมุมมอง, สลับประเภทงาน, ข้อมูลมาจาก cloud)
+  if (!ganttWindowUserMoved) snapGanttWindowToTasks();
   const months = ganttWindowMonths();
+  const last = months[months.length - 1];
   const windowStart = months[0];
-  const windowEnd = new Date(months[5].getFullYear(), months[5].getMonth() + 1, 1); // exclusive
+  const windowEnd = new Date(last.getFullYear(), last.getMonth() + 1, 1); // exclusive
   const totalDays = (windowEnd - windowStart) / 86400000;
 
   document.getElementById('gantt-months-row').innerHTML =
     months.map(m => `<div class="gantt-month">${THAI_MONTHS_ABBR[m.getMonth()]}</div>`).join('');
 
-  const sameYear = months[0].getFullYear() === months[5].getFullYear();
+  const sameYear = months[0].getFullYear() === last.getFullYear();
   const startLabel = THAI_MONTHS_ABBR[months[0].getMonth()] + (sameYear ? '' : ' ' + (months[0].getFullYear() + 543));
-  const endLabel = THAI_MONTHS_ABBR[months[5].getMonth()] + ' ' + (months[5].getFullYear() + 543);
+  const endLabel = THAI_MONTHS_ABBR[last.getMonth()] + ' ' + (last.getFullYear() + 543);
   document.getElementById('plan-daterange-label').textContent = `${startLabel} – ${endLabel}`;
 
   const tasks = ganttTasks.filter(t => t.workType === currentPlanWorkType).concat(planTasksAsGanttRows());
@@ -4624,7 +4632,7 @@ function renderPlanGantt() {
           <div><span>${escapeHtmlAttr(t.assignee || '—')}</span></div>
         </div>
         <div class="gantt-timeline">
-          <div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div><div class="gantt-cell"></div>
+          ${'<div class="gantt-cell"></div>'.repeat(GANTT_MONTH_COUNT)}
           <div class="gantt-bar" style="left:${leftPct}%;width:${widthPct}%;background:${cat.color};${barEditable ? '' : 'cursor:default;'}" ${barEditable ? `onclick="openGanttTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(t.name + ' · ' + rangeTitle)}">
             <span class="gantt-bar-label">${escapeHtmlAttr(t.barLabel || cat.label)}</span>
             ${barEditable ? `<button type="button" class="gantt-bar-del" title="ลบ" onclick="event.stopPropagation();deleteGanttTask('${t.id}')">✕</button>` : ''}
