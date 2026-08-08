@@ -7122,7 +7122,7 @@ function effectiveUserName() {
 function dailyChecklistFormFields(mode) {
   return `
     <div class="modal-row full">
-      <div class="form-group"><label class="form-label">ชื่องาน</label><input class="form-input" id="dcf-task" placeholder="เช่น ตรวจสอบ Runout Work Roll Stand 1"></div>
+      <div class="form-group"><label class="form-label">ชื่องาน</label><input class="form-input" id="dcf-task" placeholder="เช่น GI2x1 F1 T"></div>
     </div>
     ${mode === 'edit' ? '' : `<div class="muted" style="font-size:12px;margin-top:-4px;">บันทึกเป็นงานของวันที่กำลังดูอยู่ · เวลาใช้ตอนกดบันทึก · ผู้รับผิดชอบ: <strong>${escapeHtmlAttr(effectiveUserName())}</strong></div>`}`;
 }
