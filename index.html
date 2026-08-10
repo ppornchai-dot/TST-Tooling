@@ -3275,7 +3275,7 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
         if (pieceStatus === 'done') {
           // งานแต่ง Roll (CNC) แก้ขนาด OD ที่บันทึกไปแล้วได้ — งานขัด Roll ไม่ได้บันทึกขนาดจึงไม่มีปุ่มนี้
           const canEditOD = t.workType !== 'polish';
-          inner = `<span class="chip chip-green">✓ เสร็จ</span>${canEditOD ? ` <button class="btn btn-ghost btn-sm" ${lockReason ? `disabled title="${lockReason} — แก้ขนาดไม่ได้"` : 'title="แก้ขนาด OD ที่บันทึกไปแล้ว"'} onclick="editDailyPieceSize('${t.id}','${rollIdx}','${t.workerId || ''}')">✎ แก้ OD</button>` : ''}`;
+          inner = `<span class="chip chip-green">✓ เสร็จ</span>${canEditOD ? ` <button class="btn btn-ghost btn-sm" ${lockReason ? `disabled title="${lockReason} — แก้ขนาดไม่ได้"` : 'title="แก้ขนาด OD ที่บันทึกไปแล้ว"'} onclick="editDailyPieceSize('${t.id}','${rollIdx}','${t.workerId || ''}')">✎ แก้ไข OD</button>` : ''}`;
         } else if (pieceStatus === 'paused') {
           inner = `<span class="chip chip-amber">⏸ พักงาน</span> <button class="btn btn-ghost btn-sm" style="color:var(--accent);" ${lockReason ? `disabled title="${lockReason} — ทำต่อไม่ได้"` : ''} onclick="resumeDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ ทำต่อ</button>`;
         } else if (pieceStatus === 'in_progress') {
