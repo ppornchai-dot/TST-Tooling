@@ -3397,6 +3397,16 @@ function renderPlanDay() {
   }).join('') || `<tr><td colspan="10" style="padding:32px;text-align:center;color:var(--text-3);">ไม่มีงานตามแผนในวันนี้</td></tr>`;
 }
 
+// ป้ายงานในปฏิทินแผนงาน (รายสัปดาห์/รายเดือน) — โชว์ Size Roll + ชุดสี + จำนวน Roll
+// เพราะเดิมโชว์แค่ "5 Roll" ซึ่งแยกไม่ออกว่าเป็นชุดไหน ยาวเกินช่องก็ตัดด้วย ... และดูเต็มๆ ได้จากการชี้ค้าง
+function planCalendarChip(t, editable, extraStyle) {
+  const color = planRollColorLabel(t);
+  const colorPart = (color && color !== '—') ? ' · ' + color : '';
+  const text = t.rollSet + colorPart + ' · ' + t.rollId;
+  const fullTitle = `${SHIFTS[t.shift]?.label || ''} — ${t.rollSet}${colorPart} — ${t.rollId} — ${t.rollName}`;
+  return `<span class="chip ${shiftChipClass(t.shift)}" style="font-size:10px;max-width:100%;${extraStyle || ''}${editable ? 'cursor:pointer;' : ''}" ${editable ? `onclick="openPlanTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(fullTitle)}"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;">${escapeHtmlAttr(text)}</span></span>`;
+}
+
 function renderPlanWeek() {
   const monday = getMonday(planViewDate);
   const days = Array.from({length: 7}, (_, i) => { const d = new Date(monday); d.setDate(d.getDate() + i); return d; });
@@ -3415,7 +3425,7 @@ function renderPlanWeek() {
     const editable = canEditPlan();
     const items = tasks.map(t => `
       <div style="display:flex;align-items:center;gap:4px;">
-        <span class="chip ${shiftChipClass(t.shift)}" style="${editable ? 'cursor:pointer;' : ''}flex:1;" ${editable ? `onclick="openPlanTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(SHIFTS[t.shift]?.label || '')} — ${escapeHtmlAttr(t.rollId)} — ${escapeHtmlAttr(t.rollName)}">${escapeHtmlAttr(t.rollId)}</span>
+        ${planCalendarChip(t, editable, 'flex:1;')}
         ${editable ? `<button title="ลบ" onclick="deletePlanTask('${t.id}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:11px;padding:0;">✕</button>` : ''}
       </div>`).join('');
     return `<td style="min-width:110px;">
@@ -3451,9 +3461,7 @@ function renderPlanMonth() {
     const isSunday = d.getDay() === 0;
     const dayOffBg = (isSunday || holidayName) ? 'background:#FDF3D8;' : '';
     const tasks = planTasks.filter(t => taskDisplayDate(t) === iso && matchesCurrentPlanFilter(t)).sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
-    const chips = tasks.map(t =>
-      `<span class="chip ${shiftChipClass(t.shift)}" style="font-size:10px;${editable ? 'cursor:pointer;' : ''}" ${editable ? `onclick="openPlanTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(SHIFTS[t.shift]?.label || '')} — ${escapeHtmlAttr(t.rollId)} — ${escapeHtmlAttr(t.rollName)}">${escapeHtmlAttr(t.rollId)}</span>`
-    ).join('');
+    const chips = tasks.map(t => planCalendarChip(t, editable)).join('');
     html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;${dayOffBg}" title="${holidayName ? escapeHtmlAttr(holidayName) : ''}">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <strong style="font-size:12px;">${day}</strong>
