@@ -1602,6 +1602,14 @@ canvas{display:block;}
       <div class="section-title">ประวัติการทำงาน</div>
       <div class="section-sub">บันทึกการดำเนินงานและบำรุงรักษา Tooling ทั้งหมด</div>
 
+      <!-- แยกดูตามประเภทงาน — ใช้ปุ่มแท็บแบบเดียวกับหน้างานประจำวัน/วางแผน แทน dropdown เดิม เพื่อให้เห็นและสลับได้ทันที -->
+      <div class="mobile-wrap" style="display:flex;gap:8px;margin-bottom:12px;">
+        <button class="btn btn-ghost btn-sm history-type-btn" data-histtype="" onclick="switchHistoryType('')" style="color:var(--accent);border-color:var(--accent);">ทั้งหมด <span class="history-type-count" data-count-for=""></span></button>
+        <button class="btn btn-ghost btn-sm history-type-btn" data-histtype="cnc" onclick="switchHistoryType('cnc')">⚙ แต่ง Roll (CNC) <span class="history-type-count" data-count-for="cnc"></span></button>
+        <button class="btn btn-ghost btn-sm history-type-btn" data-histtype="polish" onclick="switchHistoryType('polish')">✦ ขัด Roll <span class="history-type-count" data-count-for="polish"></span></button>
+        <button class="btn btn-ghost btn-sm history-type-btn" data-histtype="other" onclick="switchHistoryType('other')">อื่นๆ <span class="history-type-count" data-count-for="other"></span></button>
+      </div>
+
       <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;">
         <div class="search-bar" style="flex:1;margin-bottom:0;">
           <svg width="14" height="14" fill="none" stroke="var(--text-3)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -1610,12 +1618,6 @@ canvas{display:block;}
         <input type="date" class="form-input" id="history-date-from" style="width:150px;" onchange="renderHistory()">
         <span style="align-self:center;color:var(--text-3);">—</span>
         <input type="date" class="form-input" id="history-date-to" style="width:150px;" onchange="renderHistory()">
-        <select class="form-select" id="history-type" style="width:140px;" onchange="renderHistory()">
-          <option value="">ทุกประเภท</option>
-          <option value="cnc">แต่ง Roll (CNC)</option>
-          <option value="polish">ขัด Roll</option>
-          <option value="checklist">เช็คลิสต์อื่นๆ</option>
-        </select>
       </div>
 
       <div class="card">
@@ -7156,18 +7158,49 @@ function collectHistoryRecords() {
   return records;
 }
 
+// แท็บแยกประเภทงานในหน้าประวัติ — '' = ทั้งหมด, 'other' = ที่ไม่ใช่ CNC/ขัด Roll (เช็คลิสต์ที่เพิ่มเอง และงานที่แผนถูกลบจนไม่รู้ประเภท)
+let currentHistoryType = '';
+function historyTypeMatches(r, filter) {
+  if (!filter) return true;
+  if (filter === 'other') return r.typeKey !== 'cnc' && r.typeKey !== 'polish';
+  return r.typeKey === filter;
+}
+function switchHistoryType(key) {
+  currentHistoryType = key || '';
+  document.querySelectorAll('.history-type-btn').forEach(b => {
+    const active = (b.getAttribute('data-histtype') || '') === currentHistoryType;
+    b.style.color = active ? 'var(--accent)' : '';
+    b.style.borderColor = active ? 'var(--accent)' : '';
+  });
+  renderHistory();
+}
+
 function renderHistory() {
   const tbody = document.getElementById('tbody-history');
   if (!tbody) return;
   const search = (document.getElementById('history-search').value || '').trim().toLowerCase();
   const fromIso = document.getElementById('history-date-from').value || null;
   const toIso = document.getElementById('history-date-to').value || null;
-  const typeFilter = document.getElementById('history-type').value || '';
+  const typeFilter = currentHistoryType;
 
-  const records = collectHistoryRecords().filter(r => {
+  const all = collectHistoryRecords();
+  // จำนวนบนแท็บนับตามช่วงวันที่/คำค้นที่กรองอยู่ (ไม่นับตัวกรองประเภท) เพื่อให้เห็นว่าประเภทไหนมีกี่รายการในเงื่อนไขเดียวกัน
+  const inScope = all.filter(r => {
     if (fromIso && r.date < fromIso) return false;
     if (toIso && r.date > toIso) return false;
-    if (typeFilter && r.typeKey !== typeFilter) return false;
+    if (search && !`${r.wo} ${r.tooling} ${r.detail} ${r.who}`.toLowerCase().includes(search)) return false;
+    return true;
+  });
+  document.querySelectorAll('.history-type-count').forEach(el => {
+    const key = el.getAttribute('data-count-for') || '';
+    el.textContent = inScope.filter(r => historyTypeMatches(r, key)).length;
+    el.style.cssText = 'font-weight:800;opacity:.65;margin-left:2px;';
+  });
+
+  const records = all.filter(r => {
+    if (fromIso && r.date < fromIso) return false;
+    if (toIso && r.date > toIso) return false;
+    if (!historyTypeMatches(r, typeFilter)) return false;
     // รวม detail (ชื่อ Roll รายชิ้น) ในการค้นหาด้วย — เป็นสิ่งที่ค้นบ่อยที่สุดหลังเปลี่ยนประวัติเป็นรายชิ้น
     if (search && !`${r.wo} ${r.tooling} ${r.detail} ${r.who}`.toLowerCase().includes(search)) return false;
     return true;
@@ -7185,7 +7218,7 @@ function renderHistory() {
       <td><span class="chip ${r.resultChip || 'chip-green'}">${escapeHtmlAttr(r.result)}</span></td>
     </tr>`).join('') || `<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--text-3);">ไม่พบประวัติการทำงานตามเงื่อนไขที่เลือก</td></tr>`;
 
-  document.getElementById('history-count-label').textContent = `แสดง ${records.length} จาก ${records.length} รายการ`;
+  document.getElementById('history-count-label').textContent = `แสดง ${records.length} จาก ${all.length} รายการ`;
 }
 
 // ─── งานค้าง (หน้า Pending) ────────────────────────────────────────────────
