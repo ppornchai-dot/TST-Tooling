@@ -3273,7 +3273,9 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
         const pieceStatus = pieceEntry.status || 'pending';
         let inner;
         if (pieceStatus === 'done') {
-          inner = `<span class="chip chip-green">✓ เสร็จ</span>`;
+          // งานแต่ง Roll (CNC) แก้ขนาด OD ที่บันทึกไปแล้วได้ — งานขัด Roll ไม่ได้บันทึกขนาดจึงไม่มีปุ่มนี้
+          const canEditOD = t.workType !== 'polish';
+          inner = `<span class="chip chip-green">✓ เสร็จ</span>${canEditOD ? ` <button class="btn btn-ghost btn-sm" ${lockReason ? `disabled title="${lockReason} — แก้ขนาดไม่ได้"` : 'title="แก้ขนาด OD ที่บันทึกไปแล้ว"'} onclick="editDailyPieceSize('${t.id}','${rollIdx}','${t.workerId || ''}')">✎ แก้ OD</button>` : ''}`;
         } else if (pieceStatus === 'paused') {
           inner = `<span class="chip chip-amber">⏸ พักงาน</span> <button class="btn btn-ghost btn-sm" style="color:var(--accent);" ${lockReason ? `disabled title="${lockReason} — ทำต่อไม่ได้"` : ''} onclick="resumeDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ ทำต่อ</button>`;
         } else if (pieceStatus === 'in_progress') {
@@ -6633,6 +6635,14 @@ function startDailyPiece(taskId, rollIdx, workerId) {
 // ─── กล่องกรอกข้อความพร้อมปุ่มพูดแทนพิมพ์ (ใช้แทน prompt เดิม) ─────────────────
 // กดปุ่มไมค์แล้วพูด ระบบถอดเสียงเป็นข้อความภาษาไทยพิมพ์ลงช่องให้ (Web Speech API)
 // เบราว์เซอร์ที่ไม่รองรับการถอดเสียง (เช่น Firefox) จะไม่แสดงปุ่มไมค์ — พิมพ์เองได้ตามปกติ
+// ถอดเสียงภาษาไทยจะเขียนคำที่พูดว่า "OD" ออกมาเป็น "โอดี" — แปลงกลับให้เป็น OD ตอนพิมพ์ลงช่องเลย ผู้ใช้เห็นค่าที่ถูกก่อนกดตกลง
+function normalizeSpokenText(s) {
+  return String(s)
+    .replace(/โอ\s*ดี/g, 'OD')
+    .replace(/OD(?=[ก-๙])/g, 'OD ') // กันคำไทยที่ตามมาติดกับ OD เช่น "โอดีนอก" → "OD นอก"
+    .replace(/\s{2,}/g, ' ');
+}
+
 function voicePrompt(title, placeholder) {
   return new Promise(resolve => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -6681,7 +6691,7 @@ function voicePrompt(title, placeholder) {
         recognition.onresult = (ev) => {
           let text = '';
           for (const r of ev.results) text += r[0].transcript;
-          input.value = baseText + text;
+          input.value = normalizeSpokenText(baseText + text);
         };
         recognition.onerror = (ev) => { hint.textContent = ev.error === 'not-allowed' ? 'ไม่ได้รับอนุญาตให้ใช้ไมโครโฟน — เปิดสิทธิ์ไมค์ให้เบราว์เซอร์ก่อน' : 'ถอดเสียงไม่สำเร็จ ลองใหม่หรือพิมพ์เอง'; };
         recognition.onend = () => { listening = false; micBtn.textContent = '🎤'; micBtn.style.color = ''; micBtn.style.borderColor = ''; if (!hint.textContent.includes('ไม่')) hint.textContent = ''; };
@@ -6732,6 +6742,37 @@ async function finishDailyPiece(taskId, rollIdx, workerId) {
   renderDailyTasks();
 }
 // พักงานชิ้นนี้ — ต้องระบุเหตุผลเสมอ (ยกเลิก/ปล่อยว่างไม่พักงาน) บันทึกเป็นล็อกแยกไว้ทุกครั้งที่พัก แม้จะกดทำต่อแล้วก็ตาม
+// แก้ขนาด OD ที่บันทึกไปแล้วของชิ้นที่จบงานแล้ว (งานแต่ง Roll/CNC เท่านั้น — งานขัด Roll ไม่ได้บันทึกขนาด)
+// ค่าเดิมยังอยู่ใน rollSizeLog เป็นประวัติ และเพิ่มรายการใหม่ที่ระบุว่าเป็นการแก้ไข เพื่อไม่ให้ประวัติการวัดหายไป
+async function editDailyPieceSize(taskId, rollIdx, workerId) {
+  if (!canActOnDailyItem(workerId)) return;
+  const task = planTasks.find(t => t.id === taskId);
+  if (!task || task.workType === 'polish') return;
+  const prevEntry = getDailyPieceEntry(taskId, rollIdx);
+  if (prevEntry.status !== 'done') return;
+  const scoped = getMatchingRollsForPlan(task.rollSet, task.rollColor);
+  const roll = scoped[rollIdx];
+  const label = roll ? roll.name : 'ชิ้นนี้';
+  const size = await voicePrompt(`แก้ขนาด OD ที่วัดได้ของ "${label}":`, 'พิมพ์ หรือกด 🎤 แล้วพูด');
+  if (size === null) return;                       // กดยกเลิก — ไม่แก้อะไร
+  if (!String(size).trim()) { alert('กรุณากรอกขนาดที่วัดได้'); return; }
+  const oldSize = prevEntry.measuredSize;
+  if (String(size).trim() === String(oldSize || '').trim()) return; // ค่าเดิม ไม่ต้องบันทึกซ้ำ
+
+  const dateMap = dailyPieceStatus[dailyViewDate] || (dailyPieceStatus[dailyViewDate] = {});
+  const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
+  taskMap[rollIdx] = { ...prevEntry, measuredSize: String(size).trim() };
+  rollSizeLogSeq++;
+  rollSizeLog.push({
+    id: 'RSL-' + String(rollSizeLogSeq).padStart(4, '0'),
+    taskId, rollIdx, rollId: roll ? roll.id : null, rollName: roll ? roll.name : '—',
+    date: dailyViewDate, measuredSize: String(size).trim(), registryDiameter: roll ? roll.diameter : null,
+    correctedFrom: oldSize == null ? null : String(oldSize), correctedBy: effectiveUserName(), correctedAt: nowHHMM(),
+  });
+  persistState();
+  renderDailyTasks();
+}
+
 async function pauseDailyPiece(taskId, rollIdx, workerId) {
   if (!canActOnDailyItem(workerId)) return;
   const reason = await voicePrompt('เหตุผลที่พักงานชิ้นนี้ (จำเป็นต้องระบุ):', 'พิมพ์ หรือกด 🎤 แล้วพูด');
