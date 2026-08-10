@@ -1607,7 +1607,6 @@ canvas{display:block;}
         <button class="btn btn-ghost btn-sm history-type-btn" data-histtype="" onclick="switchHistoryType('')" style="color:var(--accent);border-color:var(--accent);">ทั้งหมด <span class="history-type-count" data-count-for=""></span></button>
         <button class="btn btn-ghost btn-sm history-type-btn" data-histtype="cnc" onclick="switchHistoryType('cnc')">⚙ แต่ง Roll (CNC) <span class="history-type-count" data-count-for="cnc"></span></button>
         <button class="btn btn-ghost btn-sm history-type-btn" data-histtype="polish" onclick="switchHistoryType('polish')">✦ ขัด Roll <span class="history-type-count" data-count-for="polish"></span></button>
-        <button class="btn btn-ghost btn-sm history-type-btn" data-histtype="other" onclick="switchHistoryType('other')">อื่นๆ <span class="history-type-count" data-count-for="other"></span></button>
       </div>
 
       <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;">
@@ -7118,32 +7117,26 @@ function collectHistoryRecords() {
     const byTask = dailyPieceStatus[dateIso] || {};
     Object.keys(byTask).forEach(taskId => {
       const t = planTasks.find(x => x.id === taskId);
-      // งานตามแผนถูกลบ/วางใหม่ไปแล้ว แต่ประวัติที่ช่างทำไว้ต้องไม่หาย — กู้ชื่อ Roll จาก rollSizeLog เท่าที่มี แล้วแสดงต่อ
-      const scoped = t ? getMatchingRollsForPlan(t.rollSet, t.rollColor) : [];
-      const field = t ? PLAN_WORKTYPE_META[t.workType].field : null;
-      const order = t ? (t.rollIds || []) : [];
+      if (!t) return; // งานตามแผนถูกลบ/วางใหม่ไปแล้ว — ไม่แสดงเป็นประวัติ (ไม่มีบริบท Size Roll/ประเภทงาน/ผู้ปฏิบัติงานให้อ้างอิง)
+      const scoped = getMatchingRollsForPlan(t.rollSet, t.rollColor);
+      const field = PLAN_WORKTYPE_META[t.workType].field;
+      const order = t.rollIds || [];
       Object.keys(byTask[taskId]).forEach(rollIdx => {
         const entry = pieceEntryFor(dateIso, taskId, rollIdx);
         const meta = PIECE_RESULT_META[entry.status];
         if (!meta) return; // ยังไม่ได้เริ่ม (pending) — ไม่นับเป็นประวัติ
         const idxNum = Number(rollIdx);
-        const roll = t ? scoped[idxNum] : null;
+        const roll = scoped[idxNum];
         const seq = order.indexOf(idxNum);
-        const logHit = roll ? null : rollSizeLog.find(l => l.taskId === taskId && String(l.rollIdx) === String(rollIdx));
-        const rollLabel = roll ? roll.name : (logHit && logHit.rollName ? logHit.rollName : 'ชิ้นที่ ' + (idxNum + 1));
-        const override = t && t.rollMinutesOverride ? t.rollMinutesOverride[rollIdx] : null;
+        const override = t.rollMinutesOverride ? t.rollMinutesOverride[rollIdx] : null;
         const minutes = override != null ? override : (roll ? (parseFloat(roll[field]) || 0) : 0);
         records.push({
-          date: dateIso, wo: taskId,
-          typeKey: t ? t.workType : '',
-          typeLabel: t ? (t.workType === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)') : '—',
-          tooling: t
-            ? `${t.rollSet || '—'}${t.rollColor ? ' — ' + planRollColorLabel(t) : ''}`
-            : (logHit && logHit.rollId ? String(logHit.rollId) : '—'),
-          detail: rollLabel + (seq >= 0 && order.length ? ` (ชิ้นที่ ${seq + 1}/${order.length})` : ''),
-          deletedPlan: !t,
+          date: dateIso, wo: taskId, typeKey: t.workType,
+          typeLabel: t.workType === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)',
+          tooling: `${t.rollSet || '—'}${t.rollColor ? ' — ' + planRollColorLabel(t) : ''}`,
+          detail: (roll ? roll.name : 'ชิ้นที่ ' + (idxNum + 1)) + (seq >= 0 && order.length ? ` (ชิ้นที่ ${seq + 1}/${order.length})` : ''),
           measuredSize: entry.measuredSize || null,
-          who: t ? workerName(t.workerId) : '—',
+          who: workerName(t.workerId),
           hours: minutes ? Math.round((minutes / 60) * 10) / 10 : null,
           startTime: entry.startTime || null,
           endTime: entry.endTime || null,
@@ -7158,11 +7151,10 @@ function collectHistoryRecords() {
   return records;
 }
 
-// แท็บแยกประเภทงานในหน้าประวัติ — '' = ทั้งหมด, 'other' = ที่ไม่ใช่ CNC/ขัด Roll (เช็คลิสต์ที่เพิ่มเอง และงานที่แผนถูกลบจนไม่รู้ประเภท)
+// แท็บแยกประเภทงานในหน้าประวัติ — '' = ทั้งหมด
 let currentHistoryType = '';
 function historyTypeMatches(r, filter) {
   if (!filter) return true;
-  if (filter === 'other') return r.typeKey !== 'cnc' && r.typeKey !== 'polish';
   return r.typeKey === filter;
 }
 function switchHistoryType(key) {
@@ -7212,7 +7204,7 @@ function renderHistory() {
       <td class="muted">${escapeHtmlAttr(r.wo)}</td>
       <td>${escapeHtmlAttr(r.typeLabel)}</td>
       <td>${escapeHtmlAttr(r.tooling)}</td>
-      <td>${escapeHtmlAttr(r.detail)}${r.deletedPlan ? ` <span class="muted" style="font-size:10px;font-weight:400;" title="งานตามแผนนี้ถูกลบ/วางใหม่ไปแล้ว แต่ประวัติที่ทำไว้ยังถูกเก็บไว้">(แผนถูกลบแล้ว)</span>` : ''}${r.measuredSize ? `<div class="muted" style="font-size:11px;font-weight:400;">วัดได้ ${escapeHtmlAttr(String(r.measuredSize).trim().startsWith('Ø') ? r.measuredSize : 'Ø' + r.measuredSize)}</div>` : ''}</td>
+      <td>${escapeHtmlAttr(r.detail)}${r.measuredSize ? `<div class="muted" style="font-size:11px;font-weight:400;">วัดได้ ${escapeHtmlAttr(String(r.measuredSize).trim().startsWith('Ø') ? r.measuredSize : 'Ø' + r.measuredSize)}</div>` : ''}</td>
       <td class="muted">${escapeHtmlAttr(r.who)}</td>
       <td class="muted">${r.hours != null ? r.hours + ' ชม.' : '—'}${(r.startTime || r.endTime) ? `<div style="font-size:11px;">${escapeHtmlAttr(r.startTime || '—')} – ${escapeHtmlAttr(r.endTime || '—')}</div>` : ''}</td>
       <td><span class="chip ${r.resultChip || 'chip-green'}">${escapeHtmlAttr(r.result)}</span></td>
