@@ -1605,7 +1605,7 @@ canvas{display:block;}
       <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;">
         <div class="search-bar" style="flex:1;margin-bottom:0;">
           <svg width="14" height="14" fill="none" stroke="var(--text-3)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" id="history-search" placeholder="ค้นหา WO / Tooling / ผู้ดำเนินการ..." oninput="renderHistory()">
+          <input type="text" id="history-search" placeholder="ค้นหา WO / Tooling / ชื่อ Roll / ผู้ดำเนินการ..." oninput="renderHistory()">
         </div>
         <input type="date" class="form-input" id="history-date-from" style="width:150px;" onchange="renderHistory()">
         <span style="align-self:center;color:var(--text-3);">—</span>
@@ -7168,7 +7168,8 @@ function renderHistory() {
     if (fromIso && r.date < fromIso) return false;
     if (toIso && r.date > toIso) return false;
     if (typeFilter && r.typeKey !== typeFilter) return false;
-    if (search && !`${r.wo} ${r.tooling} ${r.who}`.toLowerCase().includes(search)) return false;
+    // รวม detail (ชื่อ Roll รายชิ้น) ในการค้นหาด้วย — เป็นสิ่งที่ค้นบ่อยที่สุดหลังเปลี่ยนประวัติเป็นรายชิ้น
+    if (search && !`${r.wo} ${r.tooling} ${r.detail} ${r.who}`.toLowerCase().includes(search)) return false;
     return true;
   });
 
