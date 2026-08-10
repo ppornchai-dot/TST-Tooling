@@ -7103,18 +7103,56 @@ function collectHistoryRecords() {
         tooling: t.ref || '—', detail: t.task, who: t.who || '—', hours: null, result: 'สำเร็จ',
       });
     });
-    planTasks.filter(t => taskDisplayDate(t) === dateIso).forEach(t => {
-      if (dayMap[t.id] !== 'done') return;
-      records.push({
-        date: dateIso, wo: t.id, typeKey: t.workType, typeLabel: t.workType === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)',
-        tooling: `${t.rollSet || '—'}${t.rollColor ? ' — ' + planRollColorLabel(t) : ''}`,
-        detail: t.rollName || '—', who: workerName(t.workerId),
-        hours: t.totalTime != null ? Math.round((t.totalTime / 60) * 10) / 10 : null,
-        result: 'สำเร็จ',
+  });
+
+  // งานตามแผน (CNC/ขัด Roll) บันทึกประวัติ "ทีละชิ้น Roll" ตั้งแต่กดเริ่มงาน ไม่ต้องรอให้จบครบทั้งชุด
+  // (เดิมรอ dailyStatusByDate ของงานเป็น 'done' คือครบทุกชิ้นก่อน ทำให้ระหว่างทำงานยังไม่เห็นอะไรเลย)
+  const PIECE_RESULT_META = {
+    done:        { label: 'สำเร็จ',   chip: 'chip-green' },
+    in_progress: { label: 'กำลังทำ',  chip: 'chip-blue'  },
+    paused:      { label: 'พักงาน',   chip: 'chip-amber' },
+  };
+  Object.keys(dailyPieceStatus).forEach(dateIso => {
+    const byTask = dailyPieceStatus[dateIso] || {};
+    Object.keys(byTask).forEach(taskId => {
+      const t = planTasks.find(x => x.id === taskId);
+      // งานตามแผนถูกลบ/วางใหม่ไปแล้ว แต่ประวัติที่ช่างทำไว้ต้องไม่หาย — กู้ชื่อ Roll จาก rollSizeLog เท่าที่มี แล้วแสดงต่อ
+      const scoped = t ? getMatchingRollsForPlan(t.rollSet, t.rollColor) : [];
+      const field = t ? PLAN_WORKTYPE_META[t.workType].field : null;
+      const order = t ? (t.rollIds || []) : [];
+      Object.keys(byTask[taskId]).forEach(rollIdx => {
+        const entry = pieceEntryFor(dateIso, taskId, rollIdx);
+        const meta = PIECE_RESULT_META[entry.status];
+        if (!meta) return; // ยังไม่ได้เริ่ม (pending) — ไม่นับเป็นประวัติ
+        const idxNum = Number(rollIdx);
+        const roll = t ? scoped[idxNum] : null;
+        const seq = order.indexOf(idxNum);
+        const logHit = roll ? null : rollSizeLog.find(l => l.taskId === taskId && String(l.rollIdx) === String(rollIdx));
+        const rollLabel = roll ? roll.name : (logHit && logHit.rollName ? logHit.rollName : 'ชิ้นที่ ' + (idxNum + 1));
+        const override = t && t.rollMinutesOverride ? t.rollMinutesOverride[rollIdx] : null;
+        const minutes = override != null ? override : (roll ? (parseFloat(roll[field]) || 0) : 0);
+        records.push({
+          date: dateIso, wo: taskId,
+          typeKey: t ? t.workType : '',
+          typeLabel: t ? (t.workType === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)') : '—',
+          tooling: t
+            ? `${t.rollSet || '—'}${t.rollColor ? ' — ' + planRollColorLabel(t) : ''}`
+            : (logHit && logHit.rollId ? String(logHit.rollId) : '—'),
+          detail: rollLabel + (seq >= 0 && order.length ? ` (ชิ้นที่ ${seq + 1}/${order.length})` : ''),
+          deletedPlan: !t,
+          measuredSize: entry.measuredSize || null,
+          who: t ? workerName(t.workerId) : '—',
+          hours: minutes ? Math.round((minutes / 60) * 10) / 10 : null,
+          startTime: entry.startTime || null,
+          endTime: entry.endTime || null,
+          result: meta.label, resultChip: meta.chip,
+          sortKey: dateIso + ' ' + (entry.startTime || '00:00') + ' ' + String(seq).padStart(3, '0'),
+        });
       });
     });
   });
-  records.sort((a, b) => (b.date + b.wo).localeCompare(a.date + a.wo));
+
+  records.sort((a, b) => (b.sortKey || b.date + ' ' + b.wo).localeCompare(a.sortKey || a.date + ' ' + a.wo));
   return records;
 }
 
@@ -7140,10 +7178,10 @@ function renderHistory() {
       <td class="muted">${escapeHtmlAttr(r.wo)}</td>
       <td>${escapeHtmlAttr(r.typeLabel)}</td>
       <td>${escapeHtmlAttr(r.tooling)}</td>
-      <td>${escapeHtmlAttr(r.detail)}</td>
+      <td>${escapeHtmlAttr(r.detail)}${r.deletedPlan ? ` <span class="muted" style="font-size:10px;font-weight:400;" title="งานตามแผนนี้ถูกลบ/วางใหม่ไปแล้ว แต่ประวัติที่ทำไว้ยังถูกเก็บไว้">(แผนถูกลบแล้ว)</span>` : ''}${r.measuredSize ? `<div class="muted" style="font-size:11px;font-weight:400;">วัดได้ ${escapeHtmlAttr(String(r.measuredSize).trim().startsWith('Ø') ? r.measuredSize : 'Ø' + r.measuredSize)}</div>` : ''}</td>
       <td class="muted">${escapeHtmlAttr(r.who)}</td>
-      <td class="muted">${r.hours != null ? r.hours + ' ชม.' : '—'}</td>
-      <td><span class="chip chip-green">${escapeHtmlAttr(r.result)}</span></td>
+      <td class="muted">${r.hours != null ? r.hours + ' ชม.' : '—'}${(r.startTime || r.endTime) ? `<div style="font-size:11px;">${escapeHtmlAttr(r.startTime || '—')} – ${escapeHtmlAttr(r.endTime || '—')}</div>` : ''}</td>
+      <td><span class="chip ${r.resultChip || 'chip-green'}">${escapeHtmlAttr(r.result)}</span></td>
     </tr>`).join('') || `<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--text-3);">ไม่พบประวัติการทำงานตามเงื่อนไขที่เลือก</td></tr>`;
 
   document.getElementById('history-count-label').textContent = `แสดง ${records.length} จาก ${records.length} รายการ`;
