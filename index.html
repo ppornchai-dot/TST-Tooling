@@ -910,6 +910,10 @@ canvas{display:block;}
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
         น้ำหนักผลิต
       </button>
+      <button class="nav-item" data-roles="admin,lead" onclick="showPage('rollLife')">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>
+        อายุ Roll
+      </button>
     </div>
     <div class="nav-section">
       <div class="nav-label">การปฏิบัติงาน</div>
@@ -1375,6 +1379,78 @@ canvas{display:block;}
         <button class="btn btn-primary btn-sm" onclick="renderProdWeight()">ค้นหา</button>
       </div>
       <div class="grid-3" id="prodweight-grid" style="margin-top:10px;"></div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════
+         PAGE: ROLL LIFE
+    ══════════════════════════════════════════ -->
+    <div class="page" id="page-rollLife">
+      <div class="section-title">อายุ Roll</div>
+      <div class="section-sub">อายุคงเหลือของ Roll แต่ละลูก คิดจากจำนวนตันที่รีดและ OD ที่สึกไป</div>
+
+      <div class="kpi-grid" style="margin-top:14px;">
+        <div class="kpi-card red">
+          <div class="kpi-icon red"><svg width="18" height="18" fill="none" stroke="var(--red)" stroke-width="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/></svg></div>
+          <div class="kpi-label">ใกล้หมดอายุ (≤ 20%)</div>
+          <div class="kpi-value" id="rolllife-kpi-critical">0</div>
+        </div>
+        <div class="kpi-card amber">
+          <div class="kpi-icon amber"><svg width="18" height="18" fill="none" stroke="var(--amber)" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg></div>
+          <div class="kpi-label">เฝ้าระวัง (21–50%)</div>
+          <div class="kpi-value" id="rolllife-kpi-warn">0</div>
+        </div>
+        <div class="kpi-card green">
+          <div class="kpi-icon green"><svg width="18" height="18" fill="none" stroke="var(--green)" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+          <div class="kpi-label">ปกติ (&gt; 50%)</div>
+          <div class="kpi-value" id="rolllife-kpi-ok">0</div>
+        </div>
+        <div class="kpi-card blue">
+          <div class="kpi-icon blue"><svg width="18" height="18" fill="none" stroke="var(--accent)" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></div>
+          <div class="kpi-label">ยังไม่กำหนดเกณฑ์</div>
+          <div class="kpi-value" id="rolllife-kpi-nospec">0</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-header" style="cursor:pointer;" onclick="toggleRollLifeSpec()">
+          <span class="card-title">เกณฑ์อายุต่อ Size Roll <span class="muted" style="font-weight:400;font-size:12px;">— กรอกก่อนจึงคำนวณอายุได้</span></span>
+          <button class="btn btn-ghost btn-sm" id="rolllife-spec-toggle">แสดง</button>
+        </div>
+        <div id="rolllife-spec-body" style="display:none;">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Size Roll</th><th>OD ตอน Roll ใหม่ (mm)</th><th>OD เล็กสุดที่ใช้ได้ (mm)</th><th>รีดได้สูงสุด (ตัน)</th><th>จำนวน Roll</th></tr></thead>
+              <tbody id="rolllife-spec-tbody"></tbody>
+            </table>
+          </div>
+          <div style="padding:12px 20px;border-top:1px solid var(--border-light);display:flex;justify-content:flex-end;">
+            <button class="btn btn-primary btn-sm" onclick="saveRollLifeSpec()">บันทึกเกณฑ์</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;">
+        <div class="search-bar" style="flex:1;margin-bottom:0;">
+          <svg width="14" height="14" fill="none" stroke="var(--text-3)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="rolllife-search" placeholder="ค้นหาชื่อ Roll / Size Roll..." oninput="renderRollLife()">
+        </div>
+        <select class="form-select" id="rolllife-set-filter" style="width:260px;" onchange="renderRollLife()"></select>
+      </div>
+
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>ชื่อ Roll</th><th>Size Roll</th><th>ชุดสี</th><th style="text-align:right;">OD ปัจจุบัน</th><th style="text-align:right;">สึกไป</th><th style="text-align:right;">ตันที่รีด</th><th>อายุคงเหลือ</th><th>สถานะ</th></tr>
+            </thead>
+            <tbody id="rolllife-tbody"></tbody>
+          </table>
+        </div>
+        <div style="padding:12px 20px;border-top:1px solid var(--border-light);">
+          <span style="font-size:12px;color:var(--text-3);" id="rolllife-count-label">แสดง 0 จาก 0 รายการ</span>
+        </div>
+      </div>
     </div>
 
 
@@ -1869,6 +1945,7 @@ const PAGE_META = {
   registry:  { title: 'ทะเบียน Tooling', sub: 'รายการเครื่องมือและอุปกรณ์ทั้งหมด 248 รายการ' },
   standard:  { title: 'Production Block', sub: 'ตารางวางแผนการผลิตตามการใช้ Roll — ฝ่าย Production ใช้วางแผนงาน' },
   prodWeight: { title: 'น้ำหนักผลิต', sub: 'เทียบน้ำหนักผลิตจริงกับยอดใช้งานสะสมของแต่ละชุด Roll' },
+  rollLife:   { title: 'อายุ Roll', sub: 'อายุคงเหลือของ Roll แต่ละลูก คิดจากจำนวนตันที่รีดและ OD ที่สึกไป' },
   daily:     { title: 'งานประจำวัน', sub: 'เช็คลิสต์งานประจำวันของทีม Tooling — วันที่ 2 ก.ค. 2569' },
   plan:      { title: 'วางแผน', sub: 'ตารางแผนการบำรุงรักษาและงาน Tooling ประจำปี 2569' },
   history:   { title: 'ประวัติการทำงาน', sub: 'บันทึกการดำเนินงานและบำรุงรักษา Tooling ทั้งหมด' },
@@ -1907,6 +1984,7 @@ function showPage(id) {
   if (id === 'history') renderHistory();
   if (id === 'pending') renderPending();
   if (id === 'prodWeight') renderProdWeight();
+  if (id === 'rollLife') renderRollLife();
   if (id === 'standard') loadProdBlockIframe();
 }
 
@@ -4889,6 +4967,10 @@ const ROLL_SET_SECTION_COLORS = { Forming: C_BLUE, Sizing: C_AMBER, TH: C_PURPLE
 
 // กลุ่ม Size Roll ที่ถูกตั้งเป็น "เทมเพลต" ของแต่ละหมวด — ผู้ใช้กำหนดเองทีละหมวดผ่านปุ่ม ★ ที่แต่ละกลุ่ม (ตั้งได้หมวดละ 1 กลุ่มเท่านั้น)
 let rollSetCategoryTemplates = {};
+
+// เกณฑ์อายุ Roll ต่อ Size Roll — ระบบไม่มีค่าขีดจำกัดพวกนี้มาก่อน ต้องให้ผู้ใช้กรอกเอง จึงคำนวณอายุคงเหลือได้
+// { [ชื่อ Size Roll]: { newOD: OD ของ Roll ใหม่, minOD: OD เล็กสุดที่ยังใช้ได้, maxTon: จำนวนตันสูงสุดที่รีดได้ } }
+let rollLifeSpec = {};
 function isRollSetTemplate(setName) {
   const cat = parseSizeRollName(setName).category;
   return !!cat && rollSetCategoryTemplates[cat] === setName;
@@ -5063,7 +5145,7 @@ let cloudSyncReady = false;
 
 function buildStateSnapshot() {
   return {
-    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollColorActiveMachine, rollSetCategoryTemplates,
+    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec,
     planTasks, planTaskSeq, companyHolidays, companyHolidaySeq, teamMembers, teamSeq,
     ganttTasks, ganttTaskSeq, planGanttWindowStart,
     dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
@@ -5097,6 +5179,7 @@ function applyState(saved) {
   if (saved.rollColorStatus) rollColorStatus = saved.rollColorStatus;
   if (saved.rollColorActiveMachine) rollColorActiveMachine = saved.rollColorActiveMachine;
   if (saved.rollSetCategoryTemplates) rollSetCategoryTemplates = saved.rollSetCategoryTemplates;
+  if (saved.rollLifeSpec) rollLifeSpec = saved.rollLifeSpec;
   if (typeof saved.rollColorSeq === 'number') rollColorSeq = saved.rollColorSeq;
   if (Array.isArray(saved.planTasks)) planTasks = saved.planTasks;
   if (typeof saved.planTaskSeq === 'number') planTaskSeq = saved.planTaskSeq;
@@ -5659,6 +5742,137 @@ async function renderProdWeight() {
       </div>
     </div>`;
   }).join('');
+}
+
+// ─── อายุ Roll ────────────────────────────────────────────────────────────────
+// อายุคงเหลือคิด 2 ทาง แล้วเอา "ค่าที่น้อยกว่า" เป็นตัวตัดสิน (อะไรหมดก่อนถือว่าหมดก่อน):
+//   จาก OD  = (OD ปัจจุบัน − OD เล็กสุด) / (OD ตอนใหม่ − OD เล็กสุด)
+//   จากตัน  = (โควตาตัน − ตันที่รีดไปแล้ว) / โควตาตัน
+// เกณฑ์ทั้งสองต้องกรอกใน rollLifeSpec ก่อน ถ้าไม่มีจะไม่เดาให้ — แสดงเป็น "ยังไม่กำหนดเกณฑ์"
+function rollLifeNum(v) {
+  const n = parseFloat(String(v == null ? '' : v).replace(/[^0-9.]/g, ''));
+  return isNaN(n) ? null : n;
+}
+
+function rollLifeFor(roll) {
+  const spec = rollLifeSpec[roll.set] || {};
+  const newOD = rollLifeNum(spec.newOD), minOD = rollLifeNum(spec.minOD), maxTon = rollLifeNum(spec.maxTon);
+  const curOD = rollLifeNum(roll.diameter), usedTon = rollLifeNum(roll.usage);
+
+  let odPct = null, wornMm = null;
+  if (newOD != null && curOD != null) wornMm = Math.max(newOD - curOD, 0);
+  if (newOD != null && minOD != null && newOD > minOD && curOD != null) {
+    odPct = Math.max(0, Math.min(100, (curOD - minOD) / (newOD - minOD) * 100));
+  }
+  let tonPct = null;
+  if (maxTon != null && maxTon > 0 && usedTon != null) {
+    tonPct = Math.max(0, Math.min(100, (maxTon - usedTon) / maxTon * 100));
+  }
+
+  const parts = [odPct, tonPct].filter(v => v != null);
+  const lifePct = parts.length ? Math.round(Math.min(...parts)) : null;
+  const basis = lifePct == null ? null
+    : (odPct != null && tonPct != null ? (odPct <= tonPct ? 'OD' : 'ตัน') : (odPct != null ? 'OD' : 'ตัน'));
+  return { lifePct, basis, wornMm, odPct, tonPct, curOD, usedTon, newOD, minOD, maxTon };
+}
+
+function rollLifeChip(pct) {
+  if (pct == null) return { chip: 'chip-blue', label: 'ยังไม่กำหนดเกณฑ์' };
+  if (pct <= 20) return { chip: 'chip-red', label: 'ใกล้หมดอายุ' };
+  if (pct <= 50) return { chip: 'chip-amber', label: 'เฝ้าระวัง' };
+  return { chip: 'chip-green', label: 'ปกติ' };
+}
+
+function toggleRollLifeSpec() {
+  const body = document.getElementById('rolllife-spec-body');
+  const btn = document.getElementById('rolllife-spec-toggle');
+  const open = body.style.display === 'none';
+  body.style.display = open ? '' : 'none';
+  btn.textContent = open ? 'ซ่อน' : 'แสดง';
+}
+
+function saveRollLifeSpec() {
+  getRollSets().forEach((setName, i) => {
+    const g = id => { const el = document.getElementById(id + i); return el ? el.value.trim() : ''; };
+    const newOD = g('rls-newod'), minOD = g('rls-minod'), maxTon = g('rls-maxton');
+    if (!newOD && !minOD && !maxTon) { delete rollLifeSpec[setName]; return; }
+    rollLifeSpec[setName] = { newOD: newOD || null, minOD: minOD || null, maxTon: maxTon || null };
+  });
+  persistState();
+  renderRollLife();
+}
+
+function renderRollLife() {
+  const tbody = document.getElementById('rolllife-tbody');
+  if (!tbody) return;
+  const sets = getRollSets();
+
+  const specBody = document.getElementById('rolllife-spec-tbody');
+  specBody.innerHTML = sets.map((setName, i) => {
+    const s = rollLifeSpec[setName] || {};
+    const count = toolingData.roll.filter(r => r.set === setName).length;
+    return `<tr>
+      <td>${escapeHtmlAttr(setName)}</td>
+      <td><input class="form-input" id="rls-newod${i}" type="number" step="0.1" min="0" style="width:120px;" placeholder="เช่น 210" value="${escapeHtmlAttr(s.newOD || '')}"></td>
+      <td><input class="form-input" id="rls-minod${i}" type="number" step="0.1" min="0" style="width:120px;" placeholder="เช่น 195" value="${escapeHtmlAttr(s.minOD || '')}"></td>
+      <td><input class="form-input" id="rls-maxton${i}" type="number" step="1" min="0" style="width:120px;" placeholder="เช่น 3000" value="${escapeHtmlAttr(s.maxTon || '')}"></td>
+      <td class="muted" style="text-align:right;">${count}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--text-3);">ยังไม่มีชุด Roll ในทะเบียน Tooling</td></tr>`;
+
+  const setSel = document.getElementById('rolllife-set-filter');
+  const keep = setSel.value;
+  setSel.innerHTML = '<option value="">ทุก Size Roll</option>' + sets.map(s => `<option value="${escapeHtmlAttr(s)}">${escapeHtmlAttr(s)}</option>`).join('');
+  if (keep && sets.includes(keep)) setSel.value = keep;
+
+  const search = (document.getElementById('rolllife-search').value || '').trim().toLowerCase();
+  const setFilter = setSel.value;
+
+  const all = toolingData.roll.map(r => ({ roll: r, life: rollLifeFor(r) }));
+  const rows = all.filter(({ roll }) => {
+    if (setFilter && roll.set !== setFilter) return false;
+    if (search && !`${roll.name} ${roll.set} ${roll.id}`.toLowerCase().includes(search)) return false;
+    return true;
+  }).sort((a, b) => {
+    // เรียงตัวที่อายุเหลือน้อยสุดขึ้นก่อน ตัวที่ยังไม่กำหนดเกณฑ์ไปท้ายสุด
+    const av = a.life.lifePct == null ? Infinity : a.life.lifePct;
+    const bv = b.life.lifePct == null ? Infinity : b.life.lifePct;
+    return av !== bv ? av - bv : String(a.roll.set + a.roll.name).localeCompare(String(b.roll.set + b.roll.name));
+  });
+
+  const barColor = pct => pct <= 20 ? 'var(--red)' : pct <= 50 ? 'var(--amber)' : 'var(--green)';
+  tbody.innerHTML = rows.map(({ roll, life }) => {
+    const meta = rollLifeChip(life.lifePct);
+    const colorLabel = roll.color ? (getSetPalette(roll.set).find(c => c.key === roll.color) || {}).label : null;
+    const lifeCell = life.lifePct == null
+      ? '<span class="muted">—</span>'
+      : `<div style="display:flex;align-items:center;gap:7px;">
+          <div style="width:64px;background:var(--bg-panel);border-radius:4px;height:7px;overflow:hidden;flex-shrink:0;">
+            <div style="height:100%;width:${life.lifePct}%;background:${barColor(life.lifePct)};border-radius:4px;"></div>
+          </div>
+          <span style="font-weight:800;color:${barColor(life.lifePct)};">${life.lifePct}%</span>
+          <span class="muted" style="font-size:10px;" title="ตัวที่เหลือน้อยกว่าเป็นตัวตัดสิน">(${escapeHtmlAttr(life.basis)})</span>
+        </div>`;
+    return `<tr>
+      <td><strong>${escapeHtmlAttr(roll.name || '—')}</strong></td>
+      <td class="muted">${escapeHtmlAttr(roll.set || '—')}</td>
+      <td class="muted">${escapeHtmlAttr(colorLabel || '—')}</td>
+      <td style="text-align:right;">${life.curOD != null ? escapeHtmlAttr('Ø' + life.curOD) : '—'}${life.minOD != null ? `<div class="muted" style="font-size:10px;">เล็กสุด Ø${escapeHtmlAttr(life.minOD)}</div>` : ''}</td>
+      <td style="text-align:right;">${life.wornMm != null ? escapeHtmlAttr(Math.round(life.wornMm * 10) / 10 + ' mm') : '—'}</td>
+      <td style="text-align:right;">${life.usedTon != null ? escapeHtmlAttr(life.usedTon.toLocaleString()) : '—'}${life.maxTon != null ? `<div class="muted" style="font-size:10px;">/ ${escapeHtmlAttr(life.maxTon.toLocaleString())}</div>` : ''}</td>
+      <td>${lifeCell}</td>
+      <td><span class="chip ${meta.chip}">${escapeHtmlAttr(meta.label)}</span></td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--text-3);">ไม่พบ Roll ตามเงื่อนไขที่เลือก</td></tr>`;
+
+  document.getElementById('rolllife-count-label').textContent = `แสดง ${rows.length} จาก ${all.length} รายการ`;
+
+  // KPI นับจากทั้งทะเบียน ไม่ขึ้นกับตัวกรอง เพื่อให้เห็นภาพรวมจริงเสมอ
+  const pcts = all.map(x => x.life.lifePct);
+  document.getElementById('rolllife-kpi-critical').textContent = pcts.filter(p => p != null && p <= 20).length;
+  document.getElementById('rolllife-kpi-warn').textContent = pcts.filter(p => p != null && p > 20 && p <= 50).length;
+  document.getElementById('rolllife-kpi-ok').textContent = pcts.filter(p => p != null && p > 50).length;
+  document.getElementById('rolllife-kpi-nospec').textContent = pcts.filter(p => p == null).length;
 }
 
 function rollSetScope() {
