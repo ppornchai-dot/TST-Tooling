@@ -315,6 +315,11 @@ table.daily-tech-view > tbody > tr > td:nth-child(9):not([colspan]){display:none
 .chip-cyan::before{background:#0E9BB5;}
 .chip-brown{background:rgba(169,117,43,0.10);color:#A9752B;}
 .chip-brown::before{background:#A9752B;}
+/* ป้ายงานในปฏิทินแผนงาน — ยืมสีของกะจาก .chip-* แต่จัดเป็นบล็อก 2 บรรทัด (Size Roll / ชุดสี · จำนวน) อ่านง่ายกว่าทรงแคปซูลที่ข้อความยาวแล้วตัดบรรทัดในตัวเอง */
+.chip.plan-cal-chip{display:block;border-radius:6px;padding:4px 7px;font-size:10px;line-height:1.35;text-align:left;letter-spacing:0;}
+.chip.plan-cal-chip::before{display:none;}
+.chip.plan-cal-chip .pcc-set{display:block;font-weight:800;}
+.chip.plan-cal-chip .pcc-sub{display:block;font-weight:600;opacity:.85;}
 .chip-pink{background:rgba(194,70,158,0.10);color:#C2469E;}
 .chip-pink::before{background:#C2469E;}
 .chip-gray{background:rgba(107,114,128,0.10);color:#6B7280;}
@@ -3401,10 +3406,10 @@ function renderPlanDay() {
 // เพราะเดิมโชว์แค่ "5 Roll" ซึ่งแยกไม่ออกว่าเป็นชุดไหน ยาวเกินช่องก็ตัดด้วย ... และดูเต็มๆ ได้จากการชี้ค้าง
 function planCalendarChip(t, editable, extraStyle) {
   const color = planRollColorLabel(t);
-  const colorPart = (color && color !== '—') ? ' · ' + color : '';
-  const text = t.rollSet + colorPart + ' · ' + t.rollId;
-  const fullTitle = `${SHIFTS[t.shift]?.label || ''} — ${t.rollSet}${colorPart} — ${t.rollId} — ${t.rollName}`;
-  return `<span class="chip ${shiftChipClass(t.shift)}" style="font-size:10px;max-width:100%;${extraStyle || ''}${editable ? 'cursor:pointer;' : ''}" ${editable ? `onclick="openPlanTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(fullTitle)}"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;">${escapeHtmlAttr(text)}</span></span>`;
+  const hasColor = color && color !== '—';
+  const sub = (hasColor ? color + ' · ' : '') + t.rollId;
+  const fullTitle = `${SHIFTS[t.shift]?.label || ''} — ${t.rollSet}${hasColor ? ' · ' + color : ''} — ${t.rollId} — ${t.rollName}`;
+  return `<span class="chip plan-cal-chip ${shiftChipClass(t.shift)}" style="${extraStyle || ''}${editable ? 'cursor:pointer;' : ''}" ${editable ? `onclick="openPlanTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(fullTitle)}"><span class="pcc-set">${escapeHtmlAttr(t.rollSet)}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span></span>`;
 }
 
 function renderPlanWeek() {
