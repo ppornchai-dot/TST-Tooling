@@ -367,8 +367,13 @@ table.daily-tech-view > tbody > tr > td:nth-child(9):not([colspan]){display:none
 .gantt-row-label{
   width:240px;flex-shrink:0;padding:10px 14px;
 }
-.gantt-row-label strong{font-size:13px;color:var(--text-1);}
+.gantt-row-label strong{font-size:13px;color:var(--text-1);display:block;line-height:1.3;}
 .gantt-row-label span{font-size:11px;color:var(--text-3);}
+/* บรรทัดรายละเอียดใต้ชื่อชุด — วันที่เป็นตัวแยกแถวที่หน้าตาเหมือนกัน (ชุด/สีเดียวกันแต่คนละวัน) จึงเน้นให้อ่านง่ายกว่าตัวอื่น */
+.gantt-row-meta{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-top:2px;}
+.gantt-row-meta .gantt-row-date{font-weight:800;color:var(--text-2);}
+/* ป้ายประเภทงานวางไว้ข้างแท่ง ไม่ใช่ในแท่ง เพราะแท่งของงาน 1–2 วันแคบเกินกว่าจะใส่ตัวหนังสือได้ */
+.gantt-bar-outside{position:absolute;font-size:11px;font-weight:700;white-space:nowrap;pointer-events:none;}
 .gantt-timeline{flex:1;position:relative;height:48px;display:flex;align-items:center;}
 .gantt-cell{flex:1;height:100%;border-left:1px solid var(--border-light);}
 .gantt-bar{
@@ -376,7 +381,6 @@ table.daily-tech-view > tbody > tr > td:nth-child(9):not([colspan]){display:none
   display:flex;align-items:center;justify-content:space-between;gap:6px;padding:0 8px;
   font-size:11px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;cursor:pointer;
 }
-.gantt-bar-label{overflow:hidden;text-overflow:ellipsis;}
 .gantt-bar-del{border:none;background:none;color:inherit;opacity:.75;cursor:pointer;padding:0;font-size:11px;line-height:1;flex-shrink:0;}
 .gantt-bar-del:hover{opacity:1;}
 
@@ -1581,15 +1585,8 @@ canvas{display:block;}
           </div>
         </div>
 
-        <!-- legend -->
-        <div style="padding:14px 20px;border-top:1px solid var(--border-light);display:flex;gap:20px;flex-wrap:wrap;">
-          <span style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;background:var(--accent);border-radius:3px;display:inline-block;"></span>PM บำรุงรักษา</span>
-          <span style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;background:var(--amber);border-radius:3px;display:inline-block;"></span>Regrind</span>
-          <span style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;background:var(--green);border-radius:3px;display:inline-block;"></span>จัดซื้อ</span>
-          <span style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;background:var(--purple);border-radius:3px;display:inline-block;"></span>Calibrate</span>
-          <span style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;background:var(--red);border-radius:3px;display:inline-block;"></span>ซ่อมแซม</span>
-          <span style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;background:var(--accent-dim);border-radius:3px;display:inline-block;"></span>ตรวจสอบ/อื่นๆ</span>
-        </div>
+        <!-- legend — สร้างจากงานที่แสดงอยู่จริง (ดู renderPlanGantt) ไม่ใช่รายการคงที่ที่อาจไม่ตรงกับสิ่งที่เห็นบนแผน -->
+        <div id="gantt-legend" style="padding:14px 20px;border-top:1px solid var(--border-light);display:flex;gap:20px;flex-wrap:wrap;"></div>
       </div>
       </div>
     </div>
@@ -4582,13 +4579,15 @@ function planTasksAsGanttRows() {
         id: t.id,
         fromPlan: true,
         name: t.rollSet + (color && color !== '—' ? ' · ' + color : ''),
-        assignee: workerName(t.workerId) + (rollCount ? ` · ${rollCount} Roll` : ''),
+        // จำนวน Roll แสดงเป็นช่องแยก (rollCount) และ "ไม่ระบุผู้ปฏิบัติงาน" ให้เว้นว่างไว้ ไม่ต้องโชว์ "—" รบกวนสายตา
+        assignee: t.workerId ? workerName(t.workerId) : '',
         workType: t.workType,
         // หมวดใช้เลือกแค่สีแท่ง — ป้ายบนแท่งเขียนทับด้วยชื่อประเภทงานจริง (แต่ง/ขัด Roll) ให้อ่านตรงกว่าชื่อหมวดของ Gantt
         category: t.workType === 'cnc' ? 'regrind' : 'pm',
         barLabel: t.workType === 'cnc' ? 'แต่ง Roll' : 'ขัด Roll',
         startDate: t.date,
         endDate: t.endDate || t.date,
+        rollCount,
       };
     })
     .sort((a, b) => (a.startDate + a.name).localeCompare(b.startDate + b.name));
@@ -4632,30 +4631,59 @@ function renderPlanGantt() {
   emptyState.style.display = 'none';
 
   const editable = canEditPlan();
+  const fmtRange = (s, e) => {
+    const sd = parseISODate(s), ed = parseISODate(e);
+    if (s === e) return fmtDateThaiShort(sd);
+    return sd.getMonth() === ed.getMonth()
+      ? `${sd.getDate()}–${ed.getDate()} ${THAI_MONTHS_ABBR[ed.getMonth()]}`
+      : `${fmtDateThaiShort(sd)} – ${fmtDateThaiShort(ed)}`;
+  };
+
   rowsBody.innerHTML = visible.map(t => {
     const cat = GANTT_CATEGORY_META[t.category] || GANTT_CATEGORY_META.inspect;
     const barStart = new Date(Math.max(parseISODate(t.startDate).getTime(), windowStart.getTime()));
     const barEndExclusive = new Date(Math.min(parseISODate(t.endDate).getTime() + 86400000, windowEnd.getTime()));
     const leftPct = (barStart - windowStart) / 86400000 / totalDays * 100;
-    const widthPct = Math.max((barEndExclusive - barStart) / 86400000 / totalDays * 100, 2.5);
+    // 12 เดือนในหน้าเดียวทำให้งาน 1–2 วันบางจนมองไม่เห็น — บังคับความกว้างขั้นต่ำไว้ให้ยังเห็นเป็นแท่ง
+    const widthPct = Math.max((barEndExclusive - barStart) / 86400000 / totalDays * 100, 1.6);
     // แถวที่มาจากหน้าวางแผนแก้/ลบที่นี่ไม่ได้ (openGanttTaskModal/deleteGanttTask ทำงานกับ ganttTasks เท่านั้น) — ต้องไปแก้ที่มุมมองรายวัน/สัปดาห์/เดือน
     const barEditable = editable && !t.fromPlan;
-    const rangeTitle = t.startDate === t.endDate ? t.startDate : `${t.startDate} → ${t.endDate}`;
+    const rangeLabel = fmtRange(t.startDate, t.endDate);
+    const typeLabel = t.barLabel || cat.label;
+    const tip = `${typeLabel} · ${t.name}${t.rollCount ? ' · ' + t.rollCount + ' Roll' : ''} · ${rangeLabel}${t.assignee ? ' · ' + t.assignee : ''}`;
+    // เดิมยัดชื่อประเภทงานไว้ในแท่ง แต่แท่งแคบมากจนถูกตัดเหลือตัวอักษรเดียว ("แ.") — ย้ายป้ายมาไว้ข้างแท่งแทน อ่านได้เสมอไม่ว่าแท่งจะแคบแค่ไหน
+    const labelOnLeft = leftPct > 65; // ใกล้ขอบขวาแล้ว วางป้ายไว้ซ้ายของแท่งกันล้นออกนอกตาราง
     return `
       <div class="gantt-row">
         <div class="gantt-row-label">
-          <strong>${escapeHtmlAttr(t.name)}</strong>${t.fromPlan ? ` <span class="chip chip-blue" style="font-size:10px;" title="งานจากหน้าวางแผน — แก้ไขได้ที่มุมมองรายวัน/สัปดาห์/เดือน">จากแผน</span>` : ''}
-          <div><span>${escapeHtmlAttr(t.assignee || '—')}</span></div>
+          <strong>${escapeHtmlAttr(t.name)}</strong>
+          <div class="gantt-row-meta">
+            <span class="gantt-row-date">${escapeHtmlAttr(rangeLabel)}</span>
+            ${t.rollCount ? `<span>· ${t.rollCount} Roll</span>` : ''}
+            ${t.assignee ? `<span>· ${escapeHtmlAttr(t.assignee)}</span>` : ''}
+            ${t.fromPlan ? `<span class="chip chip-blue" style="font-size:9px;padding:1px 6px;" title="งานจากหน้าวางแผน — แก้ไขได้ที่มุมมองรายวัน/สัปดาห์/เดือน">จากแผน</span>` : ''}
+          </div>
         </div>
         <div class="gantt-timeline">
           ${'<div class="gantt-cell"></div>'.repeat(GANTT_MONTH_COUNT)}
-          <div class="gantt-bar" style="left:${leftPct}%;width:${widthPct}%;background:${cat.color};${barEditable ? '' : 'cursor:default;'}" ${barEditable ? `onclick="openGanttTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(t.name + ' · ' + rangeTitle)}">
-            <span class="gantt-bar-label">${escapeHtmlAttr(t.barLabel || cat.label)}</span>
+          <div class="gantt-bar" style="left:${leftPct}%;width:${widthPct}%;background:${cat.color};${barEditable ? '' : 'cursor:default;'}" ${barEditable ? `onclick="openGanttTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(tip)}">
             ${barEditable ? `<button type="button" class="gantt-bar-del" title="ลบ" onclick="event.stopPropagation();deleteGanttTask('${t.id}')">✕</button>` : ''}
           </div>
+          <span class="gantt-bar-outside" style="${labelOnLeft ? `right:calc(${100 - leftPct}% + 6px)` : `left:calc(${leftPct + widthPct}% + 6px)`};color:${cat.color};" title="${escapeHtmlAttr(tip)}">${escapeHtmlAttr(typeLabel)}</span>
         </div>
       </div>`;
   }).join('');
+
+  // คำอธิบายสีสร้างจากงานที่แสดงอยู่จริง — กันไม่ให้โชว์สีที่ไม่มีบนแผน (เดิมโชว์ PM/จัดซื้อ/Calibrate ฯลฯ ทั้งที่บนแผนมีแต่ "แต่ง Roll")
+  const legendSeen = new Map();
+  visible.forEach(t => {
+    const cat = GANTT_CATEGORY_META[t.category] || GANTT_CATEGORY_META.inspect;
+    const label = t.barLabel || cat.label;
+    if (!legendSeen.has(label)) legendSeen.set(label, cat.color);
+  });
+  document.getElementById('gantt-legend').innerHTML = [...legendSeen.entries()].map(([label, color]) =>
+    `<span style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:6px;"><span style="width:12px;height:12px;background:${color};border-radius:3px;display:inline-block;"></span>${escapeHtmlAttr(label)}</span>`
+  ).join('');
 }
 
 function ganttTaskFormFields() {
