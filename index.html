@@ -1540,7 +1540,7 @@ canvas{display:block;}
         <button class="btn btn-ghost btn-sm plan-worktype-btn" data-worktype="polish" onclick="switchPlanWorkType('polish')">✦ ขัด Roll</button>
       </div>
 
-      <div class="mobile-wrap" style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
+      <div class="mobile-wrap" id="plan-shift-row" style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="" onclick="switchPlanShiftFilter('')" style="color:var(--accent);border-color:var(--accent);">ทั้งหมด</button>
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="morning" onclick="switchPlanShiftFilter('morning')">🌤 กะเช้า</button>
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="night" onclick="switchPlanShiftFilter('night')">🌙 กะดึก</button>
@@ -8666,6 +8666,14 @@ function applyRoleUI() {
   if (ganttViewBtn) {
     ganttViewBtn.style.display = allowEditPlan ? '' : 'none';
     if (!allowEditPlan && currentPlanView === 'gantt') switchPlanView('day');
+  }
+
+  // แถวกรองกะ (ทั้งหมด/กะเช้า/กะดึก/2 กะ) ซ่อนทั้งแถวสำหรับช่าง — ปุ่มอีกสองตัวในแถวเดียวกัน (วันหยุดบริษัท/ล้างแผน)
+  // เป็น plan-edit-only ที่ถูกซ่อนอยู่แล้ว จึงไม่เหลือแถวว่างค้างไว้ และต้องคืนตัวกรองเป็น "ทั้งหมด" ให้ช่างเห็นงานทุกกะ
+  const planShiftRow = document.getElementById('plan-shift-row');
+  if (planShiftRow) {
+    planShiftRow.style.display = allowEditPlan ? '' : 'none';
+    if (!allowEditPlan && currentPlanShiftFilter) switchPlanShiftFilter('');
   }
   // มุมมองที่กำลังเปิดอยู่ตอนนี้ (รายวัน/สัปดาห์/เดือน/Gantt) เช็คสิทธิ์เองในฟังก์ชัน render ตรงๆ อยู่แล้ว — แค่สั่ง render ใหม่ให้ตรงกับสิทธิ์ล่าสุด
   if (typeof renderCurrentPlanView === 'function' && document.getElementById('gantt-rows-body')) renderCurrentPlanView();
