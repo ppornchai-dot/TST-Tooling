@@ -923,7 +923,7 @@ canvas{display:block;}
       </button>
       <button class="nav-item" onclick="showPage('plan')">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-        วางแผน
+        <span id="nav-plan-label">วางแผน</span>
       </button>
       <button class="nav-item" onclick="showPage('history')">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="12 8 12 12 14 14"/><path d="M3.05 11a9 9 0 1 1 .5 4M3 15v-4h4"/></svg>
@@ -1532,7 +1532,7 @@ canvas{display:block;}
          PAGE: PLAN
     ══════════════════════════════════════════ -->
     <div class="page" id="page-plan">
-      <div class="section-title">วางแผน</div>
+      <div class="section-title" id="plan-section-title">วางแผน</div>
       <div class="section-sub">ตารางแผนการบำรุงรักษาและงาน Tooling ประจำปี 2569</div>
 
       <div class="mobile-wrap" style="display:flex;gap:8px;margin-bottom:12px;">
@@ -8624,6 +8624,18 @@ function applyRoleUI() {
   if (!currentUser) return;
   const role = effectiveRole();
   applyDailyTechView(); // สลับมุมมอง (เช่น Admin กด "ดูเป็น" ช่าง) ต้องอัปเดตคอลัมน์ที่ซ่อนในตารางงานประจำวันตามไปด้วย
+
+  // ช่าง (CNC/ขัด Roll/ช่างเครื่อง) แก้แผนไม่ได้ ดูได้อย่างเดียว — เรียกหน้านี้ว่า "แผนงาน" ไม่ใช่ "วางแผน" ให้ตรงกับสิ่งที่ทำได้จริง
+  const planLabel = isDailyTechRole() ? 'แผนงาน' : 'วางแผน';
+  const navPlanLabel = document.getElementById('nav-plan-label');
+  if (navPlanLabel) navPlanLabel.textContent = planLabel;
+  const planSectionTitle = document.getElementById('plan-section-title');
+  if (planSectionTitle) planSectionTitle.textContent = planLabel;
+  if (PAGE_META.plan) PAGE_META.plan.title = planLabel;
+  if (currentPage === 'plan') {
+    const topTitle = document.getElementById('page-title');
+    if (topTitle) topTitle.textContent = planLabel;
+  }
   // หน้าประวัติกรองตามบทบาท (ช่าง CNC/ขัด Roll เห็นเฉพาะงานตัวเอง) — สลับมุมมองระหว่างเปิดหน้านี้อยู่ต้อง render ใหม่ ไม่งั้นค้างของบทบาทเดิม
   if (currentPage === 'history' && document.getElementById('tbody-history')) renderHistory();
 
