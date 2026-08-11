@@ -7399,7 +7399,16 @@ function historyTypeMatches(r, filter) {
   if (!filter) return true;
   return r.typeKey === filter;
 }
+// ช่าง CNC เห็นประวัติเฉพาะงานแต่ง Roll และช่างขัด Roll เห็นเฉพาะงานขัด Roll — คืน null ถ้าไม่ถูกจำกัด (admin/หัวหน้า/ช่างเครื่อง)
+function forcedHistoryTypeForRole() {
+  const r = effectiveRole();
+  if (r === 'cnc') return 'cnc';
+  if (r === 'polish') return 'polish';
+  return null;
+}
+
 function switchHistoryType(key) {
+  if (forcedHistoryTypeForRole()) return; // ถูกล็อกตามบทบาทอยู่ กดสลับไม่ได้
   currentHistoryType = key || '';
   document.querySelectorAll('.history-type-btn').forEach(b => {
     const active = (b.getAttribute('data-histtype') || '') === currentHistoryType;
@@ -7415,7 +7424,11 @@ function renderHistory() {
   const search = (document.getElementById('history-search').value || '').trim().toLowerCase();
   const fromIso = document.getElementById('history-date-from').value || null;
   const toIso = document.getElementById('history-date-to').value || null;
-  const typeFilter = currentHistoryType;
+  // ช่าง CNC/ช่างขัด Roll ถูกล็อกให้เห็นเฉพาะประเภทงานของตัวเอง — ซ่อนแท็บไปเลยเพราะไม่มีอะไรให้เลือก
+  const forcedType = forcedHistoryTypeForRole();
+  const typeFilter = forcedType || currentHistoryType;
+  const tabBar = document.querySelector('.history-type-btn') ? document.querySelector('.history-type-btn').parentElement : null;
+  if (tabBar) tabBar.style.display = forcedType ? 'none' : '';
 
   const all = collectHistoryRecords();
   // จำนวนบนแท็บนับตามช่วงวันที่/คำค้นที่กรองอยู่ (ไม่นับตัวกรองประเภท) เพื่อให้เห็นว่าประเภทไหนมีกี่รายการในเงื่อนไขเดียวกัน
@@ -7452,7 +7465,9 @@ function renderHistory() {
       <td><span class="chip ${r.resultChip || 'chip-green'}">${escapeHtmlAttr(r.result)}</span></td>
     </tr>`).join('') || `<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--text-3);">ไม่พบประวัติการทำงานตามเงื่อนไขที่เลือก</td></tr>`;
 
-  document.getElementById('history-count-label').textContent = `แสดง ${records.length} จาก ${all.length} รายการ`;
+  // ตัวหารนับเฉพาะประเภทที่บทบาทนี้เห็นได้ ไม่งั้นช่างจะเห็น "แสดง 10 จาก 19" ทั้งที่อีก 9 รายการไม่ใช่ของตัวเองและเข้าถึงไม่ได้
+  const totalVisible = forcedType ? all.filter(r => historyTypeMatches(r, forcedType)).length : all.length;
+  document.getElementById('history-count-label').textContent = `แสดง ${records.length} จาก ${totalVisible} รายการ`;
 }
 
 // ─── งานค้าง (หน้า Pending) ────────────────────────────────────────────────
@@ -8609,6 +8624,8 @@ function applyRoleUI() {
   if (!currentUser) return;
   const role = effectiveRole();
   applyDailyTechView(); // สลับมุมมอง (เช่น Admin กด "ดูเป็น" ช่าง) ต้องอัปเดตคอลัมน์ที่ซ่อนในตารางงานประจำวันตามไปด้วย
+  // หน้าประวัติกรองตามบทบาท (ช่าง CNC/ขัด Roll เห็นเฉพาะงานตัวเอง) — สลับมุมมองระหว่างเปิดหน้านี้อยู่ต้อง render ใหม่ ไม่งั้นค้างของบทบาทเดิม
+  if (currentPage === 'history' && document.getElementById('tbody-history')) renderHistory();
 
   document.getElementById('topbar-user-avatar').textContent = currentUser.initials || currentUser.name.slice(0, 2);
   document.getElementById('topbar-user-avatar').style.background = currentUser.avatarBg || roleColor(currentUser.role);
