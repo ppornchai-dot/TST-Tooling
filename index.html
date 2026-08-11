@@ -320,6 +320,10 @@ table.daily-tech-view > tbody > tr > td:nth-child(9):not([colspan]){display:none
 .chip.plan-cal-chip::before{display:none;}
 .chip.plan-cal-chip .pcc-set{display:block;font-weight:800;}
 .chip.plan-cal-chip .pcc-sub{display:block;font-weight:600;opacity:.85;}
+/* โหมดลบแผนงาน — งานที่เลือกไว้ตีกรอบแดงให้เห็นชัด ตัวที่ยังไม่เลือกทำจางลงเล็กน้อยเพื่อเทียบกันได้ */
+.chip.plan-cal-chip.pcc-pickable{opacity:.62;box-shadow:inset 0 0 0 1px var(--border);}
+.chip.plan-cal-chip.pcc-pickable:hover{opacity:1;}
+.chip.plan-cal-chip.pcc-picked{box-shadow:inset 0 0 0 2px var(--red);}
 .chip-pink{background:rgba(194,70,158,0.10);color:#C2469E;}
 .chip-pink::before{background:#C2469E;}
 .chip-gray{background:rgba(107,114,128,0.10);color:#6B7280;}
@@ -1546,7 +1550,7 @@ canvas{display:block;}
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="night" onclick="switchPlanShiftFilter('night')">🌙 กะดึก</button>
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="both" onclick="switchPlanShiftFilter('both')">🌤🌙 2 กะ</button>
         <button class="btn btn-ghost btn-sm plan-edit-only" style="margin-left:auto;" onclick="openCompanyHolidaysModal()">📅 วันหยุดบริษัท</button>
-        <button class="btn btn-ghost btn-sm plan-edit-only" style="color:var(--red);border-color:var(--red);" onclick="openDeletePlanTasksModal()">🗑 ลบแผนงาน</button>
+        <button class="btn btn-ghost btn-sm plan-edit-only" style="color:var(--red);border-color:var(--red);" onclick="togglePlanDeleteMode()">🗑 ลบแผนงาน</button>
       </div>
 
       <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
@@ -1564,6 +1568,17 @@ canvas{display:block;}
           <button class="plan-view-btn" data-view="week" onclick="switchPlanView('week')">รายสัปดาห์</button>
           <button class="plan-view-btn" data-view="month" onclick="switchPlanView('month')">รายเดือน</button>
           <button class="plan-view-btn active" data-view="gantt" onclick="switchPlanView('gantt')">Gantt</button>
+        </div>
+      </div>
+
+      <!-- แถบโหมดเลือกลบ — โผล่เมื่อกด "ลบแผนงาน" แล้วเลือกงานจากปฏิทินได้เลย ไม่ต้องเปิดกล่องซ้อน -->
+      <div id="plan-delete-bar" style="display:none;align-items:center;gap:10px;margin-bottom:14px;padding:10px 14px;border:1px solid var(--red);border-radius:8px;background:var(--red-dim);">
+        <span style="font-size:13px;font-weight:700;color:var(--red);">โหมดลบแผนงาน — คลิกงานในปฏิทินเพื่อเลือก</span>
+        <span id="plan-delete-count" style="font-size:12px;color:var(--red);"></span>
+        <div style="margin-left:auto;display:flex;gap:8px;">
+          <button class="btn btn-ghost btn-sm" onclick="selectAllPlanDeleteVisible()">เลือกทั้งหมดที่เห็น</button>
+          <button class="btn btn-ghost btn-sm" onclick="cancelPlanDeleteMode()">ยกเลิก</button>
+          <button class="btn btn-primary btn-sm" id="plan-delete-confirm" style="background:var(--red);" onclick="confirmPlanDelete()">ลบที่เลือก</button>
         </div>
       </div>
 
@@ -1979,6 +1994,8 @@ function showPage(id) {
   }
   currentPage = id;
   try { localStorage.setItem(CURRENT_PAGE_STORAGE_KEY, id); } catch (e) { /* localStorage unavailable — แค่จำหน้าไม่ได้ตอนรีเฟรช ไม่กระทบการใช้งานอื่น */ }
+  // ออกจากหน้าวางแผนแล้วเลิกโหมดลบด้วย กันสถานะค้างไว้จนกลับมาเจอแถบแดงโดยไม่รู้ว่ามาจากไหน
+  if (id !== 'plan' && planDeleteMode) cancelPlanDeleteMode();
   if (id === 'dashboard') initDashboard();
   if (id === 'daily') renderDailyTasks();
   if (id === 'history') renderHistory();
@@ -3485,6 +3502,11 @@ function planCalendarChip(t, editable, extraStyle) {
   const hasColor = color && color !== '—';
   const sub = (hasColor ? color + ' · ' : '') + t.rollId;
   const fullTitle = `${SHIFTS[t.shift]?.label || ''} — ${t.rollSet}${hasColor ? ' · ' + color : ''} — ${t.rollId} — ${t.rollName}`;
+  // โหมดลบ: คลิกที่งานคือติ๊กเลือก/ยกเลิกเลือก (ไม่เปิดฟอร์มแก้ไข) และมีเครื่องหมายบอกว่าเลือกอยู่
+  if (planDeleteMode) {
+    const picked = planDeleteSelected.has(t.id);
+    return `<span class="chip plan-cal-chip ${shiftChipClass(t.shift)}${picked ? ' pcc-picked' : ' pcc-pickable'}" data-taskid="${escapeHtmlAttr(t.id)}" style="${extraStyle || ''}cursor:pointer;" onclick="togglePlanDeleteSelect('${t.id}')" title="${escapeHtmlAttr((picked ? 'เลือกอยู่ — คลิกเพื่อยกเลิก' : 'คลิกเพื่อเลือกลบ') + ' · ' + fullTitle)}"><span class="pcc-set">${picked ? '☑ ' : '☐ '}${escapeHtmlAttr(t.rollSet)}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span></span>`;
+  }
   return `<span class="chip plan-cal-chip ${shiftChipClass(t.shift)}" style="${extraStyle || ''}${editable ? 'cursor:pointer;' : ''}" ${editable ? `onclick="openPlanTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(fullTitle)}"><span class="pcc-set">${escapeHtmlAttr(t.rollSet)}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span></span>`;
 }
 
@@ -4623,76 +4645,75 @@ function deletePlanTask(taskId) {
   renderCurrentPlanView();
 }
 
-// ลบแผนงาน — เลือกได้ว่าจะลบรายการไหน (ติ๊ก "เลือกทั้งหมด" ถ้าต้องการล้างทั้งตาราง)
+// ─── ลบแผนงาน: เลือกงานจากปฏิทินได้เลย ไม่ต้องเปิดกล่องซ้อน ─────────────────────
+// กด "ลบแผนงาน" → เข้าโหมดเลือก → คลิกงานในปฏิทิน (รายเดือน/รายสัปดาห์) เพื่อติ๊ก → กด "ลบที่เลือก"
 // ไม่แตะเช็คลิสต์งานประจำวันที่เพิ่มเอง หรือล็อกขนาดที่วัดได้เดิม
-function updateDeletePlanTaskCount() {
-  const items = [...document.querySelectorAll('.dpt-item')];
-  const checked = items.filter(el => el.checked);
-  const countEl = document.getElementById('dpt-count');
-  if (countEl) countEl.textContent = `เลือกไว้ ${checked.length} รายการ`;
-  const allEl = document.getElementById('dpt-all');
-  if (allEl) allEl.checked = items.length > 0 && checked.length === items.length;
-  const btn = document.querySelector('.modal-footer .btn-primary');
+let planDeleteMode = false;
+const planDeleteSelected = new Set();
+
+function togglePlanDeleteMode() {
+  if (!canEditPlan()) return;
+  if (planDeleteMode) { cancelPlanDeleteMode(); return; }
+  if (!planTasks.length) { alert('ยังไม่มีแผนงานอยู่เลย'); return; }
+  planDeleteMode = true;
+  planDeleteSelected.clear();
+  // มุมมองที่คลิกเลือกได้คือปฏิทินรายเดือน/รายสัปดาห์ — ถ้าอยู่มุมมองอื่นพาไปรายเดือนให้
+  if (currentPlanView !== 'month' && currentPlanView !== 'week') switchPlanView('month');
+  else renderCurrentPlanView();
+  updatePlanDeleteBar();
+}
+
+function cancelPlanDeleteMode() {
+  planDeleteMode = false;
+  planDeleteSelected.clear();
+  updatePlanDeleteBar();
+  renderCurrentPlanView();
+}
+
+function togglePlanDeleteSelect(taskId) {
+  if (!planDeleteMode) return;
+  if (planDeleteSelected.has(taskId)) planDeleteSelected.delete(taskId);
+  else planDeleteSelected.add(taskId);
+  updatePlanDeleteBar();
+  renderCurrentPlanView();
+}
+
+// เลือกทุกงานที่มองเห็นอยู่ในมุมมอง/ตัวกรองปัจจุบัน (ไม่เหมาไปถึงงานที่ไม่ได้แสดงอยู่ กันลบเกินโดยไม่ทันเห็น)
+function selectAllPlanDeleteVisible() {
+  if (!planDeleteMode) return;
+  document.querySelectorAll('.plan-cal-chip[data-taskid]').forEach(el => planDeleteSelected.add(el.getAttribute('data-taskid')));
+  updatePlanDeleteBar();
+  renderCurrentPlanView();
+}
+
+function updatePlanDeleteBar() {
+  const bar = document.getElementById('plan-delete-bar');
+  if (!bar) return;
+  bar.style.display = planDeleteMode ? 'flex' : 'none';
+  const countEl = document.getElementById('plan-delete-count');
+  if (countEl) countEl.textContent = planDeleteSelected.size ? `เลือกไว้ ${planDeleteSelected.size} รายการ` : 'ยังไม่ได้เลือก';
+  const btn = document.getElementById('plan-delete-confirm');
   if (btn) {
-    btn.textContent = checked.length ? `ลบที่เลือก (${checked.length})` : 'ลบที่เลือก';
-    btn.disabled = checked.length === 0;
-    btn.style.opacity = checked.length ? '' : '.5';
+    btn.textContent = planDeleteSelected.size ? `ลบที่เลือก (${planDeleteSelected.size})` : 'ลบที่เลือก';
+    btn.disabled = planDeleteSelected.size === 0;
+    btn.style.opacity = planDeleteSelected.size ? '' : '.5';
   }
 }
 
-function toggleAllDeletePlanTasks(on) {
-  document.querySelectorAll('.dpt-item').forEach(el => { el.checked = on; });
-  updateDeletePlanTaskCount();
-}
-
-function openDeletePlanTasksModal() {
-  if (!canEditPlan()) return;
-  if (!planTasks.length) { alert('ยังไม่มีแผนงานอยู่เลย'); return; }
-  document.getElementById('modal-title').textContent = 'ลบแผนงาน';
-  const sorted = [...planTasks].sort((a, b) => (a.date + (a.startTime || '')).localeCompare(b.date + (b.startTime || '')));
-  document.getElementById('modal-body').innerHTML = `
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;font-weight:700;">
-        <input type="checkbox" id="dpt-all" onchange="toggleAllDeletePlanTasks(this.checked)" style="width:16px;height:16px;cursor:pointer;">
-        เลือกทั้งหมด (${sorted.length} รายการ)
-      </label>
-      <span class="muted" style="font-size:12px;margin-left:auto;" id="dpt-count">เลือกไว้ 0 รายการ</span>
-    </div>
-    <div class="table-wrap" style="max-height:50vh;overflow:auto;">
-      <table>
-        <thead><tr><th></th><th>วันที่</th><th>ประเภทงาน</th><th>Size Roll</th><th>ชุดสี</th><th style="text-align:right;">Roll</th><th>เวลา</th></tr></thead>
-        <tbody>
-          ${sorted.map(t => `<tr>
-            <td><input type="checkbox" class="dpt-item" value="${escapeHtmlAttr(t.id)}" onchange="updateDeletePlanTaskCount()" style="width:16px;height:16px;cursor:pointer;"></td>
-            <td class="muted">${escapeHtmlAttr(fmtDateThai(parseISODate(t.date)))}${t.endDate && t.endDate !== t.date ? ` <span style="color:var(--accent);">→ ${escapeHtmlAttr(fmtDateThaiShort(parseISODate(t.endDate)))}</span>` : ''}</td>
-            <td>${t.workType === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)'}</td>
-            <td>${escapeHtmlAttr(t.rollSet || '—')}</td>
-            <td class="muted">${escapeHtmlAttr(planRollColorLabel(t))}</td>
-            <td class="muted" style="text-align:right;">${(t.rollIds || []).length}</td>
-            <td class="muted">${escapeHtmlAttr((t.startTime || '—') + ' – ' + (t.endTime || '—'))}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>`;
-  document.getElementById('modal-overlay').classList.add('open');
-  updateDeletePlanTaskCount();
-
-  document.querySelector('.modal-footer .btn-primary').onclick = function() {
-    const ids = [...document.querySelectorAll('.dpt-item')].filter(el => el.checked).map(el => el.value);
-    if (!ids.length) return;
-    if (!confirm(`ยืนยันลบแผนงาน ${ids.length} รายการที่เลือก?\n\nการกระทำนี้ไม่สามารถย้อนกลับได้`)) return;
-    planTasks = planTasks.filter(t => !ids.includes(t.id));
-    // ล้างร่องรอยการต่อแผนอัตโนมัติเฉพาะตอนที่ลบหมดจริงๆ (เหมือนพฤติกรรมเดิมของปุ่มล้างทั้งหมด)
-    if (!planTasks.length) dailyAutoContinuedDates = {};
-    else { autoFixPlanSequencing(); mergeAdjacentPlanTasks(); }
-    persistState();
-    renderCurrentPlanView();
-    renderDailyTasks();
-    const btn = this;
-    btn.textContent = '✓ ลบแล้ว';
-    btn.style.background = 'var(--green)';
-    setTimeout(() => { btn.textContent = 'บันทึก'; btn.style.background = ''; btn.disabled = false; btn.style.opacity = ''; btn.onclick = saveModal; closeModal(); }, 700);
-  };
+function confirmPlanDelete() {
+  if (!planDeleteMode || !planDeleteSelected.size) return;
+  const ids = [...planDeleteSelected];
+  if (!confirm(`ยืนยันลบแผนงาน ${ids.length} รายการที่เลือก?\n\nการกระทำนี้ไม่สามารถย้อนกลับได้`)) return;
+  planTasks = planTasks.filter(t => !ids.includes(t.id));
+  // ล้างร่องรอยการต่อแผนอัตโนมัติเฉพาะตอนที่ลบหมดจริงๆ (เหมือนพฤติกรรมเดิมของปุ่มล้างทั้งหมด)
+  if (!planTasks.length) dailyAutoContinuedDates = {};
+  else { autoFixPlanSequencing(); mergeAdjacentPlanTasks(); }
+  persistState();
+  planDeleteMode = false;
+  planDeleteSelected.clear();
+  updatePlanDeleteBar();
+  renderCurrentPlanView();
+  renderDailyTasks();
 }
 
 // ─── GANTT: render/เพิ่ม/แก้ไข/ลบ งานในหน้าวางแผน (มุมมอง Gantt) ────────────────
