@@ -1546,7 +1546,7 @@ canvas{display:block;}
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="night" onclick="switchPlanShiftFilter('night')">🌙 กะดึก</button>
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="both" onclick="switchPlanShiftFilter('both')">🌤🌙 2 กะ</button>
         <button class="btn btn-ghost btn-sm plan-edit-only" style="margin-left:auto;" onclick="openCompanyHolidaysModal()">📅 วันหยุดบริษัท</button>
-        <button class="btn btn-ghost btn-sm plan-edit-only" style="color:var(--red);border-color:var(--red);" onclick="resetAllPlanTasks()">🗑 ล้างแผนทั้งหมด</button>
+        <button class="btn btn-ghost btn-sm plan-edit-only" style="color:var(--red);border-color:var(--red);" onclick="openDeletePlanTasksModal()">🗑 ลบแผนงาน</button>
       </div>
 
       <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
@@ -4623,16 +4623,76 @@ function deletePlanTask(taskId) {
   renderCurrentPlanView();
 }
 
-// ล้างงานวางแผนทั้งหมด (CNC + ขัด Roll) ทิ้ง เริ่มตารางวางแผนใหม่ตั้งแต่ต้น — ไม่แตะเช็คลิสต์งานประจำวันที่เพิ่มเอง หรือล็อกขนาดที่วัดได้เดิม
-function resetAllPlanTasks() {
+// ลบแผนงาน — เลือกได้ว่าจะลบรายการไหน (ติ๊ก "เลือกทั้งหมด" ถ้าต้องการล้างทั้งตาราง)
+// ไม่แตะเช็คลิสต์งานประจำวันที่เพิ่มเอง หรือล็อกขนาดที่วัดได้เดิม
+function updateDeletePlanTaskCount() {
+  const items = [...document.querySelectorAll('.dpt-item')];
+  const checked = items.filter(el => el.checked);
+  const countEl = document.getElementById('dpt-count');
+  if (countEl) countEl.textContent = `เลือกไว้ ${checked.length} รายการ`;
+  const allEl = document.getElementById('dpt-all');
+  if (allEl) allEl.checked = items.length > 0 && checked.length === items.length;
+  const btn = document.querySelector('.modal-footer .btn-primary');
+  if (btn) {
+    btn.textContent = checked.length ? `ลบที่เลือก (${checked.length})` : 'ลบที่เลือก';
+    btn.disabled = checked.length === 0;
+    btn.style.opacity = checked.length ? '' : '.5';
+  }
+}
+
+function toggleAllDeletePlanTasks(on) {
+  document.querySelectorAll('.dpt-item').forEach(el => { el.checked = on; });
+  updateDeletePlanTaskCount();
+}
+
+function openDeletePlanTasksModal() {
   if (!canEditPlan()) return;
-  if (!planTasks.length) { alert('ยังไม่มีงานวางแผนอยู่เลย'); return; }
-  if (!confirm(`ยืนยันลบงานวางแผนทั้งหมด (${planTasks.length} รายการ) ออกจากตาราง แล้วเริ่มต้นใหม่ทั้งหมด?\n\nการกระทำนี้ไม่สามารถย้อนกลับได้`)) return;
-  planTasks = [];
-  dailyAutoContinuedDates = {};
-  persistState();
-  renderCurrentPlanView();
-  alert('ล้างงานวางแผนทั้งหมดเรียบร้อยแล้ว เริ่มเพิ่มงานใหม่ได้เลย');
+  if (!planTasks.length) { alert('ยังไม่มีแผนงานอยู่เลย'); return; }
+  document.getElementById('modal-title').textContent = 'ลบแผนงาน';
+  const sorted = [...planTasks].sort((a, b) => (a.date + (a.startTime || '')).localeCompare(b.date + (b.startTime || '')));
+  document.getElementById('modal-body').innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;font-weight:700;">
+        <input type="checkbox" id="dpt-all" onchange="toggleAllDeletePlanTasks(this.checked)" style="width:16px;height:16px;cursor:pointer;">
+        เลือกทั้งหมด (${sorted.length} รายการ)
+      </label>
+      <span class="muted" style="font-size:12px;margin-left:auto;" id="dpt-count">เลือกไว้ 0 รายการ</span>
+    </div>
+    <div class="table-wrap" style="max-height:50vh;overflow:auto;">
+      <table>
+        <thead><tr><th></th><th>วันที่</th><th>ประเภทงาน</th><th>Size Roll</th><th>ชุดสี</th><th style="text-align:right;">Roll</th><th>เวลา</th></tr></thead>
+        <tbody>
+          ${sorted.map(t => `<tr>
+            <td><input type="checkbox" class="dpt-item" value="${escapeHtmlAttr(t.id)}" onchange="updateDeletePlanTaskCount()" style="width:16px;height:16px;cursor:pointer;"></td>
+            <td class="muted">${escapeHtmlAttr(fmtDateThai(parseISODate(t.date)))}${t.endDate && t.endDate !== t.date ? ` <span style="color:var(--accent);">→ ${escapeHtmlAttr(fmtDateThaiShort(parseISODate(t.endDate)))}</span>` : ''}</td>
+            <td>${t.workType === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)'}</td>
+            <td>${escapeHtmlAttr(t.rollSet || '—')}</td>
+            <td class="muted">${escapeHtmlAttr(planRollColorLabel(t))}</td>
+            <td class="muted" style="text-align:right;">${(t.rollIds || []).length}</td>
+            <td class="muted">${escapeHtmlAttr((t.startTime || '—') + ' – ' + (t.endTime || '—'))}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  document.getElementById('modal-overlay').classList.add('open');
+  updateDeletePlanTaskCount();
+
+  document.querySelector('.modal-footer .btn-primary').onclick = function() {
+    const ids = [...document.querySelectorAll('.dpt-item')].filter(el => el.checked).map(el => el.value);
+    if (!ids.length) return;
+    if (!confirm(`ยืนยันลบแผนงาน ${ids.length} รายการที่เลือก?\n\nการกระทำนี้ไม่สามารถย้อนกลับได้`)) return;
+    planTasks = planTasks.filter(t => !ids.includes(t.id));
+    // ล้างร่องรอยการต่อแผนอัตโนมัติเฉพาะตอนที่ลบหมดจริงๆ (เหมือนพฤติกรรมเดิมของปุ่มล้างทั้งหมด)
+    if (!planTasks.length) dailyAutoContinuedDates = {};
+    else { autoFixPlanSequencing(); mergeAdjacentPlanTasks(); }
+    persistState();
+    renderCurrentPlanView();
+    renderDailyTasks();
+    const btn = this;
+    btn.textContent = '✓ ลบแล้ว';
+    btn.style.background = 'var(--green)';
+    setTimeout(() => { btn.textContent = 'บันทึก'; btn.style.background = ''; btn.disabled = false; btn.style.opacity = ''; btn.onclick = saveModal; closeModal(); }, 700);
+  };
 }
 
 // ─── GANTT: render/เพิ่ม/แก้ไข/ลบ งานในหน้าวางแผน (มุมมอง Gantt) ────────────────
