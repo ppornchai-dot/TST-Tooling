@@ -1545,7 +1545,7 @@ canvas{display:block;}
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="morning" onclick="switchPlanShiftFilter('morning')">🌤 กะเช้า</button>
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="night" onclick="switchPlanShiftFilter('night')">🌙 กะดึก</button>
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="both" onclick="switchPlanShiftFilter('both')">🌤🌙 2 กะ</button>
-        <button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="openCompanyHolidaysModal()">📅 วันหยุดบริษัท</button>
+        <button class="btn btn-ghost btn-sm plan-edit-only" style="margin-left:auto;" onclick="openCompanyHolidaysModal()">📅 วันหยุดบริษัท</button>
         <button class="btn btn-ghost btn-sm plan-edit-only" style="color:var(--red);border-color:var(--red);" onclick="resetAllPlanTasks()">🗑 ล้างแผนทั้งหมด</button>
       </div>
 
@@ -8659,6 +8659,14 @@ function applyRoleUI() {
   // ปุ่มเพิ่ม/ลบ/ล้างแผนที่เป็น HTML คงที่ (ไม่ได้ render ใหม่ทุกครั้งที่เปลี่ยนมุมมอง/เลื่อนวันที่) — ซ่อนไว้ถ้าไม่ใช่ admin/lead
   const allowEditPlan = canEditPlan();
   document.querySelectorAll('.plan-edit-only').forEach(el => { el.style.display = allowEditPlan ? '' : 'none'; });
+
+  // มุมมอง Gantt เป็นมุมมองภาพรวมทั้งปีสำหรับคนวางแผน — ช่างไม่ต้องใช้ ซ่อนปุ่มไป
+  // และถ้ากำลังค้างอยู่ที่ Gantt (ค่าตั้งต้นของหน้าวางแผนคือมุมมองนี้) ต้องพาไปมุมมองรายวันด้วย ไม่งั้นจะค้างอยู่หน้าที่ไม่มีปุ่มให้กดออก
+  const ganttViewBtn = document.querySelector('.plan-view-btn[data-view="gantt"]');
+  if (ganttViewBtn) {
+    ganttViewBtn.style.display = allowEditPlan ? '' : 'none';
+    if (!allowEditPlan && currentPlanView === 'gantt') switchPlanView('day');
+  }
   // มุมมองที่กำลังเปิดอยู่ตอนนี้ (รายวัน/สัปดาห์/เดือน/Gantt) เช็คสิทธิ์เองในฟังก์ชัน render ตรงๆ อยู่แล้ว — แค่สั่ง render ใหม่ให้ตรงกับสิทธิ์ล่าสุด
   if (typeof renderCurrentPlanView === 'function' && document.getElementById('gantt-rows-body')) renderCurrentPlanView();
 
