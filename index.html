@@ -6276,14 +6276,17 @@ function rollSetCardHtml(s, num) {
     </div>`;
 }
 
-// keepCase: ชื่อขนาด Roll มีตัว x เล็กอยู่ในตัว (1"x1") ถ้าบังคับ uppercase จะกลายเป็น 1"X1" ผิดจากชื่อจริง
-function rollSetSectionHeaderHtml(label, count, color, keepCase) {
+// opts.keepCase: ชื่อขนาด Roll มีตัว x เล็กอยู่ในตัว (1"x1") ถ้าบังคับ uppercase จะกลายเป็น 1"X1" ผิดจากชื่อจริง
+// opts.big: หัวข้อขนาดในทะเบียน Roll เป็นตัวคั่นหลักของรายการ ต้องอ่านชัดกว่าหัวข้อหมวดที่ใช้ในการ์ด Dashboard
+function rollSetSectionHeaderHtml(label, count, color, opts) {
+  const o = opts || {};
   const c = color || 'var(--text-3)';
-  return `<div style="font-size:11px;font-weight:800;color:${c};${keepCase ? '' : 'text-transform:uppercase;'}letter-spacing:.05em;
-    padding:10px 4px 6px;margin-top:4px;border-bottom:2px solid ${c};margin-bottom:6px;
+  const dot = o.big ? 10 : 7;
+  return `<div style="font-size:${o.big ? '16px' : '11px'};font-weight:800;color:${c};${o.keepCase ? '' : 'text-transform:uppercase;'}letter-spacing:${o.big ? '0' : '.05em'};
+    padding:${o.big ? '14px 4px 8px' : '10px 4px 6px'};margin-top:4px;border-bottom:2px solid ${c};margin-bottom:${o.big ? '8px' : '6px'};
     display:flex;align-items:center;justify-content:space-between;">
-    <span style="display:flex;align-items:center;gap:6px;"><span style="width:7px;height:7px;border-radius:50%;background:${c};flex-shrink:0;"></span>${label}</span>
-    <span style="font-weight:600;">${count}</span>
+    <span style="display:flex;align-items:center;gap:${o.big ? 8 : 6}px;"><span style="width:${dot}px;height:${dot}px;border-radius:50%;background:${c};flex-shrink:0;"></span>${label}</span>
+    <span style="font-weight:700;font-size:${o.big ? '14px' : '11px'};">${count}</span>
   </div>`;
 }
 
@@ -6316,7 +6319,7 @@ function renderRollSetList() {
       const ca = ROLL_SET_CATEGORY_ORDER[parseSizeRollName(a).category], cb = ROLL_SET_CATEGORY_ORDER[parseSizeRollName(b).category];
       return (ca === undefined ? 9 : ca) - (cb === undefined ? 9 : cb);
     });
-    return rollSetSectionHeaderHtml(escapeHtmlAttr(g.label), sorted.length, 'var(--text-2)', true)
+    return rollSetSectionHeaderHtml(escapeHtmlAttr(g.label), sorted.length, 'var(--text-1)', { keepCase: true, big: true })
       + sorted.map(s => rollSetCardHtml(s, ++num)).join('');
   }).join('');
 }
