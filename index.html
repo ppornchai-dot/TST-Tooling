@@ -6204,18 +6204,40 @@ function copyRollColorData(setName, fromKey, toKey) {
   return { copied, skipped };
 }
 
-// รวม GS/GI + ขนาด + OD ไว้บรรทัดเดียว และตัดบรรทัด "หมวด" (Forming/Sizing/TH) ออก เพราะซ้ำกับหัวข้อหมวดที่คั่นไว้ให้แล้วในรายการ — เหลือแค่ชื่อ + เครื่องจักร (ถ้ามี) ให้อ่านง่ายและประหยัดพื้นที่แนวตั้ง
+// รายการจัดกลุ่มตาม "ขนาด" แล้ว (GS 1"x1" (23x23) → Forming/Sizing/TH) หัวข้อคั่นจึงเป็นขนาด
+// ตัวการ์ดเลยแสดง "หมวด" เป็นบรรทัดหลักแทน เพราะเป็นสิ่งที่ต่างกันภายในกลุ่มเดียวกัน — ขนาดอยู่ที่หัวข้อแล้วไม่ต้องซ้ำ
 function setLabelHtml(s) {
   const p = strictParseSizeRollName(s);
   const machines = rollSetMachines[s] || [];
   const machineLine = machines.length ? `<span style="font-size:11px;color:var(--accent);font-weight:600;">${machines.join(' / ')}</span>` : '';
-  if (!p) return `<span style="flex:1;font-size:13px;">${s}</span>`;
-  const title = [p.gsgi, p.size, p.od ? '(' + p.od + ')' : ''].filter(Boolean).join(' ');
+  const cat = p ? p.category : parseSizeRollName(s).category;
+  if (!cat) return `<span style="flex:1;font-size:13px;display:flex;flex-direction:column;gap:2px;line-height:1.3;">
+    <span style="font-weight:700;">${escapeHtmlAttr(p ? [p.gsgi, p.size, p.od ? '(' + p.od + ')' : ''].filter(Boolean).join(' ') : s)}</span>
+    ${machineLine}
+  </span>`;
   return `<span style="flex:1;font-size:13px;display:flex;flex-direction:column;gap:2px;line-height:1.3;">
-    <span style="font-weight:700;">${title}</span>
+    <span style="font-weight:700;">${escapeHtmlAttr(cat)}</span>
     ${machineLine}
   </span>`;
 }
+
+// คีย์กลุ่มขนาด = ชื่อชุดที่ตัดหมวดออก (GS 1"x1" (23x23) Forming → GS 1"x1" (23x23))
+// ตัดเครื่องหมายนิ้วกับช่องว่างออกก่อนเทียบ เพราะข้อมูลจริงเขียนไม่ตรงกันบางชุด
+// (GS 1"x1" (23x23) Forming กับ GS 1x1 (23x23) Sizing เป็นขนาดเดียวกัน ต้องอยู่กลุ่มเดียวกัน)
+// ชื่อที่พาร์สไม่ได้ตกไปกลุ่ม "อื่นๆ" ท้ายสุด เหมือนที่เดิมทำกับหมวดที่พาร์สไม่ได้
+function rollSetSizeGroupKey(s) {
+  const p = strictParseSizeRollName(s);
+  if (!p) return 'อื่นๆ';
+  return p.gsgi + '|' + p.size.replace(/["\s]/g, '').toLowerCase() + '|' + p.od.replace(/\s/g, '').toLowerCase();
+}
+
+function rollSetSizeGroupLabel(s) {
+  const p = strictParseSizeRollName(s);
+  if (!p) return 'อื่นๆ';
+  return [p.gsgi, p.size, p.od ? '(' + p.od + ')' : ''].filter(Boolean).join(' ');
+}
+
+const ROLL_SET_CATEGORY_ORDER = { Forming: 0, Sizing: 1, TH: 2 };
 
 // การ์ด Size Roll 1 กลุ่ม — แยกออกมาเป็นฟังก์ชันย่อยเพื่อใช้ซ้ำได้ทั้งตอนแสดงแบบแบ่งหมวด (Forming/Sizing/TH) และหมวด "อื่นๆ"
 function rollSetCardHtml(s, num) {
@@ -6254,9 +6276,10 @@ function rollSetCardHtml(s, num) {
     </div>`;
 }
 
-function rollSetSectionHeaderHtml(label, count, color) {
+// keepCase: ชื่อขนาด Roll มีตัว x เล็กอยู่ในตัว (1"x1") ถ้าบังคับ uppercase จะกลายเป็น 1"X1" ผิดจากชื่อจริง
+function rollSetSectionHeaderHtml(label, count, color, keepCase) {
   const c = color || 'var(--text-3)';
-  return `<div style="font-size:11px;font-weight:800;color:${c};text-transform:uppercase;letter-spacing:.05em;
+  return `<div style="font-size:11px;font-weight:800;color:${c};${keepCase ? '' : 'text-transform:uppercase;'}letter-spacing:.05em;
     padding:10px 4px 6px;margin-top:4px;border-bottom:2px solid ${c};margin-bottom:6px;
     display:flex;align-items:center;justify-content:space-between;">
     <span style="display:flex;align-items:center;gap:6px;"><span style="width:7px;height:7px;border-radius:50%;background:${c};flex-shrink:0;"></span>${label}</span>
@@ -6272,23 +6295,30 @@ function renderRollSetList() {
   const catFilter = (document.getElementById('roll-set-category-filter')||{}).value||'';
   const sets = getRollSets().filter(s => s.toLowerCase().includes(q.toLowerCase()));
 
-  // แยกกลุ่ม Size Roll ออกเป็น 3 หมวดตามชื่อ (Forming/Sizing/TH) — กลุ่มที่พาร์สหมวดไม่ได้ (ชื่อเก่า/กำหนดเอง) จะตกไปอยู่หมวด "อื่นๆ" ท้ายสุด
-  const buckets = { Forming: [], Sizing: [], TH: [], other: [] };
+  // จัดกลุ่มตาม "ขนาด" แล้วเรียง Forming → Sizing → TH ในกลุ่ม (เช่น GS 1"x1" Forming, GS 1"x1" Sizing, GS 1"x1" TH)
+  // ลำดับของกลุ่มยึดตามลำดับที่ Size Roll ปรากฏใน rollSetOrder อยู่แล้ว เพื่อให้ลำดับที่จัดไว้เองไม่เปลี่ยน
+  const groups = new Map();
   sets.forEach(s => {
-    const cat = parseSizeRollName(s).category;
-    (buckets[cat] || buckets.other).push(s);
+    if (catFilter && parseSizeRollName(s).category !== catFilter) return;
+    const key = rollSetSizeGroupKey(s);
+    if (!groups.has(key)) groups.set(key, { label: rollSetSizeGroupLabel(s), list: [] });
+    const g = groups.get(key);
+    // ชื่อในกลุ่มเดียวกันเขียนไม่ตรงกัน — เลือกแบบที่มีเครื่องหมายนิ้วเป็นชื่อหัวข้อ เพราะเป็นรูปแบบที่ใช้กันในโรงงาน
+    if (!g.label.includes('"') && rollSetSizeGroupLabel(s).includes('"')) g.label = rollSetSizeGroupLabel(s);
+    g.list.push(s);
   });
+  // กลุ่ม "อื่นๆ" (ชื่อที่พาร์สไม่ได้) ไว้ท้ายสุดเสมอ
+  const ordered = [...groups.entries()].sort((a, b) => (a[0] === 'อื่นๆ' ? 1 : 0) - (b[0] === 'อื่นๆ' ? 1 : 0));
 
-  const sections = [
-    ['Forming', buckets.Forming],
-    ['Sizing', buckets.Sizing],
-    ['TH', buckets.TH],
-    ['อื่นๆ', buckets.other],
-  ].filter(([label, list]) => list.length && (!catFilter || label === catFilter));
-
-  el.innerHTML = sections.map(([label, list]) =>
-    rollSetSectionHeaderHtml(label, list.length, ROLL_SET_SECTION_COLORS[label]) + list.map((s, i) => rollSetCardHtml(s, i + 1)).join('')
-  ).join('');
+  let num = 0;
+  el.innerHTML = ordered.map(([, g]) => {
+    const sorted = g.list.slice().sort((a, b) => {
+      const ca = ROLL_SET_CATEGORY_ORDER[parseSizeRollName(a).category], cb = ROLL_SET_CATEGORY_ORDER[parseSizeRollName(b).category];
+      return (ca === undefined ? 9 : ca) - (cb === undefined ? 9 : cb);
+    });
+    return rollSetSectionHeaderHtml(escapeHtmlAttr(g.label), sorted.length, 'var(--text-2)', true)
+      + sorted.map(s => rollSetCardHtml(s, ++num)).join('');
+  }).join('');
 }
 
 function selectRollSet(setName) {
