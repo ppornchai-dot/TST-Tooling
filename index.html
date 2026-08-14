@@ -8960,6 +8960,13 @@ function refreshAfterCloudUpdate() {
   renderProdBlock();
   showPage(currentPage);
   renderDailyTasks();
+  // showPage('registry')/switchRegTab() ไม่ได้เรนเดอร์รายการ Size Roll ให้ ต้องเรียกตรงนี้เอง
+  // ไม่งั้นเครื่องที่ localStorage ยังไม่มีข้อมูลจริง (เปิดครั้งแรก/ล้างแคช) จะค้างรายการตั้งต้นไว้
+  // จนกว่าจะไปพิมพ์ในช่องค้นหาหรือกดอะไรที่เรนเดอร์ใหม่
+  renderRollSetList();
+  renderRollColorList();
+  renderRollTable(pageState.roll || 1);
+  updateRollKpi();
   // ต้องเรียกหลัง renderTeamGrid() เสมอ เพราะ dropdown "ดูเป็น" อ่านรายชื่อจากการ์ดในหน้าทีมงานที่เพิ่ง render ใหม่
   // ถ้าไม่เรียกตรงนี้ dropdown จะค้างรายชื่อตั้งต้นที่ถูกสร้างตอน initAuth() (ก่อนข้อมูลจาก cloud มาถึง) ไว้ตลอด
   if (currentUser) applyRoleUI();
