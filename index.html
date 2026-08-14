@@ -328,6 +328,15 @@ table.daily-tech-view > tbody > tr > td:nth-child(9):not([colspan]){display:none
 .chip.plan-cal-chip.pcc-pickable{opacity:.62;box-shadow:inset 0 0 0 1px var(--border);}
 .chip.plan-cal-chip.pcc-pickable:hover{opacity:1;}
 .chip.plan-cal-chip.pcc-picked{box-shadow:inset 0 0 0 2px var(--red);}
+/* ลากสลับลำดับก่อน–หลังในปฏิทินแผนงาน — จับได้เฉพาะที่ปุ่ม ⋮⋮ (touch-action:none เฉพาะปุ่มนั้น)
+   เพื่อให้แตะที่ตัวงานยังเลื่อนหน้าจอด้วยนิ้วและเปิดฟอร์มแก้ไขได้ตามปกติ */
+.plan-drag-item{display:flex;align-items:flex-start;gap:3px;}
+.plan-drag-grip{flex:0 0 auto;width:15px;padding:4px 0;border-radius:4px;text-align:center;line-height:1;
+  font-size:11px;color:var(--text-3);cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;}
+.plan-drag-grip:hover{background:var(--border-light);color:var(--text-1);}
+.plan-drag-item.plan-drag-active{opacity:.45;}
+.plan-drag-item.plan-drag-active .plan-drag-grip{cursor:grabbing;}
+body.plan-dragging{cursor:grabbing;user-select:none;-webkit-user-select:none;}
 .chip-pink{background:rgba(194,70,158,0.10);color:#C2469E;}
 .chip-pink::before{background:#C2469E;}
 .chip-gray{background:rgba(107,114,128,0.10);color:#6B7280;}
@@ -1023,6 +1032,28 @@ canvas{display:block;}
             </thead>
             <tbody id="tbl-tooling-status"></tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- ROLL กำลังแต่ง / กำลังขัด — มาจากงานที่ช่างกดเริ่มไปแล้วและยังทำไม่จบในวันนี้ -->
+      <div class="grid-2" style="margin-bottom:18px;">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">ชุด Roll กำลังแต่ง</span>
+            <span style="margin-left:auto;font-size:12px;color:var(--text-3);">
+              <span id="dash-roll-dressing-count" style="font-weight:700;color:var(--amber);">0</span> ชุด
+            </span>
+          </div>
+          <div id="dash-roll-dressing-list" style="padding:12px 14px;"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">ชุด Roll กำลังขัด</span>
+            <span style="margin-left:auto;font-size:12px;color:var(--text-3);">
+              <span id="dash-roll-polishing-count" style="font-weight:700;color:var(--purple);">0</span> ชุด
+            </span>
+          </div>
+          <div id="dash-roll-polishing-list" style="padding:12px 14px;"></div>
         </div>
       </div>
 
@@ -1962,6 +1993,7 @@ function loadProdBlockIframe() {
 function initDashboard() {
   renderToolingStatusTable();
   renderDashboardInUseRoll();
+  renderDashboardWorkingRoll();
   renderCal();
   renderCalDetail(null);
 }
@@ -2048,6 +2080,77 @@ function renderDashboardInUseRoll() {
     </div>`;
     }).join('')}
   </div>`;
+}
+
+// ─── DASHBOARD: ชุด Roll กำลังแต่ง / กำลังขัด ─────────────────────────────────
+// ทะเบียน Tooling ไม่มีสถานะ "กำลังแต่ง/กำลังขัด" เก็บไว้ (มีแค่ รอแต่ง/รอขัด/พร้อมใช้งาน ฯลฯ)
+// จึงยึดจากงานจริง: แผนงานของวันนี้ที่ช่างกดเริ่มไปแล้วและยังทำไม่จบ — รวมยอดตาม Size Roll + ชุดสี
+function getWorkingRollEntries(workType) {
+  const today = DAILY_TODAY_ISO;
+  const pieceMap = dailyPieceStatus[today] || {};
+  const dayMap = dailyStatusByDate[today] || {};
+  const byKey = new Map();
+  planTasks.forEach(t => {
+    if (t.workType !== workType || taskDisplayDate(t) !== today) return;
+    const pieces = pieceMap[t.id] || {};
+    const rollIds = t.rollIds || [];
+    let doing = 0, done = 0;
+    rollIds.forEach(idx => {
+      const st = (pieces[idx] || {}).status;
+      if (st === 'done') done++;
+      else if (st === 'in_progress') doing++;
+    });
+    // งานที่กดเริ่มระดับ "ทั้งงาน" แต่ยังไม่ได้ระบุรายชิ้น ก็นับว่ากำลังทำอยู่
+    if (!doing && dayMap[t.id] !== 'in_progress') return;
+    const colorKey = t.rollColor || NO_COLOR_KEY;
+    const key = t.rollSet + '|' + colorKey;
+    if (!byKey.has(key)) {
+      const colorMeta = colorKey === NO_COLOR_KEY ? null : getSetPalette(t.rollSet).find(c => c.key === colorKey);
+      byKey.set(key, {
+        set: t.rollSet, colorKey,
+        colorLabel: colorMeta ? colorMeta.label : 'ไม่ระบุสี',
+        dot: colorMeta ? colorMeta.dot : '#9CA3AF',
+        doing: 0, done: 0, total: 0,
+      });
+    }
+    const e = byKey.get(key);
+    e.doing += doing; e.done += done; e.total += rollIds.length;
+  });
+  return [...byKey.values()].sort((a, b) => a.set.localeCompare(b.set, 'th'));
+}
+
+function dashRollWorkingChipHtml(e, accentVar, bgVar) {
+  const esc = e.set.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const escColor = e.colorKey.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const progress = e.total ? `${e.done}/${e.total} ชิ้น` : '—';
+  return `<div onclick="goToRollSetColor('${esc}','${escColor}')"
+    style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:8px;cursor:pointer;
+           border:1px solid ${accentVar};background:${bgVar};margin-bottom:6px;transition:filter .12s;"
+    onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
+    title="ดูรายละเอียดในทะเบียน Tooling">
+    <span style="width:9px;height:9px;border-radius:50%;background:${e.dot};flex-shrink:0;"></span>
+    <span style="flex:1;min-width:0;">
+      <span style="display:block;font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(e.set)}</span>
+      <span style="display:block;font-size:11px;color:var(--text-3);">${escapeHtmlAttr(e.colorLabel)} · เสร็จ ${progress}</span>
+    </span>
+    <span style="font-size:12px;font-weight:800;color:${accentVar};flex-shrink:0;">${e.doing} ชิ้น</span>
+  </div>`;
+}
+
+function renderDashboardWorkingRoll() {
+  [
+    { workType: 'cnc',    listId: 'dash-roll-dressing-list',  countId: 'dash-roll-dressing-count',  accent: 'var(--amber)',  bg: 'var(--amber-dim)',  empty: 'ยังไม่มีชุด Roll ที่กำลังแต่งอยู่ตอนนี้' },
+    { workType: 'polish', listId: 'dash-roll-polishing-list', countId: 'dash-roll-polishing-count', accent: 'var(--purple)', bg: 'var(--purple-dim)', empty: 'ยังไม่มีชุด Roll ที่กำลังขัดอยู่ตอนนี้' },
+  ].forEach(cfg => {
+    const el = document.getElementById(cfg.listId);
+    if (!el) return;
+    const entries = getWorkingRollEntries(cfg.workType);
+    const countEl = document.getElementById(cfg.countId);
+    if (countEl) countEl.textContent = entries.length;
+    el.innerHTML = entries.length
+      ? entries.map(e => dashRollWorkingChipHtml(e, cfg.accent, cfg.bg)).join('')
+      : `<div style="padding:4px;color:var(--text-3);font-size:13px;">${cfg.empty}</div>`;
+  });
 }
 
 // ─── DASHBOARD: สถานะ Tooling (Roll / Roll SQ / ใบเลื่อย / มีดสลิตเตอร์) ──────
@@ -3432,13 +3535,11 @@ function renderPlanWeek() {
     const iso = toISODate(d);
     const tasks = planTasks.filter(t => taskDisplayDate(t) === iso && matchesCurrentPlanFilter(t)).sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
     const editable = canEditPlan();
-    const items = tasks.map(t => `
-      <div style="display:flex;align-items:center;gap:4px;">
-        ${planCalendarChip(t, editable, 'flex:1;')}
-        ${editable ? `<button title="ลบ" onclick="deletePlanTask('${t.id}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:11px;padding:0;">✕</button>` : ''}
-      </div>`).join('');
+    const items = tasks.map(t => planDragWrap(t, iso,
+      `${planCalendarChip(t, editable, 'flex:1;min-width:0;')}${editable ? `<button title="ลบ" onclick="deletePlanTask('${t.id}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:11px;padding:0;flex:0 0 auto;">✕</button>` : ''}`,
+      editable)).join('');
     return `<td style="min-width:110px;">
-      <div style="display:flex;flex-direction:column;gap:4px;">
+      <div class="plan-drop-zone" data-day="${iso}" style="display:flex;flex-direction:column;gap:4px;">
         ${items || '<span class="muted">—</span>'}
         ${editable ? `<button class="btn btn-ghost btn-sm" style="padding:2px 6px;font-size:11px;" onclick="openPlanTaskModal('add', null, '${iso}')">+ เพิ่ม</button>` : ''}
       </div>
@@ -3470,16 +3571,93 @@ function renderPlanMonth() {
     const isSunday = d.getDay() === 0;
     const dayOffBg = (isSunday || holidayName) ? 'background:#FDF3D8;' : '';
     const tasks = planTasks.filter(t => taskDisplayDate(t) === iso && matchesCurrentPlanFilter(t)).sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
-    const chips = tasks.map(t => planCalendarChip(t, editable)).join('');
+    const chips = tasks.map(t => planDragWrap(t, iso, planCalendarChip(t, editable, 'flex:1;min-width:0;'), editable)).join('');
     html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;${dayOffBg}" title="${holidayName ? escapeHtmlAttr(holidayName) : ''}">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <strong style="font-size:12px;">${day}</strong>
         ${editable ? `<button title="เพิ่มงาน" onclick="openPlanTaskModal('add', null, '${iso}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:13px;line-height:1;padding:0;">+</button>` : ''}
       </div>
-      <div style="margin-top:6px;display:flex;flex-direction:column;gap:4px;">${chips}</div>
+      <div class="plan-drop-zone" data-day="${iso}" style="margin-top:6px;display:flex;flex-direction:column;gap:4px;">${chips}</div>
     </div>`;
   }
   document.getElementById('plan-month-grid').innerHTML = html;
+}
+
+// ─── ลากสลับลำดับก่อน–หลังของงานในปฏิทินแผนงาน ────────────────────────────────
+// ใช้ pointer events เพื่อให้ลากได้ทั้งด้วยเมาส์และนิ้ว (HTML5 drag-and-drop ใช้บนมือถือไม่ได้)
+let planDrag = null;
+
+// ครอบงานด้วยแถวที่ลากได้ — ลากได้เฉพาะงานที่ "เริ่มจริง" ในวันนั้น
+// งานที่ล้นมาจากวันก่อนหน้าไม่ให้ลาก เพราะเวลาเริ่มของมันถูกกำหนดจากวันต้นทาง ต้องไปสลับที่วันนั้น
+function planDragWrap(t, iso, innerHtml, editable) {
+  if (!editable || planDeleteMode || t.date !== iso) return `<div class="plan-drag-item">${innerHtml}</div>`;
+  return `<div class="plan-drag-item" data-taskid="${escapeHtmlAttr(t.id)}" data-shift="${escapeHtmlAttr(t.shift || '')}" data-draggable="1"><span class="plan-drag-grip" title="ลากขึ้น–ลงเพื่อสลับลำดับว่าชุดไหนทำก่อน–หลัง">⋮⋮</span>${innerHtml}</div>`;
+}
+
+function onPlanDragDown(ev) {
+  if (ev.button > 0) return;
+  const grip = ev.target.closest && ev.target.closest('.plan-drag-grip');
+  if (!grip) return;
+  const item = grip.closest('.plan-drag-item[data-draggable]');
+  const zone = item && item.closest('.plan-drop-zone');
+  if (!zone) return;
+  ev.preventDefault();
+  planDrag = { item, zone, shift: item.dataset.shift, moved: false };
+  item.classList.add('plan-drag-active');
+  document.body.classList.add('plan-dragging');
+}
+
+function onPlanDragMove(ev) {
+  if (!planDrag) return;
+  ev.preventDefault();
+  const under = document.elementFromPoint(ev.clientX, ev.clientY);
+  const over = under && under.closest ? under.closest('.plan-drag-item[data-draggable]') : null;
+  if (!over || over === planDrag.item) return;
+  if (over.closest('.plan-drop-zone') !== planDrag.zone) return; // สลับได้ในวันเดียวกันเท่านั้น
+  if (over.dataset.shift !== planDrag.shift) return;             // และในกะเดียวกันเท่านั้น
+  const rect = over.getBoundingClientRect();
+  const insertAfter = ev.clientY > rect.top + rect.height / 2;
+  planDrag.zone.insertBefore(planDrag.item, insertAfter ? over.nextSibling : over);
+  planDrag.moved = true;
+}
+
+function onPlanDragUp() {
+  if (!planDrag) return;
+  const d = planDrag;
+  planDrag = null;
+  d.item.classList.remove('plan-drag-active');
+  document.body.classList.remove('plan-dragging');
+  if (!d.moved) return;
+  const ids = [...d.zone.querySelectorAll('.plan-drag-item[data-draggable]')]
+    .filter(n => n.dataset.shift === d.shift)
+    .map(n => n.dataset.taskid);
+  reorderPlanTasksInDay(ids);
+}
+
+document.addEventListener('pointerdown', onPlanDragDown);
+document.addEventListener('pointermove', onPlanDragMove);
+document.addEventListener('pointerup', onPlanDragUp);
+document.addEventListener('pointercancel', onPlanDragUp);
+
+// คงช่วงเวลาเดิมของกลุ่มไว้ (เริ่มที่ช่องเวลาแรกสุดเดิม) แล้วไล่จ่ายเวลาเริ่ม–จบใหม่ตามลำดับที่ลากไว้
+function reorderPlanTasksInDay(orderedIds) {
+  const tasks = orderedIds.map(id => planTasks.find(t => t.id === id)).filter(Boolean);
+  if (tasks.length < 2) { renderCurrentPlanView(); return; }
+  const earliest = tasks.slice().sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime))[0];
+  let cursor = { date: earliest.date, time: earliest.startTime };
+  tasks.forEach(t => {
+    t.date = cursor.date;
+    t.startTime = cursor.time;
+    const computed = computePlanEnd(t.date, t.startTime, t.totalTime, t.shift, t.otCapMinutesByShift || {});
+    t.endTime = computed.time;
+    t.endDate = computed.date || t.date;
+    t.otMinutes = computed.otMinutes || 0;
+    t.otMinutesByShift = computed.otMinutesByShift || {};
+    cursor = nextValidPlanContinuePoint(t.shift, t.endDate, t.endTime);
+  });
+  autoFixPlanSequencing(); // ลำดับใหม่อาจกินเวลายาวกว่าเดิม — เลื่อนงานถัดๆ ไปที่ทับซ้อนให้เอง
+  persistState();
+  renderCurrentPlanView();
 }
 
 function addPlanTaskForCurrentDay() {
@@ -4707,6 +4885,7 @@ function setRollColorActiveMachine(colorKey, machine) {
   persistState();
   renderRollColorList();
   renderDashboardInUseRoll();
+  renderDashboardWorkingRoll();
 }
 
 const DEFAULT_ROLL_COLORS = [
