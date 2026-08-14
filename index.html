@@ -1205,13 +1205,6 @@ canvas{display:block;}
               <button class="btn btn-primary btn-sm" onclick="openAddSetModal()">+ เพิ่ม</button>
             </div>
             <div style="padding:8px;">
-              <input type="text" class="form-input" id="roll-set-search" placeholder="ค้นหากลุ่ม..." oninput="renderRollSetList()" style="width:100%;margin-bottom:6px;">
-              <select class="form-select" id="roll-set-category-filter" onchange="renderRollSetList()" style="width:100%;margin-bottom:6px;">
-                <option value="">ทุกหมวด</option>
-                <option value="Forming">1. Forming</option>
-                <option value="Sizing">2. Sizing</option>
-                <option value="TH">3. TH</option>
-              </select>
               <button class="btn btn-ghost btn-sm" style="width:100%;" onclick="openRollTemplateModal()" title="เลือกเทมเพลตของหมวด Forming/Sizing/TH (ตั้งไว้ล่วงหน้าด้วยปุ่ม ☆ ที่แต่ละกลุ่ม) มาสร้างเป็นรายการเปล่าในกลุ่มที่เลือก">⧉ สร้างจากเทมเพลต</button>
             </div>
             <div id="roll-set-list" style="max-height:480px;overflow-y:auto;padding:4px 8px 8px;"></div>
@@ -6294,15 +6287,10 @@ function renderRollSetList() {
   const el = document.getElementById('roll-set-list');
   if (!el) return;
 
-  const q = (document.getElementById('roll-set-search')||{}).value||'';
-  const catFilter = (document.getElementById('roll-set-category-filter')||{}).value||'';
-  const sets = getRollSets().filter(s => s.toLowerCase().includes(q.toLowerCase()));
-
   // จัดกลุ่มตาม "ขนาด" แล้วเรียง Forming → Sizing → TH ในกลุ่ม (เช่น GS 1"x1" Forming, GS 1"x1" Sizing, GS 1"x1" TH)
   // ลำดับของกลุ่มยึดตามลำดับที่ Size Roll ปรากฏใน rollSetOrder อยู่แล้ว เพื่อให้ลำดับที่จัดไว้เองไม่เปลี่ยน
   const groups = new Map();
-  sets.forEach(s => {
-    if (catFilter && parseSizeRollName(s).category !== catFilter) return;
+  getRollSets().forEach(s => {
     const key = rollSetSizeGroupKey(s);
     if (!groups.has(key)) groups.set(key, { label: rollSetSizeGroupLabel(s), list: [] });
     const g = groups.get(key);
