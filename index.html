@@ -1061,8 +1061,9 @@ canvas{display:block;}
       <div class="card" style="margin-bottom:18px;">
         <div class="card-header">
           <span class="card-title">ชุด Roll กำลังใช้งาน</span>
-          <span style="margin-left:auto;font-size:12px;color:var(--text-3);">
-            <span id="dash-roll-inuse-count" style="font-weight:700;color:var(--inuse);">0</span> ชุด
+          <span style="margin-left:auto;display:flex;align-items:center;gap:12px;font-size:12px;color:var(--text-3);">
+            <span><span id="dash-roll-inuse-count" style="font-weight:700;color:var(--inuse);">0</span> ชุด</span>
+            <button id="dash-roll-inuse-edit-btn" class="btn btn-ghost btn-sm" onclick="openInUseRollPicker()" style="display:none;">เลือกชุดที่ใช้งาน</button>
           </span>
         </div>
         <div id="dash-roll-inuse-list" style="padding:12px 14px;"></div>
@@ -2030,10 +2031,8 @@ function goToRollSetColor(setName, colorKey) {
 }
 
 function dashRollInUseChipHtml(e) {
-  const esc = e.set.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-  const escColor = e.colorKey.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
   const machineLabel = e.machines.length ? e.machines.join('/') : '—';
-  return `<div onclick="goToRollSetColor('${esc}','${escColor}')"
+  return `<div onclick="${jsCallAttr('goToRollSetColor', e.set, e.colorKey)}"
     style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;cursor:pointer;
            border:1px solid var(--border-light);background:var(--accent-glow);transition:filter .12s;margin-bottom:6px;"
     onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
@@ -2057,6 +2056,9 @@ function renderDashboardInUseRoll() {
   if (!el) return;
   const entries = getInUseRollColorEntries();
   document.getElementById('dash-roll-inuse-count').textContent = entries.length;
+  // ปุ่มเลือกชุดที่ใช้งาน — เฉพาะ Admin/หัวหน้า ช่างไม่ต้องเห็น (เหมือนสิทธิ์แก้แผนงาน)
+  const editBtn = document.getElementById('dash-roll-inuse-edit-btn');
+  if (editBtn) editBtn.style.display = canEditPlan() ? '' : 'none';
   if (!entries.length) {
     el.innerHTML = `<div style="padding:8px 4px;color:var(--text-3);font-size:13px;">ไม่มีชุด Roll ที่กำลังใช้งานอยู่ตอนนี้</div>`;
     return;
@@ -2080,6 +2082,151 @@ function renderDashboardInUseRoll() {
     </div>`;
     }).join('')}
   </div>`;
+}
+
+// ─── DASHBOARD: เลือกชุด Roll ที่กำลังใช้งาน ได้จากหน้านี้เลย ───────────────────
+// อัปเดต rollColorStatus / rollColorActiveMachine ชุดเดียวกับหน้าทะเบียน Tooling — ไม่ได้เก็บซ้อนอีกที่
+// ใช้โอเวอร์เลย์ของตัวเอง ไม่ใช้ #modal-overlay ร่วมกับฟอร์มทะเบียน เพราะโมดัลนั้นผูกกับ MODAL_FORMS/saveModal อยู่
+function openInUseRollPicker() {
+  if (!canEditPlan()) return;
+  let ov = document.getElementById('inuse-picker-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'inuse-picker-overlay';
+    ov.className = 'modal-overlay';
+    ov.onclick = e => { if (e.target === ov) closeInUseRollPicker(); };
+    // จัดเป็น flex column ให้เฉพาะเนื้อหาเลื่อน หัวเรื่องกับปุ่มปิดค้างอยู่ — รายการมี Size Roll หลายสิบชุด
+    // ถ้าปล่อยให้ .modal เลื่อนทั้งก้อนตาม CSS เดิม ปุ่มปิดจะหลุดออกนอกจอ ต้องเลื่อนหาไกล
+    ov.innerHTML = `<div class="modal" style="max-width:760px;display:flex;flex-direction:column;max-height:90vh;overflow:hidden;">
+      <div class="modal-head" style="flex:0 0 auto;">
+        <h3>เลือกชุด Roll ที่กำลังใช้งาน</h3>
+        <button class="modal-close" onclick="closeInUseRollPicker()">✕</button>
+      </div>
+      <div style="flex:0 0 auto;padding:14px 22px 0;">
+        <input class="form-input" id="inuse-picker-search" placeholder="ค้นหา Size Roll เช่น 75x38 หรือ Forming"
+               oninput="renderInUseRollPicker()" autocomplete="off">
+      </div>
+      <div class="modal-body" id="inuse-picker-body" style="flex:1 1 auto;min-height:0;overflow-y:auto;padding-top:14px;"></div>
+      <div class="modal-footer" style="flex:0 0 auto;"><button class="btn btn-primary" onclick="closeInUseRollPicker()">เสร็จสิ้น</button></div>
+    </div>`;
+    document.body.appendChild(ov);
+  }
+  renderInUseRollPicker();
+  ov.classList.add('open');
+}
+
+function closeInUseRollPicker() {
+  const ov = document.getElementById('inuse-picker-overlay');
+  if (ov) ov.classList.remove('open');
+}
+
+function renderInUseRollPicker() {
+  const body = document.getElementById('inuse-picker-body');
+  if (!body) return;
+  const q = ((document.getElementById('inuse-picker-search') || {}).value || '').trim().toLowerCase();
+  const buckets = { Forming: [], Sizing: [], TH: [], other: [] };
+  getRollSets().forEach(setName => {
+    const rows = toolingData.roll.filter(r => r.set === setName);
+    if (!rows.length) return; // ชุดที่ยังไม่มี Roll อยู่จริง เลือกใช้งานไม่ได้
+    if (q && !setName.toLowerCase().includes(q)) return;
+    const cat = parseSizeRollName(setName).category;
+    (buckets[cat] || buckets.other).push(setName);
+  });
+  const columns = [['Forming', buckets.Forming], ['Sizing', buckets.Sizing], ['TH', buckets.TH]];
+  if (buckets.other.length) columns.push(['อื่นๆ', buckets.other]);
+
+  body.innerHTML = `
+    <div style="font-size:12px;color:var(--text-3);line-height:1.6;margin-bottom:12px;">
+      แตะสีเพื่อตั้งว่าชุดนั้น <b style="color:var(--inuse);">กำลังใช้งาน</b> — แตะสีเดิมซ้ำเพื่อยกเลิก
+      ชุดที่ผูกไว้หลายเครื่องจะมีปุ่มเลือกเครื่องขึ้นมาให้ระบุว่าใช้อยู่ที่เครื่องไหน
+    </div>
+    ${columns.map(([label, sets]) => {
+      const inuseCount = sets.filter(s => getSetPalette(s).some(c => rollColorStatusFor(s, c.key) === 'inuse')).length;
+      return `<div style="margin-bottom:6px;">
+        ${rollSetSectionHeaderHtml(label, `${inuseCount}/${sets.length}`, ROLL_SET_SECTION_COLORS[label])}
+        ${sets.length ? sets.map(inUsePickerRowHtml).join('') : `<div style="padding:4px;color:var(--text-3);font-size:12px;">ไม่มี</div>`}
+      </div>`;
+    }).join('')}`;
+}
+
+function inUsePickerRowHtml(setName) {
+  const machines = rollSetMachines[setName] || [];
+  const palette = getSetPalette(setName);
+  // แสดงเฉพาะสีที่มี Roll อยู่จริงในชุดนี้ ไม่ยกทั้งจานสีมาให้เลือกสีที่ไม่มีของ
+  const colorKeysUsed = new Set(toolingData.roll.filter(r => r.set === setName).map(r => r.color || NO_COLOR_KEY));
+  const selectedColor = palette.map(c => c.key).find(k => rollColorStatusFor(setName, k) === 'inuse')
+    || (rollColorStatusFor(setName, NO_COLOR_KEY) === 'inuse' ? NO_COLOR_KEY : null);
+
+  const chips = [...palette.filter(c => colorKeysUsed.has(c.key)),
+                 ...(colorKeysUsed.has(NO_COLOR_KEY) ? [{ key: NO_COLOR_KEY, label: 'ไม่ระบุสี', dot: '#9CA3AF' }] : [])]
+    .map(c => {
+      const on = selectedColor === c.key;
+      const n = toolingData.roll.filter(r => r.set === setName && (r.color || NO_COLOR_KEY) === c.key).length;
+      return `<button onclick="${jsCallAttr('toggleInUseRollColor', setName, c.key)}"
+        title="${escapeHtmlAttr(c.label + ' · ' + n + ' Roll · สถานะปัจจุบัน: ' + (ROLL_COLOR_STATUS_META[rollColorStatusFor(setName, c.key)] || {}).label)}"
+        style="display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:99px;cursor:pointer;font-size:11px;font-weight:${on ? 800 : 600};
+               border:1px solid ${on ? 'var(--inuse)' : 'var(--border)'};background:${on ? 'var(--inuse-dim)' : 'transparent'};
+               color:${on ? 'var(--inuse)' : 'var(--text-2)'};">
+        <span style="width:8px;height:8px;border-radius:50%;background:${c.dot};flex-shrink:0;"></span>${escapeHtmlAttr(c.label)}
+        <span style="opacity:.65;font-weight:600;">${n}</span>${on ? ' ✓' : ''}</button>`;
+    }).join('');
+
+  // เลือกเครื่องได้เฉพาะชุดที่ผูกไว้มากกว่า 1 เครื่อง และต้องเลือกสีที่ใช้งานไว้ก่อน — ไม่เลือกก็ถือว่าใช้ได้ทุกเครื่องที่ผูกไว้
+  let machinePicker = '';
+  if (selectedColor && machines.length > 1) {
+    const active = rollColorActiveMachineFor(setName, selectedColor);
+    machinePicker = `<div style="display:flex;align-items:center;gap:5px;margin-top:5px;">
+      <span style="font-size:10px;color:var(--text-3);">ใช้ที่เครื่อง:</span>
+      ${machines.map(m => `<button onclick="${jsCallAttr('pickInUseRollMachine', setName, selectedColor, m)}"
+        style="padding:2px 8px;border-radius:5px;cursor:pointer;font-size:10px;font-weight:800;
+               border:1px solid ${active === m ? 'var(--accent)' : 'var(--border)'};
+               background:${active === m ? 'var(--accent)' : 'transparent'};color:${active === m ? '#fff' : 'var(--text-2)'};">${m}</button>`).join('')}
+      ${active ? `<span style="font-size:10px;color:var(--text-3);">(แตะซ้ำเพื่อล้าง)</span>` : ''}
+    </div>`;
+  }
+
+  return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 6px;border-bottom:1px solid var(--border-light);">
+    <span style="flex:0 0 40px;font-size:11px;font-weight:800;color:${machines.length ? '#fff' : 'var(--text-3)'};
+                 background:${machines.length ? 'var(--accent)' : 'transparent'};border:1px solid ${machines.length ? 'var(--accent)' : 'var(--border)'};
+                 border-radius:5px;padding:2px 0;text-align:center;">${machines.length ? escapeHtmlAttr(machines.join('/')) : '—'}</span>
+    <span style="flex:1;min-width:0;">
+      <span style="display:block;font-size:12px;font-weight:700;color:var(--text-1);margin-bottom:5px;">${escapeHtmlAttr(setName)}</span>
+      <span style="display:flex;flex-wrap:wrap;gap:5px;">${chips || '<span style="font-size:11px;color:var(--text-3);">ไม่มี Roll ในชุดนี้</span>'}</span>
+      ${machinePicker}
+    </span>
+  </div>`;
+}
+
+// ตั้ง/ยกเลิก "กำลังใช้งาน" — หนึ่ง Size Roll ใช้งานได้ทีละสีเท่านั้น (ของจริงใส่เข้าเครื่องได้ชุดเดียว)
+function toggleInUseRollColor(setName, colorKey) {
+  if (!canEditPlan()) return;
+  const already = rollColorStatusFor(setName, colorKey) === 'inuse';
+  // ล้างสีอื่นในชุดเดียวกันที่ค้างสถานะใช้งานไว้ก่อน กันมีสองสีของ Size Roll เดียวกันใช้งานพร้อมกัน
+  Object.keys(rollColorStatus).forEach(k => {
+    if (k.startsWith(setName + '|') && rollColorStatus[k] === 'inuse') {
+      delete rollColorStatus[k];
+      delete rollColorActiveMachine[k];
+    }
+  });
+  if (!already) rollColorStatus[setName + '|' + colorKey] = 'inuse';
+  afterInUseRollChange();
+}
+
+function pickInUseRollMachine(setName, colorKey, machine) {
+  if (!canEditPlan()) return;
+  const k = setName + '|' + colorKey;
+  if (rollColorActiveMachine[k] === machine) delete rollColorActiveMachine[k];
+  else rollColorActiveMachine[k] = machine;
+  afterInUseRollChange();
+}
+
+function afterInUseRollChange() {
+  persistState();
+  renderInUseRollPicker();
+  renderDashboardInUseRoll();
+  renderDashboardWorkingRoll();
+  if (typeof renderRollColorList === 'function' && currentPage === 'registry') { renderRollSetList(); renderRollColorList(); }
+  updateRollKpi();
 }
 
 // ─── DASHBOARD: ชุด Roll กำลังแต่ง / กำลังขัด ─────────────────────────────────
@@ -2120,10 +2267,8 @@ function getWorkingRollEntries(workType) {
 }
 
 function dashRollWorkingChipHtml(e, accentVar, bgVar) {
-  const esc = e.set.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-  const escColor = e.colorKey.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   const progress = e.total ? `${e.done}/${e.total} ชิ้น` : '—';
-  return `<div onclick="goToRollSetColor('${esc}','${escColor}')"
+  return `<div onclick="${jsCallAttr('goToRollSetColor', e.set, e.colorKey)}"
     style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:8px;cursor:pointer;
            border:1px solid ${accentVar};background:${bgVar};margin-bottom:6px;transition:filter .12s;"
     onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
@@ -5076,6 +5221,14 @@ function wireColorNameAutoGuess() {
 
 function escapeHtmlAttr(str) {
   return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ชื่อ Size Roll มีเครื่องหมาย " อยู่ในตัวเอง (เช่น GI 3"x1-1/2" (75x38) Forming)
+// ถ้าวางลงใน onclick="..." ตรงๆ เครื่องหมายนั้นจะไปปิด attribute กลางทาง ปุ่มจะกดไม่ทำงานเลย
+// ต้อง escape สองชั้น: ชั้นในเป็นสตริง JS (\ กับ ') ชั้นนอกเป็น HTML attribute (" → &quot;)
+function jsCallAttr(fnName, ...args) {
+  const inner = args.map(a => "'" + String(a).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'").join(',');
+  return escapeHtmlAttr(fnName + '(' + inner + ')');
 }
 
 // ─── PERSISTENCE (localStorage + Supabase Cloud Sync) ──────────────────────────
@@ -8819,8 +8972,8 @@ initCloudSync();
 // ถ้าไม่ดึงใหม่ การกดบันทึกครั้งถัดไปจะกลายเป็นเขียนของเก่าทับ (ซึ่งตอนนี้จะถูกปฏิเสธและเตือน แต่ผู้ใช้ต้องทำงานซ้ำ)
 async function pullCloudState() {
   if (!supabaseClient || !cloudSyncReady || cloudWriteInFlight) return;
-  const overlay = document.getElementById('modal-overlay');
-  if (overlay && overlay.classList.contains('open')) return; // กำลังกรอกฟอร์มอยู่ อย่า re-render ขัดจังหวะ
+  // กำลังกรอกฟอร์ม/เลือกค่าในโมดัลอยู่ อย่า re-render ขัดจังหวะ
+  if (document.querySelector('.modal-overlay.open')) return;
   try {
     const { data: cur, error } = await supabaseClient.from('app_state').select('data,updated_at').eq('id', 'main').maybeSingle();
     if (error || !cur || cur.updated_at === cloudUpdatedAt) return; // ไม่มีอะไรใหม่
