@@ -5104,14 +5104,75 @@ function buildStateSnapshot() {
   };
 }
 
+// ─── การเขียนขึ้น cloud แบบตรวจเวอร์ชันก่อน (optimistic concurrency) ──────────
+// เดิม persistState() ส่ง upsert ทับทั้งก้อนทุกครั้งโดยไม่ตรวจอะไรเลย ทำให้เครื่องที่เปิดหน้าค้างไว้
+// (เช่นมือถือที่พักจอไปแล้วพลาด realtime) เขียนข้อมูลเก่าทับงานใหม่ของเครื่องอื่นหายทั้งก้อน
+// ตอนนี้จำ updated_at ล่าสุดที่เครื่องนี้เห็น แล้วเขียนแบบมีเงื่อนไข — ถ้าไม่ตรงคือเครื่องนี้ถือข้อมูลเก่า
+// จะไม่เขียนทับ แต่ดึงของใหม่ลงมาใช้และแจ้งผู้ใช้ว่าการแก้ไขครั้งล่าสุดไม่ได้ถูกบันทึก
+let cloudUpdatedAt = null;
+let cloudWriteInFlight = false;
+let cloudWritePending = false;
+
 function persistState() {
   const snapshot = buildStateSnapshot();
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot)); } catch (e) { /* localStorage unavailable — edits stay in-memory only */ }
   // ส่งขึ้น Supabase ด้วยทุกครั้งที่บันทึก เพื่อให้เครื่อง/บัญชีอื่นเห็นข้อมูลชุดเดียวกัน — ถ้าออฟไลน์ก็ข้ามไปเงียบๆ ข้อมูลใน localStorage ปลอดภัยอยู่แล้ว
   if (supabaseClient && cloudSyncReady) {
-    supabaseClient.from('app_state').upsert({ id: 'main', data: snapshot, updated_at: new Date().toISOString() })
-      .then(({ error }) => { /* ออฟไลน์/เชื่อมต่อไม่ได้ตอนนี้ก็ปล่อยผ่าน — จะลองใหม่ตอนแก้ไขครั้งถัดไป */ });
+    cloudWritePending = true;
+    if (!cloudWriteInFlight) flushCloudWrite();
   }
+}
+
+// เขียนทีละรอบเท่านั้น และรวบการแก้ไขที่เข้ามาระหว่างรอไว้เขียนรอบถัดไป
+// ถ้ายิงพร้อมกันหลายรอบ รอบหลังจะถือ updated_at เก่าและถูกมองว่า "ข้อมูลเก่า" ผิดๆ
+async function flushCloudWrite() {
+  if (cloudWriteInFlight) return;
+  cloudWriteInFlight = true;
+  try {
+    while (cloudWritePending) {
+      cloudWritePending = false;
+      const snapshot = buildStateSnapshot();
+      const stamp = new Date().toISOString();
+      let q = supabaseClient.from('app_state').update({ data: snapshot, updated_at: stamp }).eq('id', 'main');
+      q = cloudUpdatedAt ? q.eq('updated_at', cloudUpdatedAt) : q.is('updated_at', null);
+      const { data, error } = await q.select('updated_at');
+      if (error) break; // ออฟไลน์/เชื่อมต่อไม่ได้ — ข้อมูลใน localStorage ปลอดภัย จะลองใหม่ตอนแก้ไขครั้งถัดไป
+      if (data && data.length) { cloudUpdatedAt = data[0].updated_at; continue; }
+
+      // อัปเดตไม่โดนแถวไหนเลย — ต้องแยกว่าเพราะยังไม่มีแถว หรือเพราะมีเครื่องอื่นเขียนแทรกไปแล้ว
+      const { data: cur, error: readErr } = await supabaseClient.from('app_state').select('data,updated_at').eq('id', 'main').maybeSingle();
+      if (readErr) break;
+      if (!cur) {
+        const ins = await supabaseClient.from('app_state').insert({ id: 'main', data: snapshot, updated_at: stamp }).select('updated_at');
+        if (ins.data && ins.data.length) cloudUpdatedAt = ins.data[0].updated_at;
+        continue;
+      }
+      // มีเครื่องอื่นเขียนแทรก — ห้ามเอาข้อมูลเก่าของเครื่องนี้ทับ ดึงของใหม่มาใช้แล้วแจ้งผู้ใช้
+      cloudUpdatedAt = cur.updated_at;
+      applyState(cur.data);
+      syncRollStatusWithProdBlock();
+      refreshAfterCloudUpdate();
+      showCloudConflictNotice();
+      break;
+    }
+  } finally {
+    cloudWriteInFlight = false;
+  }
+}
+
+// แจ้งเตือนแบบไม่ขัดจังหวะ — ผู้ใช้ต้องรู้ว่าที่เพิ่งกดไปไม่ได้ถูกบันทึก ไม่ใช่ปล่อยให้เข้าใจผิดว่าบันทึกแล้ว
+function showCloudConflictNotice() {
+  let el = document.getElementById('cloud-conflict-notice');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'cloud-conflict-notice';
+    el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:22px;z-index:9999;max-width:min(92vw,460px);' +
+      'padding:12px 16px;border-radius:10px;border:1px solid var(--amber);background:#FFF7E6;color:#7A4A00;' +
+      'font-size:13px;line-height:1.5;box-shadow:0 6px 24px rgba(0,0,0,.16);cursor:pointer;';
+    el.onclick = () => el.remove();
+    document.body.appendChild(el);
+  }
+  el.innerHTML = '<b>ยังไม่ได้บันทึก</b> — มีการแก้ไขจากอีกเครื่องเข้ามาก่อน ระบบดึงข้อมูลล่าสุดมาแสดงแล้ว<br>กรุณาตรวจสอบและทำรายการที่เพิ่งแก้ไปอีกครั้ง <span style="opacity:.7;">(แตะเพื่อปิด)</span>';
 }
 
 function applyState(saved) {
@@ -8725,22 +8786,26 @@ async function initCloudSync() {
   if (!supabaseClient) return;
   try {
     // เข้าถึงตารางตรงด้วย anon key (ไม่ผ่าน Supabase Auth) — ความปลอดภัยของหน้าเว็บอยู่ที่หน้า login ของแอปเอง (username/รหัสผ่านพนักงาน) แยกกันคนละชั้น
-    const { data: row, error: readError } = await supabaseClient.from('app_state').select('data').eq('id', 'main').maybeSingle();
+    const { data: row, error: readError } = await supabaseClient.from('app_state').select('data,updated_at').eq('id', 'main').maybeSingle();
     if (readError) throw readError;
     if (row) {
       // มีข้อมูลจริงบน cloud อยู่แล้ว — ใช้ข้อมูลนั้นทับของเครื่องนี้ทิ้งไปเลย (เครื่องนี้อาจมีแค่ค่าเริ่มต้นที่ยังไม่ได้ migrate)
+      cloudUpdatedAt = row.updated_at;
       applyState(row.data);
       syncRollStatusWithProdBlock();
       refreshAfterCloudUpdate();
     } else {
       // ยังไม่มีข้อมูลบน cloud เลย — เครื่องนี้เป็นเครื่องแรกที่เชื่อมต่อสำเร็จ ส่งข้อมูลที่มีอยู่ในเครื่องนี้ขึ้นไปตั้งต้น
-      await supabaseClient.from('app_state').upsert({ id: 'main', data: buildStateSnapshot(), updated_at: new Date().toISOString() });
+      const stamp = new Date().toISOString();
+      const ins = await supabaseClient.from('app_state').upsert({ id: 'main', data: buildStateSnapshot(), updated_at: stamp }).select('updated_at');
+      cloudUpdatedAt = (ins.data && ins.data.length) ? ins.data[0].updated_at : stamp;
     }
     cloudSyncReady = true; // เปิดให้ persistState() ส่งขึ้น cloud ได้ตั้งแต่ตอนนี้ — ก่อนหน้านี้ยังไม่รู้ว่าข้อมูลจริงบน cloud คืออะไร จึงห้ามส่งทับ
     supabaseClient
       .channel('app_state_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state', filter: 'id=eq.main' }, payload => {
         if (!payload.new || !payload.new.data) return;
+        cloudUpdatedAt = payload.new.updated_at || cloudUpdatedAt;
         applyState(payload.new.data);
         syncRollStatusWithProdBlock();
         refreshAfterCloudUpdate();
@@ -8749,6 +8814,24 @@ async function initCloudSync() {
   } catch (e) { /* ออฟไลน์หรือ Supabase ใช้งานไม่ได้ — ทำงานต่อด้วยข้อมูล localStorage ในเครื่องนี้ */ }
 }
 initCloudSync();
+
+// ดึงข้อมูลล่าสุดใหม่เมื่อเครื่องกลับมาใช้งาน — มือถือที่พักจอไว้นานมักหลุด realtime แล้วถือข้อมูลเก่าไว้
+// ถ้าไม่ดึงใหม่ การกดบันทึกครั้งถัดไปจะกลายเป็นเขียนของเก่าทับ (ซึ่งตอนนี้จะถูกปฏิเสธและเตือน แต่ผู้ใช้ต้องทำงานซ้ำ)
+async function pullCloudState() {
+  if (!supabaseClient || !cloudSyncReady || cloudWriteInFlight) return;
+  const overlay = document.getElementById('modal-overlay');
+  if (overlay && overlay.classList.contains('open')) return; // กำลังกรอกฟอร์มอยู่ อย่า re-render ขัดจังหวะ
+  try {
+    const { data: cur, error } = await supabaseClient.from('app_state').select('data,updated_at').eq('id', 'main').maybeSingle();
+    if (error || !cur || cur.updated_at === cloudUpdatedAt) return; // ไม่มีอะไรใหม่
+    cloudUpdatedAt = cur.updated_at;
+    applyState(cur.data);
+    syncRollStatusWithProdBlock();
+    refreshAfterCloudUpdate();
+  } catch (e) { /* ออฟไลน์ — ใช้ข้อมูลในเครื่องต่อไป */ }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) pullCloudState(); });
+window.addEventListener('online', pullCloudState);
 </script>
 </body>
 </html>
