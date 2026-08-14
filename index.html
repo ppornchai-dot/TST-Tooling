@@ -4037,18 +4037,15 @@ function setPlanShiftButtons(key, bothStartKey) {
   if (otMorningEl) { otMorningEl.disabled = !otMorningRelevant; if (!otMorningRelevant) otMorningEl.value = 0; }
   if (otNightEl) { otNightEl.disabled = !otNightRelevant; if (!otNightRelevant) otNightEl.value = 0; }
 }
-// ผู้ใช้กดเลือกกะเอง — ถ้าเป็นการเพิ่มงานใหม่ (ไม่ใช่แก้ไขงานเดิม) ให้ลองต่อเวลาจากงานประเภทเดียวกันที่จบล่าสุดก่อนเสมอไม่ว่าจะกดเลือกกะไหน
-// (ตอนเปิดฟอร์มจะต่อเวลาให้เฉพาะช่องของกะที่เป็นค่าเริ่มต้นเท่านั้น — ถ้าผู้ใช้กดเปลี่ยนไปกะอื่นเอง ช่องนั้นจะยังว่างอยู่ ต้องลองต่อเวลาซ้ำตรงนี้ด้วย)
-// ถ้าไม่มีงานก่อนหน้าให้ต่อจริงๆ (chainFrom เป็น null) จึงค่อย fallback ไปใช้เวลาเริ่มมาตรฐานของกะ แต่ไม่ทับถ้าช่องมีค่าที่พิมพ์เองอยู่แล้ว
-// ต่อเวลาเข้าช่องเริ่มงานกะเช้า/กะดึก (กะเดียว) ได้เฉพาะตอนเวลาที่จบมาตกอยู่ในช่วงกะนั้นจริงตามนาฬิกาเท่านั้น — ถ้าไม่ตรง (เช่น จบกะดึกมาตอน 01:10 แต่จะเลือกกะเช้าเดี่ยว) ให้ใช้เวลาเริ่มมาตรฐานแทน กันความสับสน
-// ส่วน "2 กะ" มีช่องเดียวเป็นตัวป้อนค่าจริง เลือกช่องตามผลจำแนกเวลาที่จะต่อ (bothModeStartFieldKey) เสมอ ไม่ตายตัวว่าต้องเป็นช่องกะเช้า
+// ผู้ใช้กดเลือกกะเอง — เติมเวลาเริ่มมาตรฐานของกะนั้นให้ ไม่ต่อเวลาจากงานก่อนหน้า (วางแผนของวันที่กดเพิ่มตรงๆ)
+// ไม่ทับค่าที่ผู้ใช้พิมพ์เองไว้แล้วในช่องนั้น
 function selectPlanShift(key) {
   const startMorningEl = document.getElementById('pf-start-morning');
   const startNightEl = document.getElementById('pf-start-night');
-  const chainFrom = !currentEditingPlanTaskId ? findLatestPlanTaskEnd(currentPlanWorkType) : null;
   if (key === 'both') {
+    // "2 กะ" มีช่องเดียวเป็นตัวป้อนค่าจริง เลือกช่องตามว่าเวลานั้นตกอยู่ในกะไหนจริงตามนาฬิกา ไม่ตายตัวว่าต้องเป็นช่องกะเช้า
     const existing = (startMorningEl && startMorningEl.value) || (startNightEl && startNightEl.value) || '';
-    const value = chainFrom ? chainFrom.endTime : (existing || SHIFTS.both.start);
+    const value = existing || SHIFTS.both.start;
     const fieldKey = bothModeStartFieldKey(value);
     setPlanShiftButtons('both', fieldKey);
     if (startMorningEl) startMorningEl.value = fieldKey === 'morning' ? value : '';
@@ -4057,14 +4054,8 @@ function selectPlanShift(key) {
     clampOtCapInput(document.getElementById('pf-otcap-night'));
   } else {
     setPlanShiftButtons(key);
-    if (key === 'morning' && startMorningEl) {
-      const chainOk = chainFrom && bothModeStartFieldKey(chainFrom.endTime) === 'morning';
-      startMorningEl.value = chainOk ? chainFrom.endTime : (startMorningEl.value || SHIFTS.morning.start);
-    }
-    if (key === 'night' && startNightEl) {
-      const chainOk = chainFrom && bothModeStartFieldKey(chainFrom.endTime) === 'night';
-      startNightEl.value = chainOk ? chainFrom.endTime : (startNightEl.value || SHIFTS.night.start);
-    }
+    if (key === 'morning' && startMorningEl) startMorningEl.value = startMorningEl.value || SHIFTS.morning.start;
+    if (key === 'night' && startNightEl) startNightEl.value = startNightEl.value || SHIFTS.night.start;
   }
   updatePlanEndTime();
 }
@@ -4427,12 +4418,13 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   document.getElementById('modal-body').innerHTML = planTaskFormFields();
   const planTimeLabel = document.getElementById('pf-plantime-label');
   if (planTimeLabel) planTimeLabel.textContent = PLAN_WORKTYPE_META[workType].metricLabel + ' — จากทะเบียน Tooling';
-  // เพิ่มงานใหม่ (ไม่ว่าจะกดปุ่ม "+ เพิ่มงาน" ธรรมดา หรือกด "+" จากช่องปฏิทินรายสัปดาห์/เดือนที่ระบุวันที่มาเจาะจงก็ตาม) ให้เริ่มต่อจากงานประเภทเดียวกันที่จบล่าสุดโดยอัตโนมัติเสมอ
-  // ถ้ายังไม่เคยมีงานประเภทนี้มาก่อนเลย (chainFrom เป็น null) จึงค่อยใช้ presetDate ที่ระบุมาเป็นวันเริ่มต้นแทน
+  // เพิ่มงานใหม่ = วางแผนของ "วันที่กดเพิ่ม" เสมอ เริ่มที่ต้นกะตามปกติ ไม่ดึงวัน/เวลาไปต่อท้ายงานก่อนหน้าให้เอง
+  // (ตัวจัดคิว autoFixPlanSequencing ยังเลื่อนให้อยู่ดีถ้าเวลาที่วางไปทับงานอื่นจริง จึงไม่ต้องมาต่อคิวให้ตั้งแต่ตอนกรอกฟอร์ม)
+  // chainFrom เหลือไว้ใช้เป็นค่าเริ่มต้นของ "ผู้ปฏิบัติงาน" อย่างเดียว เพราะมักเป็นคนเดิมกับงานล่าสุด
   const chainFrom = !task ? findLatestPlanTaskEnd(workType) : null;
-  document.getElementById('pf-date').value = task ? task.date : (chainFrom ? chainFrom.endDate : (presetDate || toISODate(planViewDate)));
-  const defaultShift = (task ? task.shift : (chainFrom ? chainFrom.shift : currentPlanShiftFilter)) || 'morning';
-  const startValue = task ? task.startTime : (chainFrom ? chainFrom.endTime : SHIFTS[defaultShift].start);
+  document.getElementById('pf-date').value = task ? task.date : (presetDate || toISODate(planViewDate));
+  const defaultShift = (task ? task.shift : currentPlanShiftFilter) || 'morning';
+  const startValue = task ? task.startTime : SHIFTS[defaultShift].start;
   if (defaultShift === 'both') {
     // "2 กะ" มีช่องเดียวเป็นตัวป้อนค่าจริง เลือกช่อง (เช้า/ดึก) ตามว่าเวลานี้ตกอยู่ในช่วงกะไหนจริงตามนาฬิกา ไม่ใช่ตายตัวว่าต้องเป็นช่องกะเช้าเสมอ
     const fieldKey = bothModeStartFieldKey(startValue);
