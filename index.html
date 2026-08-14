@@ -79,8 +79,9 @@ body{
   background:var(--accent);
   border-radius:6px;
   display:grid;place-items:center;
-  font-size:13px;font-weight:800;color:#fff;
-  letter-spacing:-0.5px;
+  /* 3 ตัวอักษร (TST) ในกรอบ 30px ต้องลดขนาดตัวอักษรลงจาก 13px ไม่งั้นชนขอบกรอบ */
+  font-size:12px;font-weight:800;color:#fff;
+  letter-spacing:-0.3px;
   flex-shrink:0;
 }
 .logo-text{
@@ -849,7 +850,7 @@ canvas{display:block;}
 <div id="login-overlay" class="hidden">
   <div class="login-card">
     <div class="login-header">
-      <div class="logo-mark" style="width:40px;height:40px;border-radius:8px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;">TS</div>
+      <div class="logo-mark" style="width:40px;height:40px;border-radius:8px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;">TST</div>
       <h1>เข้าสู่ระบบ TST Tooling</h1>
       <p>ระบบวางแผนงาน Tooling</p>
     </div>
@@ -870,7 +871,7 @@ canvas{display:block;}
 <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeMobileSidebar()"></div>
 <nav class="sidebar" id="sidebar">
   <div class="sidebar-logo">
-    <div class="logo-mark">TS</div>
+    <div class="logo-mark">TST</div>
     <div class="logo-text">
       <strong>TST Tooling</strong>
       <span>Tooling System</span>
