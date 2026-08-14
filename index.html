@@ -30,6 +30,8 @@
   --accent-dim:#1A5A92;
   --accent-glow:rgba(34,114,182,0.10);
   --amber:#B87200;
+  --inuse:#B58900;              /* สีเหลืองของสถานะ "กำลังใช้งาน" — แยกจาก --amber ที่ออกไปทางส้ม/น้ำตาล */
+  --inuse-dim:rgba(240,196,25,0.28);
   --amber-dim:rgba(184,114,0,0.10);
   --green:#158050;
   --green-dim:rgba(21,128,80,0.10);
@@ -303,6 +305,8 @@ table.daily-tech-view > tbody > tr > td:nth-child(9):not([colspan]){display:none
 .chip::before{content:'';width:5px;height:5px;border-radius:50%;flex-shrink:0;}
 .chip-green{background:var(--green-dim);color:var(--green);}
 .chip-green::before{background:var(--green);}
+.chip-yellow{background:var(--inuse-dim);color:var(--inuse);}
+.chip-yellow::before{background:var(--inuse);}
 .chip-amber{background:var(--amber-dim);color:var(--amber);}
 .chip-amber::before{background:var(--amber);}
 .chip-red{background:var(--red-dim);color:var(--red);}
@@ -1027,7 +1031,7 @@ canvas{display:block;}
         <div class="card-header">
           <span class="card-title">ชุด Roll กำลังใช้งาน</span>
           <span style="margin-left:auto;font-size:12px;color:var(--text-3);">
-            <span id="dash-roll-inuse-count" style="font-weight:700;color:var(--accent);">0</span> ชุด
+            <span id="dash-roll-inuse-count" style="font-weight:700;color:var(--inuse);">0</span> ชุด
           </span>
         </div>
         <div id="dash-roll-inuse-list" style="padding:12px 14px;"></div>
@@ -1154,7 +1158,7 @@ canvas{display:block;}
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--accent);" id="kpi-roll-forming">0</span><span class="reg-kpi-lbl">ชุด Roll หมวด Forming</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--amber);" id="kpi-roll-sizing">0</span><span class="reg-kpi-lbl">ชุด Roll หมวด Sizing</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--purple);" id="kpi-roll-th">0</span><span class="reg-kpi-lbl">ชุด Roll หมวด TH</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--accent);" id="kpi-roll-inuse">0</span><span class="reg-kpi-lbl">กำลังใช้งาน</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--inuse);" id="kpi-roll-inuse">0</span><span class="reg-kpi-lbl">กำลังใช้งาน</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--green);" id="kpi-roll-ready">0</span><span class="reg-kpi-lbl">พร้อมใช้งาน</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:#A9752B;" id="kpi-roll-waitdress">0</span><span class="reg-kpi-lbl">รอแต่ง</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:#C2469E;" id="kpi-roll-waitpolish">0</span><span class="reg-kpi-lbl">รอขัด</span></div>
@@ -1832,6 +1836,7 @@ const C_GREEN  = '#2BB57A';
 const C_AMBER  = '#E8971E';
 const C_RED    = '#D95B5B';
 const C_BLUE   = '#2272B6';
+const C_YELLOW = '#B58900';
 const C_PURPLE = '#5E44B0';
 const C_CYAN   = '#0E9BB5';
 const C_BROWN  = '#A9752B';
@@ -1842,7 +1847,7 @@ const C_SLATE  = '#475569';
 // ลำดับ/สี ของ 8 สถานะ Roll (เฉพาะหมวด Roll เท่านั้น) — ใช้ทำแถบ+ป้ายสถานะแบบแยกสีในหน้า Dashboard
 // รอใช้งาน/รอแต่ง/รอขัด คือคิวที่เกิดจากการซิงก์กับ Production Block อัตโนมัติ (ดู syncRollStatusWithProdBlock)
 const ROLL_STATUS_STEPS = [
-  { keys: ['กำลังใช้งาน', 'ใช้งานอยู่'], label: 'กำลังใช้งาน', color: C_BLUE,   cls: 'chip-blue' },
+  { keys: ['กำลังใช้งาน', 'ใช้งานอยู่'], label: 'กำลังใช้งาน', color: C_YELLOW, cls: 'chip-yellow' },
   { keys: ['พร้อมใช้งาน', 'พร้อมใช้'],   label: 'พร้อมใช้งาน', color: C_GREEN,  cls: 'chip-green' },
   { keys: ['รอใช้งาน'],                  label: 'รอใช้งาน',    color: C_CYAN,   cls: 'chip-cyan' },
   { keys: ['แต่ง Roll', 'Regrind'],      label: 'แต่ง Roll',   color: C_AMBER,  cls: 'chip-amber' },
@@ -4614,7 +4619,7 @@ const pageState = { roll: 1, sq: 1, saw: 1, slitter: 1 };
 
 function statusChip(s) {
   const map = {'พร้อมใช้':'chip-green','ใช้งานอยู่':'chip-blue','ซ่อมบำรุง':'chip-amber','Regrind':'chip-amber','ใกล้หมดอายุ':'chip-amber','มีปัญหา':'chip-amber','หมดอายุ':'chip-red',
-    'กำลังใช้งาน':'chip-blue','พร้อมใช้งาน':'chip-green','แต่ง Roll':'chip-amber','ขัด Roll':'chip-purple','อายุ':'chip-red',
+    'กำลังใช้งาน':'chip-yellow','พร้อมใช้งาน':'chip-green','แต่ง Roll':'chip-amber','ขัด Roll':'chip-purple','อายุ':'chip-red',
     'รอใช้งาน':'chip-cyan','รอแต่ง':'chip-brown','รอขัด':'chip-pink','ไม่มีลูกรีด':'chip-gray','ยกเลิกใช้งาน':'chip-slate'};
   return `<span class="chip ${map[s]||'chip-blue'}">${s}</span>`;
 }
@@ -4669,7 +4674,7 @@ function setRollSetStatus(setName, status) {
 // สถานะของแต่ละ "ชุดสี Roll" (Size Roll + สี = 1 ชุด) — ใช้เป็นตัวแทนสถานะของทั้งชุด ไม่อิงจากสถานะของ Roll ย่อยแต่ละตัว (r.status)
 // ใช้กับ KPI "จำนวนชุด Roll" ด้านบนของหน้าทะเบียน Tooling — ไม่มี key = ค่าเริ่มต้น 'ready'
 const ROLL_COLOR_STATUS_META = {
-  inuse:      { label: 'กำลังใช้งาน',      color: 'var(--accent)', bg: 'var(--accent-glow)' },
+  inuse:      { label: 'กำลังใช้งาน',      color: 'var(--inuse)',  bg: 'var(--inuse-dim)' },
   ready:      { label: 'พร้อมใช้งาน',      color: 'var(--green)',  bg: 'var(--green-dim)' },
   waitdress:  { label: 'รอแต่ง',           color: '#A9752B',       bg: 'var(--amber-dim)' },
   waitpolish: { label: 'รอขัด',            color: '#C2469E',       bg: 'var(--purple-dim)' },
