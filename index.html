@@ -2227,7 +2227,7 @@ function afterInUseRollChange() {
 // ทะเบียน Tooling ไม่มีสถานะ "กำลังแต่ง/กำลังขัด" เก็บไว้ (มีแค่ รอแต่ง/รอขัด/พร้อมใช้งาน ฯลฯ)
 // จึงยึดจากงานจริง: แผนงานของวันนี้ที่ช่างกดเริ่มไปแล้วและยังทำไม่จบ — รวมยอดตาม Size Roll + ชุดสี
 function getWorkingRollEntries(workType) {
-  const today = DAILY_TODAY_ISO;
+  const today = dailyTodayIso();
   const pieceMap = dailyPieceStatus[today] || {};
   const dayMap = dailyStatusByDate[today] || {};
   const byKey = new Map();
@@ -2998,8 +2998,18 @@ const DAILY_STATUS_META = {
   pending:     {label:'รอดำเนินการ', chip:'chip-amber'},
   overdue:     {label:'เลยเวลา',     chip:'chip-red'},
 };
-const DAILY_TODAY_ISO = toISODate(new Date()); // วันที่ใช้อ้างอิงเป็น "วันนี้" ของระบบ
-let dailyViewDate = DAILY_TODAY_ISO;
+// "วันทำงานปัจจุบัน" ของระบบ — ไม่ใช่วันปฏิทินตรงๆ เพราะกะดึก 20:00–05:00 คาบเกี่ยวเที่ยงคืน
+// ช่วง 00:00–04:59 ยังเป็นกะดึกของ "เมื่อวาน" อยู่ ถ้ายึดวันปฏิทินตรงๆ พอถึงเที่ยงคืน หน้างานประจำวัน
+// ของช่างกะดึก (ที่ล็อกให้ดูได้เฉพาะวันปัจจุบัน) จะสลับไปวันใหม่ แล้วงานที่กำลังทำอยู่หายไปทั้งกะ
+// ใช้เกณฑ์เดียวกับ sessionOwningDate() ที่ตัดสินว่างานกะดึกเป็นของวันไหน
+// 5*60 ต้องตรงกับ SHIFTS.night.end ('05:00') — อ้าง SHIFTS ตรงนี้ไม่ได้เพราะประกาศทีหลังไฟล์นี้
+const NIGHT_SHIFT_END_MIN = 5 * 60;
+function dailyTodayIso(now) {
+  const d = now || new Date();
+  const iso = toISODate(d);
+  return (d.getHours() * 60 + d.getMinutes()) < NIGHT_SHIFT_END_MIN ? addDaysIso(iso, -1) : iso;
+}
+let dailyViewDate = dailyTodayIso();
 // สถานะเช็คลิสต์แยกตามวันที่ที่ดู — { 'YYYY-MM-DD': { [taskKey]: 'done'|'in_progress'|'pending'|'overdue' } } ค่าที่ไม่มีถือว่า 'pending'
 let dailyStatusByDate = {};
 // เวลาเริ่ม/จบงานจริงที่บันทึกจากปุ่ม "เริ่มงาน"/"จบงาน" ของงานตามแผน (CNC/ขัด Roll) แยกตามวันที่ที่ดู — { 'YYYY-MM-DD': { [planTaskId]: {startTime, endTime} } }
@@ -6993,7 +7003,7 @@ function applyDailyTechView() {
 
 function canActOnDailyDate() {
   const role = effectiveRole();
-  return role === 'admin' || role === 'lead' || dailyViewDate === DAILY_TODAY_ISO;
+  return role === 'admin' || role === 'lead' || dailyViewDate === dailyTodayIso();
 }
 // เริ่ม/จบงานตามแผน (CNC/ขัด Roll) ทำได้เฉพาะงานที่ระบุผู้ปฏิบัติงานตรงกับคนที่กำลังดูอยู่เท่านั้น (ดู effectiveWorkerId) — กันไม่ให้ช่างคนอื่นเผลอกดเริ่ม/จบงานที่ไม่ใช่ของตัวเอง
 // และต้องอยู่ในวันปัจจุบันจริงด้วย (ดู canActOnDailyDate) ถ้าเป็นช่าง
@@ -7315,7 +7325,7 @@ function dailyNav(dir) {
 }
 
 function dailyGoToday() {
-  dailyViewDate = DAILY_TODAY_ISO;
+  dailyViewDate = dailyTodayIso();
   renderDailyTasks();
 }
 
@@ -7361,7 +7371,7 @@ function renderDailyDatePopup() {
   const year = dailyDatePopupMonth.getFullYear();
   const month = dailyDatePopupMonth.getMonth();
   const plannedDates = dailyDatesWithTasks();
-  const todayIso = DAILY_TODAY_ISO;
+  const todayIso = dailyTodayIso();
   const selectedIso = dailyViewDate;
 
   const firstWeekday = new Date(year, month, 1).getDay();
@@ -7412,12 +7422,23 @@ document.addEventListener('click', function(ev) {
   closeDailyDatePicker();
 });
 
+// หน้าที่เปิดค้างไว้ข้ามจุดเปลี่ยนวันทำงาน (05:00 ที่กะดึกจบ) ต้องขยับตามเอง
+// ไม่งั้นช่างกะดึกที่เปิดหน้าไว้ทั้งกะจะค้างอยู่วันเดิมจนกว่าจะรีเฟรชเอง
+let lastDailyTodayIso = dailyTodayIso();
+setInterval(() => {
+  const iso = dailyTodayIso();
+  if (iso === lastDailyTodayIso) return;
+  lastDailyTodayIso = iso;
+  if (isDailyTechRole()) dailyViewDate = iso;
+  renderDailyTasks();
+}, 60000);
+
 function renderDailyTasks() {
   const tbody = document.getElementById('tbody-daily');
   if (!tbody) return;
 
   // ช่างเห็นได้เฉพาะวันปัจจุบัน — ดึงกลับมาวันนี้เสมอ กันกรณีค้างวันอื่นไว้ (เช่น Admin เลื่อนวันไว้แล้วสลับมุมมองเป็นช่าง)
-  if (isDailyTechRole() && dailyViewDate !== DAILY_TODAY_ISO) dailyViewDate = DAILY_TODAY_ISO;
+  if (isDailyTechRole() && dailyViewDate !== dailyTodayIso()) dailyViewDate = dailyTodayIso();
 
   const dateLabel = document.getElementById('daily-daterange-label');
   if (dateLabel) dateLabel.textContent = fmtDateThai(parseISODate(dailyViewDate));
