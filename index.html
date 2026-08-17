@@ -6098,8 +6098,11 @@ function renderRollLife() {
           <span style="font-weight:800;color:${barColor(g.lifePct)};">${g.lifePct}%</span>
           <span class="muted" style="font-size:10px;" title="ตัวที่เหลือน้อยกว่าเป็นตัวตัดสิน">(${escapeHtmlAttr(g.basis)})</span>
         </div>`;
+    // หัวข้อคั่นเป็นขนาดแล้ว คอลัมน์แรกจึงแสดงแค่หมวด เหมือนหน้าทะเบียน Tooling — เก็บชื่อเต็มไว้ใน title
+    const cat = parseSizeRollName(g.set || '').category;
+    const catColor = ROLL_SET_SECTION_COLORS[cat] || 'var(--text-2)';
     return `<tr>
-      <td><strong>${escapeHtmlAttr(g.set)}</strong></td>
+      <td title="${escapeHtmlAttr(g.set)}"><strong style="color:${catColor};">${escapeHtmlAttr(cat || g.set)}</strong></td>
       <td><span style="display:inline-flex;align-items:center;gap:6px;">
         <span style="width:9px;height:9px;border-radius:50%;background:${g.dot};flex-shrink:0;"></span>${escapeHtmlAttr(g.colorLabel)}</span></td>
       <td class="muted" style="text-align:right;">${g.count.toLocaleString()}</td>
@@ -6111,33 +6114,53 @@ function renderRollLife() {
     </tr>`;
   };
 
-  // แบ่งเป็น 3 กลุ่มตามหมวดของ Size Roll — ชุดที่พาร์สหมวดไม่ได้ตกไปกลุ่ม "อื่นๆ" ท้ายสุด
-  // เรียงในกลุ่มยังเป็นลำดับเดิม (อายุเหลือน้อยสุดขึ้นก่อน) เพราะ rows ถูกจัดลำดับมาแล้ว
-  const buckets = { Forming: [], Sizing: [], TH: [], other: [] };
+  // จัดลำดับแบบเดียวกับหน้าทะเบียน Tooling: คั่นเป็นกลุ่ม "ขนาด" แล้วเรียง Forming → Sizing → TH ในกลุ่ม
+  // ลำดับกลุ่มยึดลำดับที่ Size Roll ปรากฏใน getRollSets() (rollSetOrder) เพื่อให้ตรงกับหน้าทะเบียนเป๊ะ
+  const bySet = new Map();
   rows.forEach(g => {
-    const cat = parseSizeRollName(g.set || '').category;
-    (buckets[cat] || buckets.other).push(g);
+    if (!bySet.has(g.set)) bySet.set(g.set, []);
+    bySet.get(g.set).push(g);
   });
-  const groupHeader = (label, list, color) => {
-    const pieces = list.reduce((s, g) => s + g.count, 0);
-    return `<tr><td colspan="8" style="background:var(--bg-panel);padding:9px 12px;border-top:2px solid ${color};">
-      <span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:800;color:${color};">
-        <span style="width:8px;height:8px;border-radius:50%;background:${color};"></span>${escapeHtmlAttr(label)}
+  const sizeGroups = new Map();
+  const pushSet = setName => {
+    const list = bySet.get(setName);
+    if (!list) return;
+    bySet.delete(setName);
+    const key = rollSetSizeGroupKey(setName);
+    if (!sizeGroups.has(key)) sizeGroups.set(key, { label: rollSetSizeGroupLabel(setName), sets: [] });
+    const sg = sizeGroups.get(key);
+    // ชื่อในกลุ่มเดียวกันเขียนไม่ตรงกัน — เลือกแบบที่มีเครื่องหมายนิ้วเป็นชื่อหัวข้อ (เกณฑ์เดียวกับหน้าทะเบียน)
+    if (!sg.label.includes('"') && rollSetSizeGroupLabel(setName).includes('"')) sg.label = rollSetSizeGroupLabel(setName);
+    sg.sets.push({ setName, rows: list });
+  };
+  getRollSets().forEach(pushSet);
+  [...bySet.keys()].forEach(pushSet); // ชุดที่ไม่อยู่ใน getRollSets() (ไม่ควรมี) — กันตกหล่น
+
+  const ordered = [...sizeGroups.entries()].sort((a, b) => (a[0] === 'อื่นๆ' ? 1 : 0) - (b[0] === 'อื่นๆ' ? 1 : 0));
+
+  const groupHeader = (label, sets) => {
+    const setCount = sets.reduce((s, x) => s + x.rows.length, 0);
+    const pieces = sets.reduce((s, x) => s + x.rows.reduce((n, g) => n + g.count, 0), 0);
+    return `<tr><td colspan="8" style="background:var(--bg-panel);padding:11px 12px;border-top:2px solid var(--text-1);">
+      <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);">
+        <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(label)}
       </span>
-      <span style="float:right;font-size:12px;font-weight:700;color:var(--text-3);">${list.length.toLocaleString()} ชุด · ${pieces.toLocaleString()} ลูก</span>
+      <span style="float:right;font-size:12px;font-weight:700;color:var(--text-3);">${setCount.toLocaleString()} ชุด · ${pieces.toLocaleString()} ลูก</span>
     </td></tr>`;
   };
 
-  const sections = [
-    ['Forming', buckets.Forming, ROLL_SET_SECTION_COLORS.Forming],
-    ['Sizing', buckets.Sizing, ROLL_SET_SECTION_COLORS.Sizing],
-    ['TH', buckets.TH, ROLL_SET_SECTION_COLORS.TH],
-    ['อื่นๆ', buckets.other, 'var(--text-3)'],
-  ].filter(([, list]) => list.length);
-
-  tbody.innerHTML = sections.map(([label, list, color]) =>
-    groupHeader(label, list, color) + list.map(rowHtml).join('')
-  ).join('') || `<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--text-3);">ไม่พบชุด Roll ตามเงื่อนไขที่เลือก</td></tr>`;
+  tbody.innerHTML = ordered.map(([, sg]) => {
+    const sets = sg.sets.slice().sort((a, b) => {
+      const ca = ROLL_SET_CATEGORY_ORDER[parseSizeRollName(a.setName).category];
+      const cb = ROLL_SET_CATEGORY_ORDER[parseSizeRollName(b.setName).category];
+      return (ca === undefined ? 9 : ca) - (cb === undefined ? 9 : cb);
+    });
+    // หลายสีใน Size Roll เดียวกัน — เอาชุดที่อายุเหลือน้อยสุดขึ้นก่อน จะได้เห็นตัวที่ต้องจัดการก่อน
+    return groupHeader(sg.label, sets) + sets.map(x => x.rows.slice().sort((a, b) => {
+      const av = a.lifePct == null ? Infinity : a.lifePct, bv = b.lifePct == null ? Infinity : b.lifePct;
+      return av !== bv ? av - bv : String(a.colorLabel).localeCompare(String(b.colorLabel), 'th');
+    }).map(rowHtml).join('')).join('');
+  }).join('') || `<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--text-3);">ไม่พบชุด Roll ตามเงื่อนไขที่เลือก</td></tr>`;
 
   const shownPieces = rows.reduce((s, g) => s + g.count, 0);
   const allPieces = all.reduce((s, g) => s + g.count, 0);
