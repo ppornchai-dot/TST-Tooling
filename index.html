@@ -1198,7 +1198,7 @@ canvas{display:block;}
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:#6B7280;" id="kpi-roll-incomplete">0</span><span class="reg-kpi-lbl">ชุด Roll ไม่ครบ</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-roll-notready">0</span><span class="reg-kpi-lbl">ไม่พร้อมใช้งาน</span></div>
         </div>
-        <div class="reg-registry-grid" style="display:grid;grid-template-columns:330px 1fr;gap:14px;align-items:start;">
+        <div class="reg-registry-grid" style="display:grid;grid-template-columns:400px 1fr;gap:14px;align-items:start;">
           <!-- COL 1: Size Roll -->
           <div class="card" style="position:sticky;top:70px;">
             <div style="padding:12px 14px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
@@ -6459,9 +6459,9 @@ function rollSetRowHtml(s, colorMeta, num, withActions) {
         <span style="width:18px;height:18px;border-radius:50%;background:${badgeBg};color:${badgeColor};font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${num}</span>
         <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;line-height:1.3;">
           <span style="font-size:12.5px;display:flex;align-items:center;gap:6px;min-width:0;">
-            <strong>${escapeHtmlAttr(cat || s)}</strong>
+            <strong style="flex-shrink:0;">${escapeHtmlAttr(cat || s)}</strong>
             ${colorMeta ? `<span style="width:8px;height:8px;border-radius:50%;background:${colorMeta.dot};flex-shrink:0;"></span>
-              <span style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtmlAttr(colorMeta.label)}</span>`
+              <span style="flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtmlAttr(colorMeta.label)}</span>`
               : '<span style="font-size:11px;color:var(--text-3);">ยังไม่มี Roll</span>'}
           </span>
           ${machines.length ? `<span style="font-size:10.5px;color:var(--accent);font-weight:600;">${escapeHtmlAttr(machines.join(' / '))}</span>` : ''}
