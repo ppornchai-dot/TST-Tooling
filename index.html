@@ -30,8 +30,16 @@
   --accent-dim:#1A5A92;
   --accent-glow:rgba(34,114,182,0.10);
   --amber:#B87200;
-  --inuse:#B58900;              /* สีเหลืองของสถานะ "กำลังใช้งาน" — แยกจาก --amber ที่ออกไปทางส้ม/น้ำตาล */
-  --inuse-dim:rgba(240,196,25,0.28);
+  /* สีประจำสถานะชุดสี Roll — ตั้งตามที่หน้างานกำหนด ใช้ร่วมกันทั้งดรอปดาวน์ในทะเบียน, KPI,
+     การ์ด Dashboard และหน้าอายุ Roll เพื่อให้สีของสถานะเดียวกันตรงกันทุกที่ */
+  --inuse:#D07C00;              /* ใช้งาน — เหลืองออกส้ม */
+  --inuse-dim:rgba(208,124,0,0.14);
+  --st-waitpolish:#9A8500;      /* รอขัด — เหลือง */
+  --st-waitpolish-dim:rgba(226,196,0,0.22);
+  --st-incomplete:#9C7A57;      /* ไม่ครบ — น้ำตาลอ่อน */
+  --st-incomplete-dim:rgba(156,122,87,0.13);
+  --st-notready:#1F2430;        /* ไม่พร้อม — ดำ */
+  --st-notready-dim:rgba(31,36,48,0.09);
   --amber-dim:rgba(184,114,0,0.10);
   --green:#158050;
   --green-dim:rgba(21,128,80,0.10);
@@ -1193,10 +1201,10 @@ canvas{display:block;}
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--purple);" id="kpi-roll-th">0</span><span class="reg-kpi-lbl">ชุด Roll หมวด TH</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--inuse);" id="kpi-roll-inuse">0</span><span class="reg-kpi-lbl">กำลังใช้งาน</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--green);" id="kpi-roll-ready">0</span><span class="reg-kpi-lbl">พร้อมใช้งาน</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:#A9752B;" id="kpi-roll-waitdress">0</span><span class="reg-kpi-lbl">รอแต่ง</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:#C2469E;" id="kpi-roll-waitpolish">0</span><span class="reg-kpi-lbl">รอขัด</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:#6B7280;" id="kpi-roll-incomplete">0</span><span class="reg-kpi-lbl">ชุด Roll ไม่ครบ</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-roll-notready">0</span><span class="reg-kpi-lbl">ไม่พร้อมใช้งาน</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-roll-waitdress">0</span><span class="reg-kpi-lbl">รอแต่ง</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--st-waitpolish);" id="kpi-roll-waitpolish">0</span><span class="reg-kpi-lbl">รอขัด</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--st-incomplete);" id="kpi-roll-incomplete">0</span><span class="reg-kpi-lbl">ชุด Roll ไม่ครบ</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--st-notready);" id="kpi-roll-notready">0</span><span class="reg-kpi-lbl">ไม่พร้อมใช้งาน</span></div>
         </div>
         <div class="reg-registry-grid" style="display:grid;grid-template-columns:400px 1fr;gap:14px;align-items:start;">
           <!-- COL 1: Size Roll -->
@@ -4998,12 +5006,12 @@ function setRollSetStatus(setName, status) {
 // short = ป้ายสั้นสำหรับดรอปดาวน์บนแถวทะเบียน Roll ที่พื้นที่แคบ — ความกว้างของ <select>
 // ถูกกำหนดโดยตัวเลือกที่ยาวที่สุด ถ้าใช้ label เต็มจะเบียดชื่อชุดสีจนถูกตัดด้วย ...
 const ROLL_COLOR_STATUS_META = {
-  inuse:      { label: 'กำลังใช้งาน',      short: 'ใช้งาน',   color: 'var(--inuse)',  bg: 'var(--inuse-dim)' },
-  ready:      { label: 'พร้อมใช้งาน',      short: 'พร้อมใช้', color: 'var(--green)',  bg: 'var(--green-dim)' },
-  waitdress:  { label: 'รอแต่ง',           short: 'รอแต่ง',   color: '#A9752B',       bg: 'var(--amber-dim)' },
-  waitpolish: { label: 'รอขัด',            short: 'รอขัด',    color: '#C2469E',       bg: 'var(--purple-dim)' },
-  incomplete: { label: 'ชุด Roll ไม่ครบ',  short: 'ไม่ครบ',   color: '#6B7280',       bg: 'rgba(107,114,128,0.10)' },
-  'not-ready':{ label: 'ไม่พร้อมใช้งาน',   short: 'ไม่พร้อม', color: 'var(--red)',    bg: 'var(--red-dim)' },
+  inuse:      { label: 'กำลังใช้งาน',      short: 'ใช้งาน',   color: 'var(--inuse)',          bg: 'var(--inuse-dim)' },
+  ready:      { label: 'พร้อมใช้งาน',      short: 'พร้อมใช้', color: 'var(--green)',          bg: 'var(--green-dim)' },
+  waitdress:  { label: 'รอแต่ง',           short: 'รอแต่ง',   color: 'var(--red)',            bg: 'var(--red-dim)' },
+  waitpolish: { label: 'รอขัด',            short: 'รอขัด',    color: 'var(--st-waitpolish)',  bg: 'var(--st-waitpolish-dim)' },
+  incomplete: { label: 'ชุด Roll ไม่ครบ',  short: 'ไม่ครบ',   color: 'var(--st-incomplete)',  bg: 'var(--st-incomplete-dim)' },
+  'not-ready':{ label: 'ไม่พร้อมใช้งาน',   short: 'ไม่พร้อม', color: 'var(--st-notready)',    bg: 'var(--st-notready-dim)' },
 };
 
 // สถานะความพร้อมใช้งานของแต่ละ "ชุดสี Roll" — คีย์แยกตาม Size Roll + สี เพราะสีเป็นอิสระต่อกลุ่ม
