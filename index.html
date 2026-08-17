@@ -1198,7 +1198,7 @@ canvas{display:block;}
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:#6B7280;" id="kpi-roll-incomplete">0</span><span class="reg-kpi-lbl">ชุด Roll ไม่ครบ</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-roll-notready">0</span><span class="reg-kpi-lbl">ไม่พร้อมใช้งาน</span></div>
         </div>
-        <div class="reg-registry-grid" style="display:grid;grid-template-columns:255px 250px 1fr;gap:14px;align-items:start;">
+        <div class="reg-registry-grid" style="display:grid;grid-template-columns:340px 1fr;gap:14px;align-items:start;">
           <!-- COL 1: Size Roll -->
           <div class="card" style="position:sticky;top:70px;">
             <div style="padding:12px 14px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
@@ -1208,22 +1208,10 @@ canvas{display:block;}
             <div style="padding:8px;">
               <button class="btn btn-ghost btn-sm" style="width:100%;" onclick="openRollTemplateModal()" title="เลือกเทมเพลตของหมวด Forming/Sizing/TH (ตั้งไว้ล่วงหน้าด้วยปุ่ม ☆ ที่แต่ละกลุ่ม) มาสร้างเป็นรายการเปล่าในกลุ่มที่เลือก">⧉ สร้างจากเทมเพลต</button>
             </div>
-            <div id="roll-set-list" style="max-height:480px;overflow-y:auto;padding:4px 8px 8px;"></div>
+            <div id="roll-set-list" style="max-height:620px;overflow-y:auto;padding:4px 8px 8px;"></div>
           </div>
 
-          <!-- COL 2: ชุดสี Roll -->
-          <div class="card" style="position:sticky;top:70px;">
-            <div style="padding:12px 14px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
-              <div>
-                <div style="font-size:13px;font-weight:700;">ชุดสี Roll</div>
-                <div style="font-size:11px;color:var(--text-3);margin-top:2px;" id="roll-color-scope">ทุก Size Roll</div>
-              </div>
-              <button class="btn btn-primary btn-sm" onclick="openAddColorModal()">+ เพิ่ม</button>
-            </div>
-            <div id="roll-color-list" style="padding:10px;display:flex;flex-direction:column;gap:8px;max-height:480px;overflow-y:auto;"></div>
-          </div>
-
-          <!-- COL 3: roll detail -->
+          <!-- COL 2: roll detail (คอลัมน์ "ชุดสี Roll" เดิมถูกยุบรวมเข้าไปในรายการ Size Roll แล้ว) -->
           <div class="card" style="min-width:0;overflow:hidden;">
             <div style="padding:12px 16px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
               <div style="display:flex;align-items:center;gap:10px;">
@@ -6441,7 +6429,8 @@ function rollSetRowHtml(s, colorMeta, num, withActions) {
   const badgeColor = (active || catColor) ? '#fff' : 'var(--text-3)';
   const machines = rollSetMachines[s] || [];
   const onclick = colorMeta ? jsCallAttr('goToRollSetColor', s, colorKey) : `selectRollSet('${esc}')`;
-  return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
+  return `<div>
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
       <div onclick="${onclick}"
         style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:6px;cursor:pointer;flex:1;min-width:0;
                background:${active?'var(--accent-glow)':'transparent'};
@@ -6463,7 +6452,45 @@ function rollSetRowHtml(s, colorMeta, num, withActions) {
         <button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;" onclick="openEditSetModal('${esc}')" title="แก้ไข ${escapeHtmlAttr(s)} (ทั้งกลุ่ม ทุกสี)">✏️</button>
         <button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;color:var(--red);" onclick="deleteSet('${esc}')" title="ลบ ${escapeHtmlAttr(s)} ทั้งกลุ่ม (Roll ทุกสี ${rolls.length} ลูก)">✕</button>`
       : `<span style="width:${cat ? 84 : 56}px;flex-shrink:0;"></span>`}
-    </div>`;
+    </div>
+    ${active && colorMeta ? rollColorControlsHtml(s, colorKey) : ''}
+  </div>`;
+}
+
+// แผงจัดการชุดสี ที่เดิมอยู่คอลัมน์ "ชุดสี Roll" แยกต่างหาก — ย้ายมากางใต้แถวที่เลือกอยู่ในรายการเดียวกัน
+// ฟังก์ชันที่เรียก (setRollColorStatus / openEditColorModal / deleteColor ฯลฯ) อ้าง selectedRollSet อยู่แล้ว
+// และแผงนี้ขึ้นเฉพาะแถวที่ถูกเลือก ซึ่ง selectedRollSet ตรงกับ Size Roll ของแถวนั้นเสมอ จึงใช้ได้ตามเดิม
+function rollColorControlsHtml(setName, colorKey) {
+  const st = rollColorStatusFor(setName, colorKey);
+  const stMeta = ROLL_COLOR_STATUS_META[st];
+  const machines = rollSetMachines[setName] || [];
+  const activeMachine = rollColorActiveMachineFor(setName, colorKey);
+  const k = colorKey.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  return `<div style="margin:1px 0 8px 28px;padding:8px 10px;border-radius:8px;border:1px solid var(--border-light);background:var(--bg-panel);display:flex;flex-direction:column;gap:7px;">
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+      <select class="form-select" style="width:auto;padding:2px 8px;font-size:11px;font-weight:700;border-radius:6px;
+        background:${stMeta.bg};color:${stMeta.color};border:1px solid ${stMeta.color};"
+        onchange="setRollColorStatus('${k}', this.value)" title="สถานะของชุดสีนี้ — ใช้นับใน KPI จำนวนชุด Roll ด้านบน">
+        ${Object.entries(ROLL_COLOR_STATUS_META).map(([key, m]) => `<option value="${key}"${st === key ? ' selected' : ''}>● ${m.label}</option>`).join('')}
+      </select>
+      <span style="flex:1;"></span>
+      <button class="btn btn-ghost btn-sm" style="padding:3px 6px;" onclick="openEditColorModal('${k}')" title="แก้ไขชุดสีนี้">✏️</button>
+      <button class="btn btn-ghost btn-sm" style="padding:3px 6px;" onclick="openCopyColorModal('${k}')" title="คัดลอกสเปกจากสีอื่น">📋</button>
+      <button class="btn btn-ghost btn-sm" style="padding:3px 6px;color:var(--red);" onclick="deleteColor('${k}')" title="ลบชุดสีนี้">✕</button>
+    </div>
+    ${machines.length > 1 ? `<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+      <span style="font-size:10px;color:var(--text-3);">ใช้อยู่ที่:</span>
+      ${machines.map(m => `<button type="button" class="btn btn-sm" onclick="setRollColorActiveMachine('${k}','${m}')"
+        style="padding:2px 10px;border-radius:6px;font-size:11px;font-weight:700;
+        border:1px solid ${activeMachine === m ? 'var(--accent)' : 'var(--border)'};
+        background:${activeMachine === m ? 'var(--accent-glow)' : 'var(--bg-surface)'};
+        color:${activeMachine === m ? 'var(--accent)' : 'var(--text-3)'};" title="ทำเครื่องหมายว่าชุดสีนี้กำลังใช้งานอยู่ที่เครื่อง ${m}">${m}</button>`).join('')}
+    </div>` : ''}
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+      <button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px;" onclick="selectRollColor(null)" title="แสดง Roll ทุกสีใน Size Roll นี้">ดูทุกสีในกลุ่มนี้</button>
+      <button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px;" onclick="openAddColorModal()" title="เพิ่มชุดสีใหม่ใน Size Roll นี้">+ เพิ่มสี</button>
+    </div>
+  </div>`;
 }
 
 // opts.keepCase: ชื่อขนาด Roll มีตัว x เล็กอยู่ในตัว (1"x1") ถ้าบังคับ uppercase จะกลายเป็น 1"X1" ผิดจากชื่อจริง
@@ -6483,6 +6510,12 @@ function rollSetSectionHeaderHtml(label, count, color, opts) {
 function renderRollSetList() {
   const el = document.getElementById('roll-set-list');
   if (!el) return;
+  // สีที่เลือกไว้อาจถูกลบ/เปลี่ยนชื่อไปแล้ว — ล้างทิ้งก่อน ไม่งั้นจะไฮไลต์แถวที่ไม่มีอยู่จริง
+  // (เดิมกันไว้ใน renderRollColorList ซึ่งตอนนี้ไม่มีคอลัมน์นั้นแล้ว)
+  if (selectedRollSet && selectedRollColor && selectedRollColor !== NO_COLOR_KEY
+      && !getSetPalette(selectedRollSet).some(c => c.key === selectedRollColor)) {
+    selectedRollColor = null;
+  }
 
   // จัดกลุ่มตาม "ขนาด" แล้วเรียง Forming → Sizing → TH ในกลุ่ม (เช่น GS 1"x1" Forming, GS 1"x1" Sizing, GS 1"x1" TH)
   // ลำดับของกลุ่มยึดตามลำดับที่ Size Roll ปรากฏใน rollSetOrder อยู่แล้ว เพื่อให้ลำดับที่จัดไว้เองไม่เปลี่ยน
