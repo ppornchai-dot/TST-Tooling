@@ -1198,7 +1198,7 @@ canvas{display:block;}
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:#6B7280;" id="kpi-roll-incomplete">0</span><span class="reg-kpi-lbl">ชุด Roll ไม่ครบ</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-roll-notready">0</span><span class="reg-kpi-lbl">ไม่พร้อมใช้งาน</span></div>
         </div>
-        <div class="reg-registry-grid" style="display:grid;grid-template-columns:340px 1fr;gap:14px;align-items:start;">
+        <div class="reg-registry-grid" style="display:grid;grid-template-columns:400px 1fr;gap:14px;align-items:start;">
           <!-- COL 1: Size Roll -->
           <div class="card" style="position:sticky;top:70px;">
             <div style="padding:12px 14px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
@@ -6465,20 +6465,41 @@ function rollSetRowHtml(s, colorMeta, num, withActions) {
           ${machines.length ? `<span style="font-size:10.5px;color:var(--accent);font-weight:600;">${escapeHtmlAttr(machines.join(' / '))}</span>` : ''}
         </span>
         <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;flex-shrink:0;">${count}</span>
-        ${colorMeta ? (() => {
-          // สถานะของชุดสีมาอยู่บนแถวเลย ไม่ต้องกดเลือกแถวก่อนถึงจะเห็น — แก้ค่าได้ที่ปุ่ม "เลือกชุดที่ใช้งาน" หน้า Dashboard
-          const m = ROLL_COLOR_STATUS_META[rollColorStatusFor(s, colorKey)] || ROLL_COLOR_STATUS_META.ready;
-          return `<span style="display:inline-block;padding:1px 8px;border-radius:99px;font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0;
-            background:${m.bg};color:${m.color};border:1px solid ${m.color};"
-            title="สถานะชุดสีนี้ — ตั้งได้ที่ปุ่ม &quot;เลือกชุดที่ใช้งาน&quot; หน้า Dashboard">${escapeHtmlAttr(m.label)}</span>`;
-        })() : ''}
       </div>
+      ${colorMeta ? rollRowStatusSelectHtml(s, colorKey) : ''}
       ${withActions ? `${cat ? `<button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;color:${isRollSetTemplate(s) ? 'var(--amber)' : 'var(--text-3)'};" onclick="toggleRollSetTemplate('${esc}')" title="${isRollSetTemplate(s) ? 'เป็นเทมเพลตของหมวด ' + cat + ' อยู่ — กดเพื่อยกเลิก' : 'ตั้งเป็นเทมเพลตของหมวด ' + cat}">${isRollSetTemplate(s) ? '★' : '☆'}</button>` : ''}
         <button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;" onclick="openEditSetModal('${esc}')" title="แก้ไข ${escapeHtmlAttr(s)} (ทั้งกลุ่ม ทุกสี)">✏️</button>
         <button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;color:var(--red);" onclick="deleteSet('${esc}')" title="ลบ ${escapeHtmlAttr(s)} ทั้งกลุ่ม (Roll ทุกสี ${rolls.length} ลูก)">✕</button>`
       : `<span style="width:${cat ? 84 : 56}px;flex-shrink:0;"></span>`}
     </div>
   </div>`;
+}
+
+// ดรอปดาวน์สถานะบนแถวเลย เปลี่ยนได้ทันทีโดยไม่ต้องเลือกแถวก่อน
+// วางไว้นอก div ที่กดเลือกแถว ไม่งั้นการกดเปิดดรอปดาวน์จะไปสั่งเลือกแถวแล้ว re-render ทับจนเลือกค่าไม่ได้
+function rollRowStatusSelectHtml(setName, colorKey) {
+  const st = rollColorStatusFor(setName, colorKey);
+  const m = ROLL_COLOR_STATUS_META[st] || ROLL_COLOR_STATUS_META.ready;
+  const jsEsc = v => String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const call = `setRollColorStatusFor('${jsEsc(setName)}','${jsEsc(colorKey)}', this.value)`;
+  return `<select class="form-select" onchange="${escapeHtmlAttr(call)}"
+    title="สถานะของชุดสีนี้ — ใช้นับใน KPI จำนวนชุด Roll ด้านบน"
+    style="width:auto;max-width:118px;flex-shrink:0;padding:2px 6px;font-size:10.5px;font-weight:700;border-radius:6px;
+           background:${m.bg};color:${m.color};border:1px solid ${m.color};">
+    ${Object.entries(ROLL_COLOR_STATUS_META).map(([k, meta]) => `<option value="${k}"${st === k ? ' selected' : ''}>● ${meta.label}</option>`).join('')}
+  </select>`;
+}
+
+// เวอร์ชันที่ระบุ Size Roll มาตรงๆ — ตัวเดิม setRollColorStatus() อิง selectedRollSet
+// ซึ่งใช้ไม่ได้กับดรอปดาวน์บนแถว เพราะเปลี่ยนสถานะแถวไหนก็ได้โดยไม่ต้องเลือกแถวนั้นก่อน
+function setRollColorStatusFor(setName, colorKey, status) {
+  const k = setName + '|' + colorKey;
+  if (status === 'ready') delete rollColorStatus[k]; else rollColorStatus[k] = status;
+  persistState();
+  renderRollSetList();
+  updateRollKpi();
+  renderDashboardInUseRoll();
+  renderDashboardWorkingRoll();
 }
 
 // จัดการชุดสีรายสี — ย้ายมาไว้ในฟอร์ม "แก้ไข Size Roll" หลังเอาแผงที่กางใต้แถวออก
