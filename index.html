@@ -1400,7 +1400,7 @@ canvas{display:block;}
     ══════════════════════════════════════════ -->
     <div class="page" id="page-rollLife">
       <div class="section-title">อายุ Roll</div>
-      <div class="section-sub">อายุคงเหลือของ Roll แต่ละลูก คิดจากจำนวนตันที่รีดและ OD ที่สึกไป</div>
+      <div class="section-sub">อายุคงเหลือของแต่ละชุด Roll (Size Roll + ชุดสี) ยึดลูกที่เหลือน้อยที่สุดในชุด</div>
 
       <div class="kpi-grid" style="margin-top:14px;">
         <div class="kpi-card red">
@@ -1446,7 +1446,7 @@ canvas{display:block;}
       <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;">
         <div class="search-bar" style="flex:1;margin-bottom:0;">
           <svg width="14" height="14" fill="none" stroke="var(--text-3)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" id="rolllife-search" placeholder="ค้นหาชื่อ Roll / Size Roll..." oninput="renderRollLife()">
+          <input type="text" id="rolllife-search" placeholder="ค้นหา Size Roll / ชุดสี..." oninput="renderRollLife()">
         </div>
         <select class="form-select" id="rolllife-set-filter" style="width:260px;" onchange="renderRollLife()"></select>
       </div>
@@ -1455,7 +1455,7 @@ canvas{display:block;}
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>ชื่อ Roll</th><th>Size Roll</th><th>ชุดสี</th><th style="text-align:right;">OD ปัจจุบัน</th><th style="text-align:right;">สึกไป</th><th style="text-align:right;">ตันที่รีด</th><th>อายุคงเหลือ</th><th>สถานะ</th></tr>
+              <tr><th>Size Roll</th><th>ชุดสี</th><th style="text-align:right;">จำนวน (ลูก)</th><th style="text-align:right;">OD ปัจจุบัน</th><th style="text-align:right;">สึกไปมากสุด</th><th style="text-align:right;">ตันที่รีด</th><th>อายุคงเหลือ</th><th>สถานะ</th></tr>
             </thead>
             <tbody id="rolllife-tbody"></tbody>
           </table>
@@ -1940,7 +1940,7 @@ const PAGE_META = {
   registry:  { title: 'ทะเบียน Tooling', sub: 'รายการเครื่องมือและอุปกรณ์ทั้งหมด 248 รายการ' },
   standard:  { title: 'Production Block', sub: 'ตารางวางแผนการผลิตตามการใช้ Roll — ฝ่าย Production ใช้วางแผนงาน' },
   prodWeight: { title: 'น้ำหนักผลิต', sub: 'เทียบน้ำหนักผลิตจริงกับยอดใช้งานสะสมของแต่ละชุด Roll' },
-  rollLife:   { title: 'อายุ Roll', sub: 'อายุคงเหลือของ Roll แต่ละลูก คิดจากจำนวนตันที่รีดและ OD ที่สึกไป' },
+  rollLife:   { title: 'อายุ Roll', sub: 'อายุคงเหลือของแต่ละชุด Roll (Size Roll + ชุดสี) ยึดลูกที่เหลือน้อยที่สุดในชุด' },
   daily:     { title: 'งานประจำวัน', sub: 'เช็คลิสต์งานประจำวันของทีม Tooling — วันที่ 2 ก.ค. 2569' },
   plan:      { title: 'วางแผน', sub: 'ตารางแผนการบำรุงรักษาและงาน Tooling ประจำปี 2569' },
   history:   { title: 'ประวัติการทำงาน', sub: 'บันทึกการดำเนินงานและบำรุงรักษา Tooling ทั้งหมด' },
@@ -6042,56 +6042,91 @@ function renderRollLife() {
   const search = (document.getElementById('rolllife-search').value || '').trim().toLowerCase();
   const setFilter = setSel.value;
 
-  const all = toolingData.roll.map(r => ({ roll: r, life: rollLifeFor(r) }));
-  const rows = all.filter(({ roll }) => {
-    if (setFilter && roll.set !== setFilter) return false;
-    if (search && !`${roll.name} ${roll.set} ${roll.id}`.toLowerCase().includes(search)) return false;
+  // รวมอายุเป็น "ชุด" = Size Roll + ชุดสี (เช่น GS 1"x1" (23x23) Forming · สีฟ้า) ไม่แสดงรายลูก
+  // อายุของชุดยึด "ลูกที่เหลือน้อยที่สุด" เพราะต้องถอดทั้งชุดพร้อมกัน ลูกที่แย่สุดเป็นตัวกำหนดว่าถึงเวลาเปลี่ยนเมื่อไหร่
+  // OD/สึกไป ก็ยึดค่าที่แย่ที่สุดในชุดด้วยเหตุผลเดียวกัน ส่วนตันที่รีดใช้ค่าสูงสุด (Roll คู่บน/ล่างรับน้ำหนักไปด้วยกัน บันทึกเท่ากัน ไม่ใช่เอามารวม)
+  const groupMap = new Map();
+  toolingData.roll.forEach(roll => {
+    const colorKey = roll.color || NO_COLOR_KEY;
+    const key = roll.set + '|' + colorKey;
+    if (!groupMap.has(key)) {
+      const colorMeta = colorKey === NO_COLOR_KEY ? null : getSetPalette(roll.set).find(c => c.key === colorKey);
+      groupMap.set(key, {
+        set: roll.set || '—', colorKey,
+        colorLabel: colorMeta ? colorMeta.label : (colorKey === NO_COLOR_KEY ? 'ไม่ระบุสี' : colorKey),
+        dot: colorMeta ? colorMeta.dot : '#9CA3AF',
+        count: 0, lifePct: null, basis: null, wornMm: null,
+        curODMin: null, curODMax: null, usedTon: null, minOD: null, maxTon: null,
+      });
+    }
+    const g = groupMap.get(key);
+    const life = rollLifeFor(roll);
+    g.count++;
+    g.minOD = life.minOD; g.maxTon = life.maxTon;
+    if (life.curOD != null) {
+      g.curODMin = g.curODMin == null ? life.curOD : Math.min(g.curODMin, life.curOD);
+      g.curODMax = g.curODMax == null ? life.curOD : Math.max(g.curODMax, life.curOD);
+    }
+    if (life.wornMm != null) g.wornMm = g.wornMm == null ? life.wornMm : Math.max(g.wornMm, life.wornMm);
+    if (life.usedTon != null) g.usedTon = g.usedTon == null ? life.usedTon : Math.max(g.usedTon, life.usedTon);
+    if (life.lifePct != null && (g.lifePct == null || life.lifePct < g.lifePct)) { g.lifePct = life.lifePct; g.basis = life.basis; }
+  });
+
+  const all = [...groupMap.values()];
+  const rows = all.filter(g => {
+    if (setFilter && g.set !== setFilter) return false;
+    if (search && !`${g.set} ${g.colorLabel}`.toLowerCase().includes(search)) return false;
     return true;
   }).sort((a, b) => {
-    // เรียงตัวที่อายุเหลือน้อยสุดขึ้นก่อน ตัวที่ยังไม่กำหนดเกณฑ์ไปท้ายสุด
-    const av = a.life.lifePct == null ? Infinity : a.life.lifePct;
-    const bv = b.life.lifePct == null ? Infinity : b.life.lifePct;
-    return av !== bv ? av - bv : String(a.roll.set + a.roll.name).localeCompare(String(b.roll.set + b.roll.name));
+    // เรียงชุดที่อายุเหลือน้อยสุดขึ้นก่อน ชุดที่ยังไม่กำหนดเกณฑ์ไปท้ายสุด
+    const av = a.lifePct == null ? Infinity : a.lifePct;
+    const bv = b.lifePct == null ? Infinity : b.lifePct;
+    return av !== bv ? av - bv : String(a.set + a.colorLabel).localeCompare(String(b.set + b.colorLabel), 'th');
   });
 
   const barColor = pct => pct <= 20 ? 'var(--red)' : pct <= 50 ? 'var(--amber)' : 'var(--green)';
-  const rowHtml = ({ roll, life }) => {
-    const meta = rollLifeChip(life.lifePct);
-    const colorLabel = roll.color ? (getSetPalette(roll.set).find(c => c.key === roll.color) || {}).label : null;
-    const lifeCell = life.lifePct == null
+  const rowHtml = g => {
+    const meta = rollLifeChip(g.lifePct);
+    const odText = g.curODMin == null ? '—'
+      : (g.curODMax !== g.curODMin ? `Ø${g.curODMin} – Ø${g.curODMax}` : `Ø${g.curODMin}`);
+    const lifeCell = g.lifePct == null
       ? '<span class="muted">—</span>'
       : `<div style="display:flex;align-items:center;gap:7px;">
           <div style="width:64px;background:var(--bg-panel);border-radius:4px;height:7px;overflow:hidden;flex-shrink:0;">
-            <div style="height:100%;width:${life.lifePct}%;background:${barColor(life.lifePct)};border-radius:4px;"></div>
+            <div style="height:100%;width:${g.lifePct}%;background:${barColor(g.lifePct)};border-radius:4px;"></div>
           </div>
-          <span style="font-weight:800;color:${barColor(life.lifePct)};">${life.lifePct}%</span>
-          <span class="muted" style="font-size:10px;" title="ตัวที่เหลือน้อยกว่าเป็นตัวตัดสิน">(${escapeHtmlAttr(life.basis)})</span>
+          <span style="font-weight:800;color:${barColor(g.lifePct)};">${g.lifePct}%</span>
+          <span class="muted" style="font-size:10px;" title="ตัวที่เหลือน้อยกว่าเป็นตัวตัดสิน">(${escapeHtmlAttr(g.basis)})</span>
         </div>`;
     return `<tr>
-      <td><strong>${escapeHtmlAttr(roll.name || '—')}</strong></td>
-      <td class="muted">${escapeHtmlAttr(roll.set || '—')}</td>
-      <td class="muted">${escapeHtmlAttr(colorLabel || '—')}</td>
-      <td style="text-align:right;">${life.curOD != null ? escapeHtmlAttr('Ø' + life.curOD) : '—'}${life.minOD != null ? `<div class="muted" style="font-size:10px;">เล็กสุด Ø${escapeHtmlAttr(life.minOD)}</div>` : ''}</td>
-      <td style="text-align:right;">${life.wornMm != null ? escapeHtmlAttr(Math.round(life.wornMm * 10) / 10 + ' mm') : '—'}</td>
-      <td style="text-align:right;">${life.usedTon != null ? escapeHtmlAttr(life.usedTon.toLocaleString()) : '—'}${life.maxTon != null ? `<div class="muted" style="font-size:10px;">/ ${escapeHtmlAttr(life.maxTon.toLocaleString())}</div>` : ''}</td>
+      <td><strong>${escapeHtmlAttr(g.set)}</strong></td>
+      <td><span style="display:inline-flex;align-items:center;gap:6px;">
+        <span style="width:9px;height:9px;border-radius:50%;background:${g.dot};flex-shrink:0;"></span>${escapeHtmlAttr(g.colorLabel)}</span></td>
+      <td class="muted" style="text-align:right;">${g.count.toLocaleString()}</td>
+      <td style="text-align:right;">${escapeHtmlAttr(odText)}${g.minOD != null ? `<div class="muted" style="font-size:10px;">เล็กสุด Ø${escapeHtmlAttr(g.minOD)}</div>` : ''}</td>
+      <td style="text-align:right;">${g.wornMm != null ? escapeHtmlAttr(Math.round(g.wornMm * 10) / 10 + ' mm') : '—'}</td>
+      <td style="text-align:right;">${g.usedTon != null ? escapeHtmlAttr(g.usedTon.toLocaleString()) : '—'}${g.maxTon != null ? `<div class="muted" style="font-size:10px;">/ ${escapeHtmlAttr(g.maxTon.toLocaleString())}</div>` : ''}</td>
       <td>${lifeCell}</td>
       <td><span class="chip ${meta.chip}">${escapeHtmlAttr(meta.label)}</span></td>
     </tr>`;
   };
 
-  // แบ่งเป็น 3 กลุ่มตามหมวดของ Size Roll — Roll ที่พาร์สหมวดไม่ได้ตกไปกลุ่ม "อื่นๆ" ท้ายสุด
+  // แบ่งเป็น 3 กลุ่มตามหมวดของ Size Roll — ชุดที่พาร์สหมวดไม่ได้ตกไปกลุ่ม "อื่นๆ" ท้ายสุด
   // เรียงในกลุ่มยังเป็นลำดับเดิม (อายุเหลือน้อยสุดขึ้นก่อน) เพราะ rows ถูกจัดลำดับมาแล้ว
   const buckets = { Forming: [], Sizing: [], TH: [], other: [] };
-  rows.forEach(x => {
-    const cat = parseSizeRollName(x.roll.set || '').category;
-    (buckets[cat] || buckets.other).push(x);
+  rows.forEach(g => {
+    const cat = parseSizeRollName(g.set || '').category;
+    (buckets[cat] || buckets.other).push(g);
   });
-  const groupHeader = (label, count, color) => `<tr><td colspan="8" style="background:var(--bg-panel);padding:9px 12px;border-top:2px solid ${color};">
-    <span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:800;color:${color};">
-      <span style="width:8px;height:8px;border-radius:50%;background:${color};"></span>${escapeHtmlAttr(label)}
-    </span>
-    <span style="float:right;font-size:12px;font-weight:700;color:var(--text-3);">${count.toLocaleString()} ลูก</span>
-  </td></tr>`;
+  const groupHeader = (label, list, color) => {
+    const pieces = list.reduce((s, g) => s + g.count, 0);
+    return `<tr><td colspan="8" style="background:var(--bg-panel);padding:9px 12px;border-top:2px solid ${color};">
+      <span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:800;color:${color};">
+        <span style="width:8px;height:8px;border-radius:50%;background:${color};"></span>${escapeHtmlAttr(label)}
+      </span>
+      <span style="float:right;font-size:12px;font-weight:700;color:var(--text-3);">${list.length.toLocaleString()} ชุด · ${pieces.toLocaleString()} ลูก</span>
+    </td></tr>`;
+  };
 
   const sections = [
     ['Forming', buckets.Forming, ROLL_SET_SECTION_COLORS.Forming],
@@ -6101,13 +6136,16 @@ function renderRollLife() {
   ].filter(([, list]) => list.length);
 
   tbody.innerHTML = sections.map(([label, list, color]) =>
-    groupHeader(label, list.length, color) + list.map(rowHtml).join('')
-  ).join('') || `<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--text-3);">ไม่พบ Roll ตามเงื่อนไขที่เลือก</td></tr>`;
+    groupHeader(label, list, color) + list.map(rowHtml).join('')
+  ).join('') || `<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--text-3);">ไม่พบชุด Roll ตามเงื่อนไขที่เลือก</td></tr>`;
 
-  document.getElementById('rolllife-count-label').textContent = `แสดง ${rows.length} จาก ${all.length} รายการ`;
+  const shownPieces = rows.reduce((s, g) => s + g.count, 0);
+  const allPieces = all.reduce((s, g) => s + g.count, 0);
+  document.getElementById('rolllife-count-label').textContent =
+    `แสดง ${rows.length} จาก ${all.length} ชุด (${shownPieces.toLocaleString()} จาก ${allPieces.toLocaleString()} ลูก)`;
 
-  // KPI นับจากทั้งทะเบียน ไม่ขึ้นกับตัวกรอง เพื่อให้เห็นภาพรวมจริงเสมอ
-  const pcts = all.map(x => x.life.lifePct);
+  // KPI นับเป็น "ชุด" ให้ตรงกับตาราง ไม่ขึ้นกับตัวกรอง เพื่อให้เห็นภาพรวมจริงเสมอ
+  const pcts = all.map(g => g.lifePct);
   document.getElementById('rolllife-kpi-critical').textContent = pcts.filter(p => p != null && p <= 20).length;
   document.getElementById('rolllife-kpi-warn').textContent = pcts.filter(p => p != null && p > 20 && p <= 50).length;
   document.getElementById('rolllife-kpi-ok').textContent = pcts.filter(p => p != null && p > 50).length;
