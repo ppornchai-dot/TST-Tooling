@@ -6464,7 +6464,7 @@ function rollSetRowHtml(s, colorMeta, num, withActions) {
               <span style="flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtmlAttr(colorMeta.label)}</span>`
               : '<span style="font-size:11px;color:var(--text-3);">ยังไม่มี Roll</span>'}
           </span>
-          ${machines.length ? `<span style="font-size:10.5px;color:var(--accent);font-weight:600;">${escapeHtmlAttr(machines.join(' / '))}</span>` : ''}
+          ${machines.length ? rollRowMachinePickerHtml(s, colorKey, machines) : ''}
         </span>
         <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;flex-shrink:0;">${count}</span>
       </div>
@@ -6475,6 +6475,39 @@ function rollSetRowHtml(s, colorMeta, num, withActions) {
       : `<span style="width:${cat ? 84 : 56}px;flex-shrink:0;"></span>`}
     </div>
   </div>`;
+}
+
+// ปุ่มเลือกเครื่องที่ชุดสีนี้กำลังใช้งานอยู่ — กดปุ่มเดิมซ้ำเพื่อล้าง (= ไม่ระบุ ใช้ได้ทุกเครื่องที่ผูกไว้)
+// Size Roll ที่ผูกไว้เครื่องเดียวไม่ต้องเลือก แสดงเป็นข้อความเฉยๆ เหมือนเดิม
+// ต้อง stopPropagation เพราะปุ่มอยู่ในพื้นที่ที่กดเลือกแถว ไม่งั้นกดเลือกเครื่องแล้วจะไปสั่งเลือกแถวด้วย
+function rollRowMachinePickerHtml(setName, colorKey, machines) {
+  if (!colorKey || machines.length < 2) {
+    return `<span style="font-size:10.5px;color:var(--accent);font-weight:600;">${escapeHtmlAttr(machines.join(' / '))}</span>`;
+  }
+  const activeMachine = rollColorActiveMachineFor(setName, colorKey);
+  const jsEsc = v => String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  return `<span style="display:flex;align-items:center;gap:3px;">
+    ${machines.map(m => {
+      const on = activeMachine === m;
+      const call = `event.stopPropagation();setRollColorActiveMachineFor('${jsEsc(setName)}','${jsEsc(colorKey)}','${jsEsc(m)}')`;
+      return `<button type="button" onclick="${escapeHtmlAttr(call)}"
+        title="${escapeHtmlAttr(on ? 'กำลังใช้งานอยู่ที่เครื่อง ' + m + ' — กดซ้ำเพื่อล้าง' : 'ทำเครื่องหมายว่าชุดสีนี้กำลังใช้งานอยู่ที่เครื่อง ' + m)}"
+        style="padding:0 6px;border-radius:4px;font-size:10px;font-weight:800;cursor:pointer;line-height:16px;
+               border:1px solid ${on ? 'var(--accent)' : 'var(--border)'};
+               background:${on ? 'var(--accent)' : 'transparent'};color:${on ? '#fff' : 'var(--text-3)'};">${escapeHtmlAttr(m)}</button>`;
+    }).join('')}
+  </span>`;
+}
+
+// เวอร์ชันที่ระบุ Size Roll มาตรงๆ — ตัวเดิม setRollColorActiveMachine() อิง selectedRollSet
+function setRollColorActiveMachineFor(setName, colorKey, machine) {
+  const k = setName + '|' + colorKey;
+  if (rollColorActiveMachine[k] === machine) delete rollColorActiveMachine[k];
+  else rollColorActiveMachine[k] = machine;
+  persistState();
+  renderRollSetList();
+  renderDashboardInUseRoll();
+  renderDashboardWorkingRoll();
 }
 
 // ดรอปดาวน์สถานะบนแถวเลย เปลี่ยนได้ทันทีโดยไม่ต้องเลือกแถวก่อน
