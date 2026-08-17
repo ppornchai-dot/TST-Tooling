@@ -1455,7 +1455,7 @@ canvas{display:block;}
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>Size Roll</th><th>ชุดสี</th><th style="text-align:right;">จำนวน (ลูก)</th><th style="text-align:right;">OD ปัจจุบัน</th><th style="text-align:right;">สึกไปมากสุด</th><th style="text-align:right;" title="ตันที่รีดได้ต่อการแต่ง Roll 1 รอบ — ตั้งที่ช่อง &quot;รีดได้สูงสุด (ตัน)&quot; ในกล่องเกณฑ์อายุด้านบน">น้ำหนักต่อรอบการแต่ง (ตัน)</th><th style="text-align:right;" title="ตันที่ชุดนี้รีดไปแล้ว (ยอดใช้งานสะสมในทะเบียน Tooling)">น้ำหนักผลิต (ตัน)</th><th style="text-align:right;" title="น้ำหนักต่อรอบการแต่ง ลบ น้ำหนักผลิต — เหลืออีกเท่าไรก่อนถึงรอบแต่งถัดไป">น้ำหนักเหลือ (ตัน)</th><th>อายุคงเหลือ</th><th title="สถานะของชุดสี Roll ที่ตั้งไว้ในทะเบียน Tooling">สถานะ (ทะเบียน)</th></tr>
+              <tr><th>Size Roll</th><th>ชุดสี</th><th style="text-align:right;">จำนวน (ลูก)</th><th style="text-align:right;">OD ปัจจุบัน</th><th style="text-align:right;">สึกไปมากสุด</th><th style="text-align:right;" title="ตันที่รีดได้ต่อการแต่ง Roll 1 รอบ — มาจากช่อง &quot;รอบการใช้งาน&quot; ของ Roll ในทะเบียน Tooling">น้ำหนักต่อรอบการแต่ง (ตัน)</th><th style="text-align:right;" title="น้ำหนักผลิตจริงจากระบบ Production จับคู่ด้วยเกรด+ขนาด (ช่วงทั้งหมด) — Forming/Sizing/TH ของขนาดเดียวกันใช้ค่าร่วมกัน">น้ำหนักผลิต (ตัน)</th><th style="text-align:right;" title="น้ำหนักต่อรอบการแต่ง ลบ น้ำหนักผลิต — เหลืออีกเท่าไรก่อนถึงรอบแต่งถัดไป">น้ำหนักเหลือ (ตัน)</th><th>อายุคงเหลือ</th><th title="สถานะของชุดสี Roll ที่ตั้งไว้ในทะเบียน Tooling">สถานะ (ทะเบียน)</th></tr>
             </thead>
             <tbody id="rolllife-tbody"></tbody>
           </table>
@@ -6016,9 +6016,24 @@ function saveRollLifeSpec() {
   renderRollLife();
 }
 
+// น้ำหนักผลิตจริงจากระบบ Production ต่อ fgKey — ดึงครั้งเดียวแล้วใช้ซ้ำ ไม่ให้ยิงใหม่ทุกครั้งที่พิมพ์ค้นหา
+// ใช้ช่วง "ทั้งหมด" เหมือนค่าตั้งต้นของหน้าน้ำหนักผลิต ตัวเลขสองหน้าจะได้ตรงกัน
+let rollLifeFgByKey = null;
+let rollLifeFgLoading = false;
+function ensureRollLifeFg() {
+  if (rollLifeFgByKey !== null || rollLifeFgLoading) return;
+  rollLifeFgLoading = true;
+  fetchFgWeightByKey('2020-01-01', toISODate(new Date())).then(data => {
+    rollLifeFgByKey = data || {};
+    rollLifeFgLoading = false;
+    renderRollLife();
+  });
+}
+
 function renderRollLife() {
   const tbody = document.getElementById('rolllife-tbody');
   if (!tbody) return;
+  ensureRollLifeFg();
   const sets = getRollSets();
 
   const specBody = document.getElementById('rolllife-spec-tbody');
@@ -6092,8 +6107,16 @@ function renderRollLife() {
     const meta = ROLL_COLOR_STATUS_META[regStatus] || ROLL_COLOR_STATUS_META.ready;
     const odText = g.curODMin == null ? '—'
       : (g.curODMax !== g.curODMin ? `Ø${g.curODMin} – Ø${g.curODMax}` : `Ø${g.curODMin}`);
-    // น้ำหนักเหลือ = โควตาต่อรอบการแต่ง − ที่รีดไปแล้ว (ติดลบได้ ถ้ารีดเกินโควตาแล้วยังไม่ได้แต่ง จะได้เห็นว่าเลยมาเท่าไร)
-    const leftTon = (g.maxTon != null && g.usedTon != null) ? Math.round((g.maxTon - g.usedTon) * 100) / 100 : null;
+    // น้ำหนักต่อรอบการแต่ง = ค่าที่บันทึกไว้ในทะเบียน Tooling (ช่อง "รอบการใช้งาน" ของ Roll)
+    // น้ำหนักผลิต = ผลิตจริงจากระบบ Production จับคู่ด้วยเกรด+ขนาด (fgKey) เหมือนหน้าน้ำหนักผลิต
+    // Forming/Sizing/TH ของขนาดเดียวกันใช้ค่าผลิตจริงร่วมกัน เพราะเป็นเนื้อเหล็กก้อนเดียวที่ไหลผ่านทุกขั้นตอน
+    const perRoundTon = g.usedTon;
+    const fgKey = rollSetFgKey(g.set);
+    const producedTon = (rollLifeFgByKey && fgKey && rollLifeFgByKey[fgKey] != null)
+      ? Math.round(rollLifeFgByKey[fgKey] / 1000 * 100) / 100 : null;
+    // น้ำหนักเหลือ ติดลบได้ ถ้าผลิตเกินรอบแล้วยังไม่ได้แต่ง จะได้เห็นว่าเลยมาเท่าไร
+    const leftTon = (perRoundTon != null && producedTon != null)
+      ? Math.round((perRoundTon - producedTon) * 100) / 100 : null;
     const lifeCell = g.lifePct == null
       ? '<span class="muted">—</span>'
       : `<div style="display:flex;align-items:center;gap:7px;">
@@ -6113,10 +6136,11 @@ function renderRollLife() {
       <td class="muted" style="text-align:right;">${g.count.toLocaleString()}</td>
       <td style="text-align:right;">${escapeHtmlAttr(odText)}${g.minOD != null ? `<div class="muted" style="font-size:10px;">เล็กสุด Ø${escapeHtmlAttr(g.minOD)}</div>` : ''}</td>
       <td style="text-align:right;">${g.wornMm != null ? escapeHtmlAttr(Math.round(g.wornMm * 10) / 10 + ' mm') : '—'}</td>
-      <td style="text-align:right;">${g.maxTon != null ? escapeHtmlAttr(g.maxTon.toLocaleString()) : '<span class="muted">—</span>'}</td>
-      <td style="text-align:right;">${g.usedTon != null ? escapeHtmlAttr(g.usedTon.toLocaleString()) : '<span class="muted">—</span>'}</td>
+      <td style="text-align:right;">${perRoundTon != null ? escapeHtmlAttr(perRoundTon.toLocaleString()) : '<span class="muted">—</span>'}</td>
+      <td style="text-align:right;">${producedTon != null ? escapeHtmlAttr(producedTon.toLocaleString())
+        : (rollLifeFgLoading ? '<span class="muted">กำลังโหลด…</span>' : '<span class="muted">—</span>')}</td>
       <td style="text-align:right;">${leftTon == null ? '<span class="muted">—</span>'
-        : `<strong style="color:${leftTon <= 0 ? 'var(--red)' : (g.maxTon && leftTon / g.maxTon <= 0.2 ? 'var(--amber)' : 'var(--text-1)')};">${escapeHtmlAttr(leftTon.toLocaleString())}</strong>`}</td>
+        : `<strong style="color:${leftTon <= 0 ? 'var(--red)' : (perRoundTon && leftTon / perRoundTon <= 0.2 ? 'var(--amber)' : 'var(--text-1)')};">${escapeHtmlAttr(leftTon.toLocaleString())}</strong>`}</td>
       <td>${lifeCell}</td>
       <td><span style="display:inline-block;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;white-space:nowrap;
         background:${meta.bg};color:${meta.color};border:1px solid ${meta.color};">● ${escapeHtmlAttr(meta.label)}</span></td>
