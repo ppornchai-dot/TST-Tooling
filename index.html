@@ -6384,8 +6384,6 @@ function rollSetCardHtml(s, num) {
   const rolls = toolingData.roll.filter(r => r.set === s);
   const active = s === selectedRollSet;
   const esc = s.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const st = getRollSetStatus(s);
-  const stMeta = ROLL_SET_STATUS_META[st];
   // สีตัวเลขลำดับใช้สีประจำหมวด (Forming/Sizing/TH) เวลาไม่ได้เลือกอยู่ เพื่อให้รู้หมวดได้แม้เลื่อนผ่านหัวข้อคั่นไปแล้ว
   const catColor = ROLL_SET_SECTION_COLORS[parseSizeRollName(s).category] || null;
   const badgeBg = active ? 'var(--accent)' : (catColor || 'var(--bg-panel)');
@@ -6404,14 +6402,6 @@ function rollSetCardHtml(s, num) {
         ${parseSizeRollName(s).category ? `<button class="btn btn-ghost btn-sm" style="padding:4px 7px;flex-shrink:0;color:${isRollSetTemplate(s) ? 'var(--amber)' : 'var(--text-3)'};" onclick="toggleRollSetTemplate('${esc}')" title="${isRollSetTemplate(s) ? 'เป็นเทมเพลตของหมวด ' + parseSizeRollName(s).category + ' อยู่ — กดเพื่อยกเลิก' : 'ตั้งเป็นเทมเพลตของหมวด ' + parseSizeRollName(s).category}">${isRollSetTemplate(s) ? '★' : '☆'}</button>` : ''}
         <button class="btn btn-ghost btn-sm" style="padding:4px 7px;flex-shrink:0;" onclick="openEditSetModal('${esc}')" title="แก้ไข">✏️</button>
         <button class="btn btn-ghost btn-sm" style="padding:4px 7px;flex-shrink:0;color:var(--red);" onclick="deleteSet('${esc}')" title="ลบ">✕</button>
-      </div>
-      <div style="padding-left:28px;margin-top:4px;">
-        <select class="form-select" style="width:auto;padding:2px 8px;font-size:11px;font-weight:700;border-radius:6px;
-          background:${stMeta.bg};color:${stMeta.color};border:1px solid ${stMeta.color};"
-          onchange="setRollSetStatus('${esc}', this.value)" title="สถานะความพร้อมใช้งานของ Size Roll นี้">
-          <option value="ready"${st==='ready'?' selected':''}>● พร้อมใช้งาน</option>
-          <option value="not-ready"${st==='not-ready'?' selected':''}>● ไม่พร้อมใช้งาน</option>
-        </select>
       </div>
     </div>`;
 }
