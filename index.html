@@ -5006,12 +5006,14 @@ function setRollSetStatus(setName, status) {
 // short = ป้ายสั้นสำหรับดรอปดาวน์บนแถวทะเบียน Roll ที่พื้นที่แคบ — ความกว้างของ <select>
 // ถูกกำหนดโดยตัวเลือกที่ยาวที่สุด ถ้าใช้ label เต็มจะเบียดชื่อชุดสีจนถูกตัดด้วย ...
 const ROLL_COLOR_STATUS_META = {
-  inuse:      { label: 'กำลังใช้งาน',      short: 'ใช้งาน',   color: 'var(--inuse)',          bg: 'var(--inuse-dim)' },
-  ready:      { label: 'พร้อมใช้งาน',      short: 'พร้อมใช้', color: 'var(--green)',          bg: 'var(--green-dim)' },
-  waitdress:  { label: 'รอแต่ง',           short: 'รอแต่ง',   color: 'var(--red)',            bg: 'var(--red-dim)' },
-  waitpolish: { label: 'รอขัด',            short: 'รอขัด',    color: 'var(--st-waitpolish)',  bg: 'var(--st-waitpolish-dim)' },
-  incomplete: { label: 'ชุด Roll ไม่ครบ',  short: 'ไม่ครบ',   color: 'var(--st-incomplete)',  bg: 'var(--st-incomplete-dim)' },
-  'not-ready':{ label: 'ไม่พร้อมใช้งาน',   short: 'ไม่พร้อม', color: 'var(--st-notready)',    bg: 'var(--st-notready-dim)' },
+  // optBg = สีพื้นแบบทึบสำหรับ <option> ในรายการดรอปดาวน์ ต้องทึบเพราะ bg ปกติเป็น rgba จาง
+  // (alpha 0.10–0.22) ซึ่งซ้อนบนพื้นขาวของรายการแล้วแทบมองไม่เห็นสี
+  inuse:      { label: 'กำลังใช้งาน',      short: 'ใช้งาน',   color: 'var(--inuse)',          bg: 'var(--inuse-dim)',          optBg: '#FBE8CC' },
+  ready:      { label: 'พร้อมใช้งาน',      short: 'พร้อมใช้', color: 'var(--green)',          bg: 'var(--green-dim)',          optBg: '#D8EFE4' },
+  waitdress:  { label: 'รอแต่ง',           short: 'รอแต่ง',   color: 'var(--red)',            bg: 'var(--red-dim)',            optBg: '#F8DADA' },
+  waitpolish: { label: 'รอขัด',            short: 'รอขัด',    color: 'var(--st-waitpolish)',  bg: 'var(--st-waitpolish-dim)',  optBg: '#F6EFBE' },
+  incomplete: { label: 'ชุด Roll ไม่ครบ',  short: 'ไม่ครบ',   color: 'var(--st-incomplete)',  bg: 'var(--st-incomplete-dim)',  optBg: '#EDE2D8' },
+  'not-ready':{ label: 'ไม่พร้อมใช้งาน',   short: 'ไม่พร้อม', color: 'var(--st-notready)',    bg: 'var(--st-notready-dim)',    optBg: '#DBDDE2' },
 };
 
 // สถานะความพร้อมใช้งานของแต่ละ "ชุดสี Roll" — คีย์แยกตาม Size Roll + สี เพราะสีเป็นอิสระต่อกลุ่ม
@@ -6538,7 +6540,10 @@ function rollRowStatusSelectHtml(setName, colorKey) {
     title="${escapeHtmlAttr('สถานะของชุดสีนี้: ' + m.label + ' — ใช้นับใน KPI จำนวนชุด Roll ด้านบน')}"
     style="width:74px;flex-shrink:0;padding:2px 4px;font-size:10.5px;font-weight:700;border-radius:6px;
            background:${m.bg};color:${m.color};border:1px solid ${m.color};">
-    ${Object.entries(ROLL_COLOR_STATUS_META).map(([k, meta]) => `<option value="${k}"${st === k ? ' selected' : ''} title="${escapeHtmlAttr(meta.label)}">${escapeHtmlAttr(meta.short)}</option>`).join('')}
+    ${Object.entries(ROLL_COLOR_STATUS_META).map(([k, meta]) =>
+      // ใส่สีให้ทุกตัวเลือกในรายการเลย ไม่ต้องเลือกก่อนแล้วค่อยเห็นสี
+      `<option value="${k}"${st === k ? ' selected' : ''} title="${escapeHtmlAttr(meta.label)}"
+        style="background:${meta.optBg};color:${meta.color};font-weight:700;">${escapeHtmlAttr(meta.short)}</option>`).join('')}
   </select>`;
 }
 
