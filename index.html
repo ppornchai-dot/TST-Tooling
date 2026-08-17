@@ -1198,7 +1198,7 @@ canvas{display:block;}
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:#6B7280;" id="kpi-roll-incomplete">0</span><span class="reg-kpi-lbl">ชุด Roll ไม่ครบ</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-roll-notready">0</span><span class="reg-kpi-lbl">ไม่พร้อมใช้งาน</span></div>
         </div>
-        <div class="reg-registry-grid" style="display:grid;grid-template-columns:400px 1fr;gap:14px;align-items:start;">
+        <div class="reg-registry-grid" style="display:grid;grid-template-columns:330px 1fr;gap:14px;align-items:start;">
           <!-- COL 1: Size Roll -->
           <div class="card" style="position:sticky;top:70px;">
             <div style="padding:12px 14px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
@@ -4995,13 +4995,15 @@ function setRollSetStatus(setName, status) {
 
 // สถานะของแต่ละ "ชุดสี Roll" (Size Roll + สี = 1 ชุด) — ใช้เป็นตัวแทนสถานะของทั้งชุด ไม่อิงจากสถานะของ Roll ย่อยแต่ละตัว (r.status)
 // ใช้กับ KPI "จำนวนชุด Roll" ด้านบนของหน้าทะเบียน Tooling — ไม่มี key = ค่าเริ่มต้น 'ready'
+// short = ป้ายสั้นสำหรับดรอปดาวน์บนแถวทะเบียน Roll ที่พื้นที่แคบ — ความกว้างของ <select>
+// ถูกกำหนดโดยตัวเลือกที่ยาวที่สุด ถ้าใช้ label เต็มจะเบียดชื่อชุดสีจนถูกตัดด้วย ...
 const ROLL_COLOR_STATUS_META = {
-  inuse:      { label: 'กำลังใช้งาน',      color: 'var(--inuse)',  bg: 'var(--inuse-dim)' },
-  ready:      { label: 'พร้อมใช้งาน',      color: 'var(--green)',  bg: 'var(--green-dim)' },
-  waitdress:  { label: 'รอแต่ง',           color: '#A9752B',       bg: 'var(--amber-dim)' },
-  waitpolish: { label: 'รอขัด',            color: '#C2469E',       bg: 'var(--purple-dim)' },
-  incomplete: { label: 'ชุด Roll ไม่ครบ',  color: '#6B7280',       bg: 'rgba(107,114,128,0.10)' },
-  'not-ready':{ label: 'ไม่พร้อมใช้งาน',   color: 'var(--red)',    bg: 'var(--red-dim)' },
+  inuse:      { label: 'กำลังใช้งาน',      short: 'ใช้งาน',   color: 'var(--inuse)',  bg: 'var(--inuse-dim)' },
+  ready:      { label: 'พร้อมใช้งาน',      short: 'พร้อมใช้', color: 'var(--green)',  bg: 'var(--green-dim)' },
+  waitdress:  { label: 'รอแต่ง',           short: 'รอแต่ง',   color: '#A9752B',       bg: 'var(--amber-dim)' },
+  waitpolish: { label: 'รอขัด',            short: 'รอขัด',    color: '#C2469E',       bg: 'var(--purple-dim)' },
+  incomplete: { label: 'ชุด Roll ไม่ครบ',  short: 'ไม่ครบ',   color: '#6B7280',       bg: 'rgba(107,114,128,0.10)' },
+  'not-ready':{ label: 'ไม่พร้อมใช้งาน',   short: 'ไม่พร้อม', color: 'var(--red)',    bg: 'var(--red-dim)' },
 };
 
 // สถานะความพร้อมใช้งานของแต่ละ "ชุดสี Roll" — คีย์แยกตาม Size Roll + สี เพราะสีเป็นอิสระต่อกลุ่ม
@@ -6483,10 +6485,10 @@ function rollRowStatusSelectHtml(setName, colorKey) {
   const jsEsc = v => String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   const call = `setRollColorStatusFor('${jsEsc(setName)}','${jsEsc(colorKey)}', this.value)`;
   return `<select class="form-select" onchange="${escapeHtmlAttr(call)}"
-    title="สถานะของชุดสีนี้ — ใช้นับใน KPI จำนวนชุด Roll ด้านบน"
-    style="width:auto;max-width:118px;flex-shrink:0;padding:2px 6px;font-size:10.5px;font-weight:700;border-radius:6px;
+    title="${escapeHtmlAttr('สถานะของชุดสีนี้: ' + m.label + ' — ใช้นับใน KPI จำนวนชุด Roll ด้านบน')}"
+    style="width:74px;flex-shrink:0;padding:2px 4px;font-size:10.5px;font-weight:700;border-radius:6px;
            background:${m.bg};color:${m.color};border:1px solid ${m.color};">
-    ${Object.entries(ROLL_COLOR_STATUS_META).map(([k, meta]) => `<option value="${k}"${st === k ? ' selected' : ''}>● ${meta.label}</option>`).join('')}
+    ${Object.entries(ROLL_COLOR_STATUS_META).map(([k, meta]) => `<option value="${k}"${st === k ? ' selected' : ''} title="${escapeHtmlAttr(meta.label)}">${escapeHtmlAttr(meta.short)}</option>`).join('')}
   </select>`;
 }
 
