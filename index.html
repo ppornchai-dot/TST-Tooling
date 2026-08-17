@@ -1198,7 +1198,7 @@ canvas{display:block;}
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:#6B7280;" id="kpi-roll-incomplete">0</span><span class="reg-kpi-lbl">ชุด Roll ไม่ครบ</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-roll-notready">0</span><span class="reg-kpi-lbl">ไม่พร้อมใช้งาน</span></div>
         </div>
-        <div class="reg-registry-grid" style="display:grid;grid-template-columns:210px 250px 1fr;gap:14px;align-items:start;">
+        <div class="reg-registry-grid" style="display:grid;grid-template-columns:255px 250px 1fr;gap:14px;align-items:start;">
           <!-- COL 1: Size Roll -->
           <div class="card" style="position:sticky;top:70px;">
             <div style="padding:12px 14px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
@@ -6412,61 +6412,58 @@ function rollSetSizeGroupLabel(s) {
 
 const ROLL_SET_CATEGORY_ORDER = { Forming: 0, Sizing: 1, TH: 2 };
 
-// การ์ด Size Roll 1 กลุ่ม — แยกออกมาเป็นฟังก์ชันย่อยเพื่อใช้ซ้ำได้ทั้งตอนแสดงแบบแบ่งหมวด (Forming/Sizing/TH) และหมวด "อื่นๆ"
-function rollSetCardHtml(s, num) {
-  const rolls = toolingData.roll.filter(r => r.set === s);
-  const active = s === selectedRollSet;
-  const esc = s.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  // สีตัวเลขลำดับใช้สีประจำหมวด (Forming/Sizing/TH) เวลาไม่ได้เลือกอยู่ เพื่อให้รู้หมวดได้แม้เลื่อนผ่านหัวข้อคั่นไปแล้ว
-  const catColor = ROLL_SET_SECTION_COLORS[parseSizeRollName(s).category] || null;
-  const badgeBg = active ? 'var(--accent)' : (catColor || 'var(--bg-panel)');
-  const badgeColor = (active || catColor) ? '#fff' : 'var(--text-3)';
-  return `<div style="margin-bottom:6px;">
-      <div style="display:flex;align-items:center;gap:6px;">
-        <div onclick="selectRollSet('${esc}')"
-          style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:6px;cursor:pointer;flex:1;
-                 background:${active?'var(--accent-glow)':'transparent'};
-                 color:${active?'var(--accent)':'var(--text-2)'};font-weight:${active?'700':'400'};
-                 transition:background .12s;">
-          <span style="width:18px;height:18px;border-radius:50%;background:${badgeBg};color:${badgeColor};font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${num}</span>
-          ${setLabelHtml(s)}
-          <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;">${rolls.length}</span>
-        </div>
-        ${parseSizeRollName(s).category ? `<button class="btn btn-ghost btn-sm" style="padding:4px 7px;flex-shrink:0;color:${isRollSetTemplate(s) ? 'var(--amber)' : 'var(--text-3)'};" onclick="toggleRollSetTemplate('${esc}')" title="${isRollSetTemplate(s) ? 'เป็นเทมเพลตของหมวด ' + parseSizeRollName(s).category + ' อยู่ — กดเพื่อยกเลิก' : 'ตั้งเป็นเทมเพลตของหมวด ' + parseSizeRollName(s).category}">${isRollSetTemplate(s) ? '★' : '☆'}</button>` : ''}
-        <button class="btn btn-ghost btn-sm" style="padding:4px 7px;flex-shrink:0;" onclick="openEditSetModal('${esc}')" title="แก้ไข">✏️</button>
-        <button class="btn btn-ghost btn-sm" style="padding:4px 7px;flex-shrink:0;color:var(--red);" onclick="deleteSet('${esc}')" title="ลบ">✕</button>
-      </div>
-      ${rollSetColorSubRowsHtml(s, active)}
-    </div>`;
-}
-
-// แถวย่อย "ชุดสี" ใต้ Size Roll แต่ละกลุ่ม — ให้หน่วยที่เห็นในทะเบียนตรงกับหน้าอายุ Roll (Size Roll + ชุดสี)
-// ปุ่ม ★ ✏️ ✕ ยังอยู่ที่แถว Size Roll เท่านั้น เพราะเป็นการกระทำระดับกลุ่ม ไม่ใช่ระดับสี
-// (ถ้ายกไปไว้ทุกแถวสี จะกลายเป็นกดลบทั้งกลุ่มจากแถวของสีเดียวได้ ซึ่งอันตราย)
-function rollSetColorSubRowsHtml(setName, setActive) {
+// รายการชุดสีของ Size Roll หนึ่ง เรียงตามลำดับจานสี — แสดงเฉพาะสีที่มี Roll อยู่จริง
+// คืน [null] ถ้ายังไม่มี Roll เลย เพื่อให้ Size Roll นั้นยังมีแถวให้กดแก้ไข/ลบได้
+function rollSetColorList(setName) {
   const rows = toolingData.roll.filter(r => r.set === setName);
-  if (!rows.length) return '';
+  if (!rows.length) return [null];
   const used = new Set(rows.map(r => r.color || NO_COLOR_KEY));
-  const palette = getSetPalette(setName);
   const list = [
-    ...palette.filter(c => used.has(c.key)),
+    ...getSetPalette(setName).filter(c => used.has(c.key)),
     ...(used.has(NO_COLOR_KEY) ? [{ key: NO_COLOR_KEY, label: 'ไม่ระบุสี', dot: '#9CA3AF' }] : []),
   ];
-  if (!list.length) return '';
-  return `<div style="padding-left:28px;margin-top:2px;display:flex;flex-direction:column;gap:2px;">
-    ${list.map(c => {
-      const n = rows.filter(r => (r.color || NO_COLOR_KEY) === c.key).length;
-      const on = setActive && selectedRollColor === c.key;
-      return `<div onclick="${jsCallAttr('goToRollSetColor', setName, c.key)}"
-        style="display:flex;align-items:center;gap:7px;padding:3px 8px;border-radius:5px;cursor:pointer;
-               background:${on ? 'var(--accent-glow)' : 'transparent'};color:${on ? 'var(--accent)' : 'var(--text-3)'};font-weight:${on ? 700 : 400};"
-        title="${escapeHtmlAttr(setName + ' · ' + c.label + ' · ' + n + ' Roll')}">
-        <span style="width:8px;height:8px;border-radius:50%;background:${c.dot};flex-shrink:0;"></span>
-        <span style="flex:1;min-width:0;font-size:11.5px;">${escapeHtmlAttr(c.label)}</span>
-        <span style="font-size:10px;color:var(--text-3);">${n}</span>
-      </div>`;
-    }).join('')}
-  </div>`;
+  return list.length ? list : [null];
+}
+
+// 1 แถว = Size Roll + ชุดสี ให้หน่วยตรงกับหน้าอายุ Roll
+// ปุ่ม ★ ✏️ ✕ เป็นการกระทำระดับ Size Roll ทั้งกลุ่ม (ลบ = ลบ Roll ทุกสีในกลุ่ม) จึงแสดงเฉพาะแถวแรก
+// ของแต่ละ Size Roll ไม่ซ้ำทุกสี กันกดลบทั้งกลุ่มจากแถวของสีอื่นโดยไม่ตั้งใจ
+function rollSetRowHtml(s, colorMeta, num, withActions) {
+  const rolls = toolingData.roll.filter(r => r.set === s);
+  const colorKey = colorMeta ? colorMeta.key : null;
+  const count = colorMeta ? rolls.filter(r => (r.color || NO_COLOR_KEY) === colorKey).length : rolls.length;
+  const active = s === selectedRollSet && (colorMeta ? selectedRollColor === colorKey : true);
+  const esc = s.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const cat = parseSizeRollName(s).category;
+  // สีตัวเลขลำดับใช้สีประจำหมวด (Forming/Sizing/TH) เวลาไม่ได้เลือกอยู่ เพื่อให้รู้หมวดได้แม้เลื่อนผ่านหัวข้อคั่นไปแล้ว
+  const catColor = ROLL_SET_SECTION_COLORS[cat] || null;
+  const badgeBg = active ? 'var(--accent)' : (catColor || 'var(--bg-panel)');
+  const badgeColor = (active || catColor) ? '#fff' : 'var(--text-3)';
+  const machines = rollSetMachines[s] || [];
+  const onclick = colorMeta ? jsCallAttr('goToRollSetColor', s, colorKey) : `selectRollSet('${esc}')`;
+  return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
+      <div onclick="${onclick}"
+        style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:6px;cursor:pointer;flex:1;min-width:0;
+               background:${active?'var(--accent-glow)':'transparent'};
+               color:${active?'var(--accent)':'var(--text-2)'};font-weight:${active?'700':'400'};transition:background .12s;"
+        title="${escapeHtmlAttr(s + (colorMeta ? ' · ' + colorMeta.label : '') + ' · ' + count + ' Roll')}">
+        <span style="width:18px;height:18px;border-radius:50%;background:${badgeBg};color:${badgeColor};font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${num}</span>
+        <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;line-height:1.3;">
+          <span style="font-size:12.5px;display:flex;align-items:center;gap:6px;min-width:0;">
+            <strong>${escapeHtmlAttr(cat || s)}</strong>
+            ${colorMeta ? `<span style="width:8px;height:8px;border-radius:50%;background:${colorMeta.dot};flex-shrink:0;"></span>
+              <span style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtmlAttr(colorMeta.label)}</span>`
+              : '<span style="font-size:11px;color:var(--text-3);">ยังไม่มี Roll</span>'}
+          </span>
+          ${machines.length ? `<span style="font-size:10.5px;color:var(--accent);font-weight:600;">${escapeHtmlAttr(machines.join(' / '))}</span>` : ''}
+        </span>
+        <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;flex-shrink:0;">${count}</span>
+      </div>
+      ${withActions ? `${cat ? `<button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;color:${isRollSetTemplate(s) ? 'var(--amber)' : 'var(--text-3)'};" onclick="toggleRollSetTemplate('${esc}')" title="${isRollSetTemplate(s) ? 'เป็นเทมเพลตของหมวด ' + cat + ' อยู่ — กดเพื่อยกเลิก' : 'ตั้งเป็นเทมเพลตของหมวด ' + cat}">${isRollSetTemplate(s) ? '★' : '☆'}</button>` : ''}
+        <button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;" onclick="openEditSetModal('${esc}')" title="แก้ไข ${escapeHtmlAttr(s)} (ทั้งกลุ่ม ทุกสี)">✏️</button>
+        <button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;color:var(--red);" onclick="deleteSet('${esc}')" title="ลบ ${escapeHtmlAttr(s)} ทั้งกลุ่ม (Roll ทุกสี ${rolls.length} ลูก)">✕</button>`
+      : `<span style="width:${cat ? 84 : 56}px;flex-shrink:0;"></span>`}
+    </div>`;
 }
 
 // opts.keepCase: ชื่อขนาด Roll มีตัว x เล็กอยู่ในตัว (1"x1") ถ้าบังคับ uppercase จะกลายเป็น 1"X1" ผิดจากชื่อจริง
@@ -6514,7 +6511,8 @@ function renderRollSetList() {
     }, 0);
     const pieceCount = sorted.reduce((n, s) => n + toolingData.roll.filter(r => r.set === s).length, 0);
     return rollSetSectionHeaderHtml(escapeHtmlAttr(g.label), `${setColorCount} ชุด · ${pieceCount} ลูก`, 'var(--text-1)', { keepCase: true, big: true })
-      + sorted.map(s => rollSetCardHtml(s, ++num)).join('');
+      + sorted.map(s => rollSetColorList(s)
+          .map((c, i) => rollSetRowHtml(s, c, ++num, i === 0)).join('')).join('');
   }).join('');
 }
 
