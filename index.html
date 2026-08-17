@@ -1455,7 +1455,7 @@ canvas{display:block;}
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>Size Roll</th><th>ชุดสี</th><th style="text-align:right;">จำนวน (ลูก)</th><th style="text-align:right;">OD ปัจจุบัน</th><th style="text-align:right;">สึกไปมากสุด</th><th style="text-align:right;">ตันที่รีด</th><th>อายุคงเหลือ</th><th>สถานะ</th></tr>
+              <tr><th>Size Roll</th><th>ชุดสี</th><th style="text-align:right;">จำนวน (ลูก)</th><th style="text-align:right;">OD ปัจจุบัน</th><th style="text-align:right;">สึกไปมากสุด</th><th style="text-align:right;">ตันที่รีด</th><th>อายุคงเหลือ</th><th title="สถานะของชุดสี Roll ที่ตั้งไว้ในทะเบียน Tooling">สถานะ (ทะเบียน)</th></tr>
             </thead>
             <tbody id="rolllife-tbody"></tbody>
           </table>
@@ -6086,7 +6086,10 @@ function renderRollLife() {
 
   const barColor = pct => pct <= 20 ? 'var(--red)' : pct <= 50 ? 'var(--amber)' : 'var(--green)';
   const rowHtml = g => {
-    const meta = rollLifeChip(g.lifePct);
+    // สถานะยึดจากทะเบียน Tooling (สถานะของชุดสี Roll) ไม่ใช่สถานะที่คำนวณจากอายุ
+    // หน่วยตรงกันพอดี เพราะแถวนี้คือ Size Roll + ชุดสี เท่ากับที่ rollColorStatus เก็บไว้
+    const regStatus = rollColorStatusFor(g.set, g.colorKey);
+    const meta = ROLL_COLOR_STATUS_META[regStatus] || ROLL_COLOR_STATUS_META.ready;
     const odText = g.curODMin == null ? '—'
       : (g.curODMax !== g.curODMin ? `Ø${g.curODMin} – Ø${g.curODMax}` : `Ø${g.curODMin}`);
     const lifeCell = g.lifePct == null
@@ -6110,7 +6113,8 @@ function renderRollLife() {
       <td style="text-align:right;">${g.wornMm != null ? escapeHtmlAttr(Math.round(g.wornMm * 10) / 10 + ' mm') : '—'}</td>
       <td style="text-align:right;">${g.usedTon != null ? escapeHtmlAttr(g.usedTon.toLocaleString()) : '—'}${g.maxTon != null ? `<div class="muted" style="font-size:10px;">/ ${escapeHtmlAttr(g.maxTon.toLocaleString())}</div>` : ''}</td>
       <td>${lifeCell}</td>
-      <td><span class="chip ${meta.chip}">${escapeHtmlAttr(meta.label)}</span></td>
+      <td><span style="display:inline-block;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;white-space:nowrap;
+        background:${meta.bg};color:${meta.color};border:1px solid ${meta.color};">● ${escapeHtmlAttr(meta.label)}</span></td>
     </tr>`;
   };
 
