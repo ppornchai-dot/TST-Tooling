@@ -6055,7 +6055,7 @@ function renderRollLife() {
   });
 
   const barColor = pct => pct <= 20 ? 'var(--red)' : pct <= 50 ? 'var(--amber)' : 'var(--green)';
-  tbody.innerHTML = rows.map(({ roll, life }) => {
+  const rowHtml = ({ roll, life }) => {
     const meta = rollLifeChip(life.lifePct);
     const colorLabel = roll.color ? (getSetPalette(roll.set).find(c => c.key === roll.color) || {}).label : null;
     const lifeCell = life.lifePct == null
@@ -6077,7 +6077,32 @@ function renderRollLife() {
       <td>${lifeCell}</td>
       <td><span class="chip ${meta.chip}">${escapeHtmlAttr(meta.label)}</span></td>
     </tr>`;
-  }).join('') || `<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--text-3);">ไม่พบ Roll ตามเงื่อนไขที่เลือก</td></tr>`;
+  };
+
+  // แบ่งเป็น 3 กลุ่มตามหมวดของ Size Roll — Roll ที่พาร์สหมวดไม่ได้ตกไปกลุ่ม "อื่นๆ" ท้ายสุด
+  // เรียงในกลุ่มยังเป็นลำดับเดิม (อายุเหลือน้อยสุดขึ้นก่อน) เพราะ rows ถูกจัดลำดับมาแล้ว
+  const buckets = { Forming: [], Sizing: [], TH: [], other: [] };
+  rows.forEach(x => {
+    const cat = parseSizeRollName(x.roll.set || '').category;
+    (buckets[cat] || buckets.other).push(x);
+  });
+  const groupHeader = (label, count, color) => `<tr><td colspan="8" style="background:var(--bg-panel);padding:9px 12px;border-top:2px solid ${color};">
+    <span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:800;color:${color};">
+      <span style="width:8px;height:8px;border-radius:50%;background:${color};"></span>${escapeHtmlAttr(label)}
+    </span>
+    <span style="float:right;font-size:12px;font-weight:700;color:var(--text-3);">${count.toLocaleString()} ลูก</span>
+  </td></tr>`;
+
+  const sections = [
+    ['Forming', buckets.Forming, ROLL_SET_SECTION_COLORS.Forming],
+    ['Sizing', buckets.Sizing, ROLL_SET_SECTION_COLORS.Sizing],
+    ['TH', buckets.TH, ROLL_SET_SECTION_COLORS.TH],
+    ['อื่นๆ', buckets.other, 'var(--text-3)'],
+  ].filter(([, list]) => list.length);
+
+  tbody.innerHTML = sections.map(([label, list, color]) =>
+    groupHeader(label, list.length, color) + list.map(rowHtml).join('')
+  ).join('') || `<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--text-3);">ไม่พบ Roll ตามเงื่อนไขที่เลือก</td></tr>`;
 
   document.getElementById('rolllife-count-label').textContent = `แสดง ${rows.length} จาก ${all.length} รายการ`;
 
