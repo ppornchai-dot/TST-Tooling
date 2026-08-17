@@ -1455,7 +1455,7 @@ canvas{display:block;}
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>Size Roll</th><th>ชุดสี</th><th style="text-align:right;">จำนวน (ลูก)</th><th style="text-align:right;">OD ปัจจุบัน</th><th style="text-align:right;">สึกไปมากสุด</th><th style="text-align:right;">ตันที่รีด</th><th>อายุคงเหลือ</th><th title="สถานะของชุดสี Roll ที่ตั้งไว้ในทะเบียน Tooling">สถานะ (ทะเบียน)</th></tr>
+              <tr><th>Size Roll</th><th>ชุดสี</th><th style="text-align:right;">จำนวน (ลูก)</th><th style="text-align:right;">OD ปัจจุบัน</th><th style="text-align:right;">สึกไปมากสุด</th><th style="text-align:right;" title="ตันที่รีดได้ต่อการแต่ง Roll 1 รอบ — ตั้งที่ช่อง &quot;รีดได้สูงสุด (ตัน)&quot; ในกล่องเกณฑ์อายุด้านบน">น้ำหนักต่อรอบการแต่ง (ตัน)</th><th style="text-align:right;" title="ตันที่ชุดนี้รีดไปแล้ว (ยอดใช้งานสะสมในทะเบียน Tooling)">น้ำหนักผลิต (ตัน)</th><th style="text-align:right;" title="น้ำหนักต่อรอบการแต่ง ลบ น้ำหนักผลิต — เหลืออีกเท่าไรก่อนถึงรอบแต่งถัดไป">น้ำหนักเหลือ (ตัน)</th><th>อายุคงเหลือ</th><th title="สถานะของชุดสี Roll ที่ตั้งไว้ในทะเบียน Tooling">สถานะ (ทะเบียน)</th></tr>
             </thead>
             <tbody id="rolllife-tbody"></tbody>
           </table>
@@ -6092,6 +6092,8 @@ function renderRollLife() {
     const meta = ROLL_COLOR_STATUS_META[regStatus] || ROLL_COLOR_STATUS_META.ready;
     const odText = g.curODMin == null ? '—'
       : (g.curODMax !== g.curODMin ? `Ø${g.curODMin} – Ø${g.curODMax}` : `Ø${g.curODMin}`);
+    // น้ำหนักเหลือ = โควตาต่อรอบการแต่ง − ที่รีดไปแล้ว (ติดลบได้ ถ้ารีดเกินโควตาแล้วยังไม่ได้แต่ง จะได้เห็นว่าเลยมาเท่าไร)
+    const leftTon = (g.maxTon != null && g.usedTon != null) ? Math.round((g.maxTon - g.usedTon) * 100) / 100 : null;
     const lifeCell = g.lifePct == null
       ? '<span class="muted">—</span>'
       : `<div style="display:flex;align-items:center;gap:7px;">
@@ -6111,7 +6113,10 @@ function renderRollLife() {
       <td class="muted" style="text-align:right;">${g.count.toLocaleString()}</td>
       <td style="text-align:right;">${escapeHtmlAttr(odText)}${g.minOD != null ? `<div class="muted" style="font-size:10px;">เล็กสุด Ø${escapeHtmlAttr(g.minOD)}</div>` : ''}</td>
       <td style="text-align:right;">${g.wornMm != null ? escapeHtmlAttr(Math.round(g.wornMm * 10) / 10 + ' mm') : '—'}</td>
-      <td style="text-align:right;">${g.usedTon != null ? escapeHtmlAttr(g.usedTon.toLocaleString()) : '—'}${g.maxTon != null ? `<div class="muted" style="font-size:10px;">/ ${escapeHtmlAttr(g.maxTon.toLocaleString())}</div>` : ''}</td>
+      <td style="text-align:right;">${g.maxTon != null ? escapeHtmlAttr(g.maxTon.toLocaleString()) : '<span class="muted">—</span>'}</td>
+      <td style="text-align:right;">${g.usedTon != null ? escapeHtmlAttr(g.usedTon.toLocaleString()) : '<span class="muted">—</span>'}</td>
+      <td style="text-align:right;">${leftTon == null ? '<span class="muted">—</span>'
+        : `<strong style="color:${leftTon <= 0 ? 'var(--red)' : (g.maxTon && leftTon / g.maxTon <= 0.2 ? 'var(--amber)' : 'var(--text-1)')};">${escapeHtmlAttr(leftTon.toLocaleString())}</strong>`}</td>
       <td>${lifeCell}</td>
       <td><span style="display:inline-block;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;white-space:nowrap;
         background:${meta.bg};color:${meta.color};border:1px solid ${meta.color};">● ${escapeHtmlAttr(meta.label)}</span></td>
@@ -6145,7 +6150,7 @@ function renderRollLife() {
   const groupHeader = (label, sets) => {
     const setCount = sets.reduce((s, x) => s + x.rows.length, 0);
     const pieces = sets.reduce((s, x) => s + x.rows.reduce((n, g) => n + g.count, 0), 0);
-    return `<tr><td colspan="8" style="background:var(--bg-panel);padding:11px 12px;border-top:2px solid var(--text-1);">
+    return `<tr><td colspan="10" style="background:var(--bg-panel);padding:11px 12px;border-top:2px solid var(--text-1);">
       <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);">
         <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(label)}
       </span>
@@ -6164,7 +6169,7 @@ function renderRollLife() {
       const av = a.lifePct == null ? Infinity : a.lifePct, bv = b.lifePct == null ? Infinity : b.lifePct;
       return av !== bv ? av - bv : String(a.colorLabel).localeCompare(String(b.colorLabel), 'th');
     }).map(rowHtml).join('')).join('');
-  }).join('') || `<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--text-3);">ไม่พบชุด Roll ตามเงื่อนไขที่เลือก</td></tr>`;
+  }).join('') || `<tr><td colspan="10" style="padding:32px;text-align:center;color:var(--text-3);">ไม่พบชุด Roll ตามเงื่อนไขที่เลือก</td></tr>`;
 
   const shownPieces = rows.reduce((s, g) => s + g.count, 0);
   const allPieces = all.reduce((s, g) => s + g.count, 0);
