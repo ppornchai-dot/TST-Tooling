@@ -5096,6 +5096,24 @@ function categoryDropdownHtml(selectedCategory) {
   </select>`;
 }
 
+// เลือกชุดสีตอนสร้าง/แก้ไข Size Roll — เดิมต้องไปกด "+ เพิ่มสี" ในแผงที่ซ่อนอยู่ใต้แถวที่เลือก
+// ทำให้ Size Roll ที่เพิ่งสร้างใหม่ไม่มีสีเลยจนกว่าจะไปหาเจอ ตอนนี้กำหนดได้ตั้งแต่ตอนสร้าง
+function colorPickerHtml(selectedKeys) {
+  const sel = new Set(selectedKeys || []);
+  return `<div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0;">
+    ${DEFAULT_ROLL_COLORS.map(c => `<label style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:99px;cursor:pointer;
+      font-size:12px;border:1px solid var(--border);background:var(--bg-surface);">
+      <input type="checkbox" class="f-set-color" value="${escapeHtmlAttr(c.key)}"${sel.has(c.key) ? ' checked' : ''} style="margin:0;">
+      <span style="width:9px;height:9px;border-radius:50%;background:${c.dot};flex-shrink:0;"></span>${escapeHtmlAttr(c.label)}
+    </label>`).join('')}
+  </div>`;
+}
+
+function pickedSetColors() {
+  const keys = [...document.querySelectorAll('.f-set-color:checked')].map(el => el.value);
+  return DEFAULT_ROLL_COLORS.filter(c => keys.includes(c.key)).map(c => ({ ...c }));
+}
+
 function machineDropdownHtml(selected) {
   const sel = Array.isArray(selected) ? selected.filter(m => ROLL_MACHINES.includes(m)) : [];
   const atMax = sel.length >= MAX_ROLL_MACHINES;
@@ -6468,11 +6486,9 @@ function rollColorControlsHtml(setName, colorKey) {
   const k = colorKey.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   return `<div style="margin:1px 0 8px 28px;padding:8px 10px;border-radius:8px;border:1px solid var(--border-light);background:var(--bg-panel);display:flex;flex-direction:column;gap:7px;">
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-      <select class="form-select" style="width:auto;padding:2px 8px;font-size:11px;font-weight:700;border-radius:6px;
+      <span style="display:inline-block;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;white-space:nowrap;
         background:${stMeta.bg};color:${stMeta.color};border:1px solid ${stMeta.color};"
-        onchange="setRollColorStatus('${k}', this.value)" title="สถานะของชุดสีนี้ — ใช้นับใน KPI จำนวนชุด Roll ด้านบน">
-        ${Object.entries(ROLL_COLOR_STATUS_META).map(([key, m]) => `<option value="${key}"${st === key ? ' selected' : ''}>● ${m.label}</option>`).join('')}
-      </select>
+        title="สถานะชุดสีนี้ — ตั้งได้ที่ปุ่ม &quot;เลือกชุดที่ใช้งาน&quot; หน้า Dashboard">● ${escapeHtmlAttr(stMeta.label)}</span>
       <span style="flex:1;"></span>
       <button class="btn btn-ghost btn-sm" style="padding:3px 6px;" onclick="openEditColorModal('${k}')" title="แก้ไขชุดสีนี้">✏️</button>
       <button class="btn btn-ghost btn-sm" style="padding:3px 6px;" onclick="openCopyColorModal('${k}')" title="คัดลอกสเปกจากสีอื่น">📋</button>
@@ -6488,7 +6504,6 @@ function rollColorControlsHtml(setName, colorKey) {
     </div>` : ''}
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
       <button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px;" onclick="selectRollColor(null)" title="แสดง Roll ทุกสีใน Size Roll นี้">ดูทุกสีในกลุ่มนี้</button>
-      <button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px;" onclick="openAddColorModal()" title="เพิ่มชุดสีใหม่ใน Size Roll นี้">+ เพิ่มสี</button>
     </div>
   </div>`;
 }
@@ -6764,6 +6779,9 @@ function openAddSetModal() {
       <div class="form-group"><label class="form-label">เครื่องจักร</label>
         ${machineDropdownHtml([])}</div>
     </div>
+    <div class="modal-row full"><div class="form-group" style="margin-bottom:0;">
+      <label class="form-label">ชุดสี Roll <span style="font-weight:400;color:var(--text-3);">— เลือกได้หลายสี ไม่เลือกก็ได้ ค่อยเพิ่มทีหลังได้</span></label>
+      ${colorPickerHtml([])}</div></div>
     <input type="hidden" id="f-set-name">`;
   document.getElementById('modal-overlay').classList.add('open');
   updateComposedSetName();
@@ -6777,8 +6795,8 @@ function openAddSetModal() {
       const afterIdx = selectedRollSet ? rollSetOrder.indexOf(selectedRollSet) : -1;
       if (afterIdx >= 0) rollSetOrder.splice(afterIdx + 1, 0, name);
       else rollSetOrder.push(name);
-      // Size Roll ที่เพิ่งสร้างใหม่ให้เริ่มด้วยชุดสีว่างเปล่า ไม่ auto-สร้าง 5 สีเริ่มต้นให้เหมือน Set เก่า — ผู้ใช้กด "+ เพิ่ม" เองภายหลัง
-      rollSetPalettes[name] = [];
+      // ชุดสีมาจากที่เลือกไว้ในฟอร์มนี้ ไม่ auto-สร้าง 5 สีเริ่มต้นให้เหมือน Set เก่า
+      rollSetPalettes[name] = pickedSetColors();
     }
     if (machines.length) rollSetMachines[name] = machines; else delete rollSetMachines[name];
     selectedRollSet = name;
@@ -6814,6 +6832,9 @@ function openEditSetModal(oldName) {
       <div class="form-group"><label class="form-label">เครื่องจักร</label>
         ${machineDropdownHtml(rollSetMachines[oldName] || [])}</div>
     </div>
+    <div class="modal-row full"><div class="form-group" style="margin-bottom:0;">
+      <label class="form-label">ชุดสี Roll <span style="font-weight:400;color:var(--text-3);">— ติ๊กเพิ่มสีใหม่ได้ / สีที่มี Roll อยู่แล้วเอาออกที่นี่ไม่ได้ ต้องกดลบที่แถวของสีนั้น</span></label>
+      ${colorPickerHtml((rollSetPalettes[oldName] || []).map(c => c.key))}</div></div>
     <input type="hidden" id="f-set-name">`;
   document.getElementById('modal-overlay').classList.add('open');
   updateComposedSetName();
@@ -6840,6 +6861,15 @@ function openEditSetModal(oldName) {
       if (selectedRollSet === oldName) { selectedRollSet = newName; }
     }
     if (machines.length) rollSetMachines[newName] = machines; else delete rollSetMachines[newName];
+
+    // อัปเดตชุดสี: เพิ่มสีที่ติ๊กใหม่ และเอาออกเฉพาะสีที่ยังไม่มี Roll อยู่จริง
+    // สีที่มี Roll แล้วต้องกดลบที่แถวของสีนั้น (มี confirm บอกจำนวน Roll ที่จะหายไป) กันลบข้อมูลโดยไม่ตั้งใจ
+    const pickedKeys = new Set(pickedSetColors().map(c => c.key));
+    const current = rollSetPalettes[newName] || [];
+    const keep = current.filter(c => pickedKeys.has(c.key)
+      || toolingData.roll.some(r => r.set === newName && r.color === c.key));
+    const added = DEFAULT_ROLL_COLORS.filter(c => pickedKeys.has(c.key) && !keep.some(k => k.key === c.key));
+    rollSetPalettes[newName] = [...keep, ...added.map(c => ({ ...c }))];
 
     renderRollSetList();
     renderRollColorList();
