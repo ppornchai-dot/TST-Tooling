@@ -6436,7 +6436,37 @@ function rollSetCardHtml(s, num) {
         <button class="btn btn-ghost btn-sm" style="padding:4px 7px;flex-shrink:0;" onclick="openEditSetModal('${esc}')" title="แก้ไข">✏️</button>
         <button class="btn btn-ghost btn-sm" style="padding:4px 7px;flex-shrink:0;color:var(--red);" onclick="deleteSet('${esc}')" title="ลบ">✕</button>
       </div>
+      ${rollSetColorSubRowsHtml(s, active)}
     </div>`;
+}
+
+// แถวย่อย "ชุดสี" ใต้ Size Roll แต่ละกลุ่ม — ให้หน่วยที่เห็นในทะเบียนตรงกับหน้าอายุ Roll (Size Roll + ชุดสี)
+// ปุ่ม ★ ✏️ ✕ ยังอยู่ที่แถว Size Roll เท่านั้น เพราะเป็นการกระทำระดับกลุ่ม ไม่ใช่ระดับสี
+// (ถ้ายกไปไว้ทุกแถวสี จะกลายเป็นกดลบทั้งกลุ่มจากแถวของสีเดียวได้ ซึ่งอันตราย)
+function rollSetColorSubRowsHtml(setName, setActive) {
+  const rows = toolingData.roll.filter(r => r.set === setName);
+  if (!rows.length) return '';
+  const used = new Set(rows.map(r => r.color || NO_COLOR_KEY));
+  const palette = getSetPalette(setName);
+  const list = [
+    ...palette.filter(c => used.has(c.key)),
+    ...(used.has(NO_COLOR_KEY) ? [{ key: NO_COLOR_KEY, label: 'ไม่ระบุสี', dot: '#9CA3AF' }] : []),
+  ];
+  if (!list.length) return '';
+  return `<div style="padding-left:28px;margin-top:2px;display:flex;flex-direction:column;gap:2px;">
+    ${list.map(c => {
+      const n = rows.filter(r => (r.color || NO_COLOR_KEY) === c.key).length;
+      const on = setActive && selectedRollColor === c.key;
+      return `<div onclick="${jsCallAttr('goToRollSetColor', setName, c.key)}"
+        style="display:flex;align-items:center;gap:7px;padding:3px 8px;border-radius:5px;cursor:pointer;
+               background:${on ? 'var(--accent-glow)' : 'transparent'};color:${on ? 'var(--accent)' : 'var(--text-3)'};font-weight:${on ? 700 : 400};"
+        title="${escapeHtmlAttr(setName + ' · ' + c.label + ' · ' + n + ' Roll')}">
+        <span style="width:8px;height:8px;border-radius:50%;background:${c.dot};flex-shrink:0;"></span>
+        <span style="flex:1;min-width:0;font-size:11.5px;">${escapeHtmlAttr(c.label)}</span>
+        <span style="font-size:10px;color:var(--text-3);">${n}</span>
+      </div>`;
+    }).join('')}
+  </div>`;
 }
 
 // opts.keepCase: ชื่อขนาด Roll มีตัว x เล็กอยู่ในตัว (1"x1") ถ้าบังคับ uppercase จะกลายเป็น 1"X1" ผิดจากชื่อจริง
@@ -6477,7 +6507,13 @@ function renderRollSetList() {
       const ca = ROLL_SET_CATEGORY_ORDER[parseSizeRollName(a).category], cb = ROLL_SET_CATEGORY_ORDER[parseSizeRollName(b).category];
       return (ca === undefined ? 9 : ca) - (cb === undefined ? 9 : cb);
     });
-    return rollSetSectionHeaderHtml(escapeHtmlAttr(g.label), sorted.length, 'var(--text-1)', { keepCase: true, big: true })
+    // นับหน่วยเดียวกับหน้าอายุ Roll: ชุด = Size Roll x ชุดสี, ลูก = จำนวน Roll จริง
+    const setColorCount = sorted.reduce((n, s) => {
+      const rs = toolingData.roll.filter(r => r.set === s);
+      return n + (rs.length ? new Set(rs.map(r => r.color || NO_COLOR_KEY)).size : 1);
+    }, 0);
+    const pieceCount = sorted.reduce((n, s) => n + toolingData.roll.filter(r => r.set === s).length, 0);
+    return rollSetSectionHeaderHtml(escapeHtmlAttr(g.label), `${setColorCount} ชุด · ${pieceCount} ลูก`, 'var(--text-1)', { keepCase: true, big: true })
       + sorted.map(s => rollSetCardHtml(s, ++num)).join('');
   }).join('');
 }
