@@ -1078,6 +1078,17 @@ canvas{display:block;}
         <div id="dash-roll-inuse-list" style="padding:12px 14px;"></div>
       </div>
 
+      <!-- ROLL READY -->
+      <div class="card" style="margin-bottom:18px;">
+        <div class="card-header">
+          <span class="card-title">ชุด Roll พร้อมใช้งาน</span>
+          <span style="margin-left:auto;font-size:12px;color:var(--text-3);">
+            <span id="dash-roll-ready-count" style="font-weight:700;color:var(--green);">0</span> ชุด
+          </span>
+        </div>
+        <div id="dash-roll-ready-list" style="padding:12px 14px;"></div>
+      </div>
+
       <!-- CALENDAR -->
       <div class="card" style="margin-bottom:18px;">
         <div class="card-header">
@@ -1998,14 +2009,14 @@ function initDashboard() {
 
 // ─── DASHBOARD: ชุด Roll กำลังใช้งาน ──────────────────────────────────────────
 // 1 หน่วย = Size Roll ชุดหนึ่ง x สีที่ใช้จริงหนึ่งสี ที่ถูกตั้งสถานะ 'inuse' ไว้ที่การ์ดชุดสี Roll ในหน้าทะเบียน Tooling
-function getInUseRollColorEntries() {
+function getRollColorEntriesByStatus(status) {
   const entries = [];
   getRollSets().forEach(setName => {
     const rows = toolingData.roll.filter(r => r.set === setName);
     if (!rows.length) return;
     const colorKeysUsed = new Set(rows.map(r => r.color || NO_COLOR_KEY));
     colorKeysUsed.forEach(colorKey => {
-      if (rollColorStatusFor(setName, colorKey) !== 'inuse') return;
+      if (rollColorStatusFor(setName, colorKey) !== status) return;
       const colorMeta = colorKey === NO_COLOR_KEY ? null : getSetPalette(setName).find(c => c.key === colorKey);
       const activeMachine = rollColorActiveMachineFor(setName, colorKey);
       entries.push({
@@ -2027,14 +2038,14 @@ function goToRollSetColor(setName, colorKey) {
   selectRollColor(colorKey);
 }
 
-function dashRollInUseChipHtml(e) {
+function dashRollInUseChipHtml(e, badgeColor, rowBg) {
   const machineLabel = e.machines.length ? e.machines.join('/') : '—';
   return `<div onclick="${jsCallAttr('goToRollSetColor', e.set, e.colorKey)}"
     style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;cursor:pointer;
-           border:1px solid var(--border-light);background:var(--accent-glow);transition:filter .12s;margin-bottom:6px;"
+           border:1px solid var(--border-light);background:${rowBg || 'var(--accent-glow)'};transition:filter .12s;margin-bottom:6px;"
     onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
     title="ดูรายละเอียดในทะเบียน Tooling">
-    <span style="font-size:15px;font-weight:800;color:#fff;background:var(--accent);padding:3px 11px;border-radius:6px;flex-shrink:0;letter-spacing:.02em;">${escapeHtmlAttr(machineLabel)}</span>
+    <span style="font-size:15px;font-weight:800;color:#fff;background:${badgeColor || 'var(--accent)'};padding:3px 11px;border-radius:6px;flex-shrink:0;letter-spacing:.02em;">${escapeHtmlAttr(machineLabel)}</span>
     <span style="width:9px;height:9px;border-radius:50%;background:${e.dot};flex-shrink:0;"></span>
     <span style="font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(e.set)}</span>
     <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr(e.colorLabel)}</span>
@@ -2048,16 +2059,26 @@ function dashRollInUseMachineSortKey(e) {
   return idxs.length ? Math.min(...idxs) : ROLL_MACHINES.length;
 }
 
+// เรนเดอร์การ์ด "ชุด Roll กำลังใช้งาน" และ "ชุด Roll พร้อมใช้งาน" ด้วยตัวเดียวกัน
+// ต่างกันแค่สถานะที่กรอง สีป้ายเครื่อง และข้อความตอนไม่มีข้อมูล
 function renderDashboardInUseRoll() {
-  const el = document.getElementById('dash-roll-inuse-list');
-  if (!el) return;
-  const entries = getInUseRollColorEntries();
-  document.getElementById('dash-roll-inuse-count').textContent = entries.length;
   // ปุ่มเลือกชุดที่ใช้งาน — เฉพาะ Admin/หัวหน้า ช่างไม่ต้องเห็น (เหมือนสิทธิ์แก้แผนงาน)
   const editBtn = document.getElementById('dash-roll-inuse-edit-btn');
   if (editBtn) editBtn.style.display = canEditPlan() ? '' : 'none';
+  renderDashboardRollStatusCard('dash-roll-inuse-list', 'dash-roll-inuse-count', 'inuse',
+    'ไม่มีชุด Roll ที่กำลังใช้งานอยู่ตอนนี้', 'var(--inuse)', 'var(--inuse-dim)');
+  renderDashboardRollStatusCard('dash-roll-ready-list', 'dash-roll-ready-count', 'ready',
+    'ไม่มีชุด Roll ที่พร้อมใช้งานตอนนี้', 'var(--green)', 'var(--green-dim)');
+}
+
+function renderDashboardRollStatusCard(listId, countId, status, emptyText, badgeColor, rowBg) {
+  const el = document.getElementById(listId);
+  if (!el) return;
+  const entries = getRollColorEntriesByStatus(status);
+  const countEl = document.getElementById(countId);
+  if (countEl) countEl.textContent = entries.length;
   if (!entries.length) {
-    el.innerHTML = `<div style="padding:8px 4px;color:var(--text-3);font-size:13px;">ไม่มีชุด Roll ที่กำลังใช้งานอยู่ตอนนี้</div>`;
+    el.innerHTML = `<div style="padding:8px 4px;color:var(--text-3);font-size:13px;">${escapeHtmlAttr(emptyText)}</div>`;
     return;
   }
 
@@ -2075,7 +2096,7 @@ function renderDashboardInUseRoll() {
       const sorted = list.slice().sort((a, b) => dashRollInUseMachineSortKey(a) - dashRollInUseMachineSortKey(b));
       return `<div>
       ${rollSetSectionHeaderHtml(label, list.length, ROLL_SET_SECTION_COLORS[label])}
-      ${sorted.length ? sorted.map(dashRollInUseChipHtml).join('') : `<div style="padding:4px;color:var(--text-3);font-size:12px;">ไม่มี</div>`}
+      ${sorted.length ? sorted.map(e => dashRollInUseChipHtml(e, badgeColor, rowBg)).join('') : `<div style="padding:4px;color:var(--text-3);font-size:12px;">ไม่มี</div>`}
     </div>`;
     }).join('')}
   </div>`;
