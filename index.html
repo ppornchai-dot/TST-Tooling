@@ -1383,7 +1383,14 @@ canvas{display:block;}
           <input class="form-input" type="date" id="prodweight-date-to" style="width:160px;">
         </div>
         <button class="btn btn-primary btn-sm" onclick="renderProdWeight()">ค้นหา</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn btn-ghost btn-sm" onclick="setProdWeightRange('today')">วันนี้</button>
+          <button class="btn btn-ghost btn-sm" onclick="setProdWeightRange('7d')">7 วันล่าสุด</button>
+          <button class="btn btn-ghost btn-sm" onclick="setProdWeightRange('month')">เดือนนี้</button>
+          <button class="btn btn-ghost btn-sm" onclick="setProdWeightRange('all')">ทั้งหมด</button>
+        </div>
       </div>
+      <div id="prodweight-range-note" style="margin-top:4px;"></div>
       <div class="grid-3" id="prodweight-grid" style="margin-top:10px;"></div>
     </div>
 
@@ -5808,6 +5815,7 @@ function rollSetFgKey(setName) {
 }
 
 let fgWeightFetchError = null;
+let fgWeightMeta = null; // สรุปผลการดึงรอบล่าสุด ใช้แสดงว่าตัวเลขบนการ์ดมาจากช่วงไหน กี่รายการ
 
 async function fetchFgWeightByKey(fromDate, toDate) {
   try {
@@ -5816,17 +5824,55 @@ async function fetchFgWeightByKey(fromDate, toDate) {
     const json = await res.json();
     const rows = json.rows || [];
     const byKey = {};
+    let totalKg = 0;
     rows.forEach(r => {
+      totalKg += parseFloat(r.weight_kg) || 0;
       const key = fgProductCodeToKey(r.product_code);
       if (!key) return;
       byKey[key] = (byKey[key] || 0) + (parseFloat(r.weight_kg) || 0);
     });
     fgWeightFetchError = null;
+    fgWeightMeta = { rowCount: rows.length, totalKg };
     return byKey;
   } catch (e) {
     fgWeightFetchError = e.message;
+    fgWeightMeta = null;
     return null;
   }
+}
+
+// ปุ่มเลือกช่วงเร็ว — เดิมมีแค่ช่องวันที่ที่ตั้งต้นเป็น 2020-01-01 ทำให้เผลอแก้แค่วัน/เดือน
+// แล้วเหลือปี 2020 ค้างไว้ กลายเป็นช่วง 6 ปีโดยไม่รู้ตัว แล้วเข้าใจว่าตัวกรองไม่ทำงาน
+function setProdWeightRange(kind) {
+  const from = document.getElementById('prodweight-date-from');
+  const to = document.getElementById('prodweight-date-to');
+  if (!from || !to) return;
+  const todayIso = toISODate(new Date());
+  to.value = todayIso;
+  if (kind === 'today') from.value = todayIso;
+  else if (kind === '7d') from.value = addDaysIso(todayIso, -6);
+  else if (kind === 'month') from.value = todayIso.slice(0, 8) + '01';
+  else from.value = '2020-01-01';
+  renderProdWeight();
+}
+
+function renderProdWeightRangeNote(fromDate, toDate) {
+  const el = document.getElementById('prodweight-range-note');
+  if (!el) return;
+  const days = Math.round((parseISODate(toDate) - parseISODate(fromDate)) / 86400000) + 1;
+  if (!(days > 0)) {
+    el.innerHTML = `<div style="background:var(--red-dim);color:var(--red);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;">
+      ช่วงวันที่ไม่ถูกต้อง — "จากวันที่" อยู่หลัง "ถึงวันที่"</div>`;
+    return;
+  }
+  const total = fgWeightMeta ? (fgWeightMeta.totalKg / 1000) : null;
+  el.innerHTML = `<div style="background:var(--accent-glow);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text-2);">
+    ตัวเลข "ผลิตจริง" ด้านล่างคิดจากช่วง <b style="color:var(--text-1);">${fmtDateThai(parseISODate(fromDate))} – ${fmtDateThai(parseISODate(toDate))}</b>
+    <span style="color:var(--text-3);">(${days.toLocaleString()} วัน)</span>${total === null ? '' :
+      ` · น้ำหนักผลิตรวมทุกขนาด <b style="color:var(--text-1);">${total.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> ตัน
+        <span style="color:var(--text-3);">จาก ${fgWeightMeta.rowCount.toLocaleString()} รายการ</span>`}
+    <span style="color:var(--text-3);">— ส่วน "Usage สะสม" เป็นยอดตลอดอายุ Roll ไม่ขึ้นกับช่วงวันที่</span>
+  </div>`;
 }
 
 // รวม Roll Set ที่เป็นขนาดเดียวกัน (ต่างกันแค่ขั้นตอน Forming/Sizing/TH) ไว้เป็นการ์ดเดียว — ใช้ usage สูงสุดในกลุ่มแทนการรวม
@@ -5853,7 +5899,11 @@ async function renderProdWeight() {
   const toDate = toInput ? toInput.value : new Date().toISOString().slice(0, 10);
 
   grid.innerHTML = `<div style="text-align:center;color:var(--text-3);font-size:13px;padding:24px 0;grid-column:1/-1;">กำลังโหลดน้ำหนักผลิตจากระบบ Production...</div>`;
+  // แสดงช่วงที่กำลังจะดึงทันที ไม่ให้แถบค้างช่วงเดิมไว้ระหว่างรอ (ดูแล้วเข้าใจผิดว่ากดแล้วไม่เปลี่ยน)
+  fgWeightMeta = null;
+  renderProdWeightRangeNote(fromDate, toDate);
   const fgByKey = await fetchFgWeightByKey(fromDate, toDate);
+  renderProdWeightRangeNote(fromDate, toDate);
   const sets = getRollSets();
   if (!sets.length) {
     grid.innerHTML = `<div style="text-align:center;color:var(--text-3);font-size:13px;padding:24px 0;grid-column:1/-1;">ยังไม่มีชุด Roll ในทะเบียน Tooling</div>`;
