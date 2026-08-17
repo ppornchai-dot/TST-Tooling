@@ -6465,46 +6465,46 @@ function rollSetRowHtml(s, colorMeta, num, withActions) {
           ${machines.length ? `<span style="font-size:10.5px;color:var(--accent);font-weight:600;">${escapeHtmlAttr(machines.join(' / '))}</span>` : ''}
         </span>
         <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;flex-shrink:0;">${count}</span>
+        ${colorMeta ? (() => {
+          // สถานะของชุดสีมาอยู่บนแถวเลย ไม่ต้องกดเลือกแถวก่อนถึงจะเห็น — แก้ค่าได้ที่ปุ่ม "เลือกชุดที่ใช้งาน" หน้า Dashboard
+          const m = ROLL_COLOR_STATUS_META[rollColorStatusFor(s, colorKey)] || ROLL_COLOR_STATUS_META.ready;
+          return `<span style="display:inline-block;padding:1px 8px;border-radius:99px;font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0;
+            background:${m.bg};color:${m.color};border:1px solid ${m.color};"
+            title="สถานะชุดสีนี้ — ตั้งได้ที่ปุ่ม &quot;เลือกชุดที่ใช้งาน&quot; หน้า Dashboard">${escapeHtmlAttr(m.label)}</span>`;
+        })() : ''}
       </div>
       ${withActions ? `${cat ? `<button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;color:${isRollSetTemplate(s) ? 'var(--amber)' : 'var(--text-3)'};" onclick="toggleRollSetTemplate('${esc}')" title="${isRollSetTemplate(s) ? 'เป็นเทมเพลตของหมวด ' + cat + ' อยู่ — กดเพื่อยกเลิก' : 'ตั้งเป็นเทมเพลตของหมวด ' + cat}">${isRollSetTemplate(s) ? '★' : '☆'}</button>` : ''}
         <button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;" onclick="openEditSetModal('${esc}')" title="แก้ไข ${escapeHtmlAttr(s)} (ทั้งกลุ่ม ทุกสี)">✏️</button>
         <button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;color:var(--red);" onclick="deleteSet('${esc}')" title="ลบ ${escapeHtmlAttr(s)} ทั้งกลุ่ม (Roll ทุกสี ${rolls.length} ลูก)">✕</button>`
       : `<span style="width:${cat ? 84 : 56}px;flex-shrink:0;"></span>`}
     </div>
-    ${active && colorMeta ? rollColorControlsHtml(s, colorKey) : ''}
   </div>`;
 }
 
-// แผงจัดการชุดสี ที่เดิมอยู่คอลัมน์ "ชุดสี Roll" แยกต่างหาก — ย้ายมากางใต้แถวที่เลือกอยู่ในรายการเดียวกัน
-// ฟังก์ชันที่เรียก (setRollColorStatus / openEditColorModal / deleteColor ฯลฯ) อ้าง selectedRollSet อยู่แล้ว
-// และแผงนี้ขึ้นเฉพาะแถวที่ถูกเลือก ซึ่ง selectedRollSet ตรงกับ Size Roll ของแถวนั้นเสมอ จึงใช้ได้ตามเดิม
-function rollColorControlsHtml(setName, colorKey) {
-  const st = rollColorStatusFor(setName, colorKey);
-  const stMeta = ROLL_COLOR_STATUS_META[st];
-  const machines = rollSetMachines[setName] || [];
-  const activeMachine = rollColorActiveMachineFor(setName, colorKey);
-  const k = colorKey.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-  return `<div style="margin:1px 0 8px 28px;padding:8px 10px;border-radius:8px;border:1px solid var(--border-light);background:var(--bg-panel);display:flex;flex-direction:column;gap:7px;">
-    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-      <span style="display:inline-block;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;white-space:nowrap;
-        background:${stMeta.bg};color:${stMeta.color};border:1px solid ${stMeta.color};"
-        title="สถานะชุดสีนี้ — ตั้งได้ที่ปุ่ม &quot;เลือกชุดที่ใช้งาน&quot; หน้า Dashboard">● ${escapeHtmlAttr(stMeta.label)}</span>
-      <span style="flex:1;"></span>
-      <button class="btn btn-ghost btn-sm" style="padding:3px 6px;" onclick="openEditColorModal('${k}')" title="แก้ไขชุดสีนี้">✏️</button>
-      <button class="btn btn-ghost btn-sm" style="padding:3px 6px;" onclick="openCopyColorModal('${k}')" title="คัดลอกสเปกจากสีอื่น">📋</button>
-      <button class="btn btn-ghost btn-sm" style="padding:3px 6px;color:var(--red);" onclick="deleteColor('${k}')" title="ลบชุดสีนี้">✕</button>
-    </div>
-    ${machines.length > 1 ? `<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
-      <span style="font-size:10px;color:var(--text-3);">ใช้อยู่ที่:</span>
-      ${machines.map(m => `<button type="button" class="btn btn-sm" onclick="setRollColorActiveMachine('${k}','${m}')"
-        style="padding:2px 10px;border-radius:6px;font-size:11px;font-weight:700;
-        border:1px solid ${activeMachine === m ? 'var(--accent)' : 'var(--border)'};
-        background:${activeMachine === m ? 'var(--accent-glow)' : 'var(--bg-surface)'};
-        color:${activeMachine === m ? 'var(--accent)' : 'var(--text-3)'};" title="ทำเครื่องหมายว่าชุดสีนี้กำลังใช้งานอยู่ที่เครื่อง ${m}">${m}</button>`).join('')}
-    </div>` : ''}
-    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-      <button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px;" onclick="selectRollColor(null)" title="แสดง Roll ทุกสีใน Size Roll นี้">ดูทุกสีในกลุ่มนี้</button>
-    </div>
+// จัดการชุดสีรายสี — ย้ายมาไว้ในฟอร์ม "แก้ไข Size Roll" หลังเอาแผงที่กางใต้แถวออก
+// ต้องตั้ง selectedRollSet ก่อน เพราะ openEditColorModal/openCopyColorModal/deleteColor อ้างค่านี้
+function manageSetColor(action, setName, colorKey) {
+  selectedRollSet = setName;
+  if (action === 'edit') openEditColorModal(colorKey);
+  else if (action === 'copy') openCopyColorModal(colorKey);
+  else deleteColor(colorKey);
+}
+
+function setColorManageListHtml(setName) {
+  const palette = getSetPalette(setName);
+  if (!palette.length) return `<div style="font-size:12px;color:var(--text-3);padding:4px 0;">ยังไม่มีชุดสีในกลุ่มนี้ — ติ๊กเลือกสีด้านบนเพื่อเพิ่ม</div>`;
+  return `<div style="display:flex;flex-direction:column;gap:4px;">
+    ${palette.map(c => {
+      const n = toolingData.roll.filter(r => r.set === setName && r.color === c.key).length;
+      return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;background:var(--bg-panel);">
+        <span style="width:9px;height:9px;border-radius:50%;background:${c.dot};flex-shrink:0;"></span>
+        <span style="flex:1;font-size:12px;font-weight:600;">${escapeHtmlAttr(c.label)}</span>
+        <span style="font-size:11px;color:var(--text-3);">${n} Roll</span>
+        <button class="btn btn-ghost btn-sm" style="padding:3px 6px;" onclick="${jsCallAttr('manageSetColor', 'edit', setName, c.key)}" title="แก้ไขชื่อ/สีของชุดสีนี้">✏️</button>
+        <button class="btn btn-ghost btn-sm" style="padding:3px 6px;" onclick="${jsCallAttr('manageSetColor', 'copy', setName, c.key)}" title="คัดลอกสเปก Roll จากสีอื่นมาทับสีนี้">📋</button>
+        <button class="btn btn-ghost btn-sm" style="padding:3px 6px;color:var(--red);" onclick="${jsCallAttr('manageSetColor', 'delete', setName, c.key)}" title="ลบชุดสีนี้ พร้อม Roll ${n} ลูก">✕</button>
+      </div>`;
+    }).join('')}
   </div>`;
 }
 
@@ -6833,8 +6833,11 @@ function openEditSetModal(oldName) {
         ${machineDropdownHtml(rollSetMachines[oldName] || [])}</div>
     </div>
     <div class="modal-row full"><div class="form-group" style="margin-bottom:0;">
-      <label class="form-label">ชุดสี Roll <span style="font-weight:400;color:var(--text-3);">— ติ๊กเพิ่มสีใหม่ได้ / สีที่มี Roll อยู่แล้วเอาออกที่นี่ไม่ได้ ต้องกดลบที่แถวของสีนั้น</span></label>
+      <label class="form-label">เพิ่มชุดสี <span style="font-weight:400;color:var(--text-3);">— ติ๊กเพื่อเพิ่มสีใหม่ / สีที่มี Roll อยู่แล้วเอาออกที่นี่ไม่ได้ ต้องกดปุ่มลบด้านล่าง</span></label>
       ${colorPickerHtml((rollSetPalettes[oldName] || []).map(c => c.key))}</div></div>
+    <div class="modal-row full"><div class="form-group" style="margin-bottom:0;">
+      <label class="form-label">จัดการชุดสีที่มีอยู่</label>
+      ${setColorManageListHtml(oldName)}</div></div>
     <input type="hidden" id="f-set-name">`;
   document.getElementById('modal-overlay').classList.add('open');
   updateComposedSetName();
