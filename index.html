@@ -3528,14 +3528,14 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
           const canEditOD = t.workType !== 'polish';
           inner = `<span class="chip chip-green">✓ เสร็จ</span>${canEditOD ? ` <button class="btn btn-ghost btn-sm" ${lockReason ? `disabled title="${lockReason} — แก้ขนาดไม่ได้"` : 'title="แก้ขนาด OD ที่บันทึกไปแล้ว"'} onclick="editDailyPieceSize('${t.id}','${rollIdx}','${t.workerId || ''}')">✎ แก้ไข OD</button>` : ''}`;
         } else if (pieceStatus === 'paused') {
-          inner = `<span class="chip chip-amber">⏸ พักงาน</span> <button class="btn btn-ghost btn-sm" style="color:var(--accent);" ${lockReason ? `disabled title="${lockReason} — ทำต่อไม่ได้"` : ''} onclick="resumeDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ ทำต่อ</button>`;
+          inner = `<span class="chip chip-amber">⏸ ${DL().paused}</span> <button class="btn btn-ghost btn-sm" style="color:var(--accent);" ${lockReason ? `disabled title="${lockReason} — ทำต่อไม่ได้"` : ''} onclick="resumeDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ ${DL().resume}</button>`;
         } else if (pieceStatus === 'in_progress') {
           inner = `<div style="display:flex;gap:4px;">
-            <button class="btn btn-ghost btn-sm" style="color:var(--accent);" ${lockReason ? `disabled title="${lockReason} — จบงานนี้ไม่ได้"` : ''} onclick="finishDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">■ จบงาน</button>
-            <button class="btn btn-ghost btn-sm" ${lockReason ? `disabled title="${lockReason} — พักงานนี้ไม่ได้"` : ''} onclick="pauseDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">⏸ พักงาน</button>
+            <button class="btn btn-ghost btn-sm" style="color:var(--accent);" ${lockReason ? `disabled title="${lockReason} — จบงานนี้ไม่ได้"` : ''} onclick="finishDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">■ ${DL().finish}</button>
+            <button class="btn btn-ghost btn-sm" ${lockReason ? `disabled title="${lockReason} — พักงานนี้ไม่ได้"` : ''} onclick="pauseDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">⏸ ${DL().pause}</button>
           </div>`;
         } else {
-          inner = `<button class="btn btn-ghost btn-sm" ${lockReason ? `disabled title="${lockReason} — เริ่มงานนี้ไม่ได้"` : ''} onclick="startDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ เริ่มงาน</button>`;
+          inner = `<button class="btn btn-ghost btn-sm" ${lockReason ? `disabled title="${lockReason} — เริ่มงานนี้ไม่ได้"` : ''} onclick="startDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ ${DL().start}</button>`;
         }
         actionCell = `<td onclick="event.stopPropagation();">${inner}</td>`;
       } else if (interactive && !isBreak) {
@@ -7263,6 +7263,14 @@ function nowHHMM() {
 // มุมมองช่าง (CNC/ขัด Roll/ช่างเครื่อง): เหลือแค่ Size Roll + ชุดสี Roll เป็นตัวระบุงาน ซ่อนคอลัมน์รายละเอียดที่ดูได้จากการกดขยายแถวอยู่แล้ว
 // ต้องเรียกทั้งจาก renderDailyTasks() และ applyRoleUI() — เพราะตอน Admin สลับ "ดูเป็น" คนอื่น applyRoleUI() ไม่ได้ render ตารางใหม่ ถ้าไม่เรียกที่นี่ class จะค้างมุมมองเดิมไว้
 // ช่าง (CNC/ขัด Roll/ช่างเครื่อง) — ดูได้เฉพาะวันปัจจุบัน เลื่อนไปวันอื่นไม่ได้ (สอดคล้องกับ canActOnDailyDate ที่ให้กดเริ่ม/จบงานได้แค่วันนี้อยู่แล้ว)
+// ป้ายปุ่มบนหน้างานประจำวัน — ช่างขัด Roll ขอให้เป็นภาษาอังกฤษ บทบาทอื่นยังเป็นภาษาไทยตามเดิม
+// (Admin ที่กด "ดูเป็น" ช่างขัด Roll จะเห็นภาษาอังกฤษด้วย เพราะ effectiveRole() คืนบทบาทที่กำลังดูอยู่จริง)
+const DAILY_ACTION_LABELS_TH = { start: 'เริ่มงาน', finish: 'จบงาน', pause: 'พักงาน', resume: 'ทำต่อ', paused: 'พักงาน' };
+const DAILY_ACTION_LABELS_EN = { start: 'Start',    finish: 'Finish', pause: 'Pause',  resume: 'Resume', paused: 'Paused' };
+function DL() {
+  return effectiveRole() === 'polish' ? DAILY_ACTION_LABELS_EN : DAILY_ACTION_LABELS_TH;
+}
+
 function isDailyTechRole() {
   const r = effectiveRole();
   return r === 'cnc' || r === 'polish' || r === 'operator';
@@ -7779,9 +7787,9 @@ function renderDailyTasks() {
       // งานที่มีหลาย Roll ให้กดเริ่ม/จบงานแยกทีละชิ้นในตารางย่อยด้านล่างแทน ไม่มีปุ่มรวมตรงนี้
       actions = '';
     } else if (status === 'pending') {
-      actions = `<button class="btn btn-ghost btn-sm" ${blockReason ? `disabled title="${blockReason} — เริ่มงานนี้ไม่ได้"` : ''} onclick="startDailyTask('${item.key}','${item.workerId || ''}')">▶ เริ่มงาน</button>`;
+      actions = `<button class="btn btn-ghost btn-sm" ${blockReason ? `disabled title="${blockReason} — เริ่มงานนี้ไม่ได้"` : ''} onclick="startDailyTask('${item.key}','${item.workerId || ''}')">▶ ${DL().start}</button>`;
     } else if (status === 'in_progress') {
-      actions = `<button class="btn btn-ghost btn-sm" style="color:var(--accent);" ${blockReason ? `disabled title="${blockReason} — จบงานนี้ไม่ได้"` : ''} onclick="finishDailyTask('${item.key}','${item.workerId || ''}')">■ จบงาน</button>`;
+      actions = `<button class="btn btn-ghost btn-sm" style="color:var(--accent);" ${blockReason ? `disabled title="${blockReason} — จบงานนี้ไม่ได้"` : ''} onclick="finishDailyTask('${item.key}','${item.workerId || ''}')">■ ${DL().finish}</button>`;
     } else {
       actions = '';
     }
