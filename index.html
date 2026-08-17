@@ -6485,10 +6485,18 @@ function rollRowMachinePickerHtml(setName, colorKey, machines) {
     return `<span style="font-size:10.5px;color:var(--accent);font-weight:600;">${escapeHtmlAttr(machines.join(' / '))}</span>`;
   }
   const activeMachine = rollColorActiveMachineFor(setName, colorKey);
+  // เลือกเครื่องได้เฉพาะชุดที่สถานะ "กำลังใช้งาน" — ชุดที่ยังไม่ได้ใช้งานย่อมไม่ได้อยู่บนเครื่องไหน
+  // ค่าที่เคยเลือกไว้ยังเก็บอยู่ (ไม่ล้างให้) พอสลับสถานะกลับมาเป็นใช้งานจะได้ไม่ต้องเลือกใหม่
+  const editable = rollColorStatusFor(setName, colorKey) === 'inuse';
   const jsEsc = v => String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   return `<span style="display:flex;align-items:center;gap:3px;">
     ${machines.map(m => {
       const on = activeMachine === m;
+      if (!editable) {
+        return `<span title="เลือกเครื่องได้เฉพาะชุดที่สถานะเป็น &quot;ใช้งาน&quot; — เปลี่ยนสถานะก่อน"
+          style="padding:0 6px;border-radius:4px;font-size:10px;font-weight:800;line-height:16px;cursor:not-allowed;opacity:.5;
+                 border:1px dashed var(--border);background:transparent;color:var(--text-3);${on ? 'text-decoration:underline;' : ''}">${escapeHtmlAttr(m)}</span>`;
+      }
       const call = `event.stopPropagation();setRollColorActiveMachineFor('${jsEsc(setName)}','${jsEsc(colorKey)}','${jsEsc(m)}')`;
       return `<button type="button" onclick="${escapeHtmlAttr(call)}"
         title="${escapeHtmlAttr(on ? 'กำลังใช้งานอยู่ที่เครื่อง ' + m + ' — กดซ้ำเพื่อล้าง' : 'ทำเครื่องหมายว่าชุดสีนี้กำลังใช้งานอยู่ที่เครื่อง ' + m)}"
@@ -6501,6 +6509,7 @@ function rollRowMachinePickerHtml(setName, colorKey, machines) {
 
 // เวอร์ชันที่ระบุ Size Roll มาตรงๆ — ตัวเดิม setRollColorActiveMachine() อิง selectedRollSet
 function setRollColorActiveMachineFor(setName, colorKey, machine) {
+  if (rollColorStatusFor(setName, colorKey) !== 'inuse') return; // กันไว้ที่ตัวฟังก์ชันด้วย ไม่ใช่แค่ปิดปุ่ม
   const k = setName + '|' + colorKey;
   if (rollColorActiveMachine[k] === machine) delete rollColorActiveMachine[k];
   else rollColorActiveMachine[k] = machine;
