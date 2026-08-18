@@ -1351,7 +1351,15 @@ canvas{display:block;}
          PAGE: PRODUCTION BLOCK
     ══════════════════════════════════════════ -->
     <div class="page" id="page-standard">
-      <iframe id="prodblock-external-iframe" title="Production Block" style="width:100%;height:calc(100vh - 104px);border:none;border-radius:8px;background:var(--bg-panel);"></iframe>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+        <span style="font-size:12px;color:var(--text-3);">มุมมอง:</span>
+        <button class="btn btn-ghost btn-sm" id="pbview-production" onclick="setProdBlockView('production')">ฝ่ายผลิต (100%)</button>
+        <button class="btn btn-ghost btn-sm" id="pbview-share" onclick="setProdBlockView('share')">ลิงก์แชร์ (80%)</button>
+        <span style="flex:1;"></span>
+        <a id="pbview-newtab" href="#" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="text-decoration:none;">↗ เปิดในแท็บใหม่</a>
+      </div>
+      <div id="pbview-note" style="font-size:11px;color:var(--text-3);line-height:1.6;margin-bottom:8px;"></div>
+      <iframe id="prodblock-external-iframe" title="Production Block" style="width:100%;height:calc(100vh - 168px);border:none;border-radius:8px;background:var(--bg-panel);"></iframe>
     </div>
 
 
@@ -1973,11 +1981,48 @@ function showPage(id) {
   if (id === 'standard') loadProdBlockIframe();
 }
 
+// สองมุมมองของหน้า Block จากระบบ TST Production
+//  production = มุมมองฝ่ายผลิต คิดเวลาที่สปีดเต็ม 100% แต่ต้องมี session ของระบบนั้น (ไม่มีจะเด้งหน้า login)
+//  share      = ลิงก์แชร์แบบดูอย่างเดียว เข้าได้เสมอด้วย key แต่คิดเวลาที่ 80% (เผื่อเวลาไว้ — มุมมองฝ่ายขาย)
+// ค่า 80/100 กำหนดที่เซิร์ฟเวอร์ของ TST Production ส่งพารามิเตอร์ไปเปลี่ยนไม่ได้ (ทดสอบแล้ว) จึงต้องสลับด้วย URL
+const PROD_BLOCK_VIEWS = {
+  production: { url: 'https://tstproduction.vercel.app/production/plan/block', label: 'ฝ่ายผลิต (100%)' },
+  share:      { url: 'https://tstproduction.vercel.app/plan-view/block?k=wms-block-k7n3x9p2q5', label: 'ลิงก์แชร์ (80%)' },
+};
+const PROD_BLOCK_VIEW_KEY = 'tstProdBlockView';
+let prodBlockView = (() => {
+  try { const v = localStorage.getItem(PROD_BLOCK_VIEW_KEY); return PROD_BLOCK_VIEWS[v] ? v : 'production'; }
+  catch (e) { return 'production'; }
+})();
+
+function setProdBlockView(view) {
+  if (!PROD_BLOCK_VIEWS[view]) return;
+  prodBlockView = view;
+  try { localStorage.setItem(PROD_BLOCK_VIEW_KEY, view); } catch (e) { /* จำค่าไม่ได้ก็ไม่เป็นไร */ }
+  loadProdBlockIframe();
+}
+
 // โหลด URL เข้า iframe สดใหม่ทุกครั้งที่เปิดแท็บนี้ (ไม่เก็บ src ค้างไว้ในไฟล์) กัน iframe แสดงข้อมูลเก่าค้างจาก cache
 function loadProdBlockIframe() {
   const frame = document.getElementById('prodblock-external-iframe');
   if (!frame) return;
-  frame.src = 'https://tstproduction.vercel.app/plan-view/block?k=wms-block-k7n3x9p2q5&_r=' + Date.now();
+  const view = PROD_BLOCK_VIEWS[prodBlockView] || PROD_BLOCK_VIEWS.share;
+  frame.src = view.url + (view.url.includes('?') ? '&' : '?') + '_r=' + Date.now();
+
+  ['production', 'share'].forEach(k => {
+    const btn = document.getElementById('pbview-' + k);
+    if (!btn) return;
+    const on = k === prodBlockView;
+    btn.style.background = on ? 'var(--accent)' : '';
+    btn.style.color = on ? '#fff' : '';
+    btn.style.fontWeight = on ? '700' : '';
+  });
+  const link = document.getElementById('pbview-newtab');
+  if (link) { link.href = view.url; link.title = 'เปิด ' + view.label + ' ในแท็บใหม่'; }
+  const note = document.getElementById('pbview-note');
+  if (note) note.innerHTML = prodBlockView === 'production'
+    ? 'มุมมองฝ่ายผลิตต้องล็อกอินระบบ TST Production ก่อน — ถ้าช่องด้านล่างขึ้นหน้า login ให้กด <b>↗ เปิดในแท็บใหม่</b> ล็อกอินหนึ่งครั้ง แล้วกลับมากด <b>ฝ่ายผลิต (100%)</b> ซ้ำ (บางเบราว์เซอร์ไม่ส่ง session เข้าหน้าเว็บที่ฝังข้ามโดเมน ถ้าเป็นกรณีนั้นให้ใช้ปุ่มเปิดแท็บใหม่)'
+    : 'ลิงก์แชร์แบบดูอย่างเดียว เข้าได้เลยไม่ต้องล็อกอิน แต่เวลาที่แสดงคิดที่ 80% ของสปีดเต็ม (มุมมองฝ่ายขาย)';
 }
 
 function initDashboard() {
