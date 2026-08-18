@@ -2230,13 +2230,13 @@ function afterInUseRollChange() {
 // ทะเบียน Tooling ไม่มีสถานะ "กำลังแต่ง/กำลังขัด" เก็บไว้ (มีแค่ รอแต่ง/รอขัด/พร้อมใช้งาน ฯลฯ)
 // จึงยึดจากงานจริง: แผนงานของวันนี้ที่ช่างกดเริ่มไปแล้วและยังทำไม่จบ — รวมยอดตาม Size Roll + ชุดสี
 function getWorkingRollEntries(workType) {
-  const today = dailyTodayIso();
-  const pieceMap = dailyPieceStatus[today] || {};
-  const dayMap = dailyStatusByDate[today] || {};
   const byKey = new Map();
   planTasks.forEach(t => {
-    if (t.workType !== workType || taskDisplayDate(t) !== today) return;
-    const pieces = pieceMap[t.id] || {};
+    if (t.workType !== workType) return;
+    // สถานะรายชิ้นเก็บแยกตามวัน ต้องอ่านจากวันของงานนั้นเอง ไม่ใช่วันนี้ เพราะรวมทุกวันที่วางแผนไว้แล้ว
+    const d = taskDisplayDate(t);
+    const pieces = (dailyPieceStatus[d] || {})[t.id] || {};
+    const dayStatus = (dailyStatusByDate[d] || {})[t.id];
     const rollIds = t.rollIds || [];
     let doing = 0, done = 0;
     rollIds.forEach(idx => {
@@ -2244,8 +2244,8 @@ function getWorkingRollEntries(workType) {
       if (st === 'done') done++;
       else if (st === 'in_progress') doing++;
     });
-    // งานที่จบครบทุกชิ้นแล้วไม่ใช่ "กำลังทำ" อีก ไม่ต้องแสดง
-    if (dayMap[t.id] === 'done' || (rollIds.length && done >= rollIds.length)) return;
+    // งานที่จบครบทุกชิ้นแล้วไม่ใช่งานค้างอีก ไม่ต้องแสดง
+    if (dayStatus === 'done' || (rollIds.length && done >= rollIds.length)) return;
     const colorKey = t.rollColor || NO_COLOR_KEY;
     const key = t.rollSet + '|' + colorKey;
     if (!byKey.has(key)) {
@@ -2254,23 +2254,30 @@ function getWorkingRollEntries(workType) {
         set: t.rollSet, colorKey,
         colorLabel: colorMeta ? colorMeta.label : 'ไม่ระบุสี',
         dot: colorMeta ? colorMeta.dot : '#9CA3AF',
-        doing: 0, done: 0, total: 0, started: false,
+        doing: 0, done: 0, total: 0, started: false, dates: new Set(),
       });
     }
     const e = byKey.get(key);
     e.doing += doing; e.done += done; e.total += rollIds.length;
+    e.dates.add(d);
     // งานที่กดเริ่มระดับ "ทั้งงาน" แต่ยังไม่ได้ระบุรายชิ้น ก็นับว่าเริ่มแล้ว
-    if (doing || done || dayMap[t.id] === 'in_progress') e.started = true;
+    if (doing || done || dayStatus === 'in_progress') e.started = true;
   });
-  // ชุดที่เริ่มทำแล้วขึ้นก่อนชุดที่ยังรอเริ่ม
-  return [...byKey.values()].sort((a, b) =>
-    (a.started === b.started) ? a.set.localeCompare(b.set, 'th') : (a.started ? -1 : 1));
+  // ชุดที่เริ่มทำแล้วขึ้นก่อน แล้วเรียงตามวันที่วางแผนไว้เร็วสุด
+  return [...byKey.values()].map(e => ({ ...e, firstDate: [...e.dates].sort()[0], dayCount: e.dates.size }))
+    .sort((a, b) => (a.started !== b.started) ? (a.started ? -1 : 1)
+      : (a.firstDate !== b.firstDate ? String(a.firstDate).localeCompare(String(b.firstDate)) : a.set.localeCompare(b.set, 'th')));
 }
 
 // ชุดที่ยังไม่กดเริ่มจะแสดงแบบจาง (พื้นใส ขอบประ) + ป้าย "รอเริ่ม" ให้แยกออกจากชุดที่ทำอยู่จริงได้ทันที
 function dashRollWorkingChipHtml(e, accentVar, bgVar) {
   const progress = e.total ? `${e.done}/${e.total} ชิ้น` : '—';
   const remain = Math.max(e.total - e.done, 0);
+  // รวมทุกวันที่วางแผนไว้แล้ว จึงต้องบอกวันด้วย ไม่งั้นไม่รู้ว่าของวันไหน
+  // ชุดเดียวกันอาจถูกวางแผนไว้หลายวัน — แสดงวันแรกสุดแล้วต่อท้ายว่ามีอีกกี่วัน
+  const dateNote = e.firstDate
+    ? ` · ${escapeHtmlAttr(fmtDateThaiShort(parseISODate(e.firstDate)))}${e.dayCount > 1 ? ` +${e.dayCount - 1} วัน` : ''}`
+    : '';
   return `<div onclick="${jsCallAttr('goToRollSetColor', e.set, e.colorKey)}"
     style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:8px;cursor:pointer;
            border:1px ${e.started ? 'solid' : 'dashed'} ${accentVar};background:${e.started ? bgVar : 'transparent'};
@@ -2280,7 +2287,7 @@ function dashRollWorkingChipHtml(e, accentVar, bgVar) {
     <span style="width:9px;height:9px;border-radius:50%;background:${e.dot};flex-shrink:0;"></span>
     <span style="flex:1;min-width:0;">
       <span style="display:block;font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(e.set)}</span>
-      <span style="display:block;font-size:11px;color:var(--text-3);">${escapeHtmlAttr(e.colorLabel)} · ${e.started ? 'เสร็จ ' + progress : 'ตามแผน ' + e.total + ' ชิ้น'}</span>
+      <span style="display:block;font-size:11px;color:var(--text-3);">${escapeHtmlAttr(e.colorLabel)} · ${e.started ? 'เสร็จ ' + progress : 'ตามแผน ' + e.total + ' ชิ้น'}${dateNote}</span>
     </span>
     ${e.started
       ? `<span style="font-size:12px;font-weight:800;color:${accentVar};flex-shrink:0;">${e.doing} ชิ้น</span>`
@@ -2290,8 +2297,8 @@ function dashRollWorkingChipHtml(e, accentVar, bgVar) {
 
 function renderDashboardWorkingRoll() {
   [
-    { workType: 'cnc',    listId: 'dash-roll-dressing-list',  countId: 'dash-roll-dressing-count',  accent: 'var(--amber)',  bg: 'var(--amber-dim)',  empty: 'วันนี้ยังไม่มีชุด Roll ที่กำลังแต่งหรือวางแผนไว้' },
-    { workType: 'polish', listId: 'dash-roll-polishing-list', countId: 'dash-roll-polishing-count', accent: 'var(--purple)', bg: 'var(--purple-dim)', empty: 'วันนี้ยังไม่มีชุด Roll ที่กำลังขัดหรือวางแผนไว้' },
+    { workType: 'cnc',    listId: 'dash-roll-dressing-list',  countId: 'dash-roll-dressing-count',  accent: 'var(--amber)',  bg: 'var(--amber-dim)',  empty: 'ยังไม่มีชุด Roll ที่กำลังแต่งหรือวางแผนไว้' },
+    { workType: 'polish', listId: 'dash-roll-polishing-list', countId: 'dash-roll-polishing-count', accent: 'var(--purple)', bg: 'var(--purple-dim)', empty: 'ยังไม่มีชุด Roll ที่กำลังขัดหรือวางแผนไว้' },
   ].forEach(cfg => {
     const el = document.getElementById(cfg.listId);
     if (!el) return;
