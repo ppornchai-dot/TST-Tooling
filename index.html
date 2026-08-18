@@ -5877,6 +5877,8 @@ function rollSetFgKey(setName) {
 
 let fgWeightFetchError = null;
 let fgWeightMeta = null; // สรุปผลการดึงรอบล่าสุด ใช้แสดงว่าตัวเลขบนการ์ดมาจากช่วงไหน กี่รายการ
+let fgWeightByKeyDate = {}; // { 'GI|4x2': { 'YYYY-MM-DD': kg } } สำหรับตารางน้ำหนักผลิตต่อวัน
+let fgWeightDates = [];     // วันที่ที่มีการผลิตจริงในช่วงที่ดึงมา (เรียงแล้ว)
 
 async function fetchFgWeightByKey(fromDate, toDate) {
   try {
@@ -5885,19 +5887,32 @@ async function fetchFgWeightByKey(fromDate, toDate) {
     const json = await res.json();
     const rows = json.rows || [];
     const byKey = {};
+    const byKeyDate = {};
+    const dateSet = new Set();
     let totalKg = 0;
     rows.forEach(r => {
-      totalKg += parseFloat(r.weight_kg) || 0;
+      const kg = parseFloat(r.weight_kg) || 0;
+      totalKg += kg;
       const key = fgProductCodeToKey(r.product_code);
       if (!key) return;
-      byKey[key] = (byKey[key] || 0) + (parseFloat(r.weight_kg) || 0);
+      byKey[key] = (byKey[key] || 0) + kg;
+      // แยกรายวันด้วย เพื่อทำตารางน้ำหนักผลิตต่อวัน — ใช้ production_date ของระบบ Production
+      const d = String(r.production_date || '').slice(0, 10);
+      if (!d) return;
+      dateSet.add(d);
+      if (!byKeyDate[key]) byKeyDate[key] = {};
+      byKeyDate[key][d] = (byKeyDate[key][d] || 0) + kg;
     });
     fgWeightFetchError = null;
     fgWeightMeta = { rowCount: rows.length, totalKg };
+    fgWeightByKeyDate = byKeyDate;
+    fgWeightDates = [...dateSet].sort();
     return byKey;
   } catch (e) {
     fgWeightFetchError = e.message;
     fgWeightMeta = null;
+    fgWeightByKeyDate = {};
+    fgWeightDates = [];
     return null;
   }
 }
@@ -5971,89 +5986,63 @@ async function renderProdWeight() {
     return;
   }
 
-  // จัดกลุ่มเหมือนหน้าอายุ Roll: กลุ่มขนาด → เรียง Forming/Sizing/TH → แยกรายชุดสี
-  // ลำดับกลุ่มยึด getRollSets() (rollSetOrder) ตัวเดียวกับหน้าทะเบียน
+  // จัดกลุ่มตามขนาดแบบเดียวกับหน้าอายุ Roll/ทะเบียน แล้วแสดงเฉพาะน้ำหนักผลิต แยกเป็นคอลัมน์รายวัน
+  // ระดับความละเอียดของข้อมูล: ระบบ Production บอกได้แค่ "เกรด + ขนาด" ไม่ได้บอกว่าชุดสีไหน
+  // หรือขั้นตอนไหน (Forming/Sizing/TH) เป็นคนรีด ตารางนี้จึงเป็นรายขนาด ไม่แยกหมวด/ชุดสี
+  // ถ้าแยก จะได้เลขชุดเดิมซ้ำกัน 43 แถว x ทุกวัน ซึ่งไม่ได้ข้อมูลเพิ่มขึ้นเลย
   const sizeGroups = new Map();
   sets.forEach(setName => {
-    if (!toolingData.roll.some(r => r.set === setName)) return; // ยังไม่มี Roll จริง ไม่มีอะไรให้เทียบ
+    if (!toolingData.roll.some(r => r.set === setName)) return; // ยังไม่มี Roll จริงในชุดนั้น
     const key = rollSetSizeGroupKey(setName);
-    if (!sizeGroups.has(key)) sizeGroups.set(key, { label: rollSetSizeGroupLabel(setName), sets: [] });
+    if (!sizeGroups.has(key)) sizeGroups.set(key, { label: rollSetSizeGroupLabel(setName), fgKey: rollSetFgKey(setName) });
     const g = sizeGroups.get(key);
-    // ชื่อกลุ่มใช้เกณฑ์เดียวกับหน้าอายุ Roll/ทะเบียน — เลือกแบบที่มีเครื่องหมายนิ้วเมื่อชื่อในกลุ่มเขียนไม่ตรงกัน
+    // ชื่อกลุ่มใช้เกณฑ์เดียวกับหน้าอื่น — เลือกแบบที่มีเครื่องหมายนิ้วเมื่อชื่อในกลุ่มเขียนไม่ตรงกัน
     if (!g.label.includes('"') && rollSetSizeGroupLabel(setName).includes('"')) g.label = rollSetSizeGroupLabel(setName);
-    g.sets.push(setName);
+    if (!g.fgKey) g.fgKey = rollSetFgKey(setName);
   });
   const ordered = [...sizeGroups.entries()].sort((a, b) => (a[0] === 'อื่นๆ' ? 1 : 0) - (b[0] === 'อื่นๆ' ? 1 : 0));
 
   const errorBanner = fgByKey ? '' : `<div style="background:var(--red-dim);color:var(--red);border-radius:8px;padding:10px 14px;font-size:12px;margin-bottom:10px;">ดึงข้อมูลจากระบบ Production ไม่สำเร็จ (${escapeHtmlAttr(fgWeightFetchError || '')})</div>`;
 
-  let rowCount = 0;
+  // คอลัมน์รายวัน = เฉพาะวันที่มีการผลิตจริงในช่วงที่เลือก ไม่ไล่ทุกวันในช่วง
+  // ไม่งั้นเลือกช่วง "ทั้งหมด" (2,400 วัน) ตารางจะกว้างจนใช้งานไม่ได้
+  // ตัดวันที่มีรายการแต่น้ำหนักรวมเป็น 0 ออก ไม่ให้เป็นคอลัมน์ว่างเปล่า (ข้อมูลจริงมีหลายวันแบบนี้)
+  const kgOnDate = d => Object.values(fgWeightByKeyDate).reduce((s, m) => s + (m[d] || 0), 0);
+  const days = fgWeightDates.filter(d => kgOnDate(d) > 0);
+  // รวมยอดจาก kg ดิบแล้วปัดครั้งเดียวตอนแสดง ไม่ปัดทีละช่องแล้วเอามาบวก ไม่งั้นผลรวมเพี้ยนจากเศษ
+  const ton = kg => Math.round((kg || 0) / 1000 * 100) / 100;
+  const fmt = v => v ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '<span class="muted">—</span>';
+  const dayKg = {};
+  let grandKg = 0;
+
   const body = ordered.map(([, g]) => {
-    const sorted = g.sets.slice().sort((a, b) => {
-      const ca = ROLL_SET_CATEGORY_ORDER[parseSizeRollName(a).category], cb = ROLL_SET_CATEGORY_ORDER[parseSizeRollName(b).category];
-      return (ca === undefined ? 9 : ca) - (cb === undefined ? 9 : cb);
-    });
-    const rows = sorted.map(setName => {
-      const cat = parseSizeRollName(setName).category;
-      const catColor = ROLL_SET_SECTION_COLORS[cat] || 'var(--text-2)';
-      const setRolls = toolingData.roll.filter(r => r.set === setName);
-      const used = new Set(setRolls.map(r => r.color || NO_COLOR_KEY));
-      const palette = [
-        ...getSetPalette(setName).filter(c => used.has(c.key)),
-        ...(used.has(NO_COLOR_KEY) ? [{ key: NO_COLOR_KEY, label: 'ไม่ระบุสี', dot: '#9CA3AF' }] : []),
-      ];
-      // น้ำหนักผลิตจริงจากระบบ Production รู้แค่ "เกรด+ขนาด" ไม่รู้ว่าชุดสีไหน/ขั้นตอนไหนเป็นคนรีด
-      // ทุกแถวของขนาดเดียวกันจึงใช้ค่าผลิตจริงร่วมกัน (เกณฑ์เดียวกับหน้าอายุ Roll)
-      const fgKey = rollSetFgKey(setName);
-      const autoKg = fgKey && fgByKey ? fgByKey[fgKey] : null;
-      const hasData = autoKg !== null && autoKg !== undefined;
-      const produced = hasData ? Math.round(autoKg / 1000 * 100) / 100 : null;
-      return palette.map(c => {
-        const rolls = setRolls.filter(r => (r.color || NO_COLOR_KEY) === c.key);
-        // usage ใช้ค่าสูงสุดในชุดสี ไม่ใช่ผลรวม เพราะ Roll คู่บน/ล่างบันทึกเท่ากัน (เกณฑ์เดียวกับ rollSetUsageTon)
-        let usage = 0;
-        rolls.forEach(r => { const n = parseFloat(String(r.usage || '').replace(/[^0-9.]/g, '')); if (!isNaN(n) && n > usage) usage = n; });
-        const pct = (usage && produced !== null) ? Math.round(produced / usage * 100) : null;
-        const meta = prodWeightStatusMeta(pct);
-        const statusText = !hasData ? 'ยังไม่มีข้อมูลการผลิต' : (pct === null ? '—' : `ผลิตได้ ${pct}%`);
-        rowCount++;
-        return `<tr>
-          <td title="${escapeHtmlAttr(setName)}"><strong style="color:${catColor};">${escapeHtmlAttr(cat || setName)}</strong></td>
-          <td><span style="display:inline-flex;align-items:center;gap:6px;">
-            <span style="width:9px;height:9px;border-radius:50%;background:${c.dot};flex-shrink:0;"></span>${escapeHtmlAttr(c.label)}</span></td>
-          <td class="muted" style="text-align:right;">${rolls.length.toLocaleString()}</td>
-          <td style="text-align:right;font-weight:700;">${produced === null ? '<span class="muted">—</span>' : escapeHtmlAttr(produced.toLocaleString(undefined, { maximumFractionDigits: 2 }))}</td>
-          <td style="text-align:right;">${usage ? escapeHtmlAttr(usage.toLocaleString()) : '<span class="muted">—</span>'}</td>
-          <td>${pct === null ? '<span class="muted">—</span>' : `<div style="display:flex;align-items:center;gap:7px;">
-            <div style="width:64px;background:var(--bg-panel);border-radius:4px;height:7px;overflow:hidden;flex-shrink:0;">
-              <div style="height:100%;width:${Math.min(pct, 100)}%;background:${meta.color};border-radius:4px;"></div>
-            </div><span style="font-weight:800;color:${meta.color};">${pct}%</span></div>`}</td>
-          <td><span class="chip ${meta.chip}" style="font-size:11px;white-space:nowrap;">${statusText}</span></td>
-        </tr>`;
-      }).join('');
-    }).join('');
-    const pieces = g.sets.reduce((n, s) => n + toolingData.roll.filter(r => r.set === s).length, 0);
-    const colorSets = g.sets.reduce((n, s) => {
-      const rs = toolingData.roll.filter(r => r.set === s);
-      return n + (rs.length ? new Set(rs.map(r => r.color || NO_COLOR_KEY)).size : 0);
-    }, 0);
-    return `<tr><td colspan="7" style="background:var(--bg-panel);padding:11px 12px;border-top:2px solid var(--text-1);">
-      <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);">
-        <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(g.label)}
-      </span>
-      <span style="float:right;font-size:12px;font-weight:700;color:var(--text-3);">${colorSets} ชุด · ${pieces} ลูก</span>
-    </td></tr>${rows}`;
+    const perDay = (g.fgKey && fgWeightByKeyDate[g.fgKey]) || {};
+    const rowKg = days.reduce((s, d) => s + (perDay[d] || 0), 0);
+    days.forEach(d => { dayKg[d] = (dayKg[d] || 0) + (perDay[d] || 0); });
+    grandKg += rowKg;
+    return `<tr>
+      <td><strong>${escapeHtmlAttr(g.label)}</strong></td>
+      ${days.map(d => `<td style="text-align:right;">${fmt(ton(perDay[d]))}</td>`).join('')}
+      <td style="text-align:right;font-weight:800;color:${rowKg ? 'var(--text-1)' : 'var(--text-3)'};">${fmt(ton(rowKg))}</td>
+    </tr>`;
   }).join('');
 
+  const colCount = days.length + 2;
   grid.innerHTML = errorBanner + `<div class="card"><div class="table-wrap"><table>
     <thead><tr>
-      <th>SIZE ROLL</th><th>ชุดสี</th><th style="text-align:right;">จำนวน (ลูก)</th>
-      <th style="text-align:right;" title="ผลิตจริงจากระบบ Production จับคู่ด้วยเกรด+ขนาด — Forming/Sizing/TH และทุกชุดสีของขนาดเดียวกันใช้ค่าร่วมกัน">ผลิตจริง (ตัน)</th>
-      <th style="text-align:right;" title="ยอดใช้งานสะสมของชุดสีนั้น ใช้ค่าสูงสุดในชุด ไม่ใช่ผลรวม">Usage สะสม (ตัน)</th>
-      <th>% ผลิตได้</th><th>สถานะ</th>
+      <th>SIZE ROLL</th>
+      ${days.map(d => `<th style="text-align:right;white-space:nowrap;">${escapeHtmlAttr(fmtDateThaiShort(parseISODate(d)))}</th>`).join('')}
+      <th style="text-align:right;">รวม (ตัน)</th>
     </tr></thead>
-    <tbody>${body || `<tr><td colspan="7" style="padding:32px;text-align:center;color:var(--text-3);">ยังไม่มีชุด Roll ในทะเบียน Tooling</td></tr>`}</tbody>
-  </table></div></div>`;
+    <tbody>${body || `<tr><td colspan="${colCount}" style="padding:32px;text-align:center;color:var(--text-3);">ยังไม่มีชุด Roll ในทะเบียน Tooling</td></tr>`}</tbody>
+    ${days.length ? `<tfoot><tr style="background:var(--bg-panel);">
+      <td style="font-weight:800;">รวมทุกขนาด</td>
+      ${days.map(d => `<td style="text-align:right;font-weight:700;">${fmt(ton(dayKg[d]))}</td>`).join('')}
+      <td style="text-align:right;font-weight:800;color:var(--accent);">${fmt(ton(grandKg))}</td>
+    </tr></tfoot>` : ''}
+  </table></div>
+  ${days.length ? '' : `<div style="padding:24px;text-align:center;color:var(--text-3);font-size:13px;">ไม่มีข้อมูลการผลิตในช่วงวันที่ที่เลือก</div>`}
+  </div>`;
 }
 
 // ─── อายุ Roll ────────────────────────────────────────────────────────────────
