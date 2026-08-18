@@ -1461,7 +1461,7 @@ canvas{display:block;}
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>Size Roll</th><th>ชุดสี</th><th style="text-align:right;">จำนวน (ลูก)</th><th style="text-align:right;">OD ปัจจุบัน</th><th style="text-align:right;">สึกไปมากสุด</th><th style="text-align:right;" title="ตันที่รีดได้ต่อการแต่ง Roll 1 รอบ — มาจากช่อง &quot;รอบการใช้งาน&quot; ของ Roll ในทะเบียน Tooling">น้ำหนักต่อรอบการแต่ง (ตัน)</th><th style="text-align:right;" title="ยอดผลิตของชุด Roll ชุดนี้ตลอดอายุ — เกณฑ์เดียวกับหน้าน้ำหนักผลิต คือลงเฉพาะวันที่ชุดสีนี้เป็นชุดที่ใช้เดิน และรวมขนาดที่มาใช้ Forming ร่วมด้วย">น้ำหนักผลิต (ตัน)</th><th style="text-align:right;" title="น้ำหนักต่อรอบการแต่ง ลบ น้ำหนักผลิต — เหลืออีกเท่าไรก่อนถึงรอบแต่งถัดไป และคิดเป็น % ของน้ำหนักต่อรอบการแต่ง">น้ำหนักเหลือ (ตัน / %)</th><th>อายุคงเหลือ</th><th title="สถานะของชุดสี Roll ที่ตั้งไว้ในทะเบียน Tooling">สถานะ (ทะเบียน)</th></tr>
+              <tr><th>Size Roll</th><th>ชุดสี</th><th style="text-align:right;">จำนวน (ลูก)</th><th style="text-align:right;">OD ปัจจุบัน</th><th style="text-align:right;">สึกไปมากสุด</th><th style="text-align:right;" title="ตันที่รีดได้ต่อการแต่ง Roll 1 รอบ — มาจากช่อง &quot;รอบการใช้งาน&quot; ของ Roll ในทะเบียน Tooling">น้ำหนักต่อรอบการแต่ง (ตัน)</th><th style="text-align:right;" title="ยอดผลิตของชุด Roll ชุดนี้ตลอดอายุ — เกณฑ์เดียวกับหน้าน้ำหนักผลิต คือลงเฉพาะวันที่ชุดสีนี้เป็นชุดที่ใช้เดิน และรวมขนาดที่มาใช้ Forming ร่วมด้วย — % คือใช้รอบการแต่งไปแล้วเท่าไร (ไม่เกิน 80% เขียว, 81–90% เหลือง, เกิน 90% แดง)">น้ำหนักผลิต (ตัน / %)</th><th style="text-align:right;" title="น้ำหนักต่อรอบการแต่ง ลบ น้ำหนักผลิต — เหลืออีกเท่าไรก่อนถึงรอบแต่งถัดไป ">น้ำหนักเหลือ (ตัน)</th><th>อายุคงเหลือ</th><th title="สถานะของชุดสี Roll ที่ตั้งไว้ในทะเบียน Tooling">สถานะ (ทะเบียน)</th></tr>
             </thead>
             <tbody id="rolllife-tbody"></tbody>
           </table>
@@ -6639,7 +6639,12 @@ function renderRollLife() {
     // น้ำหนักเหลือ ติดลบได้ ถ้าผลิตเกินรอบแล้วยังไม่ได้แต่ง จะได้เห็นว่าเลยมาเท่าไร
     const leftTon = (perRoundTon != null && producedTon != null)
       ? Math.round((perRoundTon - producedTon) * 100) / 100 : null;
-    // % เหลือ = น้ำหนักเหลือ ÷ น้ำหนักต่อรอบการแต่ง — ติดลบได้เหมือนกัน ถ้าผลิตเกินรอบไปแล้ว
+    // % ผลิต = ใช้รอบการแต่งไปแล้วกี่ % — ยิ่งสูงยิ่งใกล้ต้องแต่ง เกิน 100% คือเลยรอบมาแล้ว
+    const prodPct = (producedTon != null && perRoundTon > 0)
+      ? Math.round(producedTon / perRoundTon * 1000) / 10 : null;
+    // เกณฑ์สีตามที่ตกลงไว้: ไม่เกิน 80% เขียว, 81–90% เหลือง, เกิน 90% แดง
+    const prodColor = prodPct == null ? 'var(--text-1)'
+      : (prodPct <= 80 ? 'var(--green)' : (prodPct <= 90 ? 'var(--amber)' : 'var(--red)'));
     const leftPct = (leftTon != null && perRoundTon > 0)
       ? Math.round(leftTon / perRoundTon * 1000) / 10 : null;
     const leftColor = leftTon == null ? 'var(--text-1)'
@@ -6664,11 +6669,12 @@ function renderRollLife() {
       <td style="text-align:right;">${escapeHtmlAttr(odText)}${g.minOD != null ? `<div class="muted" style="font-size:10px;">เล็กสุด Ø${escapeHtmlAttr(g.minOD)}</div>` : ''}</td>
       <td style="text-align:right;">${g.wornMm != null ? escapeHtmlAttr(Math.round(g.wornMm * 10) / 10 + ' mm') : '—'}</td>
       <td style="text-align:right;">${perRoundTon != null ? escapeHtmlAttr(perRoundTon.toLocaleString()) : '<span class="muted">—</span>'}</td>
-      <td style="text-align:right;">${producedTon ? escapeHtmlAttr(producedTon.toLocaleString(undefined, { maximumFractionDigits: 2 }))
+      <td style="text-align:right;">${producedTon
+        ? `<strong style="color:${prodColor};">${escapeHtmlAttr(producedTon.toLocaleString(undefined, { maximumFractionDigits: 2 }))}</strong>
+           ${prodPct == null ? '' : `<div style="font-size:11px;font-weight:800;color:${prodColor};">${escapeHtmlAttr(prodPct.toLocaleString(undefined, { maximumFractionDigits: 1 }))}%</div>`}`
         : (rollLifeFgLoading ? '<span class="muted">กำลังโหลด…</span>' : '<span class="muted">—</span>')}</td>
       <td style="text-align:right;">${leftTon == null ? '<span class="muted">—</span>'
-        : `<strong style="color:${leftColor};">${escapeHtmlAttr(leftTon.toLocaleString())}</strong>
-           ${leftPct == null ? '' : `<div style="font-size:11px;font-weight:800;color:${leftColor};">${escapeHtmlAttr(leftPct.toLocaleString(undefined, { maximumFractionDigits: 1 }))}%</div>`}`}</td>
+        : `<strong style="color:${leftColor};">${escapeHtmlAttr(leftTon.toLocaleString())}</strong>`}</td>
       <td>${lifeCell}</td>
       <td><span style="display:inline-block;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;white-space:nowrap;
         background:${meta.bg};color:${meta.color};border:1px solid ${meta.color};">● ${escapeHtmlAttr(meta.label)}</span></td>
