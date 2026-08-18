@@ -5977,8 +5977,14 @@ async function renderProdWeight() {
     const fgKey = rollSetFgKey(setName);
     const groupKey = fgKey || setName;
     if (!groups[groupKey]) {
-      groups[groupKey] = { displayName: rollSetGroupDisplayName(setName), fgKey, usage: 0 };
+      groups[groupKey] = { displayName: rollSetSizeGroupLabel(setName), fgKey, usage: 0 };
       groupOrder.push(groupKey);
+    }
+    // ชื่อกลุ่มใช้เกณฑ์เดียวกับหน้าอายุ Roll/ทะเบียน — เลือกแบบที่มีเครื่องหมายนิ้ว
+    // เดิมยึดชื่อของชุดแรกที่เจอ ถ้าสลับลำดับ Size Roll ชื่อกลุ่มหน้านี้จะเพี้ยนไปจากหน้าอื่น
+    // (ข้อมูลจริงมี GS 1"x1" (23x23) Forming ปนกับ GS 1x1 (23x23) Sizing/TH อยู่)
+    if (!groups[groupKey].displayName.includes('"') && rollSetSizeGroupLabel(setName).includes('"')) {
+      groups[groupKey].displayName = rollSetSizeGroupLabel(setName);
     }
     const usage = rollSetUsageTon(setName);
     if (usage > groups[groupKey].usage) groups[groupKey].usage = usage;
