@@ -1441,7 +1441,7 @@ canvas{display:block;}
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>Size Roll</th><th>ชุดสี</th><th style="text-align:right;">จำนวน (ลูก)</th><th style="text-align:right;">OD ปัจจุบัน</th><th style="text-align:right;">สึกไปมากสุด</th><th style="text-align:right;" title="ตันที่รีดได้ต่อการแต่ง Roll 1 รอบ — มาจากช่อง &quot;รอบการใช้งาน&quot; ของ Roll ในทะเบียน Tooling">น้ำหนักต่อรอบการแต่ง (ตัน)</th><th style="text-align:right;" title="น้ำหนักผลิตจริงจากระบบ Production จับคู่ด้วยเกรด+ขนาด (ช่วงทั้งหมด) — Forming/Sizing/TH ของขนาดเดียวกันใช้ค่าร่วมกัน">น้ำหนักผลิต (ตัน)</th><th style="text-align:right;" title="น้ำหนักต่อรอบการแต่ง ลบ น้ำหนักผลิต — เหลืออีกเท่าไรก่อนถึงรอบแต่งถัดไป">น้ำหนักเหลือ (ตัน)</th><th>อายุคงเหลือ</th><th title="สถานะของชุดสี Roll ที่ตั้งไว้ในทะเบียน Tooling">สถานะ (ทะเบียน)</th></tr>
+              <tr><th>Size Roll</th><th>ชุดสี</th><th style="text-align:right;">จำนวน (ลูก)</th><th style="text-align:right;">OD ปัจจุบัน</th><th style="text-align:right;">สึกไปมากสุด</th><th style="text-align:right;" title="ตันที่รีดได้ต่อการแต่ง Roll 1 รอบ — มาจากช่อง &quot;รอบการใช้งาน&quot; ของ Roll ในทะเบียน Tooling">น้ำหนักต่อรอบการแต่ง (ตัน)</th><th style="text-align:right;" title="ยอดผลิตของชุด Roll ชุดนี้ตลอดอายุ — เกณฑ์เดียวกับหน้าน้ำหนักผลิต คือลงเฉพาะวันที่ชุดสีนี้เป็นชุดที่ใช้เดิน และรวมขนาดที่มาใช้ Forming ร่วมด้วย">น้ำหนักผลิต (ตัน)</th><th style="text-align:right;" title="น้ำหนักต่อรอบการแต่ง ลบ น้ำหนักผลิต — เหลืออีกเท่าไรก่อนถึงรอบแต่งถัดไป">น้ำหนักเหลือ (ตัน)</th><th>อายุคงเหลือ</th><th title="สถานะของชุดสี Roll ที่ตั้งไว้ในทะเบียน Tooling">สถานะ (ทะเบียน)</th></tr>
             </thead>
             <tbody id="rolllife-tbody"></tbody>
           </table>
@@ -6368,15 +6368,38 @@ function saveRollLifeSpec() {
 // น้ำหนักผลิตจริงจากระบบ Production ต่อ fgKey — ดึงครั้งเดียวแล้วใช้ซ้ำ ไม่ให้ยิงใหม่ทุกครั้งที่พิมพ์ค้นหา
 // ใช้ช่วง "ทั้งหมด" เหมือนค่าตั้งต้นของหน้าน้ำหนักผลิต ตัวเลขสองหน้าจะได้ตรงกัน
 let rollLifeFgByKey = null;
+let rollLifeFgByKeyDate = null;
+let rollLifeFgDates = null;
 let rollLifeFgLoading = false;
 function ensureRollLifeFg() {
   if (rollLifeFgByKey !== null || rollLifeFgLoading) return;
   rollLifeFgLoading = true;
   fetchFgWeightByKey('2020-01-01', toISODate(new Date())).then(data => {
     rollLifeFgByKey = data || {};
+    // เก็บสำเนาแบบรายวันของช่วง "ทั้งหมด" ไว้เอง — ตัวแปรกลาง (fgWeightByKeyDate) จะถูกทับ
+    // เมื่อหน้าน้ำหนักผลิตดึงตามช่วงวันที่ที่ผู้ใช้เลือก ซึ่งอาจแคบกว่าอายุการใช้งานจริงของ Roll
+    rollLifeFgByKeyDate = fgWeightByKeyDate;
+    rollLifeFgDates = fgWeightDates;
     rollLifeFgLoading = false;
     renderRollLife();
   });
+}
+
+// น้ำหนักผลิตที่ตกกับ "ชุด Roll" หนึ่งชุด (Size Roll + ชุดสี) — ใช้เกณฑ์เดียวกับหน้าน้ำหนักผลิต
+// คือ ลงเฉพาะวันที่ชุดสีนั้นเป็นชุดที่ใช้เดิน (ระบุเอง > ชุดที่สถานะกำลังใช้งาน)
+// และรวมน้ำหนักของขนาดอื่นที่มาใช้ Roll Forming ชุดนี้ร่วมด้วย
+// คืน null ถ้ายังไม่มีข้อมูลการผลิตให้คิดเลย เพื่อให้แยกออกจาก "คิดแล้วได้ 0 ตัน"
+function producedTonForRollSet(setName, colorKey, byKeyDate, dates) {
+  if (!byKeyDate || !dates || !dates.length) return null;
+  const own = byKeyDate[rollSetFgKey(setName)] || {};
+  const srcs = sharedFormingSources(setName);
+  let kg = 0;
+  dates.forEach(d => {
+    if (runColorFor(d, setName) !== colorKey) return;
+    kg += own[d] || 0;
+    srcs.forEach(k => { kg += (byKeyDate[k] || {})[d] || 0; });
+  });
+  return Math.round(kg / 1000 * 100) / 100;
 }
 
 function renderRollLife() {
@@ -6457,12 +6480,10 @@ function renderRollLife() {
     const odText = g.curODMin == null ? '—'
       : (g.curODMax !== g.curODMin ? `Ø${g.curODMin} – Ø${g.curODMax}` : `Ø${g.curODMin}`);
     // น้ำหนักต่อรอบการแต่ง = ค่าที่บันทึกไว้ในทะเบียน Tooling (ช่อง "รอบการใช้งาน" ของ Roll)
-    // น้ำหนักผลิต = ผลิตจริงจากระบบ Production จับคู่ด้วยเกรด+ขนาด (fgKey) เหมือนหน้าน้ำหนักผลิต
-    // Forming/Sizing/TH ของขนาดเดียวกันใช้ค่าผลิตจริงร่วมกัน เพราะเป็นเนื้อเหล็กก้อนเดียวที่ไหลผ่านทุกขั้นตอน
+    // น้ำหนักผลิต = ยอดของ "ชุด Roll ชุดนี้" ที่คิดด้วยเกณฑ์เดียวกับหน้าน้ำหนักผลิต
+    // (ลงเฉพาะวันที่ชุดสีนี้เป็นชุดที่ใช้เดิน + รวมขนาดที่มาใช้ Forming ร่วม) ตัวเลขสองหน้าจะได้ตรงกัน
     const perRoundTon = g.usedTon;
-    const fgKey = rollSetFgKey(g.set);
-    const producedTon = (rollLifeFgByKey && fgKey && rollLifeFgByKey[fgKey] != null)
-      ? Math.round(rollLifeFgByKey[fgKey] / 1000 * 100) / 100 : null;
+    const producedTon = producedTonForRollSet(g.set, g.colorKey, rollLifeFgByKeyDate, rollLifeFgDates);
     // น้ำหนักเหลือ ติดลบได้ ถ้าผลิตเกินรอบแล้วยังไม่ได้แต่ง จะได้เห็นว่าเลยมาเท่าไร
     const leftTon = (perRoundTon != null && producedTon != null)
       ? Math.round((perRoundTon - producedTon) * 100) / 100 : null;
@@ -6486,7 +6507,7 @@ function renderRollLife() {
       <td style="text-align:right;">${escapeHtmlAttr(odText)}${g.minOD != null ? `<div class="muted" style="font-size:10px;">เล็กสุด Ø${escapeHtmlAttr(g.minOD)}</div>` : ''}</td>
       <td style="text-align:right;">${g.wornMm != null ? escapeHtmlAttr(Math.round(g.wornMm * 10) / 10 + ' mm') : '—'}</td>
       <td style="text-align:right;">${perRoundTon != null ? escapeHtmlAttr(perRoundTon.toLocaleString()) : '<span class="muted">—</span>'}</td>
-      <td style="text-align:right;">${producedTon != null ? escapeHtmlAttr(producedTon.toLocaleString())
+      <td style="text-align:right;">${producedTon ? escapeHtmlAttr(producedTon.toLocaleString(undefined, { maximumFractionDigits: 2 }))
         : (rollLifeFgLoading ? '<span class="muted">กำลังโหลด…</span>' : '<span class="muted">—</span>')}</td>
       <td style="text-align:right;">${leftTon == null ? '<span class="muted">—</span>'
         : `<strong style="color:${leftTon <= 0 ? 'var(--red)' : (perRoundTon && leftTon / perRoundTon <= 0.2 ? 'var(--amber)' : 'var(--text-1)')};">${escapeHtmlAttr(leftTon.toLocaleString())}</strong>`}</td>
