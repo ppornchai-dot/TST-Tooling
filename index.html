@@ -5318,6 +5318,14 @@ try {
 // ต้องรอให้ initCloudSync() ดึงข้อมูลจริงลงมาใช้ก่อน (หรือส่งขึ้นไปตั้งต้นเองถ้ายังไม่มีเลย) ค่อยเปิดให้ persistState() ส่งขึ้น cloud ได้
 let cloudSyncReady = false;
 
+// ชุดสี Roll ที่ "ใช้เดินจริง" ในแต่ละวัน — 1 Size Roll (แยก Forming/Sizing/TH) ใช้ได้วันละ 1 ชุดสี
+// { 'YYYY-MM-DD': { 'GI 4"x2" (100x50) Forming': 'red' } }
+// ใช้ตัดสินว่าน้ำหนักผลิตของวันนั้นควรลงที่ชุดสีไหน แทนที่จะโชว์ซ้ำทุกชุดสีของขนาดเดียวกัน
+// ต้องประกาศ "ก่อน" buildStateSnapshot() เพราะ migration ตอนบูตเรียก persistState() ตั้งแต่ต้นไฟล์
+// ถ้าประกาศไว้ท้ายไฟล์ let จะยังอยู่ใน TDZ แล้ว buildStateSnapshot() จะโยน ReferenceError
+// ทำให้สคริปต์ตายกลางทาง โหลด state ไม่เสร็จ และ initCloudSync() ไม่ได้รันเลย
+let rollRunColor = {};
+
 function buildStateSnapshot() {
   return {
     toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec,
@@ -5337,6 +5345,14 @@ function buildStateSnapshot() {
 let cloudUpdatedAt = null;
 let cloudWriteInFlight = false;
 let cloudWritePending = false;
+
+// เก็บลง localStorage อย่างเดียว ไม่ส่งขึ้น cloud — ใช้ตอนเพิ่งดึงข้อมูลจาก cloud ลงมา
+// เดิมหลัง applyState() จาก cloud ไม่มีใครเขียน localStorage เลย ทำให้ทุกครั้งที่เปิดหน้าใหม่
+// เครื่องจะเริ่มจากข้อมูลตั้งต้นแล้วรอ cloud ทุกรอบ ถ้ารอบนั้น cloud ช้า/หลุด (เน็ตมือถือ, เบราว์เซอร์ใน LINE)
+// จะเห็นหน้าจอว่างเปล่าเหมือนข้อมูลหาย ทั้งที่ข้อมูลบน cloud ยังอยู่ครบ
+function cacheStateLocally() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(buildStateSnapshot())); } catch (e) { /* localStorage เต็ม/ปิดอยู่ — ข้ามไป */ }
+}
 
 function persistState() {
   const snapshot = buildStateSnapshot();
@@ -5376,6 +5392,7 @@ async function flushCloudWrite() {
       cloudUpdatedAt = cur.updated_at;
       applyState(cur.data);
       syncRollStatusWithProdBlock();
+      cacheStateLocally();
       refreshAfterCloudUpdate();
       showCloudConflictNotice();
       break;
@@ -5881,10 +5898,6 @@ let fgWeightMeta = null; // สรุปผลการดึงรอบล่�
 let fgWeightByKeyDate = {}; // { 'GI|4x2': { 'YYYY-MM-DD': kg } } สำหรับตารางน้ำหนักผลิตต่อวัน
 let fgWeightDates = [];     // วันที่ที่มีการผลิตจริงในช่วงที่ดึงมา (เรียงแล้ว)
 
-// ชุดสี Roll ที่ "ใช้เดินจริง" ในแต่ละวัน — 1 Size Roll (แยก Forming/Sizing/TH) ใช้ได้วันละ 1 ชุดสี
-// { 'YYYY-MM-DD': { 'GI 4"x2" (100x50) Forming': 'red' } }
-// ใช้ตัดสินว่าน้ำหนักผลิตของวันนั้นควรลงที่ชุดสีไหน แทนที่จะโชว์ซ้ำทุกชุดสีของขนาดเดียวกัน
-let rollRunColor = {};
 function runColorFor(date, setName) {
   return (rollRunColor[date] || {})[setName] || null;
 }
@@ -9577,6 +9590,7 @@ function refreshAfterCloudUpdate() {
 
 async function initCloudSync() {
   if (!supabaseClient) return;
+  if (cloudSyncReady) return; // สำเร็จไปแล้ว — กันรอบ retry มาสมัคร realtime ซ้ำ
   try {
     // เข้าถึงตารางตรงด้วย anon key (ไม่ผ่าน Supabase Auth) — ความปลอดภัยของหน้าเว็บอยู่ที่หน้า login ของแอปเอง (username/รหัสผ่านพนักงาน) แยกกันคนละชั้น
     const { data: row, error: readError } = await supabaseClient.from('app_state').select('data,updated_at').eq('id', 'main').maybeSingle();
@@ -9586,6 +9600,7 @@ async function initCloudSync() {
       cloudUpdatedAt = row.updated_at;
       applyState(row.data);
       syncRollStatusWithProdBlock();
+      cacheStateLocally();
       refreshAfterCloudUpdate();
     } else {
       // ยังไม่มีข้อมูลบน cloud เลย — เครื่องนี้เป็นเครื่องแรกที่เชื่อมต่อสำเร็จ ส่งข้อมูลที่มีอยู่ในเครื่องนี้ขึ้นไปตั้งต้น
@@ -9601,11 +9616,20 @@ async function initCloudSync() {
         cloudUpdatedAt = payload.new.updated_at || cloudUpdatedAt;
         applyState(payload.new.data);
         syncRollStatusWithProdBlock();
+        cacheStateLocally();
         refreshAfterCloudUpdate();
       })
       .subscribe();
-  } catch (e) { /* ออฟไลน์หรือ Supabase ใช้งานไม่ได้ — ทำงานต่อด้วยข้อมูล localStorage ในเครื่องนี้ */ }
+  } catch (e) {
+    // ดึงครั้งแรกไม่สำเร็จ (เน็ตมือถือสะดุด, เบราว์เซอร์ใน LINE, Supabase ตอบช้า)
+    // ถ้าไม่ลองใหม่ หน้าจอจะค้างอยู่กับข้อมูลตั้งต้นจนกว่าผู้ใช้จะรีเฟรชเอง — ดูเหมือนข้อมูลหาย
+    if (cloudSyncRetries < 5) {
+      cloudSyncRetries++;
+      setTimeout(initCloudSync, 2000 * cloudSyncRetries);
+    }
+  }
 }
+let cloudSyncRetries = 0;
 initCloudSync();
 
 // ดึงข้อมูลล่าสุดใหม่เมื่อเครื่องกลับมาใช้งาน — มือถือที่พักจอไว้นานมักหลุด realtime แล้วถือข้อมูลเก่าไว้
@@ -9620,6 +9644,7 @@ async function pullCloudState() {
     cloudUpdatedAt = cur.updated_at;
     applyState(cur.data);
     syncRollStatusWithProdBlock();
+    cacheStateLocally();
     refreshAfterCloudUpdate();
   } catch (e) { /* ออฟไลน์ — ใช้ข้อมูลในเครื่องต่อไป */ }
 }
