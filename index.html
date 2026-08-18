@@ -5325,7 +5325,7 @@ function buildStateSnapshot() {
     dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
     dailyPieceStatus, rollSizeLog, rollSizeLogSeq, dailyPauseLog, dailyPauseLogSeq,
     prodBlockProducts, prodBlockSeq, prodBlockCells, prodBlockPM, prodBlockSummary,
-    prodBlockEntries, prodBlockEntrySeq, prodBlockActiveMachine, prodBlockViewMonth
+    prodBlockEntries, prodBlockEntrySeq, prodBlockActiveMachine, prodBlockViewMonth, rollRunColor
   };
 }
 
@@ -5415,6 +5415,7 @@ function applyState(saved) {
   if (saved.rollColorActiveMachine) rollColorActiveMachine = saved.rollColorActiveMachine;
   if (saved.rollSetCategoryTemplates) rollSetCategoryTemplates = saved.rollSetCategoryTemplates;
   if (saved.rollLifeSpec) rollLifeSpec = saved.rollLifeSpec;
+  if (saved.rollRunColor) rollRunColor = saved.rollRunColor;
   if (typeof saved.rollColorSeq === 'number') rollColorSeq = saved.rollColorSeq;
   if (Array.isArray(saved.planTasks)) planTasks = saved.planTasks;
   if (typeof saved.planTaskSeq === 'number') planTaskSeq = saved.planTaskSeq;
@@ -5880,6 +5881,24 @@ let fgWeightMeta = null; // สรุปผลการดึงรอบล่�
 let fgWeightByKeyDate = {}; // { 'GI|4x2': { 'YYYY-MM-DD': kg } } สำหรับตารางน้ำหนักผลิตต่อวัน
 let fgWeightDates = [];     // วันที่ที่มีการผลิตจริงในช่วงที่ดึงมา (เรียงแล้ว)
 
+// ชุดสี Roll ที่ "ใช้เดินจริง" ในแต่ละวัน — 1 Size Roll (แยก Forming/Sizing/TH) ใช้ได้วันละ 1 ชุดสี
+// { 'YYYY-MM-DD': { 'GI 4"x2" (100x50) Forming': 'red' } }
+// ใช้ตัดสินว่าน้ำหนักผลิตของวันนั้นควรลงที่ชุดสีไหน แทนที่จะโชว์ซ้ำทุกชุดสีของขนาดเดียวกัน
+let rollRunColor = {};
+function runColorFor(date, setName) {
+  return (rollRunColor[date] || {})[setName] || null;
+}
+function setRunColor(date, setName, colorKey) {
+  if (!rollRunColor[date]) rollRunColor[date] = {};
+  // กดสีเดิมซ้ำ = ยกเลิก (วันนั้นไม่ได้ระบุว่าเดินสีไหน)
+  if (rollRunColor[date][setName] === colorKey) delete rollRunColor[date][setName];
+  else rollRunColor[date][setName] = colorKey;
+  if (!Object.keys(rollRunColor[date]).length) delete rollRunColor[date];
+  persistState();
+  renderRunColorPicker();
+  renderProdWeight();
+}
+
 async function fetchFgWeightByKey(fromDate, toDate) {
   try {
     const res = await fetch(FG_API_URL + '?from=' + fromDate + '&to=' + toDate);
@@ -5915,6 +5934,107 @@ async function fetchFgWeightByKey(fromDate, toDate) {
     fgWeightDates = [];
     return null;
   }
+}
+
+// ─── เลือกชุดสี Roll ที่ใช้เดินในแต่ละวัน ──────────────────────────────────────
+let runColorPickerDate = null;
+
+function openRunColorPicker(dateIso) {
+  runColorPickerDate = dateIso;
+  let ov = document.getElementById('runcolor-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'runcolor-overlay';
+    ov.className = 'modal-overlay';
+    ov.onclick = e => { if (e.target === ov) closeRunColorPicker(); };
+    ov.innerHTML = `<div class="modal" style="max-width:760px;display:flex;flex-direction:column;max-height:90vh;overflow:hidden;">
+      <div class="modal-head" style="flex:0 0 auto;">
+        <h3 id="runcolor-title">ชุด Roll ที่ใช้เดิน</h3>
+        <button class="modal-close" onclick="closeRunColorPicker()">✕</button>
+      </div>
+      <div style="flex:0 0 auto;padding:14px 22px 0;">
+        <div style="font-size:12px;color:var(--text-3);line-height:1.6;margin-bottom:10px;" id="runcolor-note"></div>
+        <input class="form-input" id="runcolor-search" placeholder="ค้นหา Size Roll เช่น 75x38" autocomplete="off" oninput="renderRunColorPicker()">
+      </div>
+      <div class="modal-body" id="runcolor-body" style="flex:1 1 auto;min-height:0;overflow-y:auto;padding-top:12px;"></div>
+      <div class="modal-footer" style="flex:0 0 auto;"><button class="btn btn-primary" onclick="closeRunColorPicker()">เสร็จสิ้น</button></div>
+    </div>`;
+    document.body.appendChild(ov);
+  }
+  renderRunColorPicker();
+  ov.classList.add('open');
+}
+
+function closeRunColorPicker() {
+  const ov = document.getElementById('runcolor-overlay');
+  if (ov) ov.classList.remove('open');
+  runColorPickerDate = null;
+}
+
+function renderRunColorPicker() {
+  const body = document.getElementById('runcolor-body');
+  if (!body || !runColorPickerDate) return;
+  const d = runColorPickerDate;
+  const titleEl = document.getElementById('runcolor-title');
+  if (titleEl) titleEl.textContent = 'ชุด Roll ที่ใช้เดิน — ' + fmtDateThai(parseISODate(d));
+
+  // จัดกลุ่มตามขนาดแล้วเรียง Forming/Sizing/TH เหมือนหน้าอื่น
+  const groups = new Map();
+  getRollSets().forEach(setName => {
+    if (!toolingData.roll.some(r => r.set === setName)) return;
+    const key = rollSetSizeGroupKey(setName);
+    if (!groups.has(key)) groups.set(key, { label: rollSetSizeGroupLabel(setName), sets: [] });
+    const g = groups.get(key);
+    if (!g.label.includes('"') && rollSetSizeGroupLabel(setName).includes('"')) g.label = rollSetSizeGroupLabel(setName);
+    g.sets.push(setName);
+  });
+
+  const q = ((document.getElementById('runcolor-search') || {}).value || '').trim().toLowerCase();
+  const rows = [...groups.entries()]
+    .sort((a, b) => (a[0] === 'อื่นๆ' ? 1 : 0) - (b[0] === 'อื่นๆ' ? 1 : 0))
+    .filter(([, g]) => !q || g.label.toLowerCase().includes(q))
+    .map(([, g]) => {
+      const sorted = g.sets.slice().sort((a, b) => {
+        const ca = ROLL_SET_CATEGORY_ORDER[parseSizeRollName(a).category], cb = ROLL_SET_CATEGORY_ORDER[parseSizeRollName(b).category];
+        return (ca === undefined ? 9 : ca) - (cb === undefined ? 9 : cb);
+      });
+      return rollSetSectionHeaderHtml(escapeHtmlAttr(g.label), sorted.length, 'var(--text-1)', { keepCase: true, big: true })
+        + sorted.map(setName => {
+          const cat = parseSizeRollName(setName).category;
+          const catColor = ROLL_SET_SECTION_COLORS[cat] || 'var(--text-2)';
+          const setRolls = toolingData.roll.filter(r => r.set === setName);
+          const used = new Set(setRolls.map(r => r.color || NO_COLOR_KEY));
+          const palette = [
+            ...getSetPalette(setName).filter(c => used.has(c.key)),
+            ...(used.has(NO_COLOR_KEY) ? [{ key: NO_COLOR_KEY, label: 'ไม่ระบุสี', dot: '#9CA3AF' }] : []),
+          ];
+          const chosen = runColorFor(d, setName);
+          return `<div style="display:flex;align-items:center;gap:10px;padding:7px 6px;border-bottom:1px solid var(--border-light);">
+            <span style="flex:0 0 62px;font-size:12px;font-weight:800;color:${catColor};">${escapeHtmlAttr(cat || setName)}</span>
+            <span style="flex:1;display:flex;flex-wrap:wrap;gap:5px;">
+              ${palette.map(c => {
+                const on = chosen === c.key;
+                const n = setRolls.filter(r => (r.color || NO_COLOR_KEY) === c.key).length;
+                return `<button onclick="${jsCallAttr('setRunColor', d, setName, c.key)}"
+                  title="${escapeHtmlAttr(on ? 'เดินด้วย' + c.label + 'อยู่ — กดซ้ำเพื่อยกเลิก' : 'ตั้งว่าวันนี้เดินด้วย' + c.label)}"
+                  style="display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:99px;cursor:pointer;font-size:11px;font-weight:${on ? 800 : 600};
+                         border:1px solid ${on ? 'var(--accent)' : 'var(--border)'};background:${on ? 'var(--accent-glow)' : 'transparent'};
+                         color:${on ? 'var(--accent)' : 'var(--text-2)'};">
+                  <span style="width:8px;height:8px;border-radius:50%;background:${c.dot};flex-shrink:0;"></span>${escapeHtmlAttr(c.label)}
+                  <span style="opacity:.6;font-weight:600;">${n}</span>${on ? ' ✓' : ''}</button>`;
+              }).join('') || '<span style="font-size:11px;color:var(--text-3);">ไม่มีชุดสีในกลุ่มนี้</span>'}
+            </span>
+          </div>`;
+        }).join('');
+    }).join('');
+
+  const setCount = [...groups.values()].reduce((n, g) => n + g.sets.length, 0);
+  const chosenCount = Object.keys(rollRunColor[d] || {}).length;
+  const note = document.getElementById('runcolor-note');
+  if (note) note.innerHTML = `1 Size Roll เดินได้วันละ 1 ชุดสี — เลือกให้ Forming / Sizing / TH แยกกัน กดสีเดิมซ้ำเพื่อยกเลิก<br>
+      น้ำหนักผลิตของวันนี้จะไปลงที่ชุดสีที่เลือกไว้เท่านั้น &nbsp;·&nbsp;
+      <b style="color:var(--text-1);">ระบุแล้ว ${chosenCount} / ${setCount} รายการ</b>`;
+  body.innerHTML = rows || '<div style="padding:16px;text-align:center;color:var(--text-3);font-size:13px;">ไม่พบ Size Roll ตามคำค้น</div>';
 }
 
 // ปุ่มเลือกช่วงเร็ว — เดิมมีแค่ช่องวันที่ที่ตั้งต้นเป็น 2020-01-01 ทำให้เผลอแก้แค่วัน/เดือน
@@ -6033,13 +6153,24 @@ async function renderProdWeight() {
         ...getSetPalette(setName).filter(c => used.has(c.key)),
         ...(used.has(NO_COLOR_KEY) ? [{ key: NO_COLOR_KEY, label: 'ไม่ระบุสี', dot: '#9CA3AF' }] : []),
       ];
-      return palette.map(c => `<tr>
+      // น้ำหนักของวันไหนลงที่ชุดสีที่ "ใช้เดิน" วันนั้นเท่านั้น (ดู rollRunColor)
+      // วันที่ยังไม่ได้ระบุว่าเดินสีไหน จะไม่ลงแถวใดเลย แต่ยังนับอยู่ในยอดรวมของขนาด (หัวกลุ่ม/แถวรวม)
+      // เพื่อไม่ให้ยอดหาย และให้เห็นว่ายังมีวันที่ต้องไประบุ
+      return palette.map(c => {
+        const cells = days.map(d => {
+          const run = runColorFor(d, setName);
+          const mine = run === c.key;
+          return { d, kg: mine ? (perDay[d] || 0) : 0, unset: !run };
+        });
+        const rowKg = cells.reduce((s, x) => s + x.kg, 0);
+        return `<tr>
         <td title="${escapeHtmlAttr(setName)}"><strong style="color:${catColor};">${escapeHtmlAttr(cat || setName)}</strong></td>
         <td><span style="display:inline-flex;align-items:center;gap:6px;">
           <span style="width:9px;height:9px;border-radius:50%;background:${c.dot};flex-shrink:0;"></span>${escapeHtmlAttr(c.label)}</span></td>
-        ${days.map(d => `<td style="text-align:right;">${fmt(ton(perDay[d]))}</td>`).join('')}
-        <td style="text-align:right;font-weight:800;color:${groupKg ? 'var(--text-1)' : 'var(--text-3)'};">${fmt(ton(groupKg))}</td>
-      </tr>`).join('');
+        ${cells.map(x => `<td style="text-align:right;${x.kg ? 'font-weight:700;' : ''}">${x.kg ? fmt(ton(x.kg)) : '<span class="muted">—</span>'}</td>`).join('')}
+        <td style="text-align:right;font-weight:800;color:${rowKg ? 'var(--text-1)' : 'var(--text-3)'};">${fmt(ton(rowKg))}</td>
+      </tr>`;
+      }).join('');
     }).join('');
 
     const pieces = g.sets.reduce((n, s) => n + toolingData.roll.filter(r => r.set === s).length, 0);
@@ -6059,7 +6190,20 @@ async function renderProdWeight() {
   grid.innerHTML = errorBanner + `<div class="card"><div class="table-wrap"><table>
     <thead><tr>
       <th>SIZE ROLL</th><th>ชุดสี</th>
-      ${days.map(d => `<th style="text-align:right;white-space:nowrap;">${escapeHtmlAttr(fmtDateThaiShort(parseISODate(d)))}</th>`).join('')}
+      ${days.map(d => {
+        const setCount = ordered.reduce((n, [, g]) => n + g.sets.length, 0);
+        const chosen = Object.keys(rollRunColor[d] || {}).length;
+        const done = setCount && chosen >= setCount;
+        return `<th style="text-align:right;white-space:nowrap;">
+          <div>${escapeHtmlAttr(fmtDateThaiShort(parseISODate(d)))}</div>
+          <button onclick="${jsCallAttr('openRunColorPicker', d)}"
+            title="${escapeHtmlAttr('เลือกชุดสี Roll ที่ใช้เดินวันที่ ' + fmtDateThai(parseISODate(d)) + ' — ระบุแล้ว ' + chosen + '/' + setCount + ' รายการ')}"
+            style="margin-top:3px;padding:1px 7px;border-radius:99px;cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap;
+                   border:1px solid ${chosen ? (done ? 'var(--green)' : 'var(--amber)') : 'var(--border)'};
+                   background:${chosen ? (done ? 'var(--green-dim)' : 'var(--amber-dim)') : 'transparent'};
+                   color:${chosen ? (done ? 'var(--green)' : 'var(--amber)') : 'var(--text-3)'};">✎ ${chosen}/${setCount}</button>
+        </th>`;
+      }).join('')}
       <th style="text-align:right;">รวม (ตัน)</th>
     </tr></thead>
     <tbody>${body || `<tr><td colspan="${colCount}" style="padding:32px;text-align:center;color:var(--text-3);">ยังไม่มีชุด Roll ในทะเบียน Tooling</td></tr>`}</tbody>
@@ -6070,8 +6214,9 @@ async function renderProdWeight() {
     </tr></tfoot>` : ''}
   </table></div>
   ${days.length ? `<div style="padding:10px 14px;border-top:1px solid var(--border-light);font-size:11px;color:var(--text-3);line-height:1.6;">
-    ระบบ Production บอกได้แค่ <b>เกรด + ขนาด</b> ไม่ได้บอกว่าชุดสีไหนหรือขั้นตอนไหน (Forming/Sizing/TH) เป็นคนรีด —
-    ทุกแถวของขนาดเดียวกันจึงแสดงน้ำหนักผลิตชุดเดียวกัน ไม่ใช่ยอดแยกของแถวนั้นเอง
+    ระบบ Production บอกได้แค่ <b>เกรด + ขนาด</b> ไม่ได้บอกว่าชุดสีไหนเป็นคนเดิน — น้ำหนักของแต่ละวันจึงลงที่ชุดสีที่ระบุไว้ว่า
+    <b>ใช้เดินวันนั้น</b> (กดปุ่ม ✎ ที่หัวคอลัมน์วันเพื่อเลือก) วันที่ยังไม่ได้ระบุจะไม่ลงแถวใดเลย
+    แต่ยังนับอยู่ในยอดรวมของขนาดและแถวรวมท้ายตาราง ยอดจึงไม่หาย
   </div>` : `<div style="padding:24px;text-align:center;color:var(--text-3);font-size:13px;">ไม่มีข้อมูลการผลิตในช่วงวันที่ที่เลือก</div>`}
   </div>`;
 }
