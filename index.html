@@ -346,6 +346,8 @@ table.daily-tech-view > tbody > tr > td:nth-child(9):not([colspan]){display:none
 .plan-drag-item.plan-drag-active{opacity:.45;}
 .plan-drag-item.plan-drag-active .plan-drag-grip{cursor:grabbing;}
 body.plan-dragging{cursor:grabbing;user-select:none;-webkit-user-select:none;}
+/* ช่องวันที่กำลังชี้อยู่ตอนลาก — ให้เห็นว่าปล่อยแล้วงานจะไปลงวันไหน */
+.plan-drop-zone.plan-drop-hot{outline:2px dashed var(--accent);outline-offset:2px;border-radius:6px;background:var(--accent-glow);}
 .chip-pink{background:rgba(194,70,158,0.10);color:#C2469E;}
 .chip-pink::before{background:#C2469E;}
 .chip-gray{background:rgba(107,114,128,0.10);color:#6B7280;}
@@ -3734,7 +3736,7 @@ function renderPlanWeek() {
       `${planCalendarChip(t, editable, 'flex:1;min-width:0;')}${editable ? `<button title="ลบ" onclick="deletePlanTask('${t.id}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:11px;padding:0;flex:0 0 auto;">✕</button>` : ''}`,
       editable)).join('');
     return `<td style="min-width:110px;">
-      <div class="plan-drop-zone" data-day="${iso}" style="display:flex;flex-direction:column;gap:4px;">
+      <div class="plan-drop-zone" data-day="${iso}" style="display:flex;flex-direction:column;gap:4px;min-height:30px;">
         ${items || '<span class="muted">—</span>'}
         ${editable ? `<button class="btn btn-ghost btn-sm" style="padding:2px 6px;font-size:11px;" onclick="openPlanTaskModal('add', null, '${iso}')">+ เพิ่ม</button>` : ''}
       </div>
@@ -3772,7 +3774,7 @@ function renderPlanMonth() {
         <strong style="font-size:12px;">${day}</strong>
         ${editable ? `<button title="เพิ่มงาน" onclick="openPlanTaskModal('add', null, '${iso}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:13px;line-height:1;padding:0;">+</button>` : ''}
       </div>
-      <div class="plan-drop-zone" data-day="${iso}" style="margin-top:6px;display:flex;flex-direction:column;gap:4px;">${chips}</div>
+      <div class="plan-drop-zone" data-day="${iso}" style="margin-top:6px;display:flex;flex-direction:column;gap:4px;min-height:30px;">${chips}</div>
     </div>`;
   }
   document.getElementById('plan-month-grid').innerHTML = html;
@@ -3786,7 +3788,7 @@ let planDrag = null;
 // งานที่ล้นมาจากวันก่อนหน้าไม่ให้ลาก เพราะเวลาเริ่มของมันถูกกำหนดจากวันต้นทาง ต้องไปสลับที่วันนั้น
 function planDragWrap(t, iso, innerHtml, editable) {
   if (!editable || planDeleteMode || t.date !== iso) return `<div class="plan-drag-item">${innerHtml}</div>`;
-  return `<div class="plan-drag-item" data-taskid="${escapeHtmlAttr(t.id)}" data-shift="${escapeHtmlAttr(t.shift || '')}" data-draggable="1"><span class="plan-drag-grip" title="ลากขึ้น–ลงเพื่อสลับลำดับว่าชุดไหนทำก่อน–หลัง">⋮⋮</span>${innerHtml}</div>`;
+  return `<div class="plan-drag-item" data-taskid="${escapeHtmlAttr(t.id)}" data-shift="${escapeHtmlAttr(t.shift || '')}" data-draggable="1"><span class="plan-drag-grip" title="ลากขึ้น–ลงเพื่อสลับลำดับก่อน–หลัง หรือลากไปวางวันอื่นเพื่อย้ายวัน">⋮⋮</span>${innerHtml}</div>`;
 }
 
 function onPlanDragDown(ev) {
@@ -3797,7 +3799,8 @@ function onPlanDragDown(ev) {
   const zone = item && item.closest('.plan-drop-zone');
   if (!zone) return;
   ev.preventDefault();
-  planDrag = { item, zone, shift: item.dataset.shift, moved: false };
+  planDrag = { item, zone, shift: item.dataset.shift, taskId: item.dataset.taskid,
+    sourceDay: zone.dataset.day, moved: false };
   item.classList.add('plan-drag-active');
   document.body.classList.add('plan-dragging');
 }
@@ -3806,13 +3809,31 @@ function onPlanDragMove(ev) {
   if (!planDrag) return;
   ev.preventDefault();
   const under = document.elementFromPoint(ev.clientX, ev.clientY);
-  const over = under && under.closest ? under.closest('.plan-drag-item[data-draggable]') : null;
-  if (!over || over === planDrag.item) return;
-  if (over.closest('.plan-drop-zone') !== planDrag.zone) return; // สลับได้ในวันเดียวกันเท่านั้น
-  if (over.dataset.shift !== planDrag.shift) return;             // และในกะเดียวกันเท่านั้น
-  const rect = over.getBoundingClientRect();
-  const insertAfter = ev.clientY > rect.top + rect.height / 2;
-  planDrag.zone.insertBefore(planDrag.item, insertAfter ? over.nextSibling : over);
+  if (!under || !under.closest) return;
+  const zone = under.closest('.plan-drop-zone');
+  if (!zone || !zone.dataset.day) return;
+  // วันหยุด (อาทิตย์/วันหยุดบริษัท) วางไม่ได้ — ถ้าปล่อยให้วาง computePlanEnd จะเลื่อนไปวันทำงานถัดไปเงียบๆ
+  // กลายเป็นว่าลากไปวันหนึ่งแต่งานไปโผล่อีกวัน ไม่ไฮไลต์และไม่รับการวางจะเข้าใจง่ายกว่า
+  if (isPlanDayOff(zone.dataset.day)) return;
+  if (planDrag.hotZone !== zone) {
+    if (planDrag.hotZone) planDrag.hotZone.classList.remove('plan-drop-hot');
+    zone.classList.add('plan-drop-hot');
+    planDrag.hotZone = zone;
+  }
+  const over = under.closest('.plan-drag-item[data-draggable]');
+  if (over === planDrag.item) return;
+  if (over) {
+    // วางสลับกับงานที่ชี้อยู่ — ต้องเป็นกะเดียวกัน ไม่งั้นเวลาเริ่ม/จบจะคำนวณข้ามรอบกะ
+    if (over.dataset.shift !== planDrag.shift) return;
+    const rect = over.getBoundingClientRect();
+    zone.insertBefore(planDrag.item, ev.clientY > rect.top + rect.height / 2 ? over.nextSibling : over);
+  } else {
+    // ชี้ในช่องวันที่ยังไม่มีงาน (หรือที่ว่างใต้รายการ) — ต่อท้ายวันนั้น
+    // ต่อท้ายก่อนปุ่ม "+ เพิ่ม" ของมุมมองสัปดาห์ ไม่งั้นงานจะไปอยู่ใต้ปุ่ม
+    const addBtn = zone.querySelector(':scope > button');
+    if (addBtn) zone.insertBefore(planDrag.item, addBtn);
+    else zone.appendChild(planDrag.item);
+  }
   planDrag.moved = true;
 }
 
@@ -3822,24 +3843,40 @@ function onPlanDragUp() {
   planDrag = null;
   d.item.classList.remove('plan-drag-active');
   document.body.classList.remove('plan-dragging');
+  if (d.hotZone) d.hotZone.classList.remove('plan-drop-hot');
   if (!d.moved) return;
-  const ids = [...d.zone.querySelectorAll('.plan-drag-item[data-draggable]')]
+  const zone = d.item.closest('.plan-drop-zone');
+  const task = planTasks.find(t => t.id === d.taskId);
+  if (!zone || !zone.dataset.day || !task) { renderCurrentPlanView(); return; }
+  const targetDay = zone.dataset.day;
+  const ids = [...zone.querySelectorAll('.plan-drag-item[data-draggable]')]
     .filter(n => n.dataset.shift === d.shift)
     .map(n => n.dataset.taskid);
-  reorderPlanTasksInDay(ids);
+
+  // เริ่มไล่เวลาจาก "ต้นกะของวันนั้น" เสมอ ไม่ยกเวลาเดิมของงานอื่นในวันนั้นมาเป็นจุดตั้งต้น
+  // (ถ้ายึดเวลาของงานที่มีอยู่ เช่น 20:00 งานที่ลากเข้ามาจะเริ่ม 20:00 แล้วดันงานเดิมข้ามไปวันถัดไป)
+  // ตรงกับที่ตกลงไว้ว่า วางแผนวันไหนให้เป็นการวางแผนของวันนั้น เริ่มที่ต้นกะ ไม่ต่อจากของเดิม
+  const anchor = (SHIFTS[d.shift] || {}).start || '08:00';
+
+  resequencePlanDayShift(targetDay, d.shift, ids, anchor);
+  if (d.sourceDay && d.sourceDay !== targetDay) {
+    // วันต้นทาง: ปิดช่องว่างที่งานย้ายออกไปทิ้งไว้
+    const srcIds = planTasks
+      .filter(t => t.workType === task.workType && t.shift === d.shift && taskDisplayDate(t) === d.sourceDay)
+      .sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime))
+      .map(t => t.id);
+    resequencePlanDayShift(d.sourceDay, d.shift, srcIds, anchor);
+  }
+  autoFixPlanSequencing(); // ลำดับใหม่อาจกินเวลายาวกว่าเดิม — เลื่อนงานถัดๆ ไปที่ทับซ้อนให้เอง
+  persistState();
+  renderCurrentPlanView();
 }
 
-document.addEventListener('pointerdown', onPlanDragDown);
-document.addEventListener('pointermove', onPlanDragMove);
-document.addEventListener('pointerup', onPlanDragUp);
-document.addEventListener('pointercancel', onPlanDragUp);
-
-// คงช่วงเวลาเดิมของกลุ่มไว้ (เริ่มที่ช่องเวลาแรกสุดเดิม) แล้วไล่จ่ายเวลาเริ่ม–จบใหม่ตามลำดับที่ลากไว้
-function reorderPlanTasksInDay(orderedIds) {
-  const tasks = orderedIds.map(id => planTasks.find(t => t.id === id)).filter(Boolean);
-  if (tasks.length < 2) { renderCurrentPlanView(); return; }
-  const earliest = tasks.slice().sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime))[0];
-  let cursor = { date: earliest.date, time: earliest.startTime };
+// จ่ายเวลาเริ่ม–จบใหม่ให้งานในวัน+กะเดียวกันตามลำดับที่ให้มา เริ่มจาก anchor แล้วไล่ต่อกันไป
+function resequencePlanDayShift(day, shift, orderedIds, anchor) {
+  const tasks = orderedIds.map(id => planTasks.find(t => t.id === id)).filter(t => t && t.shift === shift);
+  if (!tasks.length) return;
+  let cursor = { date: day, time: anchor };
   tasks.forEach(t => {
     t.date = cursor.date;
     t.startTime = cursor.time;
@@ -3850,10 +3887,12 @@ function reorderPlanTasksInDay(orderedIds) {
     t.otMinutesByShift = computed.otMinutesByShift || {};
     cursor = nextValidPlanContinuePoint(t.shift, t.endDate, t.endTime);
   });
-  autoFixPlanSequencing(); // ลำดับใหม่อาจกินเวลายาวกว่าเดิม — เลื่อนงานถัดๆ ไปที่ทับซ้อนให้เอง
-  persistState();
-  renderCurrentPlanView();
 }
+
+document.addEventListener('pointerdown', onPlanDragDown);
+document.addEventListener('pointermove', onPlanDragMove);
+document.addEventListener('pointerup', onPlanDragUp);
+document.addEventListener('pointercancel', onPlanDragUp);
 
 function addPlanTaskForCurrentDay() {
   openPlanTaskModal('add', null, toISODate(planViewDate));
