@@ -6073,6 +6073,29 @@ function renderRunColorPicker() {
   body.innerHTML = rows || '<div style="padding:16px;text-align:center;color:var(--text-3);font-size:13px;">ไม่พบ Size Roll ตามคำค้น</div>';
 }
 
+// การเดินบางขนาดใช้ Roll "Forming" ของอีกขนาดร่วมด้วย น้ำหนักที่ผลิตได้จึงต้องนับให้ Forming ชุดนั้นด้วย
+// { fgKey ของขนาดที่เดิน : fgKey ของขนาดที่ Forming ถูกใช้ร่วม }
+// จับคู่ด้วย fgKey ไม่ใช่ชื่อชุดตรงๆ เพื่อให้ยังทำงานถูกแม้เปลี่ยนชื่อ Size Roll ในทะเบียน
+const FG_SHARED_FORMING = {
+  'GS|1.5x1.5': 'GS|2x1',   // GS 1-1/2" เดินแล้วใช้ Forming ของ GS 2"x1"
+  'GI|1.5x1.5': 'GI|2x1',   // GI 1-1/2" เดินแล้วใช้ Forming ของ GI 2"x1"
+  'GI|3x3':     'GI|4x2',   // GI 3"x3" เดินแล้วใช้ Forming ของ GI 4"x2"
+};
+
+// ขนาดที่มาใช้ Forming ของชุดนี้ร่วม (เฉพาะหมวด Forming เท่านั้น)
+function sharedFormingSources(setName) {
+  if (parseSizeRollName(setName).category !== 'Forming') return [];
+  const target = rollSetFgKey(setName);
+  if (!target) return [];
+  return Object.keys(FG_SHARED_FORMING).filter(src => FG_SHARED_FORMING[src] === target);
+}
+
+// ชื่อขนาดที่อ่านออกจาก fgKey — ใช้ในคำอธิบายว่าน้ำหนักที่บวกเข้ามาเป็นของขนาดไหน
+function fgKeyLabel(fgKey) {
+  const hit = getRollSets().find(s => rollSetFgKey(s) === fgKey);
+  return hit ? rollSetSizeGroupLabel(hit) : fgKey;
+}
+
 // ปุ่มเลือกช่วงเร็ว — เดิมมีแค่ช่องวันที่ที่ตั้งต้นเป็น 2020-01-01 ทำให้เผลอแก้แค่วัน/เดือน
 // แล้วเหลือปี 2020 ค้างไว้ กลายเป็นช่วง 6 ปีโดยไม่รู้ตัว แล้วเข้าใจว่าตัวกรองไม่ทำงาน
 function setProdWeightRange(kind) {
@@ -6192,21 +6215,34 @@ async function renderProdWeight() {
       // น้ำหนักของวันไหนลงที่ชุดสีที่ "ใช้เดิน" วันนั้นเท่านั้น (ดู rollRunColor)
       // วันที่ยังไม่ได้ระบุว่าเดินสีไหน จะไม่ลงแถวใดเลย แต่ยังนับอยู่ในยอดรวมของขนาด (หัวกลุ่ม/แถวรวม)
       // เพื่อไม่ให้ยอดหาย และให้เห็นว่ายังมีวันที่ต้องไประบุ
+      // ขนาดอื่นที่มาใช้ Forming ของชุดนี้ร่วม — บวกน้ำหนักของขนาดนั้นเข้ามาด้วย
+      const sharedSrc = sharedFormingSources(setName);
+      const sharedPerDay = d => sharedSrc.reduce((s, k) => s + ((fgWeightByKeyDate[k] || {})[d] || 0), 0);
       return palette.map(c => {
         const cells = days.map(d => {
           const explicit = explicitRunColorFor(d, setName);
           const run = explicit || inUseColorFor(setName);
           const mine = run === c.key;
+          const ownKg = mine ? (perDay[d] || 0) : 0;
+          const shareKg = mine ? sharedPerDay(d) : 0;
           // อนุมานจากสถานะ "กำลังใช้งาน" ไม่ได้ระบุเจาะจงวันนั้น — ทำให้ดูต่างกันเล็กน้อย
-          return { d, kg: mine ? (perDay[d] || 0) : 0, inferred: mine && !explicit };
+          return { d, kg: ownKg + shareKg, shareKg, inferred: mine && !explicit };
         });
         const rowKg = cells.reduce((s, x) => s + x.kg, 0);
         return `<tr>
         <td title="${escapeHtmlAttr(setName)}"><strong style="color:${catColor};">${escapeHtmlAttr(cat || setName)}</strong></td>
         <td><span style="display:inline-flex;align-items:center;gap:6px;">
           <span style="width:9px;height:9px;border-radius:50%;background:${c.dot};flex-shrink:0;"></span>${escapeHtmlAttr(c.label)}</span></td>
-        ${cells.map(x => `<td style="text-align:right;${x.kg ? 'font-weight:700;' : ''}${x.inferred ? 'color:var(--text-2);' : ''}"
-          ${x.inferred ? 'title="อ้างจากชุดที่สถานะกำลังใช้งานอยู่ — ยังไม่ได้ระบุเจาะจงของวันนี้"' : ''}>${x.kg ? fmt(ton(x.kg)) + (x.inferred ? '<span style="font-weight:400;color:var(--text-3);">*</span>' : '') : '<span class="muted">—</span>'}</td>`).join('')}
+        ${cells.map(x => {
+          const tips = [];
+          if (x.inferred) tips.push('อ้างจากชุดที่สถานะกำลังใช้งานอยู่ — ยังไม่ได้ระบุเจาะจงของวันนี้');
+          if (x.shareKg) tips.push('รวมน้ำหนักที่มาใช้ Forming ร่วมจาก ' + sharedSrc.map(fgKeyLabel).join(', ') + ' อีก ' + ton(x.shareKg).toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' ตัน');
+          return `<td style="text-align:right;${x.kg ? 'font-weight:700;' : ''}${x.inferred ? 'color:var(--text-2);' : ''}"
+            ${tips.length ? `title="${escapeHtmlAttr(tips.join(' · '))}"` : ''}>${x.kg
+              ? fmt(ton(x.kg)) + (x.inferred ? '<span style="font-weight:400;color:var(--text-3);">*</span>' : '')
+                              + (x.shareKg ? '<span style="font-weight:400;color:var(--accent);">⁺</span>' : '')
+              : '<span class="muted">—</span>'}</td>`;
+        }).join('')}
         <td style="text-align:right;font-weight:800;color:${rowKg ? 'var(--text-1)' : 'var(--text-3)'};">${fmt(ton(rowKg))}</td>
       </tr>`;
       }).join('');
@@ -6221,7 +6257,14 @@ async function renderProdWeight() {
       <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);">
         <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(g.label)}
       </span>
-      <span style="float:right;font-size:12px;font-weight:700;color:var(--text-3);">${colorSets} ชุด · ${pieces} ลูก · ผลิตรวม ${ton(groupKg).toLocaleString(undefined, { maximumFractionDigits: 2 })} ตัน</span>
+      <span style="float:right;font-size:12px;font-weight:700;color:var(--text-3);">${colorSets} ชุด · ${pieces} ลูก · ผลิตรวม ${ton(groupKg).toLocaleString(undefined, { maximumFractionDigits: 2 })} ตัน${(() => {
+        // ขนาดนี้มี Forming ที่ถูกขนาดอื่นมาใช้ร่วม — บอกยอดที่บวกเข้ามาไว้ที่หัวกลุ่มด้วย
+        const src = g.sets.flatMap(sharedFormingSources);
+        if (!src.length) return '';
+        const extraKg = [...new Set(src)].reduce((s, k) => s + days.reduce((a, d) => a + ((fgWeightByKeyDate[k] || {})[d] || 0), 0), 0);
+        if (!extraKg) return '';
+        return ` <span style="color:var(--accent);">+ Forming ร่วมจาก ${escapeHtmlAttr([...new Set(src)].map(fgKeyLabel).join(', '))} ${ton(extraKg).toLocaleString(undefined, { maximumFractionDigits: 2 })} ตัน</span>`;
+      })()}</span>
     </td></tr>${rows}`;
   }).join('');
 
@@ -6256,7 +6299,10 @@ async function renderProdWeight() {
     <b>ชุดสีที่ใช้เดิน</b> โดยยึดจากชุดที่สถานะ <b>กำลังใช้งาน</b> อยู่ (ชุดเดียวกับการ์ด "ชุด Roll กำลังใช้งาน" หน้า Dashboard)
     ตัวเลขที่มี <b>*</b> คือค่าที่อ้างจากสถานะกำลังใช้งาน ยังไม่ได้ระบุเจาะจงของวันนั้น
     ถ้าวันไหนเดินคนละชุดกับตอนนี้ กดปุ่ม <b>✎</b> ที่หัวคอลัมน์วันเพื่อระบุทับได้ (ค่าที่ระบุเองชนะเสมอ)
-    ขนาดที่ยังไม่มีชุดไหนกำลังใช้งานและไม่ได้ระบุไว้ จะไม่ลงแถวใดเลย แต่ยังนับอยู่ในยอดรวมของขนาดและแถวรวมท้ายตาราง ยอดจึงไม่หาย
+    ขนาดที่ยังไม่มีชุดไหนกำลังใช้งานและไม่ได้ระบุไว้ จะไม่ลงแถวใดเลย แต่ยังนับอยู่ในยอดรวมของขนาดและแถวรวมท้ายตาราง ยอดจึงไม่หาย<br>
+    ตัวเลขที่มี <b style="color:var(--accent);">⁺</b> คือรวมน้ำหนักของขนาดอื่นที่มาใช้ <b>Forming</b> ชุดนี้ร่วมด้วย
+    (GS 1-1/2" → GS 2"x1" · GI 1-1/2" → GI 2"x1" · GI 3"x3" → GI 4"x2") —
+    แถวรวมท้ายตารางยังนับขนาดละครั้งตามยอดผลิตจริง ไม่บวกซ้ำจากการใช้ Forming ร่วม
   </div>` : `<div style="padding:24px;text-align:center;color:var(--text-3);font-size:13px;">ไม่มีข้อมูลการผลิตในช่วงวันที่ที่เลือก</div>`}
   </div>`;
 }
