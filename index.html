@@ -1359,7 +1359,17 @@ canvas{display:block;}
         <a id="pbview-newtab" href="#" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="text-decoration:none;">↗ เปิดในแท็บใหม่</a>
       </div>
       <div id="pbview-note" style="font-size:11px;color:var(--text-3);line-height:1.6;margin-bottom:8px;"></div>
-      <iframe id="prodblock-external-iframe" title="Production Block" style="width:100%;height:calc(100vh - 168px);border:none;border-radius:8px;background:var(--bg-panel);"></iframe>
+      <div id="pbcrop-row" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-size:11px;color:var(--text-3);">
+        <button class="btn btn-ghost btn-sm" id="pbcrop-toggle" onclick="toggleProdBlockCrop()">ซ่อนแถบเมนูของ TST Production</button>
+        <span id="pbcrop-fields" style="display:none;align-items:center;gap:6px;">
+          ซ่อนด้านบน <input id="pbcrop-top" type="number" min="0" max="400" step="4" class="form-input" style="width:74px;padding:2px 6px;font-size:11px;" oninput="applyProdBlockCrop()">
+          px · ซ่อนด้านซ้าย <input id="pbcrop-left" type="number" min="0" max="500" step="8" class="form-input" style="width:74px;padding:2px 6px;font-size:11px;" oninput="applyProdBlockCrop()">
+          px <button class="btn btn-ghost btn-sm" onclick="resetProdBlockCrop()" style="font-size:11px;">รีเซ็ต</button>
+        </span>
+      </div>
+      <div id="prodblock-frame-wrap" style="overflow:hidden;border-radius:8px;background:var(--bg-panel);height:calc(100vh - 200px);">
+        <iframe id="prodblock-external-iframe" title="Production Block" style="width:100%;height:100%;border:none;display:block;"></iframe>
+      </div>
     </div>
 
 
@@ -1995,6 +2005,60 @@ let prodBlockView = (() => {
   catch (e) { return 'production'; }
 })();
 
+// ครอบแถบเมนู/หัวเว็บของ TST Production ออก ให้เหลือแต่ตาราง Block
+// แก้ CSS ข้างใน iframe ข้ามโดเมนไม่ได้ (เบราว์เซอร์ห้ามเข้าถึง) จึงใช้วิธีขยาย iframe แล้วเลื่อนออกนอกกรอบ
+// ปรับค่าได้เอง เพราะความสูงหัวเว็บ/ความกว้างแถบเมนูเป็นของระบบอื่น ถ้าเขาปรับดีไซน์ค่าเดิมจะไม่พอดี
+const PROD_BLOCK_CROP_KEY = 'tstProdBlockCrop';
+let prodBlockCrop = (() => {
+  try { const v = JSON.parse(localStorage.getItem(PROD_BLOCK_CROP_KEY) || 'null');
+    if (v && typeof v.top === 'number' && typeof v.left === 'number') return v; } catch (e) {}
+  return { on: false, top: 64, left: 256 };
+})();
+
+function saveProdBlockCrop() {
+  try { localStorage.setItem(PROD_BLOCK_CROP_KEY, JSON.stringify(prodBlockCrop)); } catch (e) {}
+}
+function toggleProdBlockCrop() {
+  prodBlockCrop.on = !prodBlockCrop.on;
+  saveProdBlockCrop();
+  applyProdBlockCrop();
+}
+function resetProdBlockCrop() {
+  prodBlockCrop = { on: prodBlockCrop.on, top: 64, left: 256 };
+  saveProdBlockCrop();
+  applyProdBlockCrop();
+}
+function applyProdBlockCrop() {
+  const frame = document.getElementById('prodblock-external-iframe');
+  const row = document.getElementById('pbcrop-row');
+  const fields = document.getElementById('pbcrop-fields');
+  const btn = document.getElementById('pbcrop-toggle');
+  const topIn = document.getElementById('pbcrop-top');
+  const leftIn = document.getElementById('pbcrop-left');
+  if (!frame || !row) return;
+  // ครอบได้เฉพาะมุมมองฝ่ายผลิต — ลิงก์แชร์เป็นหน้า Block เปล่าอยู่แล้ว ไม่มีแถบเมนูให้ซ่อน
+  row.style.display = prodBlockView === 'production' ? 'flex' : 'none';
+  if (topIn && document.activeElement !== topIn) topIn.value = prodBlockCrop.top;
+  if (leftIn && document.activeElement !== leftIn) leftIn.value = prodBlockCrop.left;
+  if (topIn && document.activeElement === topIn) prodBlockCrop.top = Math.max(0, parseInt(topIn.value, 10) || 0);
+  if (leftIn && document.activeElement === leftIn) prodBlockCrop.left = Math.max(0, parseInt(leftIn.value, 10) || 0);
+  if (document.activeElement === topIn || document.activeElement === leftIn) saveProdBlockCrop();
+
+  const on = prodBlockCrop.on && prodBlockView === 'production';
+  if (fields) fields.style.display = on ? 'inline-flex' : 'none';
+  if (btn) {
+    btn.style.background = on ? 'var(--accent)' : '';
+    btn.style.color = on ? '#fff' : '';
+    btn.textContent = on ? 'แสดงแถบเมนูกลับ' : 'ซ่อนแถบเมนูของ TST Production';
+  }
+  const t = on ? prodBlockCrop.top : 0;
+  const l = on ? prodBlockCrop.left : 0;
+  frame.style.width = `calc(100% + ${l}px)`;
+  frame.style.height = `calc(100% + ${t}px)`;
+  frame.style.marginTop = `-${t}px`;
+  frame.style.marginLeft = `-${l}px`;
+}
+
 function setProdBlockView(view) {
   if (!PROD_BLOCK_VIEWS[view]) return;
   prodBlockView = view;
@@ -2026,6 +2090,7 @@ function loadProdBlockIframe() {
        <b>บัญชี TST Production เป็นบัญชีแยกจากระบบนี้</b> — รหัสที่ใช้เข้า TST Tooling (เช่น 67024) ใช้กับ TST Production ไม่ได้
        ถ้าไม่มีบัญชี ให้ขอจากผู้ดูแลระบบ TST Production หรือใช้ปุ่ม <b>ลิงก์แชร์ (80%)</b> ที่เข้าได้เลยไม่ต้องล็อกอิน`
     : 'ลิงก์แชร์แบบดูอย่างเดียว เข้าได้เลยไม่ต้องล็อกอิน แต่เวลาที่แสดงคิดที่ 80% ของสปีดเต็ม (มุมมองฝ่ายขาย)';
+  applyProdBlockCrop();
 }
 
 function initDashboard() {
