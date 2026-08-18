@@ -1029,7 +1029,7 @@ canvas{display:block;}
           <div class="card-header">
             <span class="card-title">ชุด Roll กำลังแต่ง</span>
             <span style="margin-left:auto;font-size:12px;color:var(--text-3);">
-              <span id="dash-roll-dressing-count" style="font-weight:700;color:var(--amber);">0</span> ชุด
+              <span id="dash-roll-dressing-count" style="font-weight:700;color:var(--amber);">0</span> ชุด<span id="dash-roll-dressing-count-note"></span>
             </span>
           </div>
           <div id="dash-roll-dressing-list" style="padding:12px 14px;"></div>
@@ -1038,7 +1038,7 @@ canvas{display:block;}
           <div class="card-header">
             <span class="card-title">ชุด Roll กำลังขัด</span>
             <span style="margin-left:auto;font-size:12px;color:var(--text-3);">
-              <span id="dash-roll-polishing-count" style="font-weight:700;color:var(--purple);">0</span> ชุด
+              <span id="dash-roll-polishing-count" style="font-weight:700;color:var(--purple);">0</span> ชุด<span id="dash-roll-polishing-count-note"></span>
             </span>
           </div>
           <div id="dash-roll-polishing-list" style="padding:12px 14px;"></div>
@@ -2244,8 +2244,8 @@ function getWorkingRollEntries(workType) {
       if (st === 'done') done++;
       else if (st === 'in_progress') doing++;
     });
-    // งานที่กดเริ่มระดับ "ทั้งงาน" แต่ยังไม่ได้ระบุรายชิ้น ก็นับว่ากำลังทำอยู่
-    if (!doing && dayMap[t.id] !== 'in_progress') return;
+    // งานที่จบครบทุกชิ้นแล้วไม่ใช่ "กำลังทำ" อีก ไม่ต้องแสดง
+    if (dayMap[t.id] === 'done' || (rollIds.length && done >= rollIds.length)) return;
     const colorKey = t.rollColor || NO_COLOR_KEY;
     const key = t.rollSet + '|' + colorKey;
     if (!byKey.has(key)) {
@@ -2254,41 +2254,57 @@ function getWorkingRollEntries(workType) {
         set: t.rollSet, colorKey,
         colorLabel: colorMeta ? colorMeta.label : 'ไม่ระบุสี',
         dot: colorMeta ? colorMeta.dot : '#9CA3AF',
-        doing: 0, done: 0, total: 0,
+        doing: 0, done: 0, total: 0, started: false,
       });
     }
     const e = byKey.get(key);
     e.doing += doing; e.done += done; e.total += rollIds.length;
+    // งานที่กดเริ่มระดับ "ทั้งงาน" แต่ยังไม่ได้ระบุรายชิ้น ก็นับว่าเริ่มแล้ว
+    if (doing || done || dayMap[t.id] === 'in_progress') e.started = true;
   });
-  return [...byKey.values()].sort((a, b) => a.set.localeCompare(b.set, 'th'));
+  // ชุดที่เริ่มทำแล้วขึ้นก่อนชุดที่ยังรอเริ่ม
+  return [...byKey.values()].sort((a, b) =>
+    (a.started === b.started) ? a.set.localeCompare(b.set, 'th') : (a.started ? -1 : 1));
 }
 
+// ชุดที่ยังไม่กดเริ่มจะแสดงแบบจาง (พื้นใส ขอบประ) + ป้าย "รอเริ่ม" ให้แยกออกจากชุดที่ทำอยู่จริงได้ทันที
 function dashRollWorkingChipHtml(e, accentVar, bgVar) {
   const progress = e.total ? `${e.done}/${e.total} ชิ้น` : '—';
+  const remain = Math.max(e.total - e.done, 0);
   return `<div onclick="${jsCallAttr('goToRollSetColor', e.set, e.colorKey)}"
     style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:8px;cursor:pointer;
-           border:1px solid ${accentVar};background:${bgVar};margin-bottom:6px;transition:filter .12s;"
+           border:1px ${e.started ? 'solid' : 'dashed'} ${accentVar};background:${e.started ? bgVar : 'transparent'};
+           margin-bottom:6px;transition:filter .12s;"
     onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
     title="ดูรายละเอียดในทะเบียน Tooling">
     <span style="width:9px;height:9px;border-radius:50%;background:${e.dot};flex-shrink:0;"></span>
     <span style="flex:1;min-width:0;">
       <span style="display:block;font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(e.set)}</span>
-      <span style="display:block;font-size:11px;color:var(--text-3);">${escapeHtmlAttr(e.colorLabel)} · เสร็จ ${progress}</span>
+      <span style="display:block;font-size:11px;color:var(--text-3);">${escapeHtmlAttr(e.colorLabel)} · ${e.started ? 'เสร็จ ' + progress : 'ตามแผน ' + e.total + ' ชิ้น'}</span>
     </span>
-    <span style="font-size:12px;font-weight:800;color:${accentVar};flex-shrink:0;">${e.doing} ชิ้น</span>
+    ${e.started
+      ? `<span style="font-size:12px;font-weight:800;color:${accentVar};flex-shrink:0;">${e.doing} ชิ้น</span>`
+      : `<span style="font-size:10px;font-weight:700;color:var(--text-3);border:1px solid var(--border);border-radius:99px;padding:1px 7px;flex-shrink:0;white-space:nowrap;">รอเริ่ม ${remain} ชิ้น</span>`}
   </div>`;
 }
 
 function renderDashboardWorkingRoll() {
   [
-    { workType: 'cnc',    listId: 'dash-roll-dressing-list',  countId: 'dash-roll-dressing-count',  accent: 'var(--amber)',  bg: 'var(--amber-dim)',  empty: 'ยังไม่มีชุด Roll ที่กำลังแต่งอยู่ตอนนี้' },
-    { workType: 'polish', listId: 'dash-roll-polishing-list', countId: 'dash-roll-polishing-count', accent: 'var(--purple)', bg: 'var(--purple-dim)', empty: 'ยังไม่มีชุด Roll ที่กำลังขัดอยู่ตอนนี้' },
+    { workType: 'cnc',    listId: 'dash-roll-dressing-list',  countId: 'dash-roll-dressing-count',  accent: 'var(--amber)',  bg: 'var(--amber-dim)',  empty: 'วันนี้ยังไม่มีชุด Roll ที่กำลังแต่งหรือวางแผนไว้' },
+    { workType: 'polish', listId: 'dash-roll-polishing-list', countId: 'dash-roll-polishing-count', accent: 'var(--purple)', bg: 'var(--purple-dim)', empty: 'วันนี้ยังไม่มีชุด Roll ที่กำลังขัดหรือวางแผนไว้' },
   ].forEach(cfg => {
     const el = document.getElementById(cfg.listId);
     if (!el) return;
     const entries = getWorkingRollEntries(cfg.workType);
     const countEl = document.getElementById(cfg.countId);
-    if (countEl) countEl.textContent = entries.length;
+    if (countEl) {
+      const doingSets = entries.filter(e => e.started).length;
+      countEl.textContent = entries.length;
+      // บอกแยกด้วยว่าในนั้นทำอยู่กี่ชุด รอเริ่มกี่ชุด ไม่งั้นตัวเลขรวมจะดูเหมือนกำลังทำทั้งหมด
+      const note = document.getElementById(cfg.countId + '-note');
+      if (note) note.textContent = entries.length
+        ? ` (ทำอยู่ ${doingSets} · รอเริ่ม ${entries.length - doingSets})` : '';
+    }
     el.innerHTML = entries.length
       ? entries.map(e => dashRollWorkingChipHtml(e, cfg.accent, cfg.bg)).join('')
       : `<div style="padding:4px;color:var(--text-3);font-size:13px;">${cfg.empty}</div>`;
