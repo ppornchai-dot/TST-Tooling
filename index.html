@@ -5478,6 +5478,14 @@ let cloudSyncReady = false;
 // ทำให้สคริปต์ตายกลางทาง โหลด state ไม่เสร็จ และ initCloudSync() ไม่ได้รันเลย
 let rollRunColor = {};
 
+// จุดเริ่มนับน้ำหนักผลิตใหม่ของแต่ละชุด Roll หลังแต่ง Roll เสร็จ
+// { 'GS 2"x1" (47x23) Forming|yellow': { from: 'YYYY-MM-DD', at: 'ISO', by: 'ชื่อคนกด' } }
+// from = นับน้ำหนักตั้งแต่วันนี้เป็นต้นไป (รวมวันนั้น) — วันก่อนหน้าถือเป็นรอบที่แต่งไปแล้ว
+// ใช้เฉพาะหน้าอายุ Roll เท่านั้น หน้าน้ำหนักผลิตยังรายงานยอดจริงตามช่วงวันที่เลือกเหมือนเดิม
+// ประกาศไว้ก่อน buildStateSnapshot() ด้วยเหตุผลเดียวกับ rollRunColor ข้างบน (TDZ)
+let rollDressReset = {};
+let rollDressResetLog = [];
+
 function buildStateSnapshot() {
   return {
     toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec,
@@ -5485,7 +5493,8 @@ function buildStateSnapshot() {
     dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
     dailyPieceStatus, rollSizeLog, rollSizeLogSeq, dailyPauseLog, dailyPauseLogSeq,
     prodBlockProducts, prodBlockSeq, prodBlockCells, prodBlockPM, prodBlockSummary,
-    prodBlockEntries, prodBlockEntrySeq, prodBlockActiveMachine, prodBlockViewMonth, rollRunColor
+    prodBlockEntries, prodBlockEntrySeq, prodBlockActiveMachine, prodBlockViewMonth, rollRunColor,
+    rollDressReset, rollDressResetLog
   };
 }
 
@@ -5585,6 +5594,8 @@ function applyState(saved) {
   if (saved.rollSetCategoryTemplates) rollSetCategoryTemplates = saved.rollSetCategoryTemplates;
   if (saved.rollLifeSpec) rollLifeSpec = saved.rollLifeSpec;
   if (saved.rollRunColor) rollRunColor = saved.rollRunColor;
+  if (saved.rollDressReset) rollDressReset = saved.rollDressReset;
+  if (Array.isArray(saved.rollDressResetLog)) rollDressResetLog = saved.rollDressResetLog;
   if (typeof saved.rollColorSeq === 'number') rollColorSeq = saved.rollColorSeq;
   if (Array.isArray(saved.planTasks)) planTasks = saved.planTasks;
   if (typeof saved.planTaskSeq === 'number') planTaskSeq = saved.planTaskSeq;
@@ -6557,17 +6568,149 @@ function ensureRollLifeFg() {
 // คือ ลงเฉพาะวันที่ชุดสีนั้นเป็นชุดที่ใช้เดิน (ระบุเอง > ชุดที่สถานะกำลังใช้งาน)
 // และรวมน้ำหนักของขนาดอื่นที่มาใช้ Roll Forming ชุดนี้ร่วมด้วย
 // คืน null ถ้ายังไม่มีข้อมูลการผลิตให้คิดเลย เพื่อให้แยกออกจาก "คิดแล้วได้ 0 ตัน"
-function producedTonForRollSet(setName, colorKey, byKeyDate, dates) {
+// sinceIso = นับเฉพาะวันที่ >= วันนี้ (จุดที่กดรีหลังแต่ง Roll เสร็จ) ถ้าไม่ส่งมาก็นับทั้งหมด
+function producedTonForRollSet(setName, colorKey, byKeyDate, dates, sinceIso) {
   if (!byKeyDate || !dates || !dates.length) return null;
   const own = byKeyDate[rollSetFgKey(setName)] || {};
   const srcs = sharedFormingSources(setName);
   let kg = 0;
   dates.forEach(d => {
+    if (sinceIso && d < sinceIso) return;
     if (runColorFor(d, setName) !== colorKey) return;
     kg += own[d] || 0;
     srcs.forEach(k => { kg += (byKeyDate[k] || {})[d] || 0; });
   });
   return Math.round(kg / 1000 * 100) / 100;
+}
+
+// ─── รีน้ำหนักผลิตหลังแต่ง Roll เสร็จ ───────────────────────────────────────
+// แต่ง Roll เสร็จ = เริ่มรอบใหม่ ต้องนับน้ำหนักจากศูนย์ แต่ต้องไม่ลบประวัติการผลิตของจริง
+// จึงเก็บแค่ "วันเริ่มนับ" ไว้ต่อชุด แล้วให้หน้าอายุ Roll ตัดวันก่อนหน้าออกจากการคิด
+// ยอดจริงทั้งหมดยังดูได้ที่หน้าน้ำหนักผลิต และย้อนการรีได้ตลอดเพราะไม่มีข้อมูลไหนถูกลบ
+function rollDressResetKey(setName, colorKey) { return setName + '|' + colorKey; }
+function rollDressResetFor(setName, colorKey) {
+  const r = rollDressReset[rollDressResetKey(setName, colorKey)];
+  return r && r.from ? r : null;
+}
+
+function dressResetDateLabel(iso) { return iso ? fmtDateThai(parseISODate(iso)) : '—'; }
+
+let dressResetTarget = null; // { set, colorKey, colorLabel }
+
+function openDressResetDialog(setName, colorKey, colorLabel) {
+  if (!canEditPlan()) { alert('เฉพาะหัวหน้างานและ Admin เท่านั้นที่กดรีน้ำหนักได้'); return; }
+  dressResetTarget = { set: setName, colorKey, colorLabel };
+  let ov = document.getElementById('dressreset-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'dressreset-overlay';
+    ov.className = 'modal-overlay';
+    ov.onclick = e => { if (e.target === ov) closeDressResetDialog(); };
+    ov.innerHTML = `<div class="modal" style="max-width:520px;">
+      <div class="modal-head">
+        <h3>รีน้ำหนักผลิตหลังแต่ง Roll</h3>
+        <button class="modal-close" onclick="closeDressResetDialog()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="dressreset-target" style="font-size:15px;margin-bottom:10px;"></div>
+        <div id="dressreset-current" style="font-size:13px;color:var(--text-2);margin-bottom:6px;"></div>
+        <div id="dressreset-prev" style="font-size:12px;color:var(--text-3);margin-bottom:14px;"></div>
+        <label class="form-label" for="dressreset-from">เริ่มนับน้ำหนักใหม่ตั้งแต่วันที่</label>
+        <input class="form-input" type="date" id="dressreset-from" onchange="renderDressResetPreview()" oninput="renderDressResetPreview()">
+        <div id="dressreset-preview" style="font-size:13px;line-height:1.6;margin-top:10px;padding:9px 11px;border-radius:8px;background:var(--bg-panel);"></div>
+        <div style="font-size:12px;color:var(--text-3);line-height:1.6;margin-top:10px;">
+          น้ำหนักที่ผลิตก่อนวันที่เลือกจะไม่ถูกนับในรอบใหม่ แต่<b>ไม่ได้ถูกลบ</b> —
+          ยอดจริงทั้งหมดยังดูได้ที่หน้าน้ำหนักผลิต และกดยกเลิกการรีได้ตลอด
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex;gap:8px;justify-content:space-between;">
+        <button class="btn btn-ghost" id="dressreset-clear" onclick="clearDressReset()">ยกเลิกการรี</button>
+        <span style="display:flex;gap:8px;">
+          <button class="btn btn-ghost" onclick="closeDressResetDialog()">ปิด</button>
+          <button class="btn btn-primary" onclick="confirmDressReset()">รีน้ำหนัก</button>
+        </span>
+      </div>
+    </div>`;
+    document.body.appendChild(ov);
+  }
+  const cur = rollDressResetFor(setName, colorKey);
+  const produced = producedTonForRollSet(setName, colorKey, rollLifeFgByKeyDate, rollLifeFgDates, cur ? cur.from : null);
+  const perRound = rollSetUsageTon(setName);
+  const pct = (produced != null && perRound > 0) ? Math.round(produced / perRound * 1000) / 10 : null;
+  document.getElementById('dressreset-target').innerHTML =
+    `<b>${escapeHtmlAttr(setName)}</b> · ${escapeHtmlAttr(colorLabel)}`;
+  document.getElementById('dressreset-current').innerHTML = produced == null
+    ? '<span class="muted">ยังไม่มีข้อมูลการผลิต</span>'
+    : `รอบนี้ผลิตไปแล้ว <b>${produced.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> ตัน${
+        pct == null ? '' : ` (<b>${pct}%</b> ของ ${perRound.toLocaleString()} ตันต่อรอบ)`}`;
+  document.getElementById('dressreset-prev').innerHTML = cur
+    ? `รีครั้งล่าสุด: เริ่มนับตั้งแต่ <b>${escapeHtmlAttr(dressResetDateLabel(cur.from))}</b>${cur.by ? ' · โดย ' + escapeHtmlAttr(cur.by) : ''}`
+    : 'ยังไม่เคยรี — ตอนนี้นับน้ำหนักตั้งแต่วันแรกที่มีข้อมูล';
+  document.getElementById('dressreset-clear').style.display = cur ? '' : 'none';
+  document.getElementById('dressreset-from').value = dailyTodayIso();
+  renderDressResetPreview();
+  ov.classList.add('open');
+}
+
+// ข้อมูลน้ำหนักจาก FG มาเป็น "ยอดรวมต่อวัน" แยกช่วงเวลาในวันไม่ได้
+// วันที่เลือกจึงถูกนับรวมทั้งวัน ถ้าวันนั้นเดินไปแล้วก่อนแต่ง Roll ยอดส่วนนั้นจะติดมาในรอบใหม่ด้วย
+// แสดงผลลัพธ์จริงให้เห็นก่อนกดยืนยัน และบอกทางเลือกเลือกวันถัดไปถ้าต้องการเริ่มจาก 0 จริงๆ
+function renderDressResetPreview() {
+  const el = document.getElementById('dressreset-preview');
+  if (!el || !dressResetTarget) return;
+  const from = document.getElementById('dressreset-from').value;
+  if (!from) { el.innerHTML = '<span class="muted">เลือกวันที่ก่อน</span>'; return; }
+  const { set, colorKey } = dressResetTarget;
+  const after = producedTonForRollSet(set, colorKey, rollLifeFgByKeyDate, rollLifeFgDates, from) || 0;
+  const perRound = rollSetUsageTon(set);
+  const pct = perRound > 0 ? Math.round(after / perRound * 1000) / 10 : null;
+  const band = rollUsageBand(pct);
+  // ยอดของ "วันที่เลือก" เอง — เตือนเฉพาะกรณีที่วันนั้นเดินไปแล้วจริง ไม่ใช่ทุกครั้งที่ผลไม่เป็น 0
+  const dayTon = producedTonForRollSet(set, colorKey, rollLifeFgByKeyDate, [from], from) || 0;
+  el.innerHTML = `หลังกดรี น้ำหนักผลิตของชุดนี้จะเป็น
+    <b style="color:${band.color};">${after.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> ตัน${
+      pct == null ? '' : ` (<b style="color:${band.color};">${pct}%</b>)`}
+    ${dayTon <= 0 ? '' : `<div style="font-size:11px;color:var(--text-3);margin-top:4px;">
+      รวมยอดของวันที่ <b>${escapeHtmlAttr(dressResetDateLabel(from))}</b> ที่เดินไปแล้ว
+      <b>${dayTon.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> ตันด้วย
+      (ข้อมูลน้ำหนักมาเป็นยอดรวมต่อวัน แยกก่อน/หลังแต่ง Roll ไม่ได้) — ถ้าต้องการเริ่มจาก 0 ให้เลือกวันถัดไป</div>`}`;
+}
+
+function closeDressResetDialog() {
+  const ov = document.getElementById('dressreset-overlay');
+  if (ov) ov.classList.remove('open');
+  dressResetTarget = null;
+}
+
+function confirmDressReset() {
+  if (!dressResetTarget) return;
+  if (!canEditPlan()) { alert('ไม่มีสิทธิ์รีน้ำหนัก'); return; }
+  const from = document.getElementById('dressreset-from').value;
+  if (!from) { alert('เลือกวันที่เริ่มนับใหม่ก่อน'); return; }
+  const { set, colorKey, colorLabel } = dressResetTarget;
+  const key = rollDressResetKey(set, colorKey);
+  const before = producedTonForRollSet(set, colorKey, rollLifeFgByKeyDate, rollLifeFgDates,
+    (rollDressReset[key] || {}).from || null);
+  rollDressReset[key] = { from, at: new Date().toISOString(), by: (currentUser && currentUser.name) || '' };
+  rollDressResetLog.unshift({ set, colorKey, colorLabel, from, at: rollDressReset[key].at,
+    by: rollDressReset[key].by, tonBefore: before });
+  if (rollDressResetLog.length > 200) rollDressResetLog.length = 200; // เก็บพอให้ตรวจย้อนได้ ไม่ให้ state บวม
+  persistState();
+  closeDressResetDialog();
+  renderRollLife();
+}
+
+function clearDressReset() {
+  if (!dressResetTarget) return;
+  if (!canEditPlan()) { alert('ไม่มีสิทธิ์รีน้ำหนัก'); return; }
+  const { set, colorKey, colorLabel } = dressResetTarget;
+  delete rollDressReset[rollDressResetKey(set, colorKey)];
+  rollDressResetLog.unshift({ set, colorKey, colorLabel, from: null, at: new Date().toISOString(),
+    by: (currentUser && currentUser.name) || '', undo: true });
+  if (rollDressResetLog.length > 200) rollDressResetLog.length = 200;
+  persistState();
+  closeDressResetDialog();
+  renderRollLife();
 }
 
 function renderRollLife() {
@@ -6631,7 +6774,10 @@ function renderRollLife() {
   // % การใช้รอบการแต่ง คิดครั้งเดียวต่อชุด แล้วให้ทั้งตารางและ KPI อ่านจากค่าเดียวกัน
   // ถ้าคิดแยกกันสองที่ ตัวเลขบนการ์ดกับในตารางจะเพี้ยนจากกันได้เวลาแก้เกณฑ์ทีหลัง
   all.forEach(g => {
-    g.producedTon = producedTonForRollSet(g.set, g.colorKey, rollLifeFgByKeyDate, rollLifeFgDates);
+    // ถ้ามีการกดรีหลังแต่ง Roll เสร็จ ให้นับเฉพาะวันที่ >= วันเริ่มนับ (รอบปัจจุบัน)
+    g.dressReset = rollDressResetFor(g.set, g.colorKey);
+    g.producedTon = producedTonForRollSet(g.set, g.colorKey, rollLifeFgByKeyDate, rollLifeFgDates,
+      g.dressReset ? g.dressReset.from : null);
     g.prodPct = (g.producedTon != null && g.usedTon > 0)
       ? Math.round(g.producedTon / g.usedTon * 1000) / 10 : null;
   });
@@ -6689,10 +6835,18 @@ function renderRollLife() {
       <td style="text-align:right;">${escapeHtmlAttr(odText)}${g.minOD != null ? `<div class="muted" style="font-size:10px;">เล็กสุด Ø${escapeHtmlAttr(g.minOD)}</div>` : ''}</td>
       <td style="text-align:right;">${g.wornMm != null ? escapeHtmlAttr(Math.round(g.wornMm * 10) / 10 + ' mm') : '—'}</td>
       <td style="text-align:right;">${perRoundTon != null ? escapeHtmlAttr(perRoundTon.toLocaleString()) : '<span class="muted">—</span>'}</td>
-      <td style="text-align:right;">${producedTon
-        ? `<strong style="color:${prodColor};">${escapeHtmlAttr(producedTon.toLocaleString(undefined, { maximumFractionDigits: 2 }))}</strong>
-           ${prodPct == null ? '' : `<div style="font-size:11px;font-weight:800;color:${prodColor};">${escapeHtmlAttr(prodPct.toLocaleString(undefined, { maximumFractionDigits: 1 }))}%</div>`}`
-        : (rollLifeFgLoading ? '<span class="muted">กำลังโหลด…</span>' : '<span class="muted">—</span>')}</td>
+      <td style="text-align:right;white-space:nowrap;">
+        <span style="display:inline-flex;align-items:center;gap:7px;justify-content:flex-end;">
+          <span>${producedTon || (producedTon === 0 && g.dressReset)
+            ? `<strong style="color:${prodColor};">${escapeHtmlAttr(producedTon.toLocaleString(undefined, { maximumFractionDigits: 2 }))}</strong>
+               ${prodPct == null ? '' : `<div style="font-size:11px;font-weight:800;color:${prodColor};">${escapeHtmlAttr(prodPct.toLocaleString(undefined, { maximumFractionDigits: 1 }))}%</div>`}`
+            : (rollLifeFgLoading ? '<span class="muted">กำลังโหลด…</span>' : '<span class="muted">—</span>')}</span>
+          ${canEditPlan() ? `<button class="btn btn-ghost btn-sm" style="padding:2px 7px;font-size:12px;line-height:1.3;flex-shrink:0;"
+            title="แต่ง Roll เสร็จแล้ว — เริ่มนับน้ำหนักผลิตรอบใหม่"
+            onclick="${jsCallAttr('openDressResetDialog', g.set, g.colorKey, g.colorLabel)}">↺ รี</button>` : ''}
+        </span>
+        ${g.dressReset ? `<div class="muted" style="font-size:10px;" title="กดรีหลังแต่ง Roll เสร็จ จึงนับน้ำหนักตั้งแต่วันนี้">เริ่มนับ ${escapeHtmlAttr(dressResetDateLabel(g.dressReset.from))}</div>` : ''}
+      </td>
       <td style="text-align:right;">${leftTon == null ? '<span class="muted">—</span>'
         : `<strong style="color:${leftColor};">${escapeHtmlAttr(leftTon.toLocaleString())}</strong>`}</td>
       <td>${lifeCell}</td>
