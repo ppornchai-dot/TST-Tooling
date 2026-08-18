@@ -1377,7 +1377,7 @@ canvas{display:block;}
         </div>
       </div>
       <div id="prodweight-range-note" style="margin-top:4px;"></div>
-      <div class="grid-3" id="prodweight-grid" style="margin-top:10px;"></div>
+      <div id="prodweight-grid" style="margin-top:10px;"></div>
     </div>
 
 
@@ -5971,58 +5971,89 @@ async function renderProdWeight() {
     return;
   }
 
-  const groups = {};
-  const groupOrder = [];
+  // จัดกลุ่มเหมือนหน้าอายุ Roll: กลุ่มขนาด → เรียง Forming/Sizing/TH → แยกรายชุดสี
+  // ลำดับกลุ่มยึด getRollSets() (rollSetOrder) ตัวเดียวกับหน้าทะเบียน
+  const sizeGroups = new Map();
   sets.forEach(setName => {
-    const fgKey = rollSetFgKey(setName);
-    const groupKey = fgKey || setName;
-    if (!groups[groupKey]) {
-      groups[groupKey] = { displayName: rollSetSizeGroupLabel(setName), fgKey, usage: 0 };
-      groupOrder.push(groupKey);
-    }
-    // ชื่อกลุ่มใช้เกณฑ์เดียวกับหน้าอายุ Roll/ทะเบียน — เลือกแบบที่มีเครื่องหมายนิ้ว
-    // เดิมยึดชื่อของชุดแรกที่เจอ ถ้าสลับลำดับ Size Roll ชื่อกลุ่มหน้านี้จะเพี้ยนไปจากหน้าอื่น
-    // (ข้อมูลจริงมี GS 1"x1" (23x23) Forming ปนกับ GS 1x1 (23x23) Sizing/TH อยู่)
-    if (!groups[groupKey].displayName.includes('"') && rollSetSizeGroupLabel(setName).includes('"')) {
-      groups[groupKey].displayName = rollSetSizeGroupLabel(setName);
-    }
-    const usage = rollSetUsageTon(setName);
-    if (usage > groups[groupKey].usage) groups[groupKey].usage = usage;
+    if (!toolingData.roll.some(r => r.set === setName)) return; // ยังไม่มี Roll จริง ไม่มีอะไรให้เทียบ
+    const key = rollSetSizeGroupKey(setName);
+    if (!sizeGroups.has(key)) sizeGroups.set(key, { label: rollSetSizeGroupLabel(setName), sets: [] });
+    const g = sizeGroups.get(key);
+    // ชื่อกลุ่มใช้เกณฑ์เดียวกับหน้าอายุ Roll/ทะเบียน — เลือกแบบที่มีเครื่องหมายนิ้วเมื่อชื่อในกลุ่มเขียนไม่ตรงกัน
+    if (!g.label.includes('"') && rollSetSizeGroupLabel(setName).includes('"')) g.label = rollSetSizeGroupLabel(setName);
+    g.sets.push(setName);
   });
+  const ordered = [...sizeGroups.entries()].sort((a, b) => (a[0] === 'อื่นๆ' ? 1 : 0) - (b[0] === 'อื่นๆ' ? 1 : 0));
 
-  const errorBanner = fgByKey ? '' : `<div style="grid-column:1/-1;background:var(--red-dim);color:var(--red);border-radius:8px;padding:10px 14px;font-size:12px;margin-bottom:4px;">ดึงข้อมูลจากระบบ Production ไม่สำเร็จ (${escapeHtmlAttr(fgWeightFetchError || '')})</div>`;
-  grid.innerHTML = errorBanner + groupOrder.map(groupKey => {
-    const g = groups[groupKey];
-    const usage = g.usage;
-    const autoKg = g.fgKey && fgByKey ? fgByKey[g.fgKey] : null;
-    const hasData = autoKg !== null && autoKg !== undefined;
-    const produced = hasData ? autoKg / 1000 : 0;
-    const pct = usage ? Math.round(produced / usage * 100) : null;
-    const barPct = pct === null ? 0 : Math.min(pct, 100);
-    const meta = prodWeightStatusMeta(pct);
-    const statusText = !hasData ? 'ยังไม่มีข้อมูลการผลิต' : (pct === null ? '—' : `ผลิตได้ ${pct}% ของ usage`);
-    return `<div class="card">
-      <div class="card-body" style="padding:16px;">
-        <div style="font-size:13px;font-weight:700;color:var(--text-1);margin-bottom:14px;">${escapeHtmlAttr(g.displayName)}</div>
-        <div style="display:flex;gap:16px;margin-bottom:12px;">
-          <div style="flex:1;">
-            <div style="font-size:11px;color:var(--text-3);margin-bottom:2px;">ผลิตจริง</div>
-            <div style="font-size:19px;font-weight:800;color:var(--text-1);">${hasData ? produced.toLocaleString(undefined,{maximumFractionDigits:2}) : '—'} <span style="font-size:12px;font-weight:500;color:var(--text-3);">ตัน</span></div>
-          </div>
-          <div style="flex:1;text-align:right;">
-            <div style="font-size:11px;color:var(--text-3);margin-bottom:2px;">Usage สะสม</div>
-            <div style="font-size:19px;font-weight:800;color:var(--text-1);">${usage.toLocaleString()} <span style="font-size:12px;font-weight:500;color:var(--text-3);">ตัน</span></div>
-          </div>
-        </div>
-        <div style="background:var(--bg-panel);border-radius:5px;height:10px;overflow:hidden;margin-bottom:10px;">
-          <div style="height:100%;width:${barPct}%;background:${meta.color};border-radius:5px;"></div>
-        </div>
-        <div style="display:flex;justify-content:flex-end;">
-          <span class="chip ${meta.chip}" style="font-size:11px;">${statusText}</span>
-        </div>
-      </div>
-    </div>`;
+  const errorBanner = fgByKey ? '' : `<div style="background:var(--red-dim);color:var(--red);border-radius:8px;padding:10px 14px;font-size:12px;margin-bottom:10px;">ดึงข้อมูลจากระบบ Production ไม่สำเร็จ (${escapeHtmlAttr(fgWeightFetchError || '')})</div>`;
+
+  let rowCount = 0;
+  const body = ordered.map(([, g]) => {
+    const sorted = g.sets.slice().sort((a, b) => {
+      const ca = ROLL_SET_CATEGORY_ORDER[parseSizeRollName(a).category], cb = ROLL_SET_CATEGORY_ORDER[parseSizeRollName(b).category];
+      return (ca === undefined ? 9 : ca) - (cb === undefined ? 9 : cb);
+    });
+    const rows = sorted.map(setName => {
+      const cat = parseSizeRollName(setName).category;
+      const catColor = ROLL_SET_SECTION_COLORS[cat] || 'var(--text-2)';
+      const setRolls = toolingData.roll.filter(r => r.set === setName);
+      const used = new Set(setRolls.map(r => r.color || NO_COLOR_KEY));
+      const palette = [
+        ...getSetPalette(setName).filter(c => used.has(c.key)),
+        ...(used.has(NO_COLOR_KEY) ? [{ key: NO_COLOR_KEY, label: 'ไม่ระบุสี', dot: '#9CA3AF' }] : []),
+      ];
+      // น้ำหนักผลิตจริงจากระบบ Production รู้แค่ "เกรด+ขนาด" ไม่รู้ว่าชุดสีไหน/ขั้นตอนไหนเป็นคนรีด
+      // ทุกแถวของขนาดเดียวกันจึงใช้ค่าผลิตจริงร่วมกัน (เกณฑ์เดียวกับหน้าอายุ Roll)
+      const fgKey = rollSetFgKey(setName);
+      const autoKg = fgKey && fgByKey ? fgByKey[fgKey] : null;
+      const hasData = autoKg !== null && autoKg !== undefined;
+      const produced = hasData ? Math.round(autoKg / 1000 * 100) / 100 : null;
+      return palette.map(c => {
+        const rolls = setRolls.filter(r => (r.color || NO_COLOR_KEY) === c.key);
+        // usage ใช้ค่าสูงสุดในชุดสี ไม่ใช่ผลรวม เพราะ Roll คู่บน/ล่างบันทึกเท่ากัน (เกณฑ์เดียวกับ rollSetUsageTon)
+        let usage = 0;
+        rolls.forEach(r => { const n = parseFloat(String(r.usage || '').replace(/[^0-9.]/g, '')); if (!isNaN(n) && n > usage) usage = n; });
+        const pct = (usage && produced !== null) ? Math.round(produced / usage * 100) : null;
+        const meta = prodWeightStatusMeta(pct);
+        const statusText = !hasData ? 'ยังไม่มีข้อมูลการผลิต' : (pct === null ? '—' : `ผลิตได้ ${pct}%`);
+        rowCount++;
+        return `<tr>
+          <td title="${escapeHtmlAttr(setName)}"><strong style="color:${catColor};">${escapeHtmlAttr(cat || setName)}</strong></td>
+          <td><span style="display:inline-flex;align-items:center;gap:6px;">
+            <span style="width:9px;height:9px;border-radius:50%;background:${c.dot};flex-shrink:0;"></span>${escapeHtmlAttr(c.label)}</span></td>
+          <td class="muted" style="text-align:right;">${rolls.length.toLocaleString()}</td>
+          <td style="text-align:right;font-weight:700;">${produced === null ? '<span class="muted">—</span>' : escapeHtmlAttr(produced.toLocaleString(undefined, { maximumFractionDigits: 2 }))}</td>
+          <td style="text-align:right;">${usage ? escapeHtmlAttr(usage.toLocaleString()) : '<span class="muted">—</span>'}</td>
+          <td>${pct === null ? '<span class="muted">—</span>' : `<div style="display:flex;align-items:center;gap:7px;">
+            <div style="width:64px;background:var(--bg-panel);border-radius:4px;height:7px;overflow:hidden;flex-shrink:0;">
+              <div style="height:100%;width:${Math.min(pct, 100)}%;background:${meta.color};border-radius:4px;"></div>
+            </div><span style="font-weight:800;color:${meta.color};">${pct}%</span></div>`}</td>
+          <td><span class="chip ${meta.chip}" style="font-size:11px;white-space:nowrap;">${statusText}</span></td>
+        </tr>`;
+      }).join('');
+    }).join('');
+    const pieces = g.sets.reduce((n, s) => n + toolingData.roll.filter(r => r.set === s).length, 0);
+    const colorSets = g.sets.reduce((n, s) => {
+      const rs = toolingData.roll.filter(r => r.set === s);
+      return n + (rs.length ? new Set(rs.map(r => r.color || NO_COLOR_KEY)).size : 0);
+    }, 0);
+    return `<tr><td colspan="7" style="background:var(--bg-panel);padding:11px 12px;border-top:2px solid var(--text-1);">
+      <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);">
+        <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(g.label)}
+      </span>
+      <span style="float:right;font-size:12px;font-weight:700;color:var(--text-3);">${colorSets} ชุด · ${pieces} ลูก</span>
+    </td></tr>${rows}`;
   }).join('');
+
+  grid.innerHTML = errorBanner + `<div class="card"><div class="table-wrap"><table>
+    <thead><tr>
+      <th>SIZE ROLL</th><th>ชุดสี</th><th style="text-align:right;">จำนวน (ลูก)</th>
+      <th style="text-align:right;" title="ผลิตจริงจากระบบ Production จับคู่ด้วยเกรด+ขนาด — Forming/Sizing/TH และทุกชุดสีของขนาดเดียวกันใช้ค่าร่วมกัน">ผลิตจริง (ตัน)</th>
+      <th style="text-align:right;" title="ยอดใช้งานสะสมของชุดสีนั้น ใช้ค่าสูงสุดในชุด ไม่ใช่ผลรวม">Usage สะสม (ตัน)</th>
+      <th>% ผลิตได้</th><th>สถานะ</th>
+    </tr></thead>
+    <tbody>${body || `<tr><td colspan="7" style="padding:32px;text-align:center;color:var(--text-3);">ยังไม่มีชุด Roll ในทะเบียน Tooling</td></tr>`}</tbody>
+  </table></div></div>`;
 }
 
 // ─── อายุ Roll ────────────────────────────────────────────────────────────────
