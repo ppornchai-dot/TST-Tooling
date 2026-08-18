@@ -1019,30 +1019,9 @@ canvas{display:block;}
         </div>
       </div>
 
-      <!-- TOOLING STATUS -->
-      <div class="card" style="margin-bottom:18px;">
-        <div class="card-header">
-          <span class="card-title">สถานะ Tooling</span>
-          <div style="margin-left:auto;display:flex;align-items:center;gap:14px;">
-            <span class="legend-dot" style="--c:var(--green);">พร้อมใช้</span>
-            <span class="legend-dot" style="--c:var(--amber);">ซ่อมบำรุง</span>
-            <span class="legend-dot" style="--c:var(--red);">หมดอายุ</span>
-          </div>
-        </div>
-        <div style="overflow-x:auto;">
-          <table>
-            <thead>
-              <tr>
-                <th>ประเภท Tooling</th>
-                <th>สถานะ</th>
-                <th>รวม</th>
-                <th>% พร้อมใช้</th>
-              </tr>
-            </thead>
-            <tbody id="tbl-tooling-status"></tbody>
-          </table>
-        </div>
-      </div>
+      <!-- TOOLING STATUS — เอาการ์ดออกชั่วคราวตามที่หน้างานขอ
+           โค้ดฝั่งเรนเดอร์ (renderToolingStatusTable / toolingStatusCounts / TOOLING_STATUS_CATEGORIES)
+           ยังอยู่ครบและ return ทันทีเมื่อไม่เจอ #tbl-tooling-status ถ้าจะเอากลับมาแค่ใส่การ์ดนี้คืน -->
 
       <!-- ROLL กำลังแต่ง / กำลังขัด — มาจากงานที่ช่างกดเริ่มไปแล้วและยังทำไม่จบในวันนี้ -->
       <div class="grid-2" style="margin-bottom:18px;">
