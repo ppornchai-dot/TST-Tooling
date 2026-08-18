@@ -5898,8 +5898,21 @@ let fgWeightMeta = null; // สรุปผลการดึงรอบล่�
 let fgWeightByKeyDate = {}; // { 'GI|4x2': { 'YYYY-MM-DD': kg } } สำหรับตารางน้ำหนักผลิตต่อวัน
 let fgWeightDates = [];     // วันที่ที่มีการผลิตจริงในช่วงที่ดึงมา (เรียงแล้ว)
 
-function runColorFor(date, setName) {
+// ชุดสีที่ระบุไว้ "เจาะจงวันนั้น" เท่านั้น (ไม่รวมค่าที่อนุมานจากสถานะกำลังใช้งาน)
+function explicitRunColorFor(date, setName) {
   return (rollRunColor[date] || {})[setName] || null;
+}
+
+// ชุดสีที่ใช้เดินของวันนั้น — ถ้าไม่ได้ระบุเจาะจงไว้ ให้ยึดชุดที่สถานะเป็น "กำลังใช้งาน" อยู่
+// (ชุดเดียวกับที่โชว์ในการ์ด "ชุด Roll กำลังใช้งาน" หน้า Dashboard) เพื่อไม่ต้องมากรอกซ้ำทุกวัน
+// ระบุเจาะจงไว้เมื่อไหร่ ค่านั้นชนะเสมอ — ใช้กับวันย้อนหลังที่เคยเดินคนละชุดกับตอนนี้
+function inUseColorFor(setName) {
+  const hit = getSetPalette(setName).find(c => rollColorStatusFor(setName, c.key) === 'inuse');
+  if (hit) return hit.key;
+  return rollColorStatusFor(setName, NO_COLOR_KEY) === 'inuse' ? NO_COLOR_KEY : null;
+}
+function runColorFor(date, setName) {
+  return explicitRunColorFor(date, setName) || inUseColorFor(setName);
 }
 function setRunColor(date, setName, colorKey) {
   if (!rollRunColor[date]) rollRunColor[date] = {};
@@ -6021,21 +6034,29 @@ function renderRunColorPicker() {
             ...getSetPalette(setName).filter(c => used.has(c.key)),
             ...(used.has(NO_COLOR_KEY) ? [{ key: NO_COLOR_KEY, label: 'ไม่ระบุสี', dot: '#9CA3AF' }] : []),
           ];
-          const chosen = runColorFor(d, setName);
+          const explicit = explicitRunColorFor(d, setName);
+          const inuse = inUseColorFor(setName);
+          const effective = explicit || inuse;
           return `<div style="display:flex;align-items:center;gap:10px;padding:7px 6px;border-bottom:1px solid var(--border-light);">
             <span style="flex:0 0 62px;font-size:12px;font-weight:800;color:${catColor};">${escapeHtmlAttr(cat || setName)}</span>
-            <span style="flex:1;display:flex;flex-wrap:wrap;gap:5px;">
+            <span style="flex:1;display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
               ${palette.map(c => {
-                const on = chosen === c.key;
+                const on = effective === c.key;
+                const isExplicit = explicit === c.key;
                 const n = setRolls.filter(r => (r.color || NO_COLOR_KEY) === c.key).length;
                 return `<button onclick="${jsCallAttr('setRunColor', d, setName, c.key)}"
-                  title="${escapeHtmlAttr(on ? 'เดินด้วย' + c.label + 'อยู่ — กดซ้ำเพื่อยกเลิก' : 'ตั้งว่าวันนี้เดินด้วย' + c.label)}"
+                  title="${escapeHtmlAttr(isExplicit ? 'ระบุไว้ว่าวันนี้เดินด้วย' + c.label + ' — กดซ้ำเพื่อยกเลิก'
+                    : (on ? c.label + ' กำลังใช้งานอยู่ (ค่าอ้างอิง) — กดเพื่อยืนยันว่าวันนี้เดินชุดนี้'
+                          : 'ระบุว่าวันนี้เดินด้วย' + c.label))}"
                   style="display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:99px;cursor:pointer;font-size:11px;font-weight:${on ? 800 : 600};
-                         border:1px solid ${on ? 'var(--accent)' : 'var(--border)'};background:${on ? 'var(--accent-glow)' : 'transparent'};
+                         border:1px ${isExplicit ? 'solid' : (on ? 'dashed' : 'solid')} ${on ? 'var(--accent)' : 'var(--border)'};
+                         background:${isExplicit ? 'var(--accent-glow)' : 'transparent'};
                          color:${on ? 'var(--accent)' : 'var(--text-2)'};">
                   <span style="width:8px;height:8px;border-radius:50%;background:${c.dot};flex-shrink:0;"></span>${escapeHtmlAttr(c.label)}
-                  <span style="opacity:.6;font-weight:600;">${n}</span>${on ? ' ✓' : ''}</button>`;
+                  <span style="opacity:.6;font-weight:600;">${n}</span>${isExplicit ? ' ✓' : ''}</button>`;
               }).join('') || '<span style="font-size:11px;color:var(--text-3);">ไม่มีชุดสีในกลุ่มนี้</span>'}
+              ${!explicit && inuse ? '<span style="font-size:10px;color:var(--text-3);">← อ้างจากสถานะกำลังใช้งาน</span>' : ''}
+              ${!effective ? '<span style="font-size:10px;color:var(--red);">ยังไม่มีชุดที่กำลังใช้งาน</span>' : ''}
             </span>
           </div>`;
         }).join('');
@@ -6044,9 +6065,11 @@ function renderRunColorPicker() {
   const setCount = [...groups.values()].reduce((n, g) => n + g.sets.length, 0);
   const chosenCount = Object.keys(rollRunColor[d] || {}).length;
   const note = document.getElementById('runcolor-note');
-  if (note) note.innerHTML = `1 Size Roll เดินได้วันละ 1 ชุดสี — เลือกให้ Forming / Sizing / TH แยกกัน กดสีเดิมซ้ำเพื่อยกเลิก<br>
-      น้ำหนักผลิตของวันนี้จะไปลงที่ชุดสีที่เลือกไว้เท่านั้น &nbsp;·&nbsp;
-      <b style="color:var(--text-1);">ระบุแล้ว ${chosenCount} / ${setCount} รายการ</b>`;
+  const inferredCount = [...groups.values()].reduce((n, g) =>
+    n + g.sets.filter(s => !explicitRunColorFor(d, s) && inUseColorFor(s)).length, 0);
+  if (note) note.innerHTML = `1 Size Roll เดินได้วันละ 1 ชุดสี — ปกติระบบยึดจากชุดที่สถานะ <b>กำลังใช้งาน</b> อยู่ให้เลย (ปุ่มขอบประ)<br>
+      ระบุทับได้เฉพาะวันที่เดินคนละชุดกับตอนนี้ กดสีที่ระบุไว้ซ้ำเพื่อยกเลิกการระบุ &nbsp;·&nbsp;
+      <b style="color:var(--text-1);">ระบุเอง ${chosenCount}</b> · อ้างจากกำลังใช้งาน ${inferredCount} · รวม ${setCount} รายการ`;
   body.innerHTML = rows || '<div style="padding:16px;text-align:center;color:var(--text-3);font-size:13px;">ไม่พบ Size Roll ตามคำค้น</div>';
 }
 
@@ -6171,16 +6194,19 @@ async function renderProdWeight() {
       // เพื่อไม่ให้ยอดหาย และให้เห็นว่ายังมีวันที่ต้องไประบุ
       return palette.map(c => {
         const cells = days.map(d => {
-          const run = runColorFor(d, setName);
+          const explicit = explicitRunColorFor(d, setName);
+          const run = explicit || inUseColorFor(setName);
           const mine = run === c.key;
-          return { d, kg: mine ? (perDay[d] || 0) : 0, unset: !run };
+          // อนุมานจากสถานะ "กำลังใช้งาน" ไม่ได้ระบุเจาะจงวันนั้น — ทำให้ดูต่างกันเล็กน้อย
+          return { d, kg: mine ? (perDay[d] || 0) : 0, inferred: mine && !explicit };
         });
         const rowKg = cells.reduce((s, x) => s + x.kg, 0);
         return `<tr>
         <td title="${escapeHtmlAttr(setName)}"><strong style="color:${catColor};">${escapeHtmlAttr(cat || setName)}</strong></td>
         <td><span style="display:inline-flex;align-items:center;gap:6px;">
           <span style="width:9px;height:9px;border-radius:50%;background:${c.dot};flex-shrink:0;"></span>${escapeHtmlAttr(c.label)}</span></td>
-        ${cells.map(x => `<td style="text-align:right;${x.kg ? 'font-weight:700;' : ''}">${x.kg ? fmt(ton(x.kg)) : '<span class="muted">—</span>'}</td>`).join('')}
+        ${cells.map(x => `<td style="text-align:right;${x.kg ? 'font-weight:700;' : ''}${x.inferred ? 'color:var(--text-2);' : ''}"
+          ${x.inferred ? 'title="อ้างจากชุดที่สถานะกำลังใช้งานอยู่ — ยังไม่ได้ระบุเจาะจงของวันนี้"' : ''}>${x.kg ? fmt(ton(x.kg)) + (x.inferred ? '<span style="font-weight:400;color:var(--text-3);">*</span>' : '') : '<span class="muted">—</span>'}</td>`).join('')}
         <td style="text-align:right;font-weight:800;color:${rowKg ? 'var(--text-1)' : 'var(--text-3)'};">${fmt(ton(rowKg))}</td>
       </tr>`;
       }).join('');
@@ -6204,17 +6230,16 @@ async function renderProdWeight() {
     <thead><tr>
       <th>SIZE ROLL</th><th>ชุดสี</th>
       ${days.map(d => {
-        const setCount = ordered.reduce((n, [, g]) => n + g.sets.length, 0);
-        const chosen = Object.keys(rollRunColor[d] || {}).length;
-        const done = setCount && chosen >= setCount;
+        const overrides = Object.keys(rollRunColor[d] || {}).length;
         return `<th style="text-align:right;white-space:nowrap;">
           <div>${escapeHtmlAttr(fmtDateThaiShort(parseISODate(d)))}</div>
           <button onclick="${jsCallAttr('openRunColorPicker', d)}"
-            title="${escapeHtmlAttr('เลือกชุดสี Roll ที่ใช้เดินวันที่ ' + fmtDateThai(parseISODate(d)) + ' — ระบุแล้ว ' + chosen + '/' + setCount + ' รายการ')}"
+            title="${escapeHtmlAttr('ดู/ระบุชุดสี Roll ที่ใช้เดินวันที่ ' + fmtDateThai(parseISODate(d))
+              + (overrides ? ' — ระบุเองไว้ ' + overrides + ' รายการ' : ' — ยังอ้างจากสถานะกำลังใช้งานทั้งหมด'))}"
             style="margin-top:3px;padding:1px 7px;border-radius:99px;cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap;
-                   border:1px solid ${chosen ? (done ? 'var(--green)' : 'var(--amber)') : 'var(--border)'};
-                   background:${chosen ? (done ? 'var(--green-dim)' : 'var(--amber-dim)') : 'transparent'};
-                   color:${chosen ? (done ? 'var(--green)' : 'var(--amber)') : 'var(--text-3)'};">✎ ${chosen}/${setCount}</button>
+                   border:1px solid ${overrides ? 'var(--accent)' : 'var(--border)'};
+                   background:${overrides ? 'var(--accent-glow)' : 'transparent'};
+                   color:${overrides ? 'var(--accent)' : 'var(--text-3)'};">✎${overrides ? ' ' + overrides : ''}</button>
         </th>`;
       }).join('')}
       <th style="text-align:right;">รวม (ตัน)</th>
@@ -6227,9 +6252,11 @@ async function renderProdWeight() {
     </tr></tfoot>` : ''}
   </table></div>
   ${days.length ? `<div style="padding:10px 14px;border-top:1px solid var(--border-light);font-size:11px;color:var(--text-3);line-height:1.6;">
-    ระบบ Production บอกได้แค่ <b>เกรด + ขนาด</b> ไม่ได้บอกว่าชุดสีไหนเป็นคนเดิน — น้ำหนักของแต่ละวันจึงลงที่ชุดสีที่ระบุไว้ว่า
-    <b>ใช้เดินวันนั้น</b> (กดปุ่ม ✎ ที่หัวคอลัมน์วันเพื่อเลือก) วันที่ยังไม่ได้ระบุจะไม่ลงแถวใดเลย
-    แต่ยังนับอยู่ในยอดรวมของขนาดและแถวรวมท้ายตาราง ยอดจึงไม่หาย
+    ระบบ Production บอกได้แค่ <b>เกรด + ขนาด</b> ไม่ได้บอกว่าชุดสีไหนเป็นคนเดิน — น้ำหนักของแต่ละวันจึงลงที่
+    <b>ชุดสีที่ใช้เดิน</b> โดยยึดจากชุดที่สถานะ <b>กำลังใช้งาน</b> อยู่ (ชุดเดียวกับการ์ด "ชุด Roll กำลังใช้งาน" หน้า Dashboard)
+    ตัวเลขที่มี <b>*</b> คือค่าที่อ้างจากสถานะกำลังใช้งาน ยังไม่ได้ระบุเจาะจงของวันนั้น
+    ถ้าวันไหนเดินคนละชุดกับตอนนี้ กดปุ่ม <b>✎</b> ที่หัวคอลัมน์วันเพื่อระบุทับได้ (ค่าที่ระบุเองชนะเสมอ)
+    ขนาดที่ยังไม่มีชุดไหนกำลังใช้งานและไม่ได้ระบุไว้ จะไม่ลงแถวใดเลย แต่ยังนับอยู่ในยอดรวมของขนาดและแถวรวมท้ายตาราง ยอดจึงไม่หาย
   </div>` : `<div style="padding:24px;text-align:center;color:var(--text-3);font-size:13px;">ไม่มีข้อมูลการผลิตในช่วงวันที่ที่เลือก</div>`}
   </div>`;
 }
