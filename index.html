@@ -1461,7 +1461,7 @@ canvas{display:block;}
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>Size Roll</th><th>ชุดสี</th><th style="text-align:right;">จำนวน (ลูก)</th><th style="text-align:right;">OD ปัจจุบัน</th><th style="text-align:right;">สึกไปมากสุด</th><th style="text-align:right;" title="ตันที่รีดได้ต่อการแต่ง Roll 1 รอบ — มาจากช่อง &quot;รอบการใช้งาน&quot; ของ Roll ในทะเบียน Tooling">น้ำหนักต่อรอบการแต่ง (ตัน)</th><th style="text-align:right;" title="ยอดผลิตของชุด Roll ชุดนี้ตลอดอายุ — เกณฑ์เดียวกับหน้าน้ำหนักผลิต คือลงเฉพาะวันที่ชุดสีนี้เป็นชุดที่ใช้เดิน และรวมขนาดที่มาใช้ Forming ร่วมด้วย">น้ำหนักผลิต (ตัน)</th><th style="text-align:right;" title="น้ำหนักต่อรอบการแต่ง ลบ น้ำหนักผลิต — เหลืออีกเท่าไรก่อนถึงรอบแต่งถัดไป">น้ำหนักเหลือ (ตัน)</th><th>อายุคงเหลือ</th><th title="สถานะของชุดสี Roll ที่ตั้งไว้ในทะเบียน Tooling">สถานะ (ทะเบียน)</th></tr>
+              <tr><th>Size Roll</th><th>ชุดสี</th><th style="text-align:right;">จำนวน (ลูก)</th><th style="text-align:right;">OD ปัจจุบัน</th><th style="text-align:right;">สึกไปมากสุด</th><th style="text-align:right;" title="ตันที่รีดได้ต่อการแต่ง Roll 1 รอบ — มาจากช่อง &quot;รอบการใช้งาน&quot; ของ Roll ในทะเบียน Tooling">น้ำหนักต่อรอบการแต่ง (ตัน)</th><th style="text-align:right;" title="ยอดผลิตของชุด Roll ชุดนี้ตลอดอายุ — เกณฑ์เดียวกับหน้าน้ำหนักผลิต คือลงเฉพาะวันที่ชุดสีนี้เป็นชุดที่ใช้เดิน และรวมขนาดที่มาใช้ Forming ร่วมด้วย">น้ำหนักผลิต (ตัน)</th><th style="text-align:right;" title="น้ำหนักต่อรอบการแต่ง ลบ น้ำหนักผลิต — เหลืออีกเท่าไรก่อนถึงรอบแต่งถัดไป และคิดเป็น % ของน้ำหนักต่อรอบการแต่ง">น้ำหนักเหลือ (ตัน / %)</th><th>อายุคงเหลือ</th><th title="สถานะของชุดสี Roll ที่ตั้งไว้ในทะเบียน Tooling">สถานะ (ทะเบียน)</th></tr>
             </thead>
             <tbody id="rolllife-tbody"></tbody>
           </table>
@@ -6639,6 +6639,11 @@ function renderRollLife() {
     // น้ำหนักเหลือ ติดลบได้ ถ้าผลิตเกินรอบแล้วยังไม่ได้แต่ง จะได้เห็นว่าเลยมาเท่าไร
     const leftTon = (perRoundTon != null && producedTon != null)
       ? Math.round((perRoundTon - producedTon) * 100) / 100 : null;
+    // % เหลือ = น้ำหนักเหลือ ÷ น้ำหนักต่อรอบการแต่ง — ติดลบได้เหมือนกัน ถ้าผลิตเกินรอบไปแล้ว
+    const leftPct = (leftTon != null && perRoundTon > 0)
+      ? Math.round(leftTon / perRoundTon * 1000) / 10 : null;
+    const leftColor = leftTon == null ? 'var(--text-1)'
+      : (leftTon <= 0 ? 'var(--red)' : (leftPct != null && leftPct <= 20 ? 'var(--amber)' : 'var(--text-1)'));
     const lifeCell = g.lifePct == null
       ? '<span class="muted">—</span>'
       : `<div style="display:flex;align-items:center;gap:7px;">
@@ -6662,7 +6667,8 @@ function renderRollLife() {
       <td style="text-align:right;">${producedTon ? escapeHtmlAttr(producedTon.toLocaleString(undefined, { maximumFractionDigits: 2 }))
         : (rollLifeFgLoading ? '<span class="muted">กำลังโหลด…</span>' : '<span class="muted">—</span>')}</td>
       <td style="text-align:right;">${leftTon == null ? '<span class="muted">—</span>'
-        : `<strong style="color:${leftTon <= 0 ? 'var(--red)' : (perRoundTon && leftTon / perRoundTon <= 0.2 ? 'var(--amber)' : 'var(--text-1)')};">${escapeHtmlAttr(leftTon.toLocaleString())}</strong>`}</td>
+        : `<strong style="color:${leftColor};">${escapeHtmlAttr(leftTon.toLocaleString())}</strong>
+           ${leftPct == null ? '' : `<div style="font-size:11px;font-weight:800;color:${leftColor};">${escapeHtmlAttr(leftPct.toLocaleString(undefined, { maximumFractionDigits: 1 }))}%</div>`}`}</td>
       <td>${lifeCell}</td>
       <td><span style="display:inline-block;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;white-space:nowrap;
         background:${meta.bg};color:${meta.color};border:1px solid ${meta.color};">● ${escapeHtmlAttr(meta.label)}</span></td>
