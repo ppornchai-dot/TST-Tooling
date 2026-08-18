@@ -1411,22 +1411,22 @@ canvas{display:block;}
       <div class="kpi-grid" style="margin-top:14px;">
         <div class="kpi-card red">
           <div class="kpi-icon red"><svg width="18" height="18" fill="none" stroke="var(--red)" stroke-width="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/></svg></div>
-          <div class="kpi-label">ใกล้หมดอายุ (≤ 20%)</div>
+          <div class="kpi-label" title="ผลิตไปแล้วเกิน 90% ของน้ำหนักต่อรอบการแต่ง">ใกล้หมดอายุ (&gt; 90%)</div>
           <div class="kpi-value" id="rolllife-kpi-critical">0</div>
         </div>
         <div class="kpi-card amber">
           <div class="kpi-icon amber"><svg width="18" height="18" fill="none" stroke="var(--amber)" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg></div>
-          <div class="kpi-label">เฝ้าระวัง (21–50%)</div>
+          <div class="kpi-label" title="ผลิตไปแล้ว 80.1–90% ของน้ำหนักต่อรอบการแต่ง">เฝ้าระวัง (80.1–90%)</div>
           <div class="kpi-value" id="rolllife-kpi-warn">0</div>
         </div>
         <div class="kpi-card green">
           <div class="kpi-icon green"><svg width="18" height="18" fill="none" stroke="var(--green)" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
-          <div class="kpi-label">ปกติ (&gt; 50%)</div>
+          <div class="kpi-label" title="ผลิตไปแล้วไม่เกิน 80% ของน้ำหนักต่อรอบการแต่ง">ปกติ (≤ 80%)</div>
           <div class="kpi-value" id="rolllife-kpi-ok">0</div>
         </div>
         <div class="kpi-card blue">
           <div class="kpi-icon blue"><svg width="18" height="18" fill="none" stroke="var(--accent)" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></div>
-          <div class="kpi-label">ยังไม่กำหนดเกณฑ์</div>
+          <div class="kpi-label" title="ยังไม่ได้กรอกน้ำหนักต่อรอบการแต่งในทะเบียน Tooling จึงคิด % ไม่ได้">ยังไม่กำหนดเกณฑ์</div>
           <div class="kpi-value" id="rolllife-kpi-nospec">0</div>
         </div>
       </div>
@@ -6498,6 +6498,22 @@ function rollLifeChip(pct) {
   return { chip: 'chip-green', label: 'ปกติ' };
 }
 
+// เกณฑ์ % การใช้รอบการแต่ง (ผลิตไปแล้ว ÷ น้ำหนักต่อรอบการแต่ง) — ที่เดียวสำหรับทั้งสีในตารางและ KPI ด้านบน
+// ไม่เกิน 80% = ปกติ, เกิน 80–90% = เฝ้าระวัง, เกิน 90% = ใกล้หมดอายุ
+// pct = null คือยังไม่ได้กรอกน้ำหนักต่อรอบการแต่งในทะเบียน Tooling จึงคิด % ไม่ได้
+const ROLL_USAGE_BANDS = {
+  nospec: { key: 'nospec', label: 'ยังไม่กำหนดเกณฑ์', color: 'var(--text-1)' },
+  ok:     { key: 'ok',     label: 'ปกติ',            color: 'var(--green)' },
+  warn:   { key: 'warn',   label: 'เฝ้าระวัง',        color: 'var(--amber)' },
+  critical:{ key: 'critical', label: 'ใกล้หมดอายุ',   color: 'var(--red)' },
+};
+function rollUsageBand(pct) {
+  if (pct == null) return ROLL_USAGE_BANDS.nospec;
+  if (pct <= 80) return ROLL_USAGE_BANDS.ok;
+  if (pct <= 90) return ROLL_USAGE_BANDS.warn;
+  return ROLL_USAGE_BANDS.critical;
+}
+
 function toggleRollLifeSpec() {
   const body = document.getElementById('rolllife-spec-body');
   const btn = document.getElementById('rolllife-spec-toggle');
@@ -6612,6 +6628,13 @@ function renderRollLife() {
   });
 
   const all = [...groupMap.values()];
+  // % การใช้รอบการแต่ง คิดครั้งเดียวต่อชุด แล้วให้ทั้งตารางและ KPI อ่านจากค่าเดียวกัน
+  // ถ้าคิดแยกกันสองที่ ตัวเลขบนการ์ดกับในตารางจะเพี้ยนจากกันได้เวลาแก้เกณฑ์ทีหลัง
+  all.forEach(g => {
+    g.producedTon = producedTonForRollSet(g.set, g.colorKey, rollLifeFgByKeyDate, rollLifeFgDates);
+    g.prodPct = (g.producedTon != null && g.usedTon > 0)
+      ? Math.round(g.producedTon / g.usedTon * 1000) / 10 : null;
+  });
   const rows = all.filter(g => {
     if (setFilter && g.set !== setFilter) return false;
     if (search && !`${g.set} ${g.colorLabel}`.toLowerCase().includes(search)) return false;
@@ -6635,16 +6658,13 @@ function renderRollLife() {
     // น้ำหนักผลิต = ยอดของ "ชุด Roll ชุดนี้" ที่คิดด้วยเกณฑ์เดียวกับหน้าน้ำหนักผลิต
     // (ลงเฉพาะวันที่ชุดสีนี้เป็นชุดที่ใช้เดิน + รวมขนาดที่มาใช้ Forming ร่วม) ตัวเลขสองหน้าจะได้ตรงกัน
     const perRoundTon = g.usedTon;
-    const producedTon = producedTonForRollSet(g.set, g.colorKey, rollLifeFgByKeyDate, rollLifeFgDates);
+    const producedTon = g.producedTon;
     // น้ำหนักเหลือ ติดลบได้ ถ้าผลิตเกินรอบแล้วยังไม่ได้แต่ง จะได้เห็นว่าเลยมาเท่าไร
     const leftTon = (perRoundTon != null && producedTon != null)
       ? Math.round((perRoundTon - producedTon) * 100) / 100 : null;
     // % ผลิต = ใช้รอบการแต่งไปแล้วกี่ % — ยิ่งสูงยิ่งใกล้ต้องแต่ง เกิน 100% คือเลยรอบมาแล้ว
-    const prodPct = (producedTon != null && perRoundTon > 0)
-      ? Math.round(producedTon / perRoundTon * 1000) / 10 : null;
-    // เกณฑ์สีตามที่ตกลงไว้: ไม่เกิน 80% เขียว, 81–90% เหลือง, เกิน 90% แดง
-    const prodColor = prodPct == null ? 'var(--text-1)'
-      : (prodPct <= 80 ? 'var(--green)' : (prodPct <= 90 ? 'var(--amber)' : 'var(--red)'));
+    const prodPct = g.prodPct;
+    const prodColor = rollUsageBand(prodPct).color;
     const leftPct = (leftTon != null && perRoundTon > 0)
       ? Math.round(leftTon / perRoundTon * 1000) / 10 : null;
     const leftColor = leftTon == null ? 'var(--text-1)'
@@ -6735,11 +6755,13 @@ function renderRollLife() {
     `แสดง ${rows.length} จาก ${all.length} ชุด (${shownPieces.toLocaleString()} จาก ${allPieces.toLocaleString()} ลูก)`;
 
   // KPI นับเป็น "ชุด" ให้ตรงกับตาราง ไม่ขึ้นกับตัวกรอง เพื่อให้เห็นภาพรวมจริงเสมอ
-  const pcts = all.map(g => g.lifePct);
-  document.getElementById('rolllife-kpi-critical').textContent = pcts.filter(p => p != null && p <= 20).length;
-  document.getElementById('rolllife-kpi-warn').textContent = pcts.filter(p => p != null && p > 20 && p <= 50).length;
-  document.getElementById('rolllife-kpi-ok').textContent = pcts.filter(p => p != null && p > 50).length;
-  document.getElementById('rolllife-kpi-nospec').textContent = pcts.filter(p => p == null).length;
+  // ยึด % การใช้รอบการแต่ง (คอลัมน์น้ำหนักผลิต) ผ่าน rollUsageBand เกณฑ์เดียวกับสีในตาราง
+  const bandCount = { nospec: 0, ok: 0, warn: 0, critical: 0 };
+  all.forEach(g => { bandCount[rollUsageBand(g.prodPct).key]++; });
+  document.getElementById('rolllife-kpi-critical').textContent = bandCount.critical;
+  document.getElementById('rolllife-kpi-warn').textContent = bandCount.warn;
+  document.getElementById('rolllife-kpi-ok').textContent = bandCount.ok;
+  document.getElementById('rolllife-kpi-nospec').textContent = bandCount.nospec;
 }
 
 function rollSetScope() {
