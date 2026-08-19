@@ -1029,7 +1029,8 @@ canvas{display:block;}
       <div class="grid-2" style="margin-bottom:18px;">
         <div class="card">
           <div class="card-header">
-            <span class="card-title">ชุด Roll กำลังแต่ง</span>
+            <span class="card-title" style="font-size:17px;color:var(--amber);display:inline-flex;align-items:center;gap:8px;">
+              <span style="width:11px;height:11px;border-radius:50%;background:var(--amber);flex-shrink:0;"></span>ชุด Roll กำลังแต่ง</span>
             <span style="margin-left:auto;font-size:12px;color:var(--text-3);">
               <span id="dash-roll-dressing-count" style="font-weight:700;color:var(--amber);">0</span> ชุด<span id="dash-roll-dressing-count-note"></span>
             </span>
@@ -1038,7 +1039,8 @@ canvas{display:block;}
         </div>
         <div class="card">
           <div class="card-header">
-            <span class="card-title">ชุด Roll กำลังขัด</span>
+            <span class="card-title" style="font-size:17px;color:var(--purple);display:inline-flex;align-items:center;gap:8px;">
+              <span style="width:11px;height:11px;border-radius:50%;background:var(--purple);flex-shrink:0;"></span>ชุด Roll กำลังขัด</span>
             <span style="margin-left:auto;font-size:12px;color:var(--text-3);">
               <span id="dash-roll-polishing-count" style="font-weight:700;color:var(--purple);">0</span> ชุด<span id="dash-roll-polishing-count-note"></span>
             </span>
@@ -1050,7 +1052,8 @@ canvas{display:block;}
       <!-- ROLL IN USE -->
       <div class="card" style="margin-bottom:18px;">
         <div class="card-header">
-          <span class="card-title">ชุด Roll กำลังใช้งาน</span>
+          <span class="card-title" style="font-size:17px;color:var(--inuse);display:inline-flex;align-items:center;gap:8px;">
+            <span style="width:11px;height:11px;border-radius:50%;background:var(--inuse);flex-shrink:0;"></span>ชุด Roll กำลังใช้งาน</span>
           <span style="margin-left:auto;display:flex;align-items:center;gap:12px;font-size:12px;color:var(--text-3);">
             <span><span id="dash-roll-inuse-count" style="font-weight:700;color:var(--inuse);">0</span> ชุด</span>
             <button id="dash-roll-inuse-edit-btn" class="btn btn-ghost btn-sm" onclick="openInUseRollPicker()" style="display:none;">เลือกชุดที่ใช้งาน</button>
@@ -1062,7 +1065,8 @@ canvas{display:block;}
       <!-- ROLL READY -->
       <div class="card" style="margin-bottom:18px;">
         <div class="card-header">
-          <span class="card-title">ชุด Roll พร้อมใช้งาน</span>
+          <span class="card-title" style="font-size:17px;color:var(--green);display:inline-flex;align-items:center;gap:8px;">
+            <span style="width:11px;height:11px;border-radius:50%;background:var(--green);flex-shrink:0;"></span>ชุด Roll พร้อมใช้งาน</span>
           <span style="margin-left:auto;font-size:12px;color:var(--text-3);">
             <span id="dash-roll-ready-count" style="font-weight:700;color:var(--green);">0</span> ชุด
           </span>
@@ -2321,10 +2325,11 @@ function dashRollWorkingChipHtml(e, accentVar, bgVar) {
   </div>`;
 }
 
+// color/bg = null คือใช้สี accent ของการ์ดนั้น (แต่ง = เหลือง, ขัด = ม่วง) ให้หัวข้อ "กำลังทำ" เข้ากับการ์ด
 const ROLL_WORK_CAT_META = [
-  { cat: 'late',  label: 'งานค้าง',  color: 'var(--red)' },
-  { cat: 'doing', label: 'กำลังทำ',  color: null },   // ใช้สี accent ของการ์ดนั้น
-  { cat: 'wait',  label: 'รอทำ',     color: 'var(--text-3)' },
+  { cat: 'late',  label: 'งานค้าง',  color: 'var(--red)',    bg: 'var(--red-dim)' },
+  { cat: 'doing', label: 'กำลังทำ',  color: null,            bg: null },
+  { cat: 'wait',  label: 'รอทำ',     color: 'var(--accent)', bg: 'var(--accent-glow)' },
 ];
 
 function renderDashboardWorkingRoll() {
@@ -2346,13 +2351,18 @@ function renderDashboardWorkingRoll() {
     }
     el.innerHTML = entries.length
       // คั่นหัวข้อ 3 กลุ่ม ซ่อนกลุ่มที่ไม่มีรายการ
-      ? groups.filter(g => g.list.length).map(g => `
-        <div style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:.03em;
-                    color:${g.color || cfg.accent};padding:6px 2px 4px;">
-          <span style="width:7px;height:7px;border-radius:50%;background:${g.color || cfg.accent};flex-shrink:0;"></span>
-          ${g.label}<span style="font-weight:600;color:var(--text-3);">${g.list.length} ชุด</span>
+      ? groups.filter(g => g.list.length).map(g => {
+        const c = g.color || cfg.accent, b = g.bg || cfg.bg;
+        return `
+        <div style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;letter-spacing:.01em;
+                    color:${c};background:${b};border-left:4px solid ${c};border-radius:0 6px 6px 0;
+                    padding:7px 11px;margin:10px 0 7px;">
+          <span style="width:9px;height:9px;border-radius:50%;background:${c};flex-shrink:0;"></span>
+          ${g.label}
+          <span style="margin-left:auto;font-size:12px;font-weight:800;color:${c};opacity:.85;">${g.list.length} ชุด</span>
         </div>
-        ${g.list.map(e => dashRollWorkingChipHtml(e, cfg.accent, cfg.bg)).join('')}`).join('')
+        ${g.list.map(e => dashRollWorkingChipHtml(e, cfg.accent, cfg.bg)).join('')}`;
+      }).join('')
       : `<div style="padding:4px;color:var(--text-3);font-size:13px;">${cfg.empty}</div>`;
   });
 }
