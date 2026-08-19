@@ -5369,6 +5369,13 @@ function jsCallAttr(fnName, ...args) {
   return escapeHtmlAttr(fnName + '(' + inner + ')');
 }
 
+// เหมือน jsCallAttr แต่ต่อท้ายด้วย this.value (ไม่ใส่ quote) สำหรับ handler ของ input
+// ใช้แทน window.event.target ที่เป็นของเก่าและไม่ได้อยู่ในมาตรฐาน
+function jsCallAttrValue(fnName, ...args) {
+  const inner = args.map(a => "'" + String(a).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'").join(',');
+  return escapeHtmlAttr(fnName + '(' + inner + ',this.value)');
+}
+
 // ─── PERSISTENCE (localStorage + Supabase Cloud Sync) ──────────────────────────
 const STORAGE_KEY = 'tstToolingState_v1';
 
@@ -5400,6 +5407,14 @@ let rollRunColor = {};
 let rollDressReset = {};
 let rollDressResetLog = [];
 
+// น้ำหนักผลิตที่ "ยกมา" ของแต่ละชุด Roll — กรอกเองที่หน้าน้ำหนักผลิต
+// { 'GS 2"x1" (47x23) Forming|yellow': 123.45 }  หน่วยเป็นตัน
+// ใช้กับรอบการแต่งที่เริ่มเดินมาก่อนช่วงที่ระบบมีข้อมูลจาก TST Production
+// (ข้อมูล FG ย้อนได้จำกัด) ถ้าไม่กรอก % การใช้รอบการแต่งในหน้าอายุ Roll จะต่ำกว่าความจริง
+// แต่ง Roll เสร็จแล้วกดรี = เริ่มรอบใหม่ ยอดยกมาของรอบเก่าจะถูกล้างไปด้วย
+// ประกาศไว้ก่อน buildStateSnapshot() ด้วยเหตุผลเดียวกับ rollRunColor ข้างบน (TDZ)
+let rollCarryTon = {};
+
 function buildStateSnapshot() {
   return {
     toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec,
@@ -5408,7 +5423,7 @@ function buildStateSnapshot() {
     dailyPieceStatus, rollSizeLog, rollSizeLogSeq, dailyPauseLog, dailyPauseLogSeq,
     prodBlockProducts, prodBlockSeq, prodBlockCells, prodBlockPM, prodBlockSummary,
     prodBlockEntries, prodBlockEntrySeq, prodBlockActiveMachine, prodBlockViewMonth, rollRunColor,
-    rollDressReset, rollDressResetLog
+    rollDressReset, rollDressResetLog, rollCarryTon
   };
 }
 
@@ -5510,6 +5525,7 @@ function applyState(saved) {
   if (saved.rollRunColor) rollRunColor = saved.rollRunColor;
   if (saved.rollDressReset) rollDressReset = saved.rollDressReset;
   if (Array.isArray(saved.rollDressResetLog)) rollDressResetLog = saved.rollDressResetLog;
+  if (saved.rollCarryTon) rollCarryTon = saved.rollCarryTon;
   if (typeof saved.rollColorSeq === 'number') rollColorSeq = saved.rollColorSeq;
   if (Array.isArray(saved.planTasks)) planTasks = saved.planTasks;
   if (typeof saved.planTaskSeq === 'number') planTaskSeq = saved.planTaskSeq;
@@ -6267,6 +6283,7 @@ async function renderProdWeight() {
   const fmt = v => v ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '<span class="muted">—</span>';
   const dayKg = {};
   let grandKg = 0;
+  let carryTotal = 0; // ยอดยกมาที่กรอกเอง รวมทุกชุด — แยกจาก grandKg ที่ต้องตรงกับยอดจริงจาก API
 
   const body = ordered.map(([, g]) => {
     const perDay = (g.fgKey && fgWeightByKeyDate[g.fgKey]) || {};
@@ -6306,10 +6323,20 @@ async function renderProdWeight() {
           return { d, kg: ownKg + shareKg, shareKg, inferred: mine && !explicit };
         });
         const rowKg = cells.reduce((s, x) => s + x.kg, 0);
+        // ยอดยกมากรอกเอง ไม่เกี่ยวกับช่วงวันที่เลือก จึงไม่รวมเข้าคอลัมน์ "รวม" และไม่รวมในแถวรวมท้ายตาราง
+        // (สองค่านั้นต้องตรงกับยอดจริงจาก TST Production เสมอ) — ไปบวกกันที่หน้าอายุ Roll
+        const carryTon = rollCarryTonFor(setName, c.key);
+        carryTotal += carryTon;
         return `<tr>
         <td title="${escapeHtmlAttr(setName)}"><strong style="color:${catColor};">${escapeHtmlAttr(cat || setName)}</strong></td>
         <td><span style="display:inline-flex;align-items:center;gap:6px;">
           <span style="width:9px;height:9px;border-radius:50%;background:${c.dot};flex-shrink:0;"></span>${escapeHtmlAttr(c.label)}</span></td>
+        <td style="text-align:right;">
+          <input type="number" min="0" step="0.01" inputmode="decimal" class="form-input"
+            value="${carryTon ? escapeHtmlAttr(carryTon) : ''}" placeholder="0"
+            style="width:82px;padding:3px 7px;font-size:12px;text-align:right;${carryTon ? 'font-weight:700;color:var(--accent);' : ''}"
+            title="น้ำหนักที่ชุดนี้ผลิตไปแล้วก่อนช่วงข้อมูลที่ระบบมี — กรอกเอง ใช้บวกเข้า % การใช้รอบการแต่งในหน้าอายุ Roll"
+            onchange="${jsCallAttrValue('setRollCarryTon', setName, c.key)}"></td>
         ${cells.map(x => {
           const tips = [];
           if (x.inferred) tips.push('อ้างจากชุดที่สถานะกำลังใช้งานอยู่ — ยังไม่ได้ระบุเจาะจงของวันนี้');
@@ -6330,7 +6357,7 @@ async function renderProdWeight() {
       const rs = toolingData.roll.filter(r => r.set === s);
       return n + (rs.length ? new Set(rs.map(r => r.color || NO_COLOR_KEY)).size : 0);
     }, 0);
-    return `<tr><td colspan="${days.length + 3}" style="background:var(--bg-panel);padding:11px 12px;border-top:2px solid var(--text-1);">
+    return `<tr><td colspan="${days.length + 4}" style="background:var(--bg-panel);padding:11px 12px;border-top:2px solid var(--text-1);">
       <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);">
         <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(g.label)}
       </span>
@@ -6345,10 +6372,12 @@ async function renderProdWeight() {
     </td></tr>${rows}`;
   }).join('');
 
-  const colCount = days.length + 3;
+  const colCount = days.length + 4;
   grid.innerHTML = errorBanner + `<div class="card"><div class="table-wrap"><table>
     <thead><tr>
       <th>SIZE ROLL</th><th>ชุดสี</th>
+      <th style="text-align:right;white-space:nowrap;" title="น้ำหนักที่ผลิตไปแล้วก่อนช่วงข้อมูลที่ระบบมี — กรอกเอง ไม่รวมในคอลัมน์รวมและแถวรวมท้ายตาราง แต่ไปบวกใน % การใช้รอบการแต่งหน้าอายุ Roll">
+        ยกมา (ตัน)<div style="font-size:10px;font-weight:400;color:var(--text-3);">กรอกเอง</div></th>
       ${days.map(d => {
         const overrides = Object.keys(rollRunColor[d] || {}).length;
         return `<th style="text-align:right;white-space:nowrap;">
@@ -6367,6 +6396,8 @@ async function renderProdWeight() {
     <tbody>${body || `<tr><td colspan="${colCount}" style="padding:32px;text-align:center;color:var(--text-3);">ยังไม่มีชุด Roll ในทะเบียน Tooling</td></tr>`}</tbody>
     ${days.length ? `<tfoot><tr style="background:var(--bg-panel);">
       <td colspan="2" style="font-weight:800;">รวมทุกขนาด <span style="font-weight:400;font-size:11px;color:var(--text-3);">(นับขนาดละครั้ง ไม่นับซ้ำตามหมวด/ชุดสี)</span></td>
+      <td style="text-align:right;font-weight:700;color:${carryTotal ? 'var(--accent)' : 'var(--text-3)'};"
+        title="ผลรวมยอดยกมาที่กรอกเองทุกชุด — แยกจากยอดผลิตจริง ไม่ถูกนับในยอดรวมด้านขวา">${carryTotal ? fmt(carryTotal) : '—'}</td>
       ${days.map(d => `<td style="text-align:right;font-weight:700;">${fmt(ton(dayKg[d]))}</td>`).join('')}
       <td style="text-align:right;font-weight:800;color:var(--accent);">${fmt(ton(grandKg))}</td>
     </tr></tfoot>` : ''}
@@ -6379,7 +6410,11 @@ async function renderProdWeight() {
     ขนาดที่ยังไม่มีชุดไหนกำลังใช้งานและไม่ได้ระบุไว้ จะไม่ลงแถวใดเลย แต่ยังนับอยู่ในยอดรวมของขนาดและแถวรวมท้ายตาราง ยอดจึงไม่หาย<br>
     ตัวเลขที่มี <b style="color:var(--accent);">⁺</b> คือรวมน้ำหนักของขนาดอื่นที่มาใช้ <b>Forming</b> ชุดนี้ร่วมด้วย
     (GS 1-1/2" → GS 2"x1" · GI 1-1/2" → GI 2"x1" · GI 3"x3" → GI 4"x2") —
-    แถวรวมท้ายตารางยังนับขนาดละครั้งตามยอดผลิตจริง ไม่บวกซ้ำจากการใช้ Forming ร่วม
+    แถวรวมท้ายตารางยังนับขนาดละครั้งตามยอดผลิตจริง ไม่บวกซ้ำจากการใช้ Forming ร่วม<br>
+    คอลัมน์ <b>ยกมา (ตัน)</b> กรอกเองได้ สำหรับรอบการแต่งที่เริ่มเดินมาก่อนช่วงที่ระบบมีข้อมูล —
+    <b>ไม่ถูกนับ</b> ในคอลัมน์รวมและแถวรวมท้ายตาราง (สองค่านั้นต้องตรงกับยอดจริงจาก TST Production)
+    แต่จะไปบวกใน <b>น้ำหนักผลิต</b> และ <b>%</b> ของหน้าอายุ Roll
+    เมื่อแต่ง Roll เสร็จแล้วกด <b>↺ รี</b> ที่หน้าอายุ Roll ยอดยกมาจะถูกล้างให้เอง
   </div>` : `<div style="padding:24px;text-align:center;color:var(--text-3);font-size:13px;">ไม่มีข้อมูลการผลิตในช่วงวันที่ที่เลือก</div>`}
   </div>`;
 }
@@ -6502,6 +6537,23 @@ function producedTonForRollSet(setName, colorKey, byKeyDate, dates, sinceIso) {
 // จึงเก็บแค่ "วันเริ่มนับ" ไว้ต่อชุด แล้วให้หน้าอายุ Roll ตัดวันก่อนหน้าออกจากการคิด
 // ยอดจริงทั้งหมดยังดูได้ที่หน้าน้ำหนักผลิต และย้อนการรีได้ตลอดเพราะไม่มีข้อมูลไหนถูกลบ
 function rollDressResetKey(setName, colorKey) { return setName + '|' + colorKey; }
+
+// ยอดยกมาที่กรอกเอง (ตัน) ของชุด Roll หนึ่ง — 0 ถ้าไม่ได้กรอก
+function rollCarryTonFor(setName, colorKey) {
+  const v = rollCarryTon[rollDressResetKey(setName, colorKey)];
+  return typeof v === 'number' && isFinite(v) ? v : 0;
+}
+function setRollCarryTon(setName, colorKey, raw) {
+  const key = rollDressResetKey(setName, colorKey);
+  const n = parseFloat(String(raw == null ? '' : raw).replace(/,/g, '').trim());
+  const before = rollCarryTonFor(setName, colorKey);
+  if (!isFinite(n) || n <= 0) delete rollCarryTon[key];
+  else rollCarryTon[key] = Math.round(n * 100) / 100;
+  if (rollCarryTonFor(setName, colorKey) === before) return; // ไม่ได้เปลี่ยนค่า ไม่ต้องเขียนขึ้น cloud
+  persistState();
+  // หน้าอายุ Roll คิด % จากค่านี้ ถ้าเปิดอยู่ต้องอัปเดตตาม ไม่ต้องรอสลับหน้า
+  if (typeof renderRollLife === 'function') renderRollLife();
+}
 function rollDressResetFor(setName, colorKey) {
   const r = rollDressReset[rollDressResetKey(setName, colorKey)];
   return r && r.from ? r : null;
@@ -6548,7 +6600,9 @@ function openDressResetDialog(setName, colorKey, colorLabel) {
     document.body.appendChild(ov);
   }
   const cur = rollDressResetFor(setName, colorKey);
-  const produced = producedTonForRollSet(setName, colorKey, rollLifeFgByKeyDate, rollLifeFgDates, cur ? cur.from : null);
+  const carry = rollCarryTonFor(setName, colorKey);
+  const fgTon = producedTonForRollSet(setName, colorKey, rollLifeFgByKeyDate, rollLifeFgDates, cur ? cur.from : null);
+  const produced = (fgTon == null && !carry) ? null : Math.round(((fgTon || 0) + carry) * 100) / 100;
   const perRound = rollSetUsageTon(setName);
   const pct = (produced != null && perRound > 0) ? Math.round(produced / perRound * 1000) / 10 : null;
   document.getElementById('dressreset-target').innerHTML =
@@ -6556,7 +6610,8 @@ function openDressResetDialog(setName, colorKey, colorLabel) {
   document.getElementById('dressreset-current').innerHTML = produced == null
     ? '<span class="muted">ยังไม่มีข้อมูลการผลิต</span>'
     : `รอบนี้ผลิตไปแล้ว <b>${produced.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> ตัน${
-        pct == null ? '' : ` (<b>${pct}%</b> ของ ${perRound.toLocaleString()} ตันต่อรอบ)`}`;
+        pct == null ? '' : ` (<b>${pct}%</b> ของ ${perRound.toLocaleString()} ตันต่อรอบ)`}${
+        carry ? `<div style="font-size:11px;color:var(--text-3);">รวมยอดยกมาที่กรอกเอง ${carry.toLocaleString(undefined, { maximumFractionDigits: 2 })} ตัน</div>` : ''}`;
   document.getElementById('dressreset-prev').innerHTML = cur
     ? `รีครั้งล่าสุด: เริ่มนับตั้งแต่ <b>${escapeHtmlAttr(dressResetDateLabel(cur.from))}</b>${cur.by ? ' · โดย ' + escapeHtmlAttr(cur.by) : ''}`
     : 'ยังไม่เคยรี — ตอนนี้นับน้ำหนักตั้งแต่วันแรกที่มีข้อมูล';
@@ -6581,7 +6636,10 @@ function renderDressResetPreview() {
   const band = rollUsageBand(pct);
   // ยอดของ "วันที่เลือก" เอง — เตือนเฉพาะกรณีที่วันนั้นเดินไปแล้วจริง ไม่ใช่ทุกครั้งที่ผลไม่เป็น 0
   const dayTon = producedTonForRollSet(set, colorKey, rollLifeFgByKeyDate, [from], from) || 0;
-  el.innerHTML = `หลังกดรี น้ำหนักผลิตของชุดนี้จะเป็น
+  const carry = rollCarryTonFor(set, colorKey);
+  el.innerHTML = `${carry ? `<div style="font-size:11px;color:var(--text-3);margin-bottom:4px;">
+      ยอดยกมาที่กรอกเอง <b>${carry.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> ตัน จะถูกล้างด้วย
+      (เป็นยอดของรอบก่อนแต่ง) — กดยกเลิกการรีแล้วได้คืน</div>` : ''}หลังกดรี น้ำหนักผลิตของชุดนี้จะเป็น
     <b style="color:${band.color};">${after.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> ตัน${
       pct == null ? '' : ` (<b style="color:${band.color};">${pct}%</b>)`}
     ${dayTon <= 0 ? '' : `<div style="font-size:11px;color:var(--text-3);margin-top:4px;">
@@ -6603,11 +6661,16 @@ function confirmDressReset() {
   if (!from) { alert('เลือกวันที่เริ่มนับใหม่ก่อน'); return; }
   const { set, colorKey, colorLabel } = dressResetTarget;
   const key = rollDressResetKey(set, colorKey);
-  const before = producedTonForRollSet(set, colorKey, rollLifeFgByKeyDate, rollLifeFgDates,
-    (rollDressReset[key] || {}).from || null);
-  rollDressReset[key] = { from, at: new Date().toISOString(), by: (currentUser && currentUser.name) || '' };
+  const carryBefore = rollCarryTonFor(set, colorKey);
+  const before = (producedTonForRollSet(set, colorKey, rollLifeFgByKeyDate, rollLifeFgDates,
+    (rollDressReset[key] || {}).from || null) || 0) + carryBefore;
+  // เก็บยอดยกมาที่ล้างไปไว้กับรายการรี เพื่อให้ "ยกเลิกการรี" คืนค่าได้ครบ ไม่ใช่คืนแค่วันเริ่มนับ
+  rollDressReset[key] = { from, at: new Date().toISOString(), by: (currentUser && currentUser.name) || '',
+    carryCleared: carryBefore || undefined };
+  // แต่ง Roll เสร็จ = รอบใหม่ ยอดยกมาเป็นของรอบเก่า ต้องล้างไปด้วย ไม่งั้นจะบวกค้างในรอบใหม่ตลอด
+  delete rollCarryTon[key];
   rollDressResetLog.unshift({ set, colorKey, colorLabel, from, at: rollDressReset[key].at,
-    by: rollDressReset[key].by, tonBefore: before });
+    by: rollDressReset[key].by, tonBefore: before, carryCleared: carryBefore || undefined });
   if (rollDressResetLog.length > 200) rollDressResetLog.length = 200; // เก็บพอให้ตรวจย้อนได้ ไม่ให้ state บวม
   persistState();
   closeDressResetDialog();
@@ -6618,9 +6681,13 @@ function clearDressReset() {
   if (!dressResetTarget) return;
   if (!canEditPlan()) { alert('ไม่มีสิทธิ์รีน้ำหนัก'); return; }
   const { set, colorKey, colorLabel } = dressResetTarget;
-  delete rollDressReset[rollDressResetKey(set, colorKey)];
+  const key = rollDressResetKey(set, colorKey);
+  // คืนยอดยกมาที่ตอนกดรีล้างไป ให้การยกเลิกกลับไปเหมือนก่อนกดรีจริงๆ
+  const carryBack = (rollDressReset[key] || {}).carryCleared;
+  if (carryBack) rollCarryTon[key] = carryBack;
+  delete rollDressReset[key];
   rollDressResetLog.unshift({ set, colorKey, colorLabel, from: null, at: new Date().toISOString(),
-    by: (currentUser && currentUser.name) || '', undo: true });
+    by: (currentUser && currentUser.name) || '', undo: true, carryRestored: carryBack || undefined });
   if (rollDressResetLog.length > 200) rollDressResetLog.length = 200;
   persistState();
   closeDressResetDialog();
@@ -6690,8 +6757,12 @@ function renderRollLife() {
   all.forEach(g => {
     // ถ้ามีการกดรีหลังแต่ง Roll เสร็จ ให้นับเฉพาะวันที่ >= วันเริ่มนับ (รอบปัจจุบัน)
     g.dressReset = rollDressResetFor(g.set, g.colorKey);
-    g.producedTon = producedTonForRollSet(g.set, g.colorKey, rollLifeFgByKeyDate, rollLifeFgDates,
+    g.fgTon = producedTonForRollSet(g.set, g.colorKey, rollLifeFgByKeyDate, rollLifeFgDates,
       g.dressReset ? g.dressReset.from : null);
+    // บวกยอดยกมาที่กรอกเองไว้ที่หน้าน้ำหนักผลิต — รอบที่เริ่มเดินก่อนช่วงข้อมูลที่ระบบมี
+    g.carryTon = rollCarryTonFor(g.set, g.colorKey);
+    g.producedTon = (g.fgTon == null && !g.carryTon) ? null
+      : Math.round(((g.fgTon || 0) + g.carryTon) * 100) / 100;
     g.prodPct = (g.producedTon != null && g.usedTon > 0)
       ? Math.round(g.producedTon / g.usedTon * 1000) / 10 : null;
   });
@@ -6759,6 +6830,7 @@ function renderRollLife() {
             title="แต่ง Roll เสร็จแล้ว — เริ่มนับน้ำหนักผลิตรอบใหม่"
             onclick="${jsCallAttr('openDressResetDialog', g.set, g.colorKey, g.colorLabel)}">↺ รี</button>` : ''}
         </span>
+        ${g.carryTon ? `<div class="muted" style="font-size:10px;" title="ยอดยกมาที่กรอกเองไว้ที่หน้าน้ำหนักผลิต ${escapeHtmlAttr(g.carryTon.toLocaleString())} ตัน + ยอดจากระบบ ${escapeHtmlAttr((g.fgTon || 0).toLocaleString())} ตัน">ยกมา ${escapeHtmlAttr(g.carryTon.toLocaleString(undefined, { maximumFractionDigits: 2 }))} + ${escapeHtmlAttr((g.fgTon || 0).toLocaleString(undefined, { maximumFractionDigits: 2 }))}</div>` : ''}
         ${g.dressReset ? `<div class="muted" style="font-size:10px;" title="กดรีหลังแต่ง Roll เสร็จ จึงนับน้ำหนักตั้งแต่วันนี้">เริ่มนับ ${escapeHtmlAttr(dressResetDateLabel(g.dressReset.from))}</div>` : ''}
       </td>
       <td style="text-align:right;">${leftTon == null ? '<span class="muted">—</span>'
