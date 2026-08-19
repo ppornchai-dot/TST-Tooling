@@ -7026,14 +7026,15 @@ function rollSetSizeGroupLabel(s) {
 
 const ROLL_SET_CATEGORY_ORDER = { Forming: 0, Sizing: 1, TH: 2 };
 
-// รายการชุดสีของ Size Roll หนึ่ง เรียงตามลำดับจานสี — แสดงเฉพาะสีที่มี Roll อยู่จริง
-// คืน [null] ถ้ายังไม่มี Roll เลย เพื่อให้ Size Roll นั้นยังมีแถวให้กดแก้ไข/ลบได้
+// รายการชุดสีของ Size Roll หนึ่ง เรียงตามลำดับจานสี
+// รวมสีที่ยังไม่มี Roll ด้วย (นับได้ 0) — เดิมกรองออก ทำให้ชุดสีที่เพิ่งเพิ่มไม่โผล่มาให้เห็นเลย
+// จนกว่าจะไปเพิ่ม Roll เข้าไปก่อน ซึ่งดูเหมือนกดเพิ่มชุดสีไม่สำเร็จ
+// คืน [null] ถ้าไม่มีทั้ง Roll และชุดสี เพื่อให้ Size Roll นั้นยังมีแถวให้กดแก้ไข/ลบได้
 function rollSetColorList(setName) {
   const rows = toolingData.roll.filter(r => r.set === setName);
-  if (!rows.length) return [null];
   const used = new Set(rows.map(r => r.color || NO_COLOR_KEY));
   const list = [
-    ...getSetPalette(setName).filter(c => used.has(c.key)),
+    ...getSetPalette(setName),
     ...(used.has(NO_COLOR_KEY) ? [{ key: NO_COLOR_KEY, label: 'ไม่ระบุสี', dot: '#9CA3AF' }] : []),
   ];
   return list.length ? list : [null];
@@ -7067,7 +7068,8 @@ function rollSetRowHtml(s, colorMeta, num, withActions) {
           <span style="font-size:12.5px;display:flex;align-items:center;gap:6px;min-width:0;">
             <strong style="flex-shrink:0;">${escapeHtmlAttr(cat || s)}</strong>
             ${colorMeta ? `<span style="width:8px;height:8px;border-radius:50%;background:${colorMeta.dot};flex-shrink:0;"></span>
-              <span style="flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtmlAttr(colorMeta.label)}</span>`
+              <span style="flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtmlAttr(colorMeta.label)}</span>
+              ${count === 0 ? '<span style="font-size:10px;color:var(--text-3);flex-shrink:0;" title="เพิ่มชุดสีไว้แล้วแต่ยังไม่ได้ลง Roll">ยังไม่มี Roll</span>' : ''}`
               : '<span style="font-size:11px;color:var(--text-3);">ยังไม่มี Roll</span>'}
           </span>
           ${machines.length ? rollRowMachinePickerHtml(s, colorKey, machines) : ''}
@@ -7463,14 +7465,25 @@ function openAddSetModal() {
     const name = (document.getElementById('f-set-name')||{}).value.trim();
     if (!name) return;
     const machines = ((document.getElementById('f-set-machine')||{}).value || '').split(',').filter(Boolean);
-    if (!getRollSets().includes(name)) {
+    const picked = pickedSetColors();
+    const isNewSet = !getRollSets().includes(name);
+    let addedColors = [];
+    if (isNewSet) {
       extraRollSets.push(name);
       // แทรก Set ใหม่ต่อจาก Set ที่กำลังเลือกอยู่ในลิสต์ แทนที่จะต่อท้ายสุดเสมอ
       const afterIdx = selectedRollSet ? rollSetOrder.indexOf(selectedRollSet) : -1;
       if (afterIdx >= 0) rollSetOrder.splice(afterIdx + 1, 0, name);
       else rollSetOrder.push(name);
       // ชุดสีมาจากที่เลือกไว้ในฟอร์มนี้ ไม่ auto-สร้าง 5 สีเริ่มต้นให้เหมือน Set เก่า
-      rollSetPalettes[name] = pickedSetColors();
+      rollSetPalettes[name] = picked;
+      addedColors = picked;
+    } else {
+      // Size Roll ชื่อนี้มีอยู่แล้ว — เดิมทิ้งสีที่เลือกมาทั้งหมดโดยไม่บอกอะไร แล้วยังขึ้น "✓ เพิ่มแล้ว"
+      // ทำให้กดเพิ่มชุดสีให้ Size Roll ที่มีอยู่แล้วไม่เคยได้ผล ตอนนี้เอาสีที่เลือกมารวมเข้าจานสีเดิม
+      const pal = getSetPalette(name);
+      const have = new Set(pal.map(c => c.key));
+      addedColors = picked.filter(c => !have.has(c.key));
+      addedColors.forEach(c => pal.push({ ...c }));
     }
     if (machines.length) rollSetMachines[name] = machines; else delete rollSetMachines[name];
     selectedRollSet = name;
@@ -7481,8 +7494,17 @@ function openAddSetModal() {
     persistState();
     const btn = this;
     const orig = btn.innerHTML;
-    btn.innerHTML = '✓ เพิ่มแล้ว'; btn.style.background = 'var(--green)';
-    setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.onclick = saveModal; closeModal(); }, 800);
+    // บอกให้ตรงกับที่เกิดขึ้นจริง ไม่ขึ้น "เพิ่มแล้ว" ถ้าไม่มีอะไรถูกเพิ่ม
+    const nothingNew = !isNewSet && !addedColors.length && !machines.length;
+    if (nothingNew) {
+      btn.innerHTML = 'มีอยู่แล้ว ไม่มีอะไรเพิ่ม'; btn.style.background = 'var(--amber)';
+    } else {
+      btn.innerHTML = isNewSet ? '✓ เพิ่ม Size Roll แล้ว'
+        : (addedColors.length ? `✓ เพิ่ม ${addedColors.length} ชุดสีแล้ว` : '✓ บันทึกแล้ว');
+      btn.style.background = 'var(--green)';
+    }
+    setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.onclick = saveModal; closeModal(); },
+      nothingNew ? 1600 : 900);
   };
 }
 
