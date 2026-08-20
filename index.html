@@ -4248,6 +4248,8 @@ function planTaskFormFields() {
       </div>
       <div class="form-group"><label class="form-label">วันที่จบงาน — คำนวณให้อัตโนมัติ</label><input class="form-input" id="pf-enddate" type="date"></div>
     </div>
+    <div id="pf-queue-moved" style="font-size:11.5px;color:var(--amber);background:var(--amber-dim);border:1px solid var(--amber);
+      border-radius:7px;padding:7px 10px;margin-bottom:10px;line-height:1.55;"></div>
     <div class="modal-row">
       <div class="form-group"><label class="form-label">กะทำงาน</label>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
@@ -4810,9 +4812,9 @@ function selectPlanShift(key) {
     clampOtCapInput(document.getElementById('pf-otcap-night'));
   } else {
     setPlanShiftButtons(key);
-    // สลับกะแล้วจุดต่อคิวเป็นของกะใหม่ — งานใหม่ให้คิดจุดต่อคิวใหม่ ไม่ยกเวลาของกะเดิมมาใช้
+    // สลับกะแล้วท้ายคิวเป็นของกะใหม่ — งานใหม่ให้คิดใหม่ ไม่ยกเวลาของกะเดิมมาใช้
     const appendStart = currentEditingPlanTaskId ? null
-      : planAppendStartFor(currentPlanWorkType, (document.getElementById('pf-date') || {}).value, key);
+      : planQueueEndFor(currentPlanWorkType, (document.getElementById('pf-date') || {}).value, key).time;
     if (key === 'morning' && startMorningEl) { startMorningEl.value = appendStart || startMorningEl.value || SHIFTS.morning.start; if (startNightEl) startNightEl.value = ''; }
     if (key === 'night' && startNightEl) { startNightEl.value = appendStart || startNightEl.value || SHIFTS.night.start; if (startMorningEl) startMorningEl.value = ''; }
   }
@@ -4938,39 +4940,81 @@ function findLatestPlanTaskEnd(workType, excludeId) {
 // ถ้าวันนั้นยังไม่มีงานของประเภทนี้เลย ใช้ต้นกะตามปกติ
 // ใช้เป็นค่าเริ่มต้นของช่องเวลาเริ่มตอนเพิ่มงานใหม่ ให้งานใหม่ไป "ต่อท้าย" ไม่ไปเริ่มต้นกะทับงานเดิม
 // แล้วให้ autoFixPlanSequencing ไปดันงานเดิมออก (ซึ่งคือลักษณะ "แทรกงานก่อนหน้า" ที่ไม่ต้องการ)
+function planMinToHHMM(min) {
+  const m = ((min % 1440) + 1440) % 1440;
+  return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+}
+
+// เลื่อน (date, time) ไป "ข้างหน้า" ให้ตกอยู่ในหน้าต่างของกะที่เลือก
+// ต้องเลื่อนไปข้างหน้าเท่านั้น ห้ามถอยไปต้นกะของวันเดิม เพราะต้นกะอยู่ "ก่อน" งานที่วางไว้แล้ว
+// (บั๊กเดิม: คิวจบ 17:00 พอดี แล้วถูกดึงกลับไป 08:00 ของวันเดียวกัน กลายเป็นแทรกหน้างานเดิมทั้งวัน)
+function advanceToShiftWindow(shiftKey, date, time) {
+  const shift = SHIFTS[shiftKey] || SHIFTS.morning;
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(time || ''));
+  if (!m) return { date, time: shift.start };
+  const min = (+m[1]) * 60 + (+m[2]);
+  const windows = shift.windows || [];
+  if (windows.some(w => isMinuteInWindow(min, w))) return { date, time };
+  // หาจุดเริ่มหน้าต่างถัดไปของวันเดียวกันก่อน (เช่น 17:00 ของงาน 2 กะ → 20:00 วันเดียวกัน)
+  const nextStart = windows.map(w => w.startMin).sort((a, b) => a - b).find(s => s > min);
+  if (nextStart != null) return { date, time: planMinToHHMM(nextStart) };
+  // วันนี้ไม่มีหน้าต่างเหลือแล้ว → ต้นกะของวันทำงานถัดไป
+  let next = addDaysIso(date, 1);
+  let guard = 0;
+  while (isPlanDayOff(next) && ++guard < 366) next = addDaysIso(next, 1);
+  return { date: next, time: shift.start };
+}
+
 function planAppendStartFor(workType, dateIso, shiftKey) {
   const shift = SHIFTS[shiftKey] || SHIFTS.morning;
-  if (!dateIso) return shift.start;
+  if (!dateIso) return { date: dateIso, time: shift.start };
   const sameDay = planTasks.filter(t => t.workType === workType && t.date === dateIso
     && t.endTime && t.endTime !== '—'
     // กะเดียวกัน หรือฝ่ายใดฝ่ายหนึ่งเป็น "2 กะ" ซึ่งกินเวลาทั้งวันทำงาน
     && (t.shift === shiftKey || t.shift === 'both' || shiftKey === 'both'));
-  if (!sameDay.length) return shift.start;
+  if (!sameDay.length) return { date: dateIso, time: shift.start };
   // เทียบด้วยลำดับเวลาใน "วันทำงาน" (08:00 ไล่ไปจนถึง 05:00 ของเช้าวันถัดไป)
   // ไม่ใช่เวลานาฬิกาตรงๆ ไม่งั้นงานกะดึกที่จบหลังเที่ยงคืนจะถูกมองว่าจบเร็วสุดของวัน
   const last = sameDay.reduce((a, b) => historyDayOrderMin(b.endTime) > historyDayOrderMin(a.endTime) ? b : a);
-  const end = last.endTime;
-  if (!end) return shift.start;
-  // จุดต่อคิวต้องอยู่ในหน้าต่างของกะที่เลือกด้วย เช่นงาน "2 กะ" จบ 11:31 แล้วมาเพิ่มงานกะดึก
-  // 11:31 ไม่อยู่ในช่วง 20:00–05:00 ถ้าเอาไปใส่ตรงๆ จะได้งานกะดึกที่เริ่มกลางวัน — กรณีนี้ใช้ต้นกะ
-  const m = /^(\d{1,2}):(\d{2})/.exec(end);
-  if (!m) return shift.start;
-  const min = (+m[1]) * 60 + (+m[2]);
-  return (shift.windows || []).some(w => isMinuteInWindow(min, w)) ? end : shift.start;
+  if (!last.endTime) return { date: dateIso, time: shift.start };
+  // ใช้ endDate จริงของงานนั้น งานที่จบข้ามเที่ยงคืนจะได้วันถูก ไม่ค้างอยู่วันเดิม
+  return advanceToShiftWindow(shiftKey, last.endDate || dateIso, last.endTime);
 }
 
-// เติมค่าเริ่มต้นของช่องเวลาเริ่มให้เป็นจุดต่อคิวของวัน/กะที่เลือกอยู่ — เฉพาะตอนเพิ่มงานใหม่
+// ท้ายคิวจริงของประเภทงานนี้ = { date, time } ที่งานใหม่ควรไปเริ่ม
+// แผนงานของแต่ละประเภทเป็น "คิวต่อเนื่องเส้นเดียว" งานหนึ่งจบแล้วงานถัดไปเริ่มต่อ ข้ามวันได้
+// การยึดแค่ "จุดต่อคิวของวันที่กดเพิ่ม" จึงไม่พอ เพราะงานสุดท้ายของวันนั้นอาจจบเอาวันถัดไป
+// (เช่นวันที่ 20 มีงานจบ 14:20 ของวันที่ 21) ใส่งานใหม่ลงวันที่ 20 เท่ากับแทรกกลางคิว
+// แล้ว autoFixPlanSequencing จะไปดันงานที่อยู่หลังจุดนั้นทั้งหมด — เป็นอาการ "แทรกงานก่อนหน้า"
+// จึงเลือกจุดที่ "ช้ากว่า" ระหว่างจุดต่อคิวของวันนั้น กับท้ายคิวรวมของประเภทงานนี้
+function planQueueEndFor(workType, dateIso, shiftKey) {
+  const day = planAppendStartFor(workType, dateIso, shiftKey);
+  let best = day;
+  // ท้ายคิวรวมของประเภทงานนี้ — อาจเลยวันที่กดเพิ่มไปแล้ว ต้องไม่เริ่มก่อนจุดนี้เด็ดขาด
+  const last = findLatestPlanTaskEnd(workType);
+  if (last && last.endDate && last.endTime) {
+    const fromChain = advanceToShiftWindow(shiftKey, last.endDate, last.endTime);
+    if ((fromChain.date + ' ' + fromChain.time) > (best.date + ' ' + best.time)) best = fromChain;
+  }
+  // ข้ามวันหยุดบริษัท/วันอาทิตย์ (เกณฑ์เดียวกับที่ autoFixPlanSequencing ใช้)
+  const fixed = nextValidPlanContinuePoint(shiftKey, best.date, best.time);
+  // nextValidPlanContinuePoint อาจย้ายวันแล้วตั้งเวลาเป็น 08:00 — ยืนยันอีกครั้งว่าอยู่ในหน้าต่างกะ
+  return advanceToShiftWindow(shiftKey, fixed.date, fixed.time);
+}
+
+// เติมวันที่/เวลาเริ่มให้เป็นท้ายคิวจริง — เฉพาะตอนเพิ่มงานใหม่
 // (แก้ไขงานเดิมต้องคงเวลาที่บันทึกไว้ ไม่ไปเปลี่ยนให้เอง)
 function refreshPlanFormAppendStart() {
   if (currentEditingPlanTaskId) return;
   const dateEl = document.getElementById('pf-date'), shiftEl = document.getElementById('pf-shift');
   if (!dateEl || !shiftEl) return;
   const shiftKey = shiftEl.value || 'morning';
-  const start = planAppendStartFor(currentPlanWorkType, dateEl.value, shiftKey);
-  const fieldKey = shiftKey === 'both' ? bothModeStartFieldKey(start) : (shiftKey === 'night' ? 'night' : 'morning');
+  const q = planQueueEndFor(currentPlanWorkType, dateEl.value, shiftKey);
+  dateEl.value = q.date;
+  const fieldKey = shiftKey === 'both' ? bothModeStartFieldKey(q.time) : (shiftKey === 'night' ? 'night' : 'morning');
   const mEl = document.getElementById('pf-start-morning'), nEl = document.getElementById('pf-start-night');
-  if (mEl) mEl.value = fieldKey === 'morning' ? start : '';
-  if (nEl) nEl.value = fieldKey === 'night' ? start : '';
+  if (mEl) mEl.value = fieldKey === 'morning' ? q.time : '';
+  if (nEl) nEl.value = fieldKey === 'night' ? q.time : '';
   if (shiftKey === 'both') setPlanShiftButtons('both', fieldKey);
 }
 
@@ -5222,10 +5266,24 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   // แล้วดันงานเดิมให้เลื่อนออกไป ดูเหมือน "แทรก" หน้างานที่วางไว้ก่อน — ตอนนี้ต่อท้ายให้ตั้งแต่ตอนกรอกฟอร์ม
   // chainFrom เหลือไว้ใช้เป็นค่าเริ่มต้นของ "ผู้ปฏิบัติงาน" อย่างเดียว เพราะมักเป็นคนเดิมกับงานล่าสุด
   const chainFrom = !task ? findLatestPlanTaskEnd(workType) : null;
-  const formDate = task ? task.date : (presetDate || toISODate(planViewDate));
-  document.getElementById('pf-date').value = formDate;
+  const pickedDate = task ? task.date : (presetDate || toISODate(planViewDate));
   const defaultShift = (task ? task.shift : currentPlanShiftFilter) || 'morning';
-  const startValue = task ? task.startTime : planAppendStartFor(workType, formDate, defaultShift);
+  // งานใหม่ไปต่อ "ท้ายคิว" จริงของประเภทงานนี้ ซึ่งอาจเลยวันที่กดเพิ่มไปแล้ว
+  const queueEnd = task ? null : planQueueEndFor(workType, pickedDate, defaultShift);
+  const formDate = task ? task.date : queueEnd.date;
+  document.getElementById('pf-date').value = formDate;
+  const startValue = task ? task.startTime : queueEnd.time;
+  // ถ้าท้ายคิวเลยวันที่กดมาแล้ว บอกให้รู้ว่าทำไมวันที่ในฟอร์มไม่ใช่วันที่กด (กันคิดว่าระบบเลือกวันผิด)
+  const movedNote = document.getElementById('pf-queue-moved');
+  if (movedNote) {
+    const moved = !task && formDate !== pickedDate;
+    movedNote.style.display = moved ? '' : 'none';
+    movedNote.innerHTML = moved
+      ? `เลื่อนไปวันที่ <b>${escapeHtmlAttr(fmtDateThai(parseISODate(formDate)))} ${escapeHtmlAttr(startValue)}</b> ให้อัตโนมัติ
+         เพราะคิว${escapeHtmlAttr(workTypeLabel)}ที่วางไว้ยาวเลยวันที่ ${escapeHtmlAttr(fmtDateThai(parseISODate(pickedDate)))} ไปแล้ว
+         — ถ้าวางไว้วันที่กดจะกลายเป็นแทรกกลางคิวแล้วดันงานเดิมทั้งหมด เปลี่ยนวัน/เวลาเองได้ถ้าต้องการ`
+      : '';
+  }
   if (defaultShift === 'both') {
     // "2 กะ" มีช่องเดียวเป็นตัวป้อนค่าจริง เลือกช่อง (เช้า/ดึก) ตามว่าเวลานี้ตกอยู่ในช่วงกะไหนจริงตามนาฬิกา ไม่ใช่ตายตัวว่าต้องเป็นช่องกะเช้าเสมอ
     const fieldKey = bothModeStartFieldKey(startValue);
