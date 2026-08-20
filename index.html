@@ -2345,14 +2345,20 @@ function setInUseRollForMachine(machine, setName, colorKey) {
     }
   });
   inUsePickerNotice = '';
+  let cleared = [];
   if (!already) {
     const k = setName + '|' + colorKey;
     rollColorStatus[k] = 'inuse';
     // ระบุเครื่องให้ชัดเสมอ (ยกเว้นแท็บชุดที่ยังไม่ผูกเครื่อง) จะได้ไม่เหลือกรณี "ไม่ระบุ = ทุกเครื่องที่ผูกไว้"
     if (machine !== INUSE_UNASSIGNED) rollColorActiveMachine[k] = machine;
-    inUsePickerNotice = inUseConflictNotice(clearInUseMachineConflicts(setName, colorKey), setName);
+    cleared = clearInUseMachineConflicts(setName, colorKey);
+    inUsePickerNotice = inUseConflictNotice(cleared, setName);
   }
   afterInUseRollChange();
+  // ถามสถานะต่อไปของชุดที่ถูกปลด หลัง re-render แล้วเพื่อให้กล่องนี้อยู่บนสุด
+  if (cleared.length) openReleasedStatusDialog(cleared,
+    'เปลี่ยนชุดที่ใช้งานของ ' + (machine === INUSE_UNASSIGNED ? 'ชุดที่ยังไม่ผูกเครื่อง' : 'เครื่อง ' + machine)
+    + ' หมวด ' + (parseSizeRollName(setName).category || '') + ' เป็น ' + setName);
 }
 
 // เครื่องที่ชุดนี้ถือว่า "ใช้อยู่" — ถ้าระบุเครื่องไว้ก็คือเครื่องนั้นเครื่องเดียว
@@ -2385,6 +2391,70 @@ function clearInUseMachineConflicts(setName, colorKey) {
     cleared.push({ set: s, colorKey: c });
   });
   return cleared;
+}
+
+// ─── ถามสถานะของชุดที่ถูกปลดออกจากการใช้งาน ────────────────────────────────────
+// ปลดชุดเก่าออกแล้วปล่อยให้ตกไปเป็น "พร้อมใช้งาน" เองไม่ได้ เพราะ Roll ที่ถอดออกจากเครื่อง
+// ส่วนใหญ่ต้องไปแต่ง/ขัดก่อน ถ้าเดาให้ สถานะในทะเบียนจะผิดแบบเงียบๆ — ให้คนกดเลือกเอง
+// ตั้งค่าเริ่มไว้ที่ "รอแต่ง" เพราะเป็นเส้นทางปกติหลังถอดออกจากเครื่อง แต่เปลี่ยนได้ทุกตัว
+const RELEASED_DEFAULT_STATUS = 'waitdress';
+let releasedStatusPending = []; // [{ set, colorKey, colorLabel }]
+
+function openReleasedStatusDialog(cleared, reasonText) {
+  releasedStatusPending = cleared.map(x => ({ ...x, colorLabel: rollColorLabelFor(x.set, x.colorKey) }));
+  if (!releasedStatusPending.length) return;
+  let ov = document.getElementById('released-status-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'released-status-overlay';
+    ov.className = 'modal-overlay';
+    // ซ้อนอยู่บนหน้าต่างเลือกชุดที่ใช้งาน จึงต้องมี z-index สูงกว่า modal-overlay ปกติ
+    ov.style.zIndex = '1100';
+    // ไม่ให้ปิดด้วยการคลิกนอกกรอบ — ต้องตอบสถานะก่อน ไม่งั้นชุดเก่าจะค้างเป็นพร้อมใช้งานโดยไม่ได้ตั้งใจ
+    ov.innerHTML = `<div class="modal" style="max-width:560px;">
+      <div class="modal-head"><h3>ชุด Roll ที่ถูกปลดออกจากการใช้งาน</h3></div>
+      <div class="modal-body">
+        <div id="released-status-reason" style="font-size:12px;color:var(--text-3);line-height:1.6;margin-bottom:12px;"></div>
+        <div id="released-status-list"></div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-primary" onclick="saveReleasedStatuses()">บันทึกสถานะ</button></div>
+    </div>`;
+    document.body.appendChild(ov);
+  }
+  document.getElementById('released-status-reason').innerHTML = escapeHtmlAttr(reasonText || '')
+    + '<br>เลือกสถานะต่อไปของชุดเหล่านี้ก่อน จะได้ไม่ค้างเป็น "พร้อมใช้งาน" ทั้งที่ยังไม่ได้แต่ง/ขัด';
+  document.getElementById('released-status-list').innerHTML = releasedStatusPending.map((x, i) => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light);">
+      <span style="flex:1;min-width:0;font-size:13px;">
+        <b>${escapeHtmlAttr(x.set)}</b><br>
+        <span style="font-size:11px;color:var(--text-3);">ชุดสี ${escapeHtmlAttr(x.colorLabel)}</span>
+      </span>
+      <select class="form-select" id="released-status-${i}" style="width:150px;flex-shrink:0;">
+        ${Object.entries(ROLL_COLOR_STATUS_META).filter(([k]) => k !== 'inuse').map(([k, meta]) =>
+          `<option value="${k}"${k === RELEASED_DEFAULT_STATUS ? ' selected' : ''}
+            style="background:${meta.optBg};color:${meta.color};font-weight:700;">${escapeHtmlAttr(meta.label)}</option>`).join('')}
+      </select>
+    </div>`).join('');
+  ov.classList.add('open');
+}
+
+function saveReleasedStatuses() {
+  releasedStatusPending.forEach((x, i) => {
+    const sel = document.getElementById('released-status-' + i);
+    const status = sel ? sel.value : RELEASED_DEFAULT_STATUS;
+    const k = x.set + '|' + x.colorKey;
+    // 'ready' เป็นค่าตั้งต้นของระบบ เก็บเป็นการลบคีย์ (เกณฑ์เดียวกับ setRollColorStatusFor)
+    if (status === 'ready') delete rollColorStatus[k]; else rollColorStatus[k] = status;
+  });
+  releasedStatusPending = [];
+  const ov = document.getElementById('released-status-overlay');
+  if (ov) ov.classList.remove('open');
+  persistState();
+  if (typeof renderInUseRollPicker === 'function' && document.getElementById('inuse-picker-body')) renderInUseRollPicker();
+  renderDashboardInUseRoll();
+  renderDashboardWorkingRoll();
+  if (typeof renderRollSetList === 'function') { try { renderRollSetList(); } catch (e) {} }
+  updateRollKpi();
 }
 
 let inUsePickerNotice = '';
@@ -7529,11 +7599,13 @@ function setRollColorActiveMachineFor(setName, colorKey, machine) {
   if (rollColorActiveMachine[k] === machine) delete rollColorActiveMachine[k];
   else rollColorActiveMachine[k] = machine;
   const cleared = clearInUseMachineConflicts(setName, colorKey);
-  if (cleared.length) alert(inUseConflictNotice(cleared, setName));
   persistState();
   renderRollSetList();
   renderDashboardInUseRoll();
   renderDashboardWorkingRoll();
+  if (cleared.length) openReleasedStatusDialog(cleared,
+    'ย้าย ' + setName + ' · ' + rollColorLabelFor(setName, colorKey) + ' ไปเครื่อง ' + machine
+    + ' จึงปลดชุดเดิมของเครื่องนั้นในหมวด ' + (parseSizeRollName(setName).category || '') + ' ออก');
 }
 
 // ดรอปดาวน์สถานะบนแถวเลย เปลี่ยนได้ทันทีโดยไม่ต้องเลือกแถวก่อน
@@ -7559,17 +7631,20 @@ function rollRowStatusSelectHtml(setName, colorKey) {
 function setRollColorStatusFor(setName, colorKey, status) {
   const k = setName + '|' + colorKey;
   if (status === 'ready') delete rollColorStatus[k]; else rollColorStatus[k] = status;
+  let cleared = [];
   if (status === 'inuse') {
     // กฎ 1 เครื่อง 1 ชุดต่อหมวด ต้องคุมที่นี่ด้วย ไม่ใช่เฉพาะในหน้าต่างเลือกชุดที่ใช้งาน
     // ไม่งั้นตั้งจากดรอปดาวน์ในทะเบียนก็ข้ามกฎได้
-    const cleared = clearInUseMachineConflicts(setName, colorKey);
-    if (cleared.length) alert(inUseConflictNotice(cleared, setName));
+    cleared = clearInUseMachineConflicts(setName, colorKey);
   }
   persistState();
   renderRollSetList();
   updateRollKpi();
   renderDashboardInUseRoll();
   renderDashboardWorkingRoll();
+  if (cleared.length) openReleasedStatusDialog(cleared,
+    'ตั้ง ' + setName + ' · ' + rollColorLabelFor(setName, colorKey) + ' เป็นกำลังใช้งาน จึงปลดชุดเดิมของเครื่องเดียวกันในหมวด '
+    + (parseSizeRollName(setName).category || '') + ' ออก');
 }
 
 // จัดการชุดสีรายสี — ย้ายมาไว้ในฟอร์ม "แก้ไข Size Roll" หลังเอาแผงที่กางใต้แถวออก
