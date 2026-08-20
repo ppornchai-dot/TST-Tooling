@@ -4353,6 +4353,17 @@ function planTaskFormFields() {
           <button type="button" class="btn btn-ghost btn-sm" id="pf-piece-toggle" onclick="togglePlanPieceMinutes()"
             style="font-size:11px;padding:3px 9px;">⏱ แก้เวลาต่อชิ้น</button>
           <span id="pf-piece-summary" style="font-size:11px;color:var(--text-3);margin-left:6px;"></span>
+          <!-- ช่อง "ทุกชิ้นเท่ากัน" ต้องอยู่นอกกล่องรายชิ้น เพราะกล่องนั้นถูกวาดใหม่ทุกครั้งที่แก้ค่า
+               ถ้าวางไว้ข้างในจะพิมพ์ไปแล้วค่าหาย/cursor หลุด -->
+          <span id="pf-piece-all-wrap" style="display:none;align-items:center;gap:6px;margin-left:8px;font-size:11px;color:var(--text-3);">
+            · ทุกชิ้นเท่ากัน
+            <input id="pf-piece-all" type="number" min="0" step="1" inputmode="numeric" placeholder="เช่น 20"
+              class="form-input" style="width:74px;padding:3px 7px;font-size:12px;text-align:right;"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();applyPlanPieceMinutesToAll();}">
+            นาที
+            <button type="button" class="btn btn-ghost btn-sm" onclick="applyPlanPieceMinutesToAll()"
+              style="font-size:11px;padding:3px 9px;">ใช้กับทุกชิ้น</button>
+          </span>
         </div>
         <div id="pf-piece-minutes" style="display:none;margin-top:8px;border:1px solid var(--border);border-radius:8px;
           padding:8px 10px;max-height:220px;overflow-y:auto;background:var(--bg-panel);"></div>
@@ -4543,7 +4554,30 @@ function togglePlanPieceMinutes() {
   box.style.display = open ? '' : 'none';
   const btn = document.getElementById('pf-piece-toggle');
   if (btn) btn.textContent = open ? '⏱ ซ่อนเวลาต่อชิ้น' : '⏱ แก้เวลาต่อชิ้น';
-  if (open) renderPlanPieceMinutes();
+  const allWrap = document.getElementById('pf-piece-all-wrap');
+  if (allWrap) allWrap.style.display = open ? 'inline-flex' : 'none';
+  if (open) {
+    // ถ้าทุกชิ้นเวลาเท่ากันอยู่แล้ว เติมค่านั้นให้เลย จะได้แก้ต่อได้ทันที
+    const pieces = planFormSelectedPieces();
+    const vals = [...new Set(pieces.map(p => planFormEffectiveMinutes(p.idx, p.roll)))];
+    const allEl = document.getElementById('pf-piece-all');
+    if (allEl) allEl.value = vals.length === 1 ? vals[0] : '';
+    renderPlanPieceMinutes();
+  }
+}
+
+// ตั้งเวลาต่อชิ้นให้ "ทุกชิ้นที่เลือกอยู่" เท่ากันในครั้งเดียว
+function applyPlanPieceMinutesToAll() {
+  const el = document.getElementById('pf-piece-all');
+  if (!el) return;
+  const n = parseFloat(String(el.value || '').trim());
+  if (!isFinite(n) || n < 0) { alert('กรอกเวลาต่อชิ้น (นาที) ก่อน'); return; }
+  const v = Math.round(n);
+  const pieces = planFormSelectedPieces();
+  if (!pieces.length) { alert('ยังไม่ได้เลือก Roll'); return; }
+  pieces.forEach(p => { planFormPieceMinutes[p.idx] = v; });
+  recalcPlanTotalsFromSelection();
+  renderPlanPieceMinutes();
 }
 
 function renderPlanPieceMinutes() {
