@@ -1059,11 +1059,18 @@ canvas{display:block;}
       <!-- ROLL IN USE -->
       <div class="card" style="margin-bottom:18px;">
         <div class="card-header">
-          <span class="card-title" style="font-size:17px;color:var(--inuse);display:inline-flex;align-items:center;gap:8px;">
-            <span style="width:11px;height:11px;border-radius:50%;background:var(--inuse);flex-shrink:0;"></span>ชุด Roll กำลังใช้งาน</span>
-          <span style="margin-left:auto;display:flex;align-items:center;gap:12px;font-size:12px;color:var(--text-3);">
-            <span><span id="dash-roll-inuse-count" style="font-weight:700;color:var(--inuse);">0</span> ชุด</span>
-            <button id="dash-roll-inuse-edit-btn" class="btn btn-ghost btn-sm" onclick="openInUseRollPicker()" style="display:none;">เลือกชุดที่ใช้งาน</button>
+          <!-- ปุ่มอยู่ในกลุ่มเดียวกับหัวข้อ (ไม่ใช่ไปกองขวาสุดกับตัวเลข) เพราะ .card-header เป็น space-between
+               ถ้าวางเป็นลูกที่ 3 ลอยๆ ปุ่มจะไปอยู่กลางการ์ด -->
+          <span style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-width:0;">
+            <span class="card-title" style="font-size:17px;color:var(--inuse);display:inline-flex;align-items:center;gap:8px;">
+              <span style="width:11px;height:11px;border-radius:50%;background:var(--inuse);flex-shrink:0;"></span>ชุด Roll กำลังใช้งาน</span>
+            <button id="dash-roll-inuse-edit-btn" class="btn" onclick="openInUseRollPicker()"
+              style="display:none;font-size:14px;font-weight:800;padding:8px 16px;border-radius:8px;
+                     background:var(--inuse);color:#fff;border:1px solid var(--inuse);box-shadow:0 1px 3px rgba(208,124,0,.35);">
+              ✎ เลือกชุดที่ใช้งาน</button>
+          </span>
+          <span style="font-size:12px;color:var(--text-3);flex-shrink:0;">
+            <span id="dash-roll-inuse-count" style="font-weight:700;color:var(--inuse);">0</span> ชุด
           </span>
         </div>
         <div id="dash-roll-inuse-list" style="padding:12px 14px;"></div>
