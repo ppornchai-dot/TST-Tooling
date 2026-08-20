@@ -6284,6 +6284,16 @@ async function fetchFgWeightByKey(fromDate, toDate) {
 
 // ─── เลือกชุดสี Roll ที่ใช้เดินในแต่ละวัน ──────────────────────────────────────
 let runColorPickerDate = null;
+// แท็บกรองตามเครื่อง เหมือนหน้าต่างเลือกชุดที่ใช้งานใน Dashboard
+// ที่นี่เครื่องเป็นแค่ "ตัวกรองรายการ" ไม่ได้ถูกบันทึกลงข้อมูล เพราะ rollRunColor เก็บเป็น (วัน + Size Roll)
+// ชุดที่ผูก 2 เครื่องจะเห็นได้จากทั้งสองแท็บ เลือกที่ไหนก็ได้ผลเดียวกัน
+const RUNCOLOR_ALL = '__all__';
+let runColorPickerMachine = RUNCOLOR_ALL;
+
+function switchRunColorMachine(machine) {
+  runColorPickerMachine = machine;
+  renderRunColorPicker();
+}
 
 function openRunColorPicker(dateIso) {
   runColorPickerDate = dateIso;
@@ -6298,8 +6308,10 @@ function openRunColorPicker(dateIso) {
         <h3 id="runcolor-title">ชุด Roll ที่ใช้เดิน</h3>
         <button class="modal-close" onclick="closeRunColorPicker()">✕</button>
       </div>
+      <!-- แท็บเครื่องกับช่องค้นหาอยู่นอก .modal-body ที่เลื่อน จึงค้างอยู่ตลอดเหมือนหน้าต่างเลือกชุดที่ใช้งาน -->
       <div style="flex:0 0 auto;padding:14px 22px 0;">
         <div style="font-size:12px;color:var(--text-3);line-height:1.6;margin-bottom:10px;" id="runcolor-note"></div>
+        <div id="runcolor-tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;"></div>
         <input class="form-input" id="runcolor-search" placeholder="ค้นหา Size Roll เช่น 75x38" autocomplete="off" oninput="renderRunColorPicker()">
       </div>
       <div class="modal-body" id="runcolor-body" style="flex:1 1 auto;min-height:0;overflow-y:auto;padding-top:12px;"></div>
@@ -6325,9 +6337,15 @@ function renderRunColorPicker() {
   if (titleEl) titleEl.textContent = 'ชุด Roll ที่ใช้เดิน — ' + fmtDateThai(parseISODate(d));
 
   // จัดกลุ่มตามขนาดแล้วเรียง Forming/Sizing/TH เหมือนหน้าอื่น
+  const inMachine = setName => {
+    if (runColorPickerMachine === RUNCOLOR_ALL) return true;
+    const ms = rollSetMachines[setName] || [];
+    return runColorPickerMachine === INUSE_UNASSIGNED ? !ms.length : ms.includes(runColorPickerMachine);
+  };
   const groups = new Map();
   getRollSets().forEach(setName => {
     if (!toolingData.roll.some(r => r.set === setName)) return;
+    if (!inMachine(setName)) return;
     const key = rollSetSizeGroupKey(setName);
     if (!groups.has(key)) groups.set(key, { label: rollSetSizeGroupLabel(setName), sets: [] });
     const g = groups.get(key);
@@ -6383,14 +6401,42 @@ function renderRunColorPicker() {
     }).join('');
 
   const setCount = [...groups.values()].reduce((n, g) => n + g.sets.length, 0);
-  const chosenCount = Object.keys(rollRunColor[d] || {}).length;
+  // นับให้ตรงกับที่กำลังแสดงอยู่ (ถูกกรองด้วยแท็บเครื่องแล้ว) ไม่ใช่นับทั้งวันแบบเดิม
+  // ไม่งั้นจะเห็น "ระบุเอง 14 · รวม 13" ซึ่งอ่านไม่รู้เรื่อง
+  const shownSets = [...groups.values()].flatMap(g => g.sets);
+  const chosenCount = shownSets.filter(s => explicitRunColorFor(d, s)).length;
   const note = document.getElementById('runcolor-note');
   const inferredCount = [...groups.values()].reduce((n, g) =>
     n + g.sets.filter(s => !explicitRunColorFor(d, s) && inUseColorFor(s)).length, 0);
   if (note) note.innerHTML = `1 Size Roll เดินได้วันละ 1 ชุดสี — ปกติระบบยึดจากชุดที่สถานะ <b>กำลังใช้งาน</b> อยู่ให้เลย (ปุ่มขอบประ)<br>
       ระบุทับได้เฉพาะวันที่เดินคนละชุดกับตอนนี้ กดสีที่ระบุไว้ซ้ำเพื่อยกเลิกการระบุ &nbsp;·&nbsp;
       <b style="color:var(--text-1);">ระบุเอง ${chosenCount}</b> · อ้างจากกำลังใช้งาน ${inferredCount} · รวม ${setCount} รายการ`;
-  body.innerHTML = rows || '<div style="padding:16px;text-align:center;color:var(--text-3);font-size:13px;">ไม่พบ Size Roll ตามคำค้น</div>';
+
+  // แท็บเครื่อง — เลขบนแท็บคือจำนวน Size Roll ที่ผูกกับเครื่องนั้น (ที่มี Roll จริง)
+  const tabsEl = document.getElementById('runcolor-tabs');
+  if (tabsEl) {
+    const withRolls = getRollSets().filter(s => toolingData.roll.some(r => r.set === s));
+    const hasUnassigned = withRolls.some(s => !(rollSetMachines[s] || []).length);
+    const tabs = [RUNCOLOR_ALL, ...ROLL_MACHINES, ...(hasUnassigned ? [INUSE_UNASSIGNED] : [])];
+    const label = m => m === RUNCOLOR_ALL ? 'ทั้งหมด' : (m === INUSE_UNASSIGNED ? 'ยังไม่ผูกเครื่อง' : 'เครื่อง ' + m);
+    const countFor = m => m === RUNCOLOR_ALL ? withRolls.length
+      : withRolls.filter(s => m === INUSE_UNASSIGNED ? !(rollSetMachines[s] || []).length : (rollSetMachines[s] || []).includes(m)).length;
+    tabsEl.innerHTML = tabs.map(m => {
+      const on = m === runColorPickerMachine;
+      return `<button onclick="${jsCallAttr('switchRunColorMachine', m)}"
+        style="display:inline-flex;align-items:center;gap:6px;padding:6px 13px;border-radius:99px;cursor:pointer;
+               font-size:13px;font-weight:800;border:1px solid ${on ? 'var(--accent)' : 'var(--border)'};
+               background:${on ? 'var(--accent)' : 'transparent'};color:${on ? '#fff' : 'var(--text-2)'};">
+        ${escapeHtmlAttr(label(m))}
+        <span style="font-size:11px;font-weight:700;padding:0 6px;border-radius:99px;
+                     background:${on ? 'rgba(255,255,255,.22)' : 'var(--bg-panel)'};
+                     color:${on ? '#fff' : 'var(--text-3)'};">${countFor(m)}</span>
+      </button>`;
+    }).join('');
+  }
+
+  body.innerHTML = rows || `<div style="padding:16px;text-align:center;color:var(--text-3);font-size:13px;">${
+    q ? 'ไม่พบ Size Roll ตามคำค้น' : 'ไม่มี Size Roll ที่ผูกกับเครื่องนี้'}</div>`;
 }
 
 // การเดินบางขนาดใช้ Roll "Forming" ของอีกขนาดร่วมด้วย น้ำหนักที่ผลิตได้จึงต้องนับให้ Forming ชุดนั้นด้วย
