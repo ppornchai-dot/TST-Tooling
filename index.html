@@ -2431,15 +2431,22 @@ function getWorkingRollEntries(workType) {
         set: t.rollSet, colorKey, cat,
         colorLabel: colorMeta ? colorMeta.label : 'ไม่ระบุสี',
         dot: colorMeta ? colorMeta.dot : '#9CA3AF',
-        doing: 0, done: 0, total: 0, dates: new Set(),
+        doing: 0, done: 0, total: 0, dates: new Set(), tasks: [],
       });
     }
     const e = byKey.get(key);
     e.doing += doing; e.done += done; e.total += rollIds.length;
     e.dates.add(d);
+    // เก็บงานตามแผนที่ยุบมารวมกันไว้ด้วย เพื่อให้กดจาก Dashboard แล้วเด้งไปหางานนั้นได้
+    e.tasks.push({ id: t.id, date: d, workType: t.workType });
   });
   // ในแต่ละกลุ่มเรียงตามวันที่วางแผนไว้เร็วสุด งานค้างเก่าสุดอยู่บนสุด
-  return [...byKey.values()].map(e => ({ ...e, firstDate: [...e.dates].sort()[0], dayCount: e.dates.size }))
+  return [...byKey.values()].map(e => {
+    // กดแล้วไปที่งานของวันแรกสุดในกลุ่ม (งานที่ต้องจัดการก่อน)
+    const first = e.tasks.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)))[0] || null;
+    return { ...e, firstDate: [...e.dates].sort()[0], dayCount: e.dates.size,
+             taskId: first && first.id, taskDate: first && first.date, workType: first && first.workType };
+  })
     .sort((a, b) => a.firstDate !== b.firstDate
       ? String(a.firstDate).localeCompare(String(b.firstDate)) : a.set.localeCompare(b.set, 'th'));
 }
@@ -2458,11 +2465,16 @@ function dashRollWorkingChipHtml(e, accentVar, bgVar) {
     wait:  { border: `1px dashed ${accentVar}`,   bg: 'transparent',     badge: `รอทำ ${remain} ชิ้น`,   badgeColor: 'var(--text-3)' },
   }[e.cat];
   const detail = e.cat === 'wait' ? `ตามแผน ${e.total} ชิ้น` : `เสร็จ ${e.done}/${e.total} ชิ้น`;
-  return `<div onclick="${jsCallAttr('goToRollSetColor', e.set, e.colorKey)}"
+  // กดแล้วเด้งไปหางานตามแผนนั้นเลย (ของเดิมไปหน้าทะเบียน Tooling ซึ่งไม่ใช่สิ่งที่อยากดูตอนกดจากการ์ดงาน)
+  const jump = e.taskId
+    ? jsCallAttr('goToPlanTask', e.taskId, e.taskDate || '', e.workType || '')
+    : jsCallAttr('goToRollSetColor', e.set, e.colorKey);
+  return `<div onclick="${jump}"
     style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:8px;cursor:pointer;
            border:${style.border};background:${style.bg};margin-bottom:6px;transition:filter .12s;"
     onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
-    title="ดูรายละเอียดในทะเบียน Tooling">
+    title="${escapeHtmlAttr(e.taskId ? 'ไปที่แผนงานนี้ (' + (e.firstDate ? fmtDateThai(parseISODate(e.firstDate)) : '') + ')'
+      : 'ดูรายละเอียดในทะเบียน Tooling')}">
     <span style="width:9px;height:9px;border-radius:50%;background:${e.dot};flex-shrink:0;"></span>
     <span style="flex:1;min-width:0;">
       <span style="display:block;font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(e.set)}</span>
@@ -2479,6 +2491,44 @@ const ROLL_WORK_CAT_META = [
   { cat: 'doing', label: 'กำลังทำ',  color: null,            bg: null },
   { cat: 'wait',  label: 'รอทำ',     color: 'var(--accent)', bg: 'var(--accent-glow)' },
 ];
+
+// กดการ์ดงานใน Dashboard แล้วเด้งไปหางานตามแผนนั้น — สลับหน้า/ประเภทงาน/วันให้ตรง แล้วไฮไลต์การ์ดงาน
+// ยึด taskId เป็นหลัก ถ้าหา task ไม่เจอ (ถูกลบไปแล้ว) จะไม่ย้ายหน้าไปเฉยๆ แต่บอกผู้ใช้
+function goToPlanTask(taskId, dateIso, workType) {
+  const t = planTasks.find(x => x.id === taskId);
+  if (!t) { alert('งานตามแผนนี้ถูกลบหรือย้ายไปแล้ว'); renderDashboardWorkingRoll(); return; }
+  const day = dateIso || taskDisplayDate(t);
+  showPage('plan');
+  // ประเภทงาน (CNC/ขัด Roll) ต้องตรงก่อน ไม่งั้นงานจะถูกกรองออกจากทุกมุมมอง
+  if (currentPlanWorkType !== (workType || t.workType)) switchPlanWorkType(workType || t.workType);
+  // กะที่กรองอยู่ก็ซ่อนงานได้ — ล้างตัวกรองกะเพื่อให้เห็นงานที่กดมาแน่ๆ
+  if (typeof currentPlanShiftFilter !== 'undefined' && currentPlanShiftFilter
+      && !shiftMatchesFilter(t.shift, currentPlanShiftFilter)) {
+    currentPlanShiftFilter = null;
+    document.querySelectorAll('.plan-shift-btn').forEach(b => b.classList.toggle('active', !b.getAttribute('data-shift')));
+  }
+  if (currentPlanView !== 'day') switchPlanView('day');
+  planViewDate = parseISODate(day);
+  renderCurrentPlanView();
+  highlightPlanTask(taskId);
+}
+
+// เลื่อนหาการ์ดงานแล้วกระพริบให้เห็น — รอ 1 เฟรมเพราะ renderCurrentPlanView() เพิ่งเขียน DOM ใหม่
+function highlightPlanTask(taskId) {
+  requestAnimationFrame(() => {
+    const el = document.querySelector('[data-taskid="' + String(taskId).replace(/"/g, '\\"') + '"]');
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    // ไฮไลต์ทั้งเส้นขอบและพื้น เพราะแถวตาราง (มุมมองรายวัน) เห็นเส้นขอบไม่ชัดเท่าการ์ด
+    const prev = { outline: el.style.outline, radius: el.style.borderRadius, bg: el.style.background };
+    el.style.outline = '3px solid var(--accent)';
+    el.style.borderRadius = '8px';
+    el.style.background = 'var(--accent-glow)';
+    setTimeout(() => {
+      el.style.outline = prev.outline; el.style.borderRadius = prev.radius; el.style.background = prev.bg;
+    }, 2500);
+  });
+}
 
 function renderDashboardWorkingRoll() {
   [
@@ -3878,7 +3928,7 @@ function renderPlanDay() {
     const expandable = (t.rollIds || []).length > 1;
     const expanded = expandable && expandedPlanDayTaskId === t.id;
     const row = `
-    <tr${expandable ? ` style="cursor:pointer;" onclick="togglePlanDayTaskDetail('${t.id}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : ''}>
+    <tr data-taskid="${escapeHtmlAttr(t.id)}"${expandable ? ` style="cursor:pointer;" onclick="togglePlanDayTaskDetail('${t.id}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : ''}>
       <td class="muted">${expandable ? `<span aria-hidden="true" style="display:inline-block;width:12px;transition:transform .15s;transform:rotate(${expanded ? 90 : 0}deg);">▸</span> ` : ''}${i + 1}</td>
       <td>${escapeHtmlAttr(t.rollSet)}</td>
       <td>${escapeHtmlAttr(planRollColorLabel(t))}</td>
