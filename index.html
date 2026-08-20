@@ -2138,6 +2138,7 @@ function openInUseRollPicker() {
     </div>`;
     document.body.appendChild(ov);
   }
+  inUsePickerNotice = ''; // เปิดใหม่ต้องไม่เจอข้อความจากครั้งก่อนค้างอยู่
   renderInUseRollPicker();
   ov.classList.add('open');
 }
@@ -2163,17 +2164,45 @@ function renderInUseRollPicker() {
   if (buckets.other.length) columns.push(['อื่นๆ', buckets.other]);
 
   body.innerHTML = `
-    <div style="font-size:12px;color:var(--text-3);line-height:1.6;margin-bottom:12px;">
+    <div style="font-size:12px;color:var(--text-3);line-height:1.6;margin-bottom:${inUsePickerNotice ? '8' : '12'}px;">
       แตะสีเพื่อตั้งว่าชุดนั้น <b style="color:var(--inuse);">กำลังใช้งาน</b> — แตะสีเดิมซ้ำเพื่อยกเลิก
-      ชุดที่ผูกไว้หลายเครื่องจะมีปุ่มเลือกเครื่องขึ้นมาให้ระบุว่าใช้อยู่ที่เครื่องไหน
+      ชุดที่ผูกไว้หลายเครื่องจะมีปุ่มเลือกเครื่องขึ้นมาให้ระบุว่าใช้อยู่ที่เครื่องไหน<br>
+      <b style="color:var(--text-2);">1 เครื่อง เดินได้ Forming / Sizing / TH อย่างละ 1 ชุดเท่านั้น</b> —
+      ถ้าเลือกชุดใหม่ให้เครื่องที่มีชุดอยู่แล้วในหมวดเดียวกัน ระบบจะปลดชุดเดิมออกให้เอง
     </div>
+    ${inUsePickerNotice ? `<div style="font-size:12px;font-weight:700;color:var(--inuse);background:var(--inuse-dim);
+      border:1px solid var(--inuse);border-radius:8px;padding:8px 11px;margin-bottom:12px;line-height:1.5;">
+      ${escapeHtmlAttr(inUsePickerNotice)}</div>` : ''}
     ${columns.map(([label, sets]) => {
       const inuseCount = sets.filter(s => getSetPalette(s).some(c => rollColorStatusFor(s, c.key) === 'inuse')).length;
       return `<div style="margin-bottom:6px;">
         ${rollSetSectionHeaderHtml(label, `${inuseCount}/${sets.length}`, ROLL_SET_SECTION_COLORS[label])}
+        ${inUseCategoryConflictHtml(label)}
         ${sets.length ? sets.map(inUsePickerRowHtml).join('') : `<div style="padding:4px;color:var(--text-3);font-size:12px;">ไม่มี</div>`}
       </div>`;
     }).join('')}`;
+}
+
+// ข้อมูลที่ตั้งไว้ก่อนมีกฎนี้อาจมีเครื่องเดียวถือหลายชุดในหมวดเดียวกันอยู่แล้ว
+// ไม่ไปลบให้เองเพราะเป็นข้อมูลที่ผู้ใช้ตั้งไว้ — แจ้งให้เห็นว่าเครื่องไหนซ้ำ แล้วให้เลือกใหม่ทับเอง (เลือกแล้วตัวเก่าจะถูกปลด)
+function inUseCategoryConflictHtml(catLabel) {
+  const byMachine = {};
+  Object.keys(rollColorStatus).forEach(k => {
+    if (rollColorStatus[k] !== 'inuse') return;
+    const sep = k.lastIndexOf('|');
+    if (sep < 0) return;
+    const s = k.slice(0, sep), c = k.slice(sep + 1);
+    if ((parseSizeRollName(s).category || 'อื่นๆ') !== catLabel) return;
+    inUseMachineScope(s, c).forEach(m => { (byMachine[m] = byMachine[m] || []).push(s + ' · ' + rollColorLabelFor(s, c)); });
+  });
+  const dup = Object.entries(byMachine).filter(([, list]) => list.length > 1);
+  if (!dup.length) return '';
+  return `<div style="font-size:11px;color:var(--red);background:var(--red-dim);border:1px solid var(--red);
+    border-radius:7px;padding:7px 10px;margin:6px 0;line-height:1.55;">
+    <b>เครื่องเดียวถือหลายชุดอยู่</b> — ${dup.map(([m, list]) =>
+      `<b>${escapeHtmlAttr(m)}</b>: ${escapeHtmlAttr(list.join(' / '))}`).join(' · ')}
+    <div style="opacity:.85;">แตะสีของชุดที่ต้องการใช้จริง ระบบจะปลดชุดอื่นบนเครื่องนั้นออกให้</div>
+  </div>`;
 }
 
 function inUsePickerRowHtml(setName) {
@@ -2224,6 +2253,52 @@ function inUsePickerRowHtml(setName) {
   </div>`;
 }
 
+// เครื่องที่ชุดนี้ถือว่า "ใช้อยู่" — ถ้าระบุเครื่องไว้ก็คือเครื่องนั้นเครื่องเดียว
+// ถ้าไม่ระบุ ถือว่าครอบทุกเครื่องที่ผูกกับ Size Roll นี้ (เกณฑ์เดียวกับที่การ์ดหน้า Dashboard ใช้แสดง)
+function inUseMachineScope(setName, colorKey) {
+  const active = rollColorActiveMachineFor(setName, colorKey);
+  if (active) return [active];
+  return (rollSetMachines[setName] || []).slice();
+}
+
+// กฎ: 1 เครื่อง เดินได้ Forming / Sizing / TH อย่างละ 1 ชุด Roll เท่านั้น
+// ของจริงเครื่องหนึ่งใส่ Roll ได้ชุดเดียวต่อหมวด ถ้าปล่อยให้ตั้งซ้อนกันได้
+// น้ำหนักผลิตของวันนั้นจะไม่รู้ว่าควรลงชุดไหน (runColorFor เลือกชุดแรกที่เจอ)
+// คืนรายการที่ถูกปลดออก เพื่อเอาไปบอกผู้ใช้ว่าอะไรถูกสลับไป
+function clearInUseMachineConflicts(setName, colorKey) {
+  const cat = parseSizeRollName(setName).category;
+  const mine = new Set(inUseMachineScope(setName, colorKey));
+  const cleared = [];
+  if (!cat || !mine.size) return cleared; // ไม่รู้หมวด หรือยังไม่ผูกเครื่องไว้ — ไม่มีอะไรให้ชน
+  Object.keys(rollColorStatus).forEach(k => {
+    if (rollColorStatus[k] !== 'inuse') return;
+    const sep = k.lastIndexOf('|');
+    if (sep < 0) return;
+    const s = k.slice(0, sep), c = k.slice(sep + 1);
+    if (s === setName) return; // ชุดเดียวกัน มีกฎ "สีเดียวต่อ Size Roll" คุมอยู่แล้ว
+    if (parseSizeRollName(s).category !== cat) return;
+    if (!inUseMachineScope(s, c).some(m => mine.has(m))) return;
+    delete rollColorStatus[k];
+    delete rollColorActiveMachine[k];
+    cleared.push({ set: s, colorKey: c });
+  });
+  return cleared;
+}
+
+let inUsePickerNotice = '';
+function inUseConflictNotice(cleared, setName) {
+  if (!cleared.length) return '';
+  const cat = parseSizeRollName(setName).category || '';
+  const names = cleared.map(x => x.set + ' · ' + rollColorLabelFor(x.set, x.colorKey)).join(', ');
+  return `สลับให้แล้ว — ปลด ${names} ออกจากการใช้งาน เพราะ 1 เครื่องเดิน ${cat} ได้ชุดเดียว`;
+}
+
+function rollColorLabelFor(setName, colorKey) {
+  if (colorKey === NO_COLOR_KEY) return 'ไม่ระบุสี';
+  const c = getSetPalette(setName).find(x => x.key === colorKey);
+  return c ? c.label : colorKey;
+}
+
 // ตั้ง/ยกเลิก "กำลังใช้งาน" — หนึ่ง Size Roll ใช้งานได้ทีละสีเท่านั้น (ของจริงใส่เข้าเครื่องได้ชุดเดียว)
 function toggleInUseRollColor(setName, colorKey) {
   if (!canEditPlan()) return;
@@ -2235,7 +2310,11 @@ function toggleInUseRollColor(setName, colorKey) {
       delete rollColorActiveMachine[k];
     }
   });
-  if (!already) rollColorStatus[setName + '|' + colorKey] = 'inuse';
+  inUsePickerNotice = '';
+  if (!already) {
+    rollColorStatus[setName + '|' + colorKey] = 'inuse';
+    inUsePickerNotice = inUseConflictNotice(clearInUseMachineConflicts(setName, colorKey), setName);
+  }
   afterInUseRollChange();
 }
 
@@ -2244,6 +2323,11 @@ function pickInUseRollMachine(setName, colorKey, machine) {
   const k = setName + '|' + colorKey;
   if (rollColorActiveMachine[k] === machine) delete rollColorActiveMachine[k];
   else rollColorActiveMachine[k] = machine;
+  // เปลี่ยน/ล้างเครื่องแล้วขอบเขตเครื่องเปลี่ยนไป อาจไปชนกับชุดอื่นในหมวดเดียวกันที่เพิ่งไม่ชน
+  // เขียนข้อความทับเฉพาะตอนที่มีชุดถูกปลดจริง ไม่งั้นการกดเลือกเครื่องต่อจากการเลือกสี
+  // จะไปล้างข้อความที่เพิ่งบอกว่าปลดอะไรออกไป (เป็นขั้นตอนที่ผู้ใช้ทำต่อกันตามปกติ)
+  const cleared = clearInUseMachineConflicts(setName, colorKey);
+  if (cleared.length) inUsePickerNotice = inUseConflictNotice(cleared, setName);
   afterInUseRollChange();
 }
 
@@ -7239,6 +7323,8 @@ function setRollColorActiveMachineFor(setName, colorKey, machine) {
   const k = setName + '|' + colorKey;
   if (rollColorActiveMachine[k] === machine) delete rollColorActiveMachine[k];
   else rollColorActiveMachine[k] = machine;
+  const cleared = clearInUseMachineConflicts(setName, colorKey);
+  if (cleared.length) alert(inUseConflictNotice(cleared, setName));
   persistState();
   renderRollSetList();
   renderDashboardInUseRoll();
@@ -7268,6 +7354,12 @@ function rollRowStatusSelectHtml(setName, colorKey) {
 function setRollColorStatusFor(setName, colorKey, status) {
   const k = setName + '|' + colorKey;
   if (status === 'ready') delete rollColorStatus[k]; else rollColorStatus[k] = status;
+  if (status === 'inuse') {
+    // กฎ 1 เครื่อง 1 ชุดต่อหมวด ต้องคุมที่นี่ด้วย ไม่ใช่เฉพาะในหน้าต่างเลือกชุดที่ใช้งาน
+    // ไม่งั้นตั้งจากดรอปดาวน์ในทะเบียนก็ข้ามกฎได้
+    const cleared = clearInUseMachineConflicts(setName, colorKey);
+    if (cleared.length) alert(inUseConflictNotice(cleared, setName));
+  }
   persistState();
   renderRollSetList();
   updateRollKpi();
