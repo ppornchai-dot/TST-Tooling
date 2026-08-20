@@ -3390,6 +3390,35 @@ function shiftChipHtml(shiftKey) {
   const shift = SHIFTS[shiftKey] || SHIFTS.morning;
   return `<span class="chip ${shiftChipClass(shift.key)}">${shift.label}</span>`;
 }
+
+// กะที่ "เวลาเริ่มจริง" ตกอยู่ — งานกะ both ต้องดูจากเวลาที่กดเริ่ม ไม่ใช่จาก t.shift ที่คลุมทั้งสองกะ
+// คืน 'other' ถ้าอยู่นอกหน้าต่างกะทั้งสอง (17:00–20:00) เช่นกดเริ่มงานคาบช่วงส่งกะ
+function shiftKeyForTime(hhmm) {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(hhmm || ''));
+  if (!m) return null;
+  const min = (+m[1]) * 60 + (+m[2]);
+  if (isMinuteInWindow(min, SHIFTS.morning.windows[0])) return 'morning';
+  if (isMinuteInWindow(min, SHIFTS.night.windows[0])) return 'night';
+  return 'other';
+}
+
+// ลำดับเวลาภายใน "วันทำงาน" หนึ่ง โดยยึด 08:00 เป็นจุดเริ่ม แล้วไล่ต่อเนื่องไปจนจบกะดึกตอน 05:00 ของวันถัดไป
+// จำเป็นเพราะงานกะดึกที่เลยเที่ยงคืน (00:00–05:00) มีเวลานาฬิกาน้อยสุด แต่ตามจริงเกิดหลังสุดของวันนั้น
+// ถ้าเรียงด้วยเวลานาฬิกาตรงๆ กะดึกจะถูกหักเป็นสองก้อนคนละหัวคนละท้ายตาราง (เป็นอาการที่เห็นอยู่)
+const HISTORY_DAY_ANCHOR_MIN = 8 * 60;
+function historyDayOrderMin(hhmm) {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(hhmm || ''));
+  if (!m) return -1; // ไม่มีเวลาเริ่ม — ไว้ท้ายสุดของกลุ่ม
+  const min = (+m[1]) * 60 + (+m[2]);
+  return min >= HISTORY_DAY_ANCHOR_MIN ? min - HISTORY_DAY_ANCHOR_MIN : min + 1440 - HISTORY_DAY_ANCHOR_MIN;
+}
+
+const HISTORY_SHIFT_META = {
+  morning: { label: 'กะเช้า', range: '08:00 – 17:00', color: 'var(--amber)',  bg: 'var(--amber-dim)' },
+  night:   { label: 'กะดึก',  range: '20:00 – 05:00', color: 'var(--purple)', bg: 'var(--purple-dim)' },
+  other:   { label: 'นอกเวลากะ', range: '',           color: 'var(--text-2)', bg: 'var(--bg-panel)' },
+  unknown: { label: 'ไม่มีเวลาเริ่มงาน', range: '',    color: 'var(--text-3)', bg: 'var(--bg-panel)' },
+};
 function renderPlanDatePopup() {
   const el = document.getElementById('plan-date-popup');
   if (!el) return;
@@ -8613,6 +8642,9 @@ function collectHistoryRecords() {
       records.push({
         date: dateIso, wo: t.id, typeKey: 'checklist', typeLabel: t.type || 'เช็คลิสต์',
         tooling: t.ref || '—', detail: t.task, who: t.who || '—', hours: null, result: 'สำเร็จ',
+        // เช็คลิสต์ไม่ได้เก็บเวลาเริ่ม จึงจัดกลุ่มแยกไว้ท้ายวัน ไม่เดาว่าเป็นกะไหน
+        shiftKey: 'unknown',
+        sortKey: dateIso + ' 0000 ' + String(t.id),
       });
     });
   });
@@ -8652,7 +8684,9 @@ function collectHistoryRecords() {
           startTime: entry.startTime || null,
           endTime: entry.endTime || null,
           result: meta.label, resultChip: meta.chip,
-          sortKey: dateIso + ' ' + (entry.startTime || '00:00') + ' ' + String(seq).padStart(3, '0'),
+          // กะยึดเวลาที่กดเริ่มจริง ถ้าไม่มีเวลาเริ่มจึงถอยไปใช้กะของงานตามแผน
+          shiftKey: shiftKeyForTime(entry.startTime) || (entry.startTime ? 'other' : (t.shift === 'both' ? 'unknown' : (t.shift || 'unknown'))),
+          sortKey: dateIso + ' ' + String(historyDayOrderMin(entry.startTime) + 1).padStart(4, '0') + ' ' + String(seq).padStart(3, '0'),
         });
       });
     });
@@ -8722,7 +8756,9 @@ function renderHistory() {
     return true;
   });
 
-  tbody.innerHTML = records.map(r => `
+  // คั่นหัวข้อ 2 ชั้น: วัน แล้วกะในวันนั้น — records เรียงมาแล้วตาม (วัน desc, ลำดับเวลาในวันทำงาน desc)
+  // จึงเดินไล่ทีเดียวแล้วแทรกหัวข้อเมื่อค่าเปลี่ยน ไม่ต้องจัดกลุ่มซ้ำ
+  const rowHtml = r => `
     <tr>
       <td class="muted">${escapeHtmlAttr(fmtDateThai(parseISODate(r.date)))}</td>
       <td class="muted">${escapeHtmlAttr(r.wo)}</td>
@@ -8732,7 +8768,46 @@ function renderHistory() {
       <td class="muted">${escapeHtmlAttr(r.who)}</td>
       <td class="muted">${r.hours != null ? r.hours + ' ชม.' : '—'}${(r.startTime || r.endTime) ? `<div style="font-size:11px;">${escapeHtmlAttr(r.startTime || '—')} – ${escapeHtmlAttr(r.endTime || '—')}</div>` : ''}</td>
       <td><span class="chip ${r.resultChip || 'chip-green'}">${escapeHtmlAttr(r.result)}</span></td>
-    </tr>`).join('') || `<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--text-3);">ไม่พบประวัติการทำงานตามเงื่อนไขที่เลือก</td></tr>`;
+    </tr>`;
+
+  const dayHeader = (dateIso, list) => {
+    const hrs = list.reduce((s, x) => s + (x.hours || 0), 0);
+    return `<tr><td colspan="8" style="background:var(--bg-panel);padding:11px 12px;border-top:2px solid var(--text-1);">
+      <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);">
+        <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(fmtDateThai(parseISODate(dateIso)))}
+      </span>
+      <span style="float:right;font-size:12px;font-weight:700;color:var(--text-3);">${list.length.toLocaleString()} รายการ${
+        hrs ? ' · ' + (Math.round(hrs * 10) / 10).toLocaleString() + ' ชม.' : ''}</span>
+    </td></tr>`;
+  };
+  const shiftHeader = (shiftKey, list) => {
+    const m = HISTORY_SHIFT_META[shiftKey] || HISTORY_SHIFT_META.unknown;
+    const hrs = list.reduce((s, x) => s + (x.hours || 0), 0);
+    return `<tr><td colspan="8" style="background:${m.bg};padding:6px 12px;border-left:4px solid ${m.color};">
+      <span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:800;color:${m.color};">
+        <span style="width:8px;height:8px;border-radius:50%;background:${m.color};"></span>${escapeHtmlAttr(m.label)}
+        ${m.range ? `<span style="font-weight:600;opacity:.8;">${m.range}</span>` : ''}
+      </span>
+      <span style="float:right;font-size:11px;font-weight:700;color:${m.color};opacity:.85;">${list.length.toLocaleString()} รายการ${
+        hrs ? ' · ' + (Math.round(hrs * 10) / 10).toLocaleString() + ' ชม.' : ''}</span>
+    </td></tr>`;
+  };
+
+  let html = '', curDay = null, curShift = null;
+  records.forEach((r, i) => {
+    const shiftKey = HISTORY_SHIFT_META[r.shiftKey] ? r.shiftKey : 'unknown';
+    if (r.date !== curDay) {
+      curDay = r.date; curShift = null;
+      html += dayHeader(r.date, records.filter(x => x.date === r.date));
+    }
+    if (shiftKey !== curShift) {
+      curShift = shiftKey;
+      html += shiftHeader(shiftKey, records.filter(x => x.date === r.date
+        && (HISTORY_SHIFT_META[x.shiftKey] ? x.shiftKey : 'unknown') === shiftKey));
+    }
+    html += rowHtml(r);
+  });
+  tbody.innerHTML = html || `<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--text-3);">ไม่พบประวัติการทำงานตามเงื่อนไขที่เลือก</td></tr>`;
 
   // ตัวหารนับเฉพาะประเภทที่บทบาทนี้เห็นได้ ไม่งั้นช่างจะเห็น "แสดง 10 จาก 19" ทั้งที่อีก 9 รายการไม่ใช่ของตัวเองและเข้าถึงไม่ได้
   const totalVisible = forcedType ? all.filter(r => historyTypeMatches(r, forcedType)).length : all.length;
