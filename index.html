@@ -9122,64 +9122,12 @@ function resumeDailyPiece(taskId, rollIdx, workerId) {
 // เมื่อรายการเช็คลิสต์ + งานตามแผนของวันนี้ "เสร็จครบทุกรายการ" แล้ว ให้สร้างแผนงาน CNC/ขัด Roll ของวันถัดไปต่อให้อัตโนมัติทันที
 // (คัดลอก Size Roll/ชุดสี/รายชื่อ Roll/กะ/ผู้ปฏิบัติงาน/โควตา OT เดิม แค่เปลี่ยนวันที่ — คำนวณเวลาจบใหม่ตามกฎกะ/พักตามปกติ)
 // ทำครั้งเดียวต่อวันที่ (กันสร้างซ้ำทุกครั้งที่ติ๊ก/ยกเลิกติ๊กหลังจากครบแล้ว) และข้ามถ้ามีแผนวันถัดไปของ Size Roll/ชุดสีเดียวกันอยู่แล้ว
-function maybeAutoContinueDailyPlan(dateIso) {
-  if (dailyAutoContinuedDates[dateIso]) return;
-  const checklistIds = dailyChecklistTasks.filter(t => !t.date || t.date === dateIso).map(t => t.id);
-  const plannedForDay = planTasks.filter(t => taskDisplayDate(t) === dateIso);
-  const allKeys = checklistIds.concat(plannedForDay.map(t => t.id));
-  if (!allKeys.length) return;
-  const dayMap = dailyStatusByDate[dateIso] || {};
-  const allDone = allKeys.every(k => (dayMap[k] || 'pending') === 'done');
-  if (!allDone) return;
-  dailyAutoContinuedDates[dateIso] = true;
-  if (!plannedForDay.length) return;
-  let nextDate = addDaysIso(dateIso, 1);
-  let dayOffGuard = 0;
-  while (isPlanDayOff(nextDate) && dayOffGuard < 30) { nextDate = addDaysIso(nextDate, 1); dayOffGuard++; } // ข้ามวันอาทิตย์/วันหยุดบริษัท ไปเริ่มวันทำงานถัดไปแทน
-  let createdCount = 0;
-  plannedForDay.forEach(t => {
-    const alreadyExists = planTasks.some(x => x.workType === t.workType && x.rollSet === t.rollSet && x.rollColor === t.rollColor && x.date === nextDate);
-    if (alreadyExists) return;
-    const scopedRolls = getMatchingRollsForPlan(t.rollSet, t.rollColor);
-    const rolls = t.rollIds.map(idx => scopedRolls[idx]).filter(Boolean);
-    const splitGroups = splitPlanDataAcrossDays({ date: nextDate, shift: t.shift, startTime: t.startTime, otCapMinutesByShift: t.otCapMinutesByShift || {}, rollIds: t.rollIds }, rolls, t.workType);
-    if (splitGroups) {
-      const newGroupId = 'SG-' + String(planTaskSeq + 1).padStart(4, '0');
-      splitGroups.forEach(grp => {
-        planTaskSeq++;
-        planTasks.push({
-          id: 'PT-' + String(planTaskSeq).padStart(4, '0'),
-          workType: t.workType, date: grp.date, rollSet: t.rollSet, rollColor: t.rollColor,
-          rollIds: grp.rollIds, rollId: grp.rollId, rollName: grp.rollName, totalTime: grp.totalTime,
-          startTime: grp.startTime, endTime: grp.endTime, endDate: grp.endDate,
-          shift: t.shift, otCapMinutesByShift: t.otCapMinutesByShift,
-          otMinutes: grp.otMinutes, otMinutesByShift: grp.otMinutesByShift,
-          rollMinutesOverride: grp.rollMinutesOverride,
-          workerId: t.workerId || null,
-          splitGroupId: newGroupId,
-        });
-      });
-    } else {
-      const computedEnd = computePlanEnd(nextDate, t.startTime, t.totalTime, t.shift, t.otCapMinutesByShift || {});
-      planTaskSeq++;
-      planTasks.push({
-        id: 'PT-' + String(planTaskSeq).padStart(4, '0'),
-        workType: t.workType, date: nextDate, rollSet: t.rollSet, rollColor: t.rollColor,
-        rollIds: t.rollIds, rollId: t.rollId, rollName: t.rollName, totalTime: t.totalTime,
-        startTime: t.startTime, endTime: computedEnd.time, endDate: computedEnd.date || nextDate,
-        shift: t.shift, otCapMinutesByShift: t.otCapMinutesByShift,
-        otMinutes: computedEnd.otMinutes || 0, otMinutesByShift: computedEnd.otMinutesByShift || {},
-        workerId: t.workerId || null,
-      });
-    }
-    createdCount++;
-  });
-  if (createdCount) {
-    autoFixPlanSequencing();
-    mergeAdjacentPlanTasks();
-    alert(`งานวันที่ ${fmtDateThai(parseISODate(dateIso))} เสร็จครบแล้ว — สร้างแผนวันที่ ${fmtDateThai(parseISODate(nextDate))} ต่อให้อัตโนมัติ ${createdCount} งาน`);
-  }
-}
+// เดิม: งานตามแผนของวันไหน "เสร็จครบทุกงาน" แล้ว ระบบจะก๊อปงานทั้งวันไปสร้างเป็นแผนของวันถัดไปให้อัตโนมัติ
+// ซึ่งผิด — งานที่ทำจบแล้วคือจบ ไม่ใช่งานที่ต้องทำซ้ำทุกวัน ผลคือกดจบงานแล้วแผนงานเดิมไปโผล่วันถัดไปเรื่อยๆ
+// ทับถมกันจนปฏิทินเต็มไปด้วยงานที่ไม่มีใครวางไว้ (รวมถึงงานที่เหลือ 0 Roll)
+// ตอนนี้ไม่สร้างแผนต่อให้เองแล้ว ถ้าต้องการวางงานวันถัดไปให้กด + เพิ่มงานเอง
+// คงฟังก์ชันไว้เป็นตัวว่างเพราะยังถูกเรียกจากจุดกดจบงานหลายที่ (กันลืมแก้ไม่ครบแล้ว error)
+function maybeAutoContinueDailyPlan() { /* ไม่สร้างแผนวันถัดไปให้อัตโนมัติอีกต่อไป */ }
 
 function setDailyViewDate(iso) {
   if (!iso) return;
