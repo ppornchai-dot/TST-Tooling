@@ -4975,13 +4975,30 @@ function planMinToHHMM(min) {
 // เลื่อน (date, time) ไป "ข้างหน้า" ให้ตกอยู่ในหน้าต่างของกะที่เลือก
 // ต้องเลื่อนไปข้างหน้าเท่านั้น ห้ามถอยไปต้นกะของวันเดิม เพราะต้นกะอยู่ "ก่อน" งานที่วางไว้แล้ว
 // (บั๊กเดิม: คิวจบ 17:00 พอดี แล้วถูกดึงกลับไป 08:00 ของวันเดียวกัน กลายเป็นแทรกหน้างานเดิมทั้งวัน)
-function advanceToShiftWindow(shiftKey, date, time) {
+// นาทีนี้ยังนับเป็น "เวลาทำงาน" ของกะนี้ไหม — รวมช่วง OT ที่กรอกไว้ด้วย
+// เวลา OT ต่อท้ายหน้าต่างกะปกติ (พัก OT_BREAK_MIN นาทีแรกโดยหักจากโควตา ดู advancePlanCursor)
+// ถ้าไม่นับ OT ด้วย งานที่จบ 17:00 พร้อม OT 6 ชม. จะถูกมองว่า "เลยเวลาทำงานของวันนี้แล้ว" ทั้งที่ยังทำต่อได้
+const OT_WINDOW_MAX_MIN = 720; // กันค่า OT ที่กรอกเกินจริงจนลามไปทับกะถัดไป
+function shiftAllowsMinute(shiftKey, min, otCaps) {
+  const shift = SHIFTS[shiftKey] || SHIFTS.morning;
+  const caps = otCaps || {};
+  return (shift.windows || []).some(w => {
+    if (isMinuteInWindow(min, w)) return true;
+    const cap = Math.min(Math.max(0, parseFloat(caps[w.shiftKey]) || 0), OT_WINDOW_MAX_MIN);
+    if (!cap) return false;
+    let diff = min - w.endMin;
+    if (diff < 0) diff += 1440; // OT ที่ลามข้ามเที่ยงคืน
+    return diff < cap;
+  });
+}
+
+function advanceToShiftWindow(shiftKey, date, time, otCaps) {
   const shift = SHIFTS[shiftKey] || SHIFTS.morning;
   const m = /^(\d{1,2}):(\d{2})/.exec(String(time || ''));
   if (!m) return { date, time: shift.start };
   const min = (+m[1]) * 60 + (+m[2]);
   const windows = shift.windows || [];
-  if (windows.some(w => isMinuteInWindow(min, w))) return { date, time };
+  if (shiftAllowsMinute(shiftKey, min, otCaps)) return { date, time };
   // หาจุดเริ่มหน้าต่างถัดไปของวันเดียวกันก่อน (เช่น 17:00 ของงาน 2 กะ → 20:00 วันเดียวกัน)
   const nextStart = windows.map(w => w.startMin).sort((a, b) => a - b).find(s => s > min);
   if (nextStart != null) return { date, time: planMinToHHMM(nextStart) };
@@ -5005,7 +5022,8 @@ function planAppendStartFor(workType, dateIso, shiftKey) {
   const last = sameDay.reduce((a, b) => historyDayOrderMin(b.endTime) > historyDayOrderMin(a.endTime) ? b : a);
   if (!last.endTime) return { date: dateIso, time: shift.start };
   // ใช้ endDate จริงของงานนั้น งานที่จบข้ามเที่ยงคืนจะได้วันถูก ไม่ค้างอยู่วันเดิม
-  return advanceToShiftWindow(shiftKey, last.endDate || dateIso, last.endTime);
+  // ยึดโควตา OT ของงานก่อนหน้า เพราะเป็นตัวที่ทำให้งานนั้นจบเลยหน้าต่างกะมาได้
+  return advanceToShiftWindow(shiftKey, last.endDate || dateIso, last.endTime, last.otCapMinutesByShift);
 }
 
 // ท้ายคิวจริงของประเภทงานนี้ = { date, time } ที่งานใหม่ควรไปเริ่ม
@@ -5032,13 +5050,13 @@ function planQueueEndFor(workType, dateIso, shiftKey) {
   // ท้ายคิวรวมของประเภทงานนี้ — อาจเลยวันที่กดเพิ่มไปแล้ว ต้องไม่เริ่มก่อนจุดนี้เด็ดขาด
   const last = findLatestPlanTaskEnd(workType);
   if (last && last.endDate && last.endTime) {
-    const fromChain = advanceToShiftWindow(shiftKey, last.endDate, last.endTime);
+    const fromChain = advanceToShiftWindow(shiftKey, last.endDate, last.endTime, last.otCapMinutesByShift);
     if ((fromChain.date + ' ' + fromChain.time) > (best.date + ' ' + best.time)) best = fromChain;
   }
   // ข้ามวันหยุดบริษัท/วันอาทิตย์ (เกณฑ์เดียวกับที่ autoFixPlanSequencing ใช้)
   const fixed = nextValidPlanContinuePoint(shiftKey, best.date, best.time);
   // nextValidPlanContinuePoint อาจย้ายวันแล้วตั้งเวลาเป็น 08:00 — ยืนยันอีกครั้งว่าอยู่ในหน้าต่างกะ
-  return advanceToShiftWindow(shiftKey, fixed.date, fixed.time);
+  return advanceToShiftWindow(shiftKey, fixed.date, fixed.time, last && last.otCapMinutesByShift);
 }
 
 // งานที่วางแผนไว้ก่อนหน้า "ในวันเดียวกัน" กับที่ฟอร์มเลือกอยู่ — ตัวที่จบช้าสุด
@@ -5072,11 +5090,22 @@ function applyPlanFormContinueFromPrev() {
   if (!prev) { alert('วันที่เลือกยังไม่มีงานอื่นที่วางแผนไว้ให้ต่อเวลา'); return; }
   const dateEl = document.getElementById('pf-date'), shiftEl = document.getElementById('pf-shift');
   const date = dateEl.value, shiftKey = shiftEl.value || 'morning';
-  const adv = advanceToShiftWindow(shiftKey, prev.endDate || date, prev.endTime);
+  // นับ OT ที่กรอกไว้ในฟอร์มเป็นเวลาทำงานด้วย — ใส่ OT 6 ชม. แล้วต่อจากงานที่จบ 17:00 ในวันเดียวกันได้
+  // ใช้โควตาที่มากกว่าระหว่างของฟอร์มกับของงานก่อนหน้า เพื่อไม่ตัดสิทธิ์ทั้งสองฝ่าย
+  const formCaps = getOtCapMinutes();
+  const prevCaps = prev.otCapMinutesByShift || {};
+  const caps = {
+    morning: Math.max(formCaps.morning || 0, prevCaps.morning || 0),
+    night: Math.max(formCaps.night || 0, prevCaps.night || 0),
+  };
+  const adv = advanceToShiftWindow(shiftKey, prev.endDate || date, prev.endTime, caps);
   if (adv.date !== date) {
+    const otNote = (caps.morning || caps.night)
+      ? ' (นับ OT ที่กรอกไว้แล้ว: กะเช้า ' + Math.round((caps.morning || 0) / 6) / 10 + ' ชม. · กะดึก ' + Math.round((caps.night || 0) / 6) / 10 + ' ชม.)'
+      : ' — ถ้าจะทำต่อในวันนี้ ให้กรอกเวลา OT ของกะนั้นก่อน';
     alert('ต่อเวลาในวันเดียวกันไม่ได้ — งานก่อนหน้าจบ ' + prev.endTime
-      + ' ซึ่งเลยเวลาทำงานของกะที่เลือกในวันนี้แล้ว จุดต่อเวลาที่ทำได้จริงคือ '
-      + fmtDateThai(parseISODate(adv.date)) + ' ' + adv.time);
+      + ' ซึ่งเลยเวลาทำงานของกะที่เลือกในวันนี้แล้ว' + otNote
+      + '\nจุดต่อเวลาที่ทำได้จริงคือ ' + fmtDateThai(parseISODate(adv.date)) + ' ' + adv.time);
     return;
   }
   const fieldKey = shiftKey === 'both' ? bothModeStartFieldKey(adv.time) : (shiftKey === 'night' ? 'night' : 'morning');
