@@ -273,6 +273,13 @@ body{
 
 /* ─── TABLES ─────────────────────────────────── */
 .table-wrap{overflow-x:auto;}
+/* ตรึงหัวตารางไว้ตอนเลื่อนดู — thead th เป็น position:sticky อยู่แล้ว แต่ sticky ยึดกับ "กล่องที่เลื่อนได้"
+   ที่ใกล้ที่สุด ซึ่งคือ .table-wrap เอง (overflow-x:auto ทำให้แกน y กลายเป็น auto ตามสเปก)
+   พอ .table-wrap ไม่ได้จำกัดความสูง มันจึงไม่เคยเลื่อนในแนวตั้ง หัวตารางเลยไม่ตรึงจริง
+   จำกัดความสูงให้กล่องนี้เลื่อนเองในแนวตั้ง หัวตารางจึงค้างอยู่บนสุดของกล่อง และยังเลื่อนซ้าย-ขวาดูคอลัมน์วันได้ */
+.table-wrap-sticky{max-height:calc(100vh - var(--topbar-h) - 150px);min-height:300px;overflow:auto;}
+.table-wrap-sticky thead th{z-index:3;box-shadow:0 1px 0 var(--border);}
+.table-wrap-sticky tfoot td{position:sticky;bottom:0;z-index:2;background:var(--bg-panel);box-shadow:0 -1px 0 var(--border);}
 table{width:100%;border-collapse:collapse;font-size:13px;}
 thead th{
   padding:10px 14px;
@@ -6402,7 +6409,7 @@ async function renderProdWeight() {
   }).join('');
 
   const colCount = days.length + 4;
-  grid.innerHTML = errorBanner + `<div class="card"><div class="table-wrap"><table>
+  grid.innerHTML = errorBanner + `<div class="card"><div class="table-wrap table-wrap-sticky"><table>
     <thead><tr>
       <th>SIZE ROLL</th><th>ชุดสี</th>
       <th style="text-align:right;white-space:nowrap;" title="น้ำหนักที่ผลิตไปแล้วก่อนช่วงข้อมูลที่ระบบมี — กรอกเอง ไม่รวมในคอลัมน์รวมและแถวรวมท้ายตาราง แต่ไปบวกใน % การใช้รอบการแต่งหน้าอายุ Roll">
