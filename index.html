@@ -280,6 +280,19 @@ body{
 .table-wrap-sticky{max-height:calc(100vh - var(--topbar-h) - 150px);min-height:300px;overflow:auto;}
 .table-wrap-sticky thead th{z-index:3;box-shadow:0 1px 0 var(--border);}
 .table-wrap-sticky tfoot td{position:sticky;bottom:0;z-index:2;background:var(--bg-panel);box-shadow:0 -1px 0 var(--border);}
+/* ตรึง 2 คอลัมน์แรก (SIZE ROLL / ชุดสี) ไว้ตอนเลื่อนซ้าย-ขวาดูคอลัมน์วัน
+   ใช้คลาสไม่ใช่ :nth-child เพราะแถวหัวข้อกลุ่มขนาดเป็น td เดียว colspan ทั้งแถว
+   ถ้าจับด้วย nth-child แถวนั้นจะถูกตรึงไปด้วยแล้วแบนเนอร์จะเพี้ยน
+   border-collapse:collapse ทำให้เซลล์ sticky ไม่มีเส้นขอบ จึงใช้ box-shadow วาดเส้นแบ่งแทน */
+.table-wrap-sticky .pw-fz1,.table-wrap-sticky .pw-fz2{position:sticky;z-index:2;background:var(--bg-surface);}
+.table-wrap-sticky .pw-fz1{left:0;width:92px;min-width:92px;}
+.table-wrap-sticky .pw-fz2{left:92px;width:112px;min-width:112px;white-space:nowrap;box-shadow:1px 0 0 var(--border);}
+/* หัวตาราง/แถวรวม ใช้พื้นสีเดียวกับแถวนั้นๆ ไม่ใช่พื้นขาวของ tbody */
+.table-wrap-sticky thead .pw-fz1,.table-wrap-sticky thead .pw-fz2,
+.table-wrap-sticky tfoot .pw-fz1{background:var(--bg-panel);z-index:4;}
+.table-wrap-sticky tbody tr:hover .pw-fz1,.table-wrap-sticky tbody tr:hover .pw-fz2{background:var(--bg-hover);}
+/* แบนเนอร์หัวข้อกลุ่มขนาดกินทั้งแถว — ตรึงเฉพาะตัวชื่อขนาดไว้ ไม่ให้เลื่อนหายตอนดูวันท้ายๆ */
+.table-wrap-sticky .pw-group-label{position:sticky;left:12px;z-index:1;}
 table{width:100%;border-collapse:collapse;font-size:13px;}
 thead th{
   padding:10px 14px;
@@ -6620,8 +6633,8 @@ async function renderProdWeight() {
         const carryTon = rollCarryTonFor(setName, c.key);
         carryTotal += carryTon;
         return `<tr>
-        <td title="${escapeHtmlAttr(setName)}"><strong style="color:${catColor};">${escapeHtmlAttr(cat || setName)}</strong></td>
-        <td><span style="display:inline-flex;align-items:center;gap:6px;">
+        <td class="pw-fz1" title="${escapeHtmlAttr(setName)}"><strong style="color:${catColor};">${escapeHtmlAttr(cat || setName)}</strong></td>
+        <td class="pw-fz2"><span style="display:inline-flex;align-items:center;gap:6px;">
           <span style="width:9px;height:9px;border-radius:50%;background:${c.dot};flex-shrink:0;"></span>${escapeHtmlAttr(c.label)}</span></td>
         <td style="text-align:right;">
           <input type="number" min="0" step="0.01" inputmode="decimal" class="form-input"
@@ -6650,7 +6663,7 @@ async function renderProdWeight() {
       return n + (rs.length ? new Set(rs.map(r => r.color || NO_COLOR_KEY)).size : 0);
     }, 0);
     return `<tr><td colspan="${days.length + 4}" style="background:var(--bg-panel);padding:11px 12px;border-top:2px solid var(--text-1);">
-      <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);">
+      <span class="pw-group-label" style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);background:var(--bg-panel);padding-right:8px;">
         <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(g.label)}
       </span>
       <span style="float:right;font-size:12px;font-weight:700;color:var(--text-3);">${colorSets} ชุด · ${pieces} ลูก · ผลิตรวม ${ton(groupKg).toLocaleString(undefined, { maximumFractionDigits: 2 })} ตัน${(() => {
@@ -6667,7 +6680,7 @@ async function renderProdWeight() {
   const colCount = days.length + 4;
   grid.innerHTML = errorBanner + `<div class="card"><div class="table-wrap table-wrap-sticky"><table>
     <thead><tr>
-      <th>SIZE ROLL</th><th>ชุดสี</th>
+      <th class="pw-fz1">SIZE ROLL</th><th class="pw-fz2">ชุดสี</th>
       <th style="text-align:right;white-space:nowrap;" title="น้ำหนักที่ผลิตไปแล้วก่อนช่วงข้อมูลที่ระบบมี — กรอกเอง ไม่รวมในคอลัมน์รวมและแถวรวมท้ายตาราง แต่ไปบวกใน % การใช้รอบการแต่งหน้าอายุ Roll">
         ยกมา (ตัน)<div style="font-size:10px;font-weight:400;color:var(--text-3);">กรอกเอง</div></th>
       ${days.map(d => {
@@ -6687,7 +6700,7 @@ async function renderProdWeight() {
     </tr></thead>
     <tbody>${body || `<tr><td colspan="${colCount}" style="padding:32px;text-align:center;color:var(--text-3);">ยังไม่มีชุด Roll ในทะเบียน Tooling</td></tr>`}</tbody>
     ${days.length ? `<tfoot><tr style="background:var(--bg-panel);">
-      <td colspan="2" style="font-weight:800;">รวมทุกขนาด <span style="font-weight:400;font-size:11px;color:var(--text-3);">(นับขนาดละครั้ง ไม่นับซ้ำตามหมวด/ชุดสี)</span></td>
+      <td class="pw-fz1" colspan="2" style="font-weight:800;width:204px;min-width:204px;box-shadow:1px 0 0 var(--border);">รวมทุกขนาด <span style="font-weight:400;font-size:11px;color:var(--text-3);">(นับขนาดละครั้ง ไม่นับซ้ำตามหมวด/ชุดสี)</span></td>
       <td style="text-align:right;font-weight:700;color:${carryTotal ? 'var(--accent)' : 'var(--text-3)'};"
         title="ผลรวมยอดยกมาที่กรอกเองทุกชุด — แยกจากยอดผลิตจริง ไม่ถูกนับในยอดรวมด้านขวา">${carryTotal ? fmt(carryTotal) : '—'}</td>
       ${days.map(d => `<td style="text-align:right;font-weight:700;">${fmt(ton(dayKg[d]))}</td>`).join('')}
