@@ -6602,6 +6602,7 @@ async function renderProdWeight() {
       const ca = ROLL_SET_CATEGORY_ORDER[parseSizeRollName(a).category], cb = ROLL_SET_CATEGORY_ORDER[parseSizeRollName(b).category];
       return (ca === undefined ? 9 : ca) - (cb === undefined ? 9 : cb);
     });
+    let groupCarry = 0; // ยอดยกมาของทุกชุดสีในขนาดนี้ — เอาไปต่อท้ายหัวกลุ่มให้ตรงกับคอลัมน์รวม
     const rows = sorted.map(setName => {
       const cat = parseSizeRollName(setName).category;
       const catColor = ROLL_SET_SECTION_COLORS[cat] || 'var(--text-2)';
@@ -6628,10 +6629,12 @@ async function renderProdWeight() {
           return { d, kg: ownKg + shareKg, shareKg, inferred: mine && !explicit };
         });
         const rowKg = cells.reduce((s, x) => s + x.kg, 0);
-        // ยอดยกมากรอกเอง ไม่เกี่ยวกับช่วงวันที่เลือก จึงไม่รวมเข้าคอลัมน์ "รวม" และไม่รวมในแถวรวมท้ายตาราง
-        // (สองค่านั้นต้องตรงกับยอดจริงจาก TST Production เสมอ) — ไปบวกกันที่หน้าอายุ Roll
+        // ยอดยกมาถูกบวกเข้าคอลัมน์ "รวม" และแถวรวมท้ายตารางด้วย (ตามที่ผู้ใช้กำหนด)
+        // ทำให้สองค่านั้นไม่เท่ากับยอดจริงจาก TST Production อีกแล้ว จึงแยกโชว์ "ผลิต + ยกมา" กำกับไว้ทุกจุด
+        // ส่วนคอลัมน์รายวันยังเป็นยอดผลิตจริงล้วนๆ ไม่มีการยกมาปน (ยกมาไม่ผูกกับวันใดวันหนึ่ง)
         const carryTon = rollCarryTonFor(setName, c.key);
         carryTotal += carryTon;
+        groupCarry += carryTon;
         return `<tr>
         <td class="pw-fz1" title="${escapeHtmlAttr(setName)}"><strong style="color:${catColor};">${escapeHtmlAttr(cat || setName)}</strong></td>
         <td class="pw-fz2"><span style="display:inline-flex;align-items:center;gap:6px;">
@@ -6652,7 +6655,11 @@ async function renderProdWeight() {
                               + (x.shareKg ? '<span style="font-weight:400;color:var(--accent);">⁺</span>' : '')
               : '<span class="muted">—</span>'}</td>`;
         }).join('')}
-        <td style="text-align:right;font-weight:800;color:${rowKg ? 'var(--text-1)' : 'var(--text-3)'};">${fmt(ton(rowKg))}</td>
+        <td style="text-align:right;font-weight:800;color:${(rowKg || carryTon) ? 'var(--text-1)' : 'var(--text-3)'};"
+          ${carryTon ? `title="${escapeHtmlAttr('ผลิตในช่วงที่เลือก ' + ton(rowKg).toLocaleString(undefined, { maximumFractionDigits: 2 })
+            + ' ตัน + ยกมาที่กรอกเอง ' + carryTon.toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' ตัน')}"` : ''}>
+          ${fmt(Math.round((ton(rowKg) + carryTon) * 100) / 100)}
+          ${carryTon ? `<div style="font-size:10px;font-weight:600;color:var(--accent);">+ยกมา ${escapeHtmlAttr(carryTon.toLocaleString(undefined, { maximumFractionDigits: 2 }))}</div>` : ''}</td>
       </tr>`;
       }).join('');
     }).join('');
@@ -6666,7 +6673,8 @@ async function renderProdWeight() {
       <span class="pw-group-label" style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);background:var(--bg-panel);padding-right:8px;">
         <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(g.label)}
       </span>
-      <span style="float:right;font-size:12px;font-weight:700;color:var(--text-3);">${colorSets} ชุด · ${pieces} ลูก · ผลิตรวม ${ton(groupKg).toLocaleString(undefined, { maximumFractionDigits: 2 })} ตัน${(() => {
+      <span style="float:right;font-size:12px;font-weight:700;color:var(--text-3);">${colorSets} ชุด · ${pieces} ลูก · ผลิตรวม ${ton(groupKg).toLocaleString(undefined, { maximumFractionDigits: 2 })} ตัน${
+        groupCarry ? ` <span style="color:var(--accent);">+ ยกมา ${groupCarry.toLocaleString(undefined, { maximumFractionDigits: 2 })} ตัน</span>` : ''}${(() => {
         // ขนาดนี้มี Forming ที่ถูกขนาดอื่นมาใช้ร่วม — บอกยอดที่บวกเข้ามาไว้ที่หัวกลุ่มด้วย
         const src = g.sets.flatMap(sharedFormingSources);
         if (!src.length) return '';
@@ -6704,7 +6712,12 @@ async function renderProdWeight() {
       <td style="text-align:right;font-weight:700;color:${carryTotal ? 'var(--accent)' : 'var(--text-3)'};"
         title="ผลรวมยอดยกมาที่กรอกเองทุกชุด — แยกจากยอดผลิตจริง ไม่ถูกนับในยอดรวมด้านขวา">${carryTotal ? fmt(carryTotal) : '—'}</td>
       ${days.map(d => `<td style="text-align:right;font-weight:700;">${fmt(ton(dayKg[d]))}</td>`).join('')}
-      <td style="text-align:right;font-weight:800;color:var(--accent);">${fmt(ton(grandKg))}</td>
+      <td style="text-align:right;font-weight:800;color:var(--accent);"
+        title="${escapeHtmlAttr('ผลิตจริงจาก TST Production ' + ton(grandKg).toLocaleString(undefined, { maximumFractionDigits: 2 })
+          + ' ตัน' + (carryTotal ? ' + ยกมาที่กรอกเอง ' + carryTotal.toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' ตัน' : ''))}">
+        ${fmt(Math.round((ton(grandKg) + carryTotal) * 100) / 100)}
+        ${carryTotal ? `<div style="font-size:10px;font-weight:600;color:var(--text-3);">ผลิต ${escapeHtmlAttr(ton(grandKg).toLocaleString(undefined, { maximumFractionDigits: 2 }))}
+          + ยกมา ${escapeHtmlAttr(carryTotal.toLocaleString(undefined, { maximumFractionDigits: 2 }))}</div>` : ''}</td>
     </tr></tfoot>` : ''}
   </table></div>
   ${days.length ? `<div style="padding:10px 14px;border-top:1px solid var(--border-light);font-size:11px;color:var(--text-3);line-height:1.6;">
@@ -6717,8 +6730,10 @@ async function renderProdWeight() {
     (GS 1-1/2" → GS 2"x1" · GI 1-1/2" → GI 2"x1" · GI 3"x3" → GI 4"x2") —
     แถวรวมท้ายตารางยังนับขนาดละครั้งตามยอดผลิตจริง ไม่บวกซ้ำจากการใช้ Forming ร่วม<br>
     คอลัมน์ <b>ยกมา (ตัน)</b> กรอกเองได้ สำหรับรอบการแต่งที่เริ่มเดินมาก่อนช่วงที่ระบบมีข้อมูล —
-    <b>ไม่ถูกนับ</b> ในคอลัมน์รวมและแถวรวมท้ายตาราง (สองค่านั้นต้องตรงกับยอดจริงจาก TST Production)
-    แต่จะไปบวกใน <b>น้ำหนักผลิต</b> และ <b>%</b> ของหน้าอายุ Roll
+    <b>ถูกบวกเข้าคอลัมน์รวมและแถวรวมท้ายตารางด้วย</b> (ช่องที่มียกมาจะเขียนกำกับ <b style="color:var(--accent);">+ยกมา</b> ไว้)
+    ดังนั้นยอดรวมจะ<b>มากกว่า</b>ยอดจริงจาก TST Production อยู่เท่ากับยอดยกมา — ดูยอดผลิตล้วนๆ ได้ที่บรรทัดเล็กใต้ยอดรวม
+    หรือรวมคอลัมน์รายวัน (คอลัมน์วันเป็นยอดผลิตจริงล้วน ไม่มียกมาปน)
+    ยอดเดียวกันนี้ไปบวกใน <b>น้ำหนักผลิต</b> และ <b>%</b> ของหน้าอายุ Roll ด้วย
     เมื่อแต่ง Roll เสร็จแล้วกด <b>↺ รี</b> ที่หน้าอายุ Roll ยอดยกมาจะถูกล้างให้เอง<br>
     ${dayColsTrimmed
       ? `คอลัมน์วันแสดง<b>เฉพาะวันที่มีการผลิต</b> เพราะช่วงที่เลือกครอบหลายเดือนเกินไป (เกิน ${MAX_DAY_COLS} วัน)
