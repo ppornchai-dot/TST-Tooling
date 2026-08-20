@@ -1477,10 +1477,10 @@ canvas{display:block;}
       </div>
 
       <div class="card">
-        <div class="table-wrap">
+        <div class="table-wrap table-wrap-sticky">
           <table>
             <thead>
-              <tr><th>Size Roll</th><th>ชุดสี</th><th style="text-align:right;">จำนวน (ลูก)</th><th style="text-align:right;">OD ปัจจุบัน</th><th style="text-align:right;">สึกไปมากสุด</th><th style="text-align:right;" title="ตันที่รีดได้ต่อการแต่ง Roll 1 รอบ — มาจากช่อง &quot;รอบการใช้งาน&quot; ของ Roll ในทะเบียน Tooling">น้ำหนักต่อรอบการแต่ง (ตัน)</th><th style="text-align:right;" title="ยอดผลิตของชุด Roll ชุดนี้ตลอดอายุ — เกณฑ์เดียวกับหน้าน้ำหนักผลิต คือลงเฉพาะวันที่ชุดสีนี้เป็นชุดที่ใช้เดิน และรวมขนาดที่มาใช้ Forming ร่วมด้วย — % คือใช้รอบการแต่งไปแล้วเท่าไร (ไม่เกิน 80% เขียว, 81–90% เหลือง, เกิน 90% แดง)">น้ำหนักผลิต (ตัน / %)</th><th style="text-align:right;" title="น้ำหนักต่อรอบการแต่ง ลบ น้ำหนักผลิต — เหลืออีกเท่าไรก่อนถึงรอบแต่งถัดไป ">น้ำหนักเหลือ (ตัน)</th><th>อายุคงเหลือ</th><th title="สถานะของชุดสี Roll ที่ตั้งไว้ในทะเบียน Tooling">สถานะ (ทะเบียน)</th></tr>
+              <tr><th class="pw-fz1">Size Roll</th><th class="pw-fz2">ชุดสี</th><th style="text-align:right;">จำนวน (ลูก)</th><th style="text-align:right;">OD ปัจจุบัน</th><th style="text-align:right;">สึกไปมากสุด</th><th style="text-align:right;" title="ตันที่รีดได้ต่อการแต่ง Roll 1 รอบ — มาจากช่อง &quot;รอบการใช้งาน&quot; ของ Roll ในทะเบียน Tooling">น้ำหนักต่อรอบการแต่ง (ตัน)</th><th style="text-align:right;" title="ยอดผลิตของชุด Roll ชุดนี้ตลอดอายุ — เกณฑ์เดียวกับหน้าน้ำหนักผลิต คือลงเฉพาะวันที่ชุดสีนี้เป็นชุดที่ใช้เดิน และรวมขนาดที่มาใช้ Forming ร่วมด้วย — % คือใช้รอบการแต่งไปแล้วเท่าไร (ไม่เกิน 80% เขียว, 81–90% เหลือง, เกิน 90% แดง)">น้ำหนักผลิต (ตัน / %)</th><th style="text-align:right;" title="น้ำหนักต่อรอบการแต่ง ลบ น้ำหนักผลิต — เหลืออีกเท่าไรก่อนถึงรอบแต่งถัดไป ">น้ำหนักเหลือ (ตัน)</th><th>อายุคงเหลือ</th><th title="สถานะของชุดสี Roll ที่ตั้งไว้ในทะเบียน Tooling">สถานะ (ทะเบียน)</th></tr>
             </thead>
             <tbody id="rolllife-tbody"></tbody>
           </table>
@@ -7138,8 +7138,8 @@ function renderRollLife() {
     const cat = parseSizeRollName(g.set || '').category;
     const catColor = ROLL_SET_SECTION_COLORS[cat] || 'var(--text-2)';
     return `<tr>
-      <td title="${escapeHtmlAttr(g.set)}"><strong style="color:${catColor};">${escapeHtmlAttr(cat || g.set)}</strong></td>
-      <td><span style="display:inline-flex;align-items:center;gap:6px;">
+      <td class="pw-fz1" title="${escapeHtmlAttr(g.set)}"><strong style="color:${catColor};">${escapeHtmlAttr(cat || g.set)}</strong></td>
+      <td class="pw-fz2"><span style="display:inline-flex;align-items:center;gap:6px;">
         <span style="width:9px;height:9px;border-radius:50%;background:${g.dot};flex-shrink:0;"></span>${escapeHtmlAttr(g.colorLabel)}</span></td>
       <td class="muted" style="text-align:right;">${g.count.toLocaleString()}</td>
       <td style="text-align:right;">${escapeHtmlAttr(odText)}${g.minOD != null ? `<div class="muted" style="font-size:10px;">เล็กสุด Ø${escapeHtmlAttr(g.minOD)}</div>` : ''}</td>
@@ -7194,7 +7194,7 @@ function renderRollLife() {
     const setCount = sets.reduce((s, x) => s + x.rows.length, 0);
     const pieces = sets.reduce((s, x) => s + x.rows.reduce((n, g) => n + g.count, 0), 0);
     return `<tr><td colspan="10" style="background:var(--bg-panel);padding:11px 12px;border-top:2px solid var(--text-1);">
-      <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);">
+      <span class="pw-group-label" style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);background:var(--bg-panel);padding-right:8px;">
         <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(label)}
       </span>
       <span style="float:right;font-size:12px;font-weight:700;color:var(--text-3);">${setCount.toLocaleString()} ชุด · ${pieces.toLocaleString()} ลูก</span>
