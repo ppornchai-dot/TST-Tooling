@@ -6548,10 +6548,29 @@ async function renderProdWeight() {
 
   const errorBanner = fgByKey ? '' : `<div style="background:var(--red-dim);color:var(--red);border-radius:8px;padding:10px 14px;font-size:12px;margin-bottom:10px;">ดึงข้อมูลจากระบบ Production ไม่สำเร็จ (${escapeHtmlAttr(fgWeightFetchError || '')})</div>`;
 
-  // คอลัมน์รายวัน = เฉพาะวันที่มีการผลิตจริงและน้ำหนักไม่เป็น 0 ในช่วงที่เลือก
-  // ไม่ไล่ทุกวันในช่วง ไม่งั้นเลือก "ทั้งหมด" (2,400 วัน) ตารางจะกว้างจนใช้งานไม่ได้
+  // คอลัมน์รายวัน = ทุกวันของ "เดือนที่มีการผลิต" ตัดด้วยช่วงวันที่เลือก
+  // ไล่ทุกวันในช่วงตรงๆ ไม่ได้ เพราะช่วงเริ่มต้นคือ 2020 ถึงวันนี้ (~2,400 วัน) ตารางจะกว้างจนใช้งานไม่ได้
+  // จึงยึด "เดือน" ของวันที่มีการผลิตแล้วเติมวันที่ยังไม่มีการผลิตให้ครบเดือน (ขึ้น — ให้เห็นว่าวันนั้นไม่ได้เดิน)
+  // ถ้ายังเกิน MAX_DAY_COLS (เช่นข้อมูลกระจายหลายเดือน) ถอยไปแสดงเฉพาะวันที่มีการผลิตเหมือนเดิม
   const kgOnDate = d => Object.values(fgWeightByKeyDate).reduce((s, m) => s + (m[d] || 0), 0);
-  const days = fgWeightDates.filter(d => kgOnDate(d) > 0);
+  const MAX_DAY_COLS = 62;
+  const prodDays = fgWeightDates.filter(d => kgOnDate(d) > 0);
+  let days = prodDays;
+  let dayColsTrimmed = false;
+  if (prodDays.length) {
+    const full = [];
+    [...new Set(prodDays.map(d => d.slice(0, 7)))].sort().forEach(ym => {
+      const [y, mo] = ym.split('-').map(Number);
+      const lastDay = new Date(y, mo, 0).getDate(); // วันสุดท้ายของเดือนนั้น
+      for (let i = 1; i <= lastDay; i++) {
+        const iso = ym + '-' + String(i).padStart(2, '0');
+        if (iso < fromDate || iso > toDate) continue; // ไม่ล้นออกนอกช่วงที่เลือก
+        full.push(iso);
+      }
+    });
+    if (full.length && full.length <= MAX_DAY_COLS) days = full;
+    else if (full.length > MAX_DAY_COLS) dayColsTrimmed = true;
+  }
   const ton = kg => Math.round((kg || 0) / 1000 * 100) / 100;
   const fmt = v => v ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '<span class="muted">—</span>';
   const dayKg = {};
@@ -6687,7 +6706,12 @@ async function renderProdWeight() {
     คอลัมน์ <b>ยกมา (ตัน)</b> กรอกเองได้ สำหรับรอบการแต่งที่เริ่มเดินมาก่อนช่วงที่ระบบมีข้อมูล —
     <b>ไม่ถูกนับ</b> ในคอลัมน์รวมและแถวรวมท้ายตาราง (สองค่านั้นต้องตรงกับยอดจริงจาก TST Production)
     แต่จะไปบวกใน <b>น้ำหนักผลิต</b> และ <b>%</b> ของหน้าอายุ Roll
-    เมื่อแต่ง Roll เสร็จแล้วกด <b>↺ รี</b> ที่หน้าอายุ Roll ยอดยกมาจะถูกล้างให้เอง
+    เมื่อแต่ง Roll เสร็จแล้วกด <b>↺ รี</b> ที่หน้าอายุ Roll ยอดยกมาจะถูกล้างให้เอง<br>
+    ${dayColsTrimmed
+      ? `คอลัมน์วันแสดง<b>เฉพาะวันที่มีการผลิต</b> เพราะช่วงที่เลือกครอบหลายเดือนเกินไป (เกิน ${MAX_DAY_COLS} วัน)
+         — เลือกช่วงให้แคบลงเหลือ 1–2 เดือน จะแสดงครบทุกวันของเดือนให้`
+      : `คอลัมน์วันแสดง<b>ครบทุกวันของเดือนที่มีการผลิต</b> ภายในช่วงที่เลือก วันที่ไม่ได้เดินจะขึ้น <b>—</b> ทั้งแถว
+         (ถ้าอยากเห็นถึงสิ้นเดือน ให้ตั้งวันที่ "ถึง" เป็นวันสุดท้ายของเดือน)`}
   </div>` : `<div style="padding:24px;text-align:center;color:var(--text-3);font-size:13px;">ไม่มีข้อมูลการผลิตในช่วงวันที่ที่เลือก</div>`}
   </div>`;
 }
