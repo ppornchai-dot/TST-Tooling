@@ -4349,6 +4349,13 @@ function planTaskFormFields() {
     <div class="modal-row full">
       <div class="form-group"><label class="form-label" id="pf-plantime-label">เวลาแต่ง Roll (นาที) — จากทะเบียน Tooling</label><input class="form-input" id="pf-plantime" type="text" disabled>
         <span id="pf-plantime-hours" style="font-size:11px;color:var(--text-3);"></span>
+        <div style="margin-top:6px;">
+          <button type="button" class="btn btn-ghost btn-sm" id="pf-piece-toggle" onclick="togglePlanPieceMinutes()"
+            style="font-size:11px;padding:3px 9px;">⏱ แก้เวลาต่อชิ้น</button>
+          <span id="pf-piece-summary" style="font-size:11px;color:var(--text-3);margin-left:6px;"></span>
+        </div>
+        <div id="pf-piece-minutes" style="display:none;margin-top:8px;border:1px solid var(--border);border-radius:8px;
+          padding:8px 10px;max-height:220px;overflow-y:auto;background:var(--bg-panel);"></div>
       </div>
     </div>`;
 }
@@ -4508,14 +4515,94 @@ function updateRollCountField() {
 }
 
 // คำนวณจำนวน + เวลารวม (นาที) จาก Roll ที่ติ๊กเลือกไว้จริงเท่านั้น แล้วคำนวณ "จบงาน" ต่อให้อัตโนมัติ
-function recalcPlanTotalsFromSelection() {
+// ─── เวลาแต่ง/ขัด Roll ต่อชิ้น (แก้เองได้ในฟอร์มวางแผน) ────────────────────────
+// ค่าตั้งต้นมาจากทะเบียน Tooling แก้ที่นี่จะเก็บเป็น rollMinutesOverride ของงานนั้น
+// ไม่ไปแก้ทะเบียน (งานอื่น/รอบหน้ายังใช้ค่าทะเบียนเดิม) — เก็บเฉพาะชิ้นที่ค่าไม่เท่าทะเบียน
+let planFormPieceMinutes = {}; // { rollIdx: นาที }
+
+function planFormRegistryMinutes(roll) {
+  return parseFloat((roll || {})[PLAN_WORKTYPE_META[currentPlanWorkType].field]) || 0;
+}
+function planFormEffectiveMinutes(idx, roll) {
+  const ov = planFormPieceMinutes[idx];
+  return (ov != null && isFinite(ov)) ? ov : planFormRegistryMinutes(roll);
+}
+// รายการชิ้นที่เลือกอยู่ พร้อม index จริงในรายการที่พบ (เรียงตามลำดับที่จะทำ)
+function planFormSelectedPieces() {
+  const setName = (document.getElementById('pf-rollset') || {}).value;
+  const colorKey = (document.getElementById('pf-rollcolor') || {}).value;
+  const scoped = getMatchingRollsForPlan(setName, colorKey);
+  const order = ((document.getElementById('pf-rollids') || {}).value || '').split(',').filter(Boolean).map(Number);
+  return order.filter(idx => scoped[idx]).map(idx => ({ idx, roll: scoped[idx] }));
+}
+
+function togglePlanPieceMinutes() {
+  const box = document.getElementById('pf-piece-minutes');
+  if (!box) return;
+  const open = box.style.display === 'none';
+  box.style.display = open ? '' : 'none';
+  const btn = document.getElementById('pf-piece-toggle');
+  if (btn) btn.textContent = open ? '⏱ ซ่อนเวลาต่อชิ้น' : '⏱ แก้เวลาต่อชิ้น';
+  if (open) renderPlanPieceMinutes();
+}
+
+function renderPlanPieceMinutes() {
+  const box = document.getElementById('pf-piece-minutes');
+  if (!box) return;
+  const pieces = planFormSelectedPieces();
+  if (!pieces.length) { box.innerHTML = '<div style="font-size:12px;color:var(--text-3);">ยังไม่ได้เลือก Roll</div>'; return; }
+  box.innerHTML = pieces.map(({ idx, roll }) => {
+    const reg = planFormRegistryMinutes(roll);
+    const eff = planFormEffectiveMinutes(idx, roll);
+    const changed = eff !== reg;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border-light);">
+      <span style="flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtmlAttr(roll.name || ('ชิ้นที่ ' + (idx + 1)))}</span>
+      <input type="number" min="0" step="1" inputmode="numeric" class="form-input"
+        value="${eff}" data-pieceidx="${idx}"
+        style="width:78px;padding:3px 7px;font-size:12px;text-align:right;${changed ? 'font-weight:700;color:var(--accent);border-color:var(--accent);' : ''}"
+        oninput="setPlanPieceMinutes(${idx}, this.value)">
+      <span style="font-size:11px;color:var(--text-3);flex-shrink:0;width:74px;">
+        ${changed ? 'ทะเบียน ' + reg : 'นาที'}</span>
+    </div>`;
+  }).join('')
+  + `<div style="display:flex;justify-content:flex-end;gap:8px;padding-top:8px;">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="resetPlanPieceMinutes()" style="font-size:11px;">คืนค่าจากทะเบียน</button>
+     </div>`;
+}
+
+function setPlanPieceMinutes(idx, raw) {
+  const n = parseFloat(String(raw).trim());
+  if (!isFinite(n) || n < 0) { delete planFormPieceMinutes[idx]; }
+  else planFormPieceMinutes[idx] = Math.round(n);
+  recalcPlanTotalsFromSelection({ keepPieceBox: true });
+}
+
+function resetPlanPieceMinutes() {
+  planFormPieceMinutes = {};
+  recalcPlanTotalsFromSelection();
+  renderPlanPieceMinutes();
+}
+
+function recalcPlanTotalsFromSelection(opts) {
   updateRollCountField();
-  const rolls = getSelectedRollsForPlan();
-  const field = PLAN_WORKTYPE_META[currentPlanWorkType].field;
-  const total = rolls.reduce((sum, r) => sum + (parseFloat(r[field]) || 0), 0);
-  document.getElementById('pf-plantime').value = rolls.length ? String(total) : '';
+  const pieces = planFormSelectedPieces();
+  // ล้างค่าที่แก้ไว้ของชิ้นที่ไม่ได้เลือกอยู่แล้ว กันค้างไปโผล่ตอนเลือกชิ้นนั้นกลับมา
+  const selected = new Set(pieces.map(p => p.idx));
+  Object.keys(planFormPieceMinutes).forEach(k => { if (!selected.has(Number(k))) delete planFormPieceMinutes[k]; });
+  const total = pieces.reduce((sum, p) => sum + planFormEffectiveMinutes(p.idx, p.roll), 0);
+  document.getElementById('pf-plantime').value = pieces.length ? String(total) : '';
   const hoursEl = document.getElementById('pf-plantime-hours');
-  if (hoursEl) hoursEl.textContent = rolls.length ? formatMinutesAsHm(total) : '';
+  if (hoursEl) hoursEl.textContent = pieces.length ? formatMinutesAsHm(total) : '';
+  const summary = document.getElementById('pf-piece-summary');
+  if (summary) {
+    const changedCount = pieces.filter(p => planFormEffectiveMinutes(p.idx, p.roll) !== planFormRegistryMinutes(p.roll)).length;
+    summary.innerHTML = changedCount
+      ? `<b style="color:var(--accent);">แก้เวลาเองไว้ ${changedCount} ชิ้น</b>`
+      : (pieces.length ? 'ใช้เวลาตามทะเบียนทุกชิ้น' : '');
+  }
+  // เปิดกล่องอยู่แล้วให้วาดใหม่ตามรายการที่เลือกล่าสุด (เว้นตอนกำลังพิมพ์ในช่อง จะทำให้ cursor หลุด)
+  const box = document.getElementById('pf-piece-minutes');
+  if (box && box.style.display !== 'none' && !(opts && opts.keepPieceBox)) renderPlanPieceMinutes();
   updatePlanEndTime();
 }
 
@@ -5422,6 +5509,14 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   if (!canEditPlan()) return;
   const task = mode === 'edit' ? planTasks.find(t => t.id === taskId) : null;
   currentEditingPlanTaskId = task ? task.id : null;
+  // เวลาต่อชิ้นที่แก้เองไว้ — แก้ไขงานเดิมให้ยกค่าที่บันทึกไว้มาแสดง, เพิ่มงานใหม่เริ่มจากค่าทะเบียน
+  planFormPieceMinutes = {};
+  if (task && task.rollMinutesOverride) {
+    Object.keys(task.rollMinutesOverride).forEach(k => {
+      const v = parseFloat(task.rollMinutesOverride[k]);
+      if (isFinite(v)) planFormPieceMinutes[Number(k)] = v;
+    });
+  }
   const workType = task ? task.workType : currentPlanWorkType;
   const workTypeLabel = PLAN_WORKTYPE_META[workType].label;
   document.getElementById('modal-title').textContent = mode === 'edit' ? ('แก้ไขงาน — ' + workTypeLabel) : ('เพิ่มงานใหม่ — ' + workTypeLabel);
@@ -5483,7 +5578,16 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     const rolls = getSelectedRollsForPlan();
     if (!date || !setName || !rolls.length) { alert('กรุณาเลือกวันที่ และเลือก Roll อย่างน้อย 1 รายการ'); return; }
     const field = PLAN_WORKTYPE_META[workType].field;
-    const totalTime = rolls.reduce((sum, r) => sum + (parseFloat(r[field]) || 0), 0);
+    // เวลาต่อชิ้นที่แก้เองในฟอร์ม (ถ้ามี) ชนะค่าทะเบียน — ใช้ทั้งคิดเวลารวม ตัดวัน และบันทึกลงงาน
+    const pieces = planFormSelectedPieces();
+    const pieceMinutesList = pieces.map(p => planFormEffectiveMinutes(p.idx, p.roll));
+    const pieceOverride = {};
+    pieces.forEach(p => {
+      const eff = planFormEffectiveMinutes(p.idx, p.roll);
+      if (eff !== planFormRegistryMinutes(p.roll)) pieceOverride[p.idx] = eff;
+    });
+    const hasPieceOverride = Object.keys(pieceOverride).length > 0;
+    const totalTime = pieceMinutesList.reduce((a, b) => a + b, 0);
     const shiftKey = document.getElementById('pf-shift').value || 'morning';
     const startTime = shiftKey === 'night' ? g('pf-start-night') : shiftKey === 'both' ? bothModeStartValue() : g('pf-start-morning');
     const otCapMinutesByShift = getOtCapMinutes();
@@ -5509,12 +5613,13 @@ function openPlanTaskModal(mode, taskId, presetDate) {
       workerId: g('pf-worker') || null,
       // totalTime ด้านบนคำนวณจากเวลาเต็มของแต่ละ Roll เสมอ (ไม่ใช่เวลาที่ถูกตัดบางส่วนไว้เดิม) — ถ้าไม่ต้องตัดวัน (splitGroups เป็น null ด้านล่าง)
       // แปลว่าทุก Roll ได้เวลาเต็มจริง ต้องล้างค่า rollMinutesOverride เดิมทิ้งด้วย ไม่งั้นจะค้างเป็นค่าที่ไม่ตรงกับ totalTime ใหม่
-      rollMinutesOverride: undefined,
+      rollMinutesOverride: hasPieceOverride ? pieceOverride : undefined,
     };
     // ถ้าเวลาทำงานยาวข้ามคืนไปมากกว่า 1 วันปฏิทิน ตัดเป็นงานแยกทีละวันจริงแทนที่จะเก็บเป็นงานก้อนเดียว
     // แก้ไขงานที่มี splitGroupId (เคยถูกตัดวันไว้แล้ว) ต้องแก้ "เฉพาะงานที่กำลังแก้ไข" เท่านั้น ห้ามลบ/คำนวณใหม่ทับ "พี่น้อง" วันอื่นในกลุ่มเดียวกัน
     // (เดิมเคยลบพี่น้องทั้งกลุ่มทิ้งด้วย ทำให้แก้ไข/ลบงานวันเดียวกลับไปเปลี่ยนข้อมูลของวันอื่นที่ไม่เกี่ยวข้องโดยไม่ตั้งใจ)
-    const splitGroups = splitPlanDataAcrossDays({ date, shift: shiftKey, startTime, otCapMinutesByShift, rollIds: selectedIndexes }, rolls, workType);
+    const splitGroups = splitPlanDataAcrossDays({ date, shift: shiftKey, startTime, otCapMinutesByShift, rollIds: selectedIndexes }, rolls, workType,
+      hasPieceOverride ? pieceMinutesList : undefined);
     if (splitGroups) {
       if (mode === 'edit') planTasks = planTasks.filter(x => x.id !== task.id);
       const newGroupId = 'SG-' + String(planTaskSeq + 1).padStart(4, '0');
