@@ -3779,6 +3779,7 @@ function pickPfDate(iso) {
   closePfDatePicker();
   // เปลี่ยนวันแล้วจุดต่อคิวของวันใหม่ก็เปลี่ยน ต้องคิดใหม่ ไม่ค้างค่าของวันเดิม
   refreshPlanFormAppendStart();
+  refreshPlanFormContinueBtn();
   updatePlanEndTime();
 }
 function pfDateGoToday() {
@@ -4262,6 +4263,11 @@ function planTaskFormFields() {
       <div class="form-group"><label class="form-label">ผู้ปฏิบัติงาน</label>
         <select class="form-select" id="pf-worker"></select>
       </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      <button type="button" class="btn btn-ghost btn-sm" id="pf-continue-btn" onclick="applyPlanFormContinueFromPrev()"
+        title="ตั้งเวลาเริ่มให้ต่อจากงานที่วางแผนไว้ก่อนหน้าใน 'วันเดียวกัน' เท่านั้น">⏭ ต่อเวลาจากงานก่อนหน้าในวันนี้</button>
+      <span id="pf-continue-hint" style="font-size:11px;color:var(--text-3);"></span>
     </div>
     <div class="modal-row three">
       <div class="form-group"><label class="form-label">🌤 เริ่มงานกะเช้า</label><input class="form-input" id="pf-start-morning" type="text" inputmode="numeric" placeholder="เช่น 08:00" maxlength="5" onchange="normalizeTimeInput(this);updatePlanEndTime()"></div>
@@ -4818,6 +4824,7 @@ function selectPlanShift(key) {
     if (key === 'morning' && startMorningEl) { startMorningEl.value = appendStart || startMorningEl.value || SHIFTS.morning.start; if (startNightEl) startNightEl.value = ''; }
     if (key === 'night' && startNightEl) { startNightEl.value = appendStart || startNightEl.value || SHIFTS.night.start; if (startMorningEl) startMorningEl.value = ''; }
   }
+  refreshPlanFormContinueBtn();
   updatePlanEndTime();
 }
 
@@ -5014,20 +5021,77 @@ function planQueueEndFor(workType, dateIso, shiftKey) {
   return advanceToShiftWindow(shiftKey, fixed.date, fixed.time);
 }
 
+// งานที่วางแผนไว้ก่อนหน้า "ในวันเดียวกัน" กับที่ฟอร์มเลือกอยู่ — ตัวที่จบช้าสุด
+// จำกัดเฉพาะวันเดียวกันตามที่ผู้ใช้กำหนด ไม่ดึงจากวันอื่นมาต่อให้
+function planFormPrevSameDayTask() {
+  const dateEl = document.getElementById('pf-date'), shiftEl = document.getElementById('pf-shift');
+  if (!dateEl || !dateEl.value) return null;
+  const date = dateEl.value, shiftKey = shiftEl ? (shiftEl.value || 'morning') : 'morning';
+  const sameDay = planTasks.filter(t => t.workType === currentPlanWorkType && t.date === date
+    && t.endTime && t.endTime !== '—' && t.id !== currentEditingPlanTaskId
+    && (t.shift === shiftKey || t.shift === 'both' || shiftKey === 'both'));
+  if (!sameDay.length) return null;
+  // จบช้าสุดตามลำดับเวลาในวันทำงาน (งานกะดึกที่เลยเที่ยงคืนถือว่าจบทีหลัง)
+  return sameDay.reduce((a, b) => historyDayOrderMin(b.endTime) > historyDayOrderMin(a.endTime) ? b : a);
+}
+
+// อัปเดตปุ่ม/คำอธิบาย "ต่อเวลาจากงานก่อนหน้าในวันนี้" ให้ตรงกับวัน/กะที่เลือกอยู่ตอนนั้น
+function refreshPlanFormContinueBtn() {
+  const btn = document.getElementById('pf-continue-btn'), hint = document.getElementById('pf-continue-hint');
+  if (!btn || !hint) return;
+  const prev = planFormPrevSameDayTask();
+  btn.disabled = !prev;
+  btn.style.opacity = prev ? '' : '.5';
+  btn.style.cursor = prev ? '' : 'not-allowed';
+  if (!prev) { hint.textContent = 'วันที่เลือกยังไม่มีงานอื่นให้ต่อเวลา'; return; }
+  hint.innerHTML = `งานก่อนหน้า: <b>${escapeHtmlAttr(prev.rollSet || '')}</b> จบ <b>${escapeHtmlAttr(prev.endTime)}</b>`;
+}
+
+function applyPlanFormContinueFromPrev() {
+  const prev = planFormPrevSameDayTask();
+  if (!prev) { alert('วันที่เลือกยังไม่มีงานอื่นที่วางแผนไว้ให้ต่อเวลา'); return; }
+  const dateEl = document.getElementById('pf-date'), shiftEl = document.getElementById('pf-shift');
+  const date = dateEl.value, shiftKey = shiftEl.value || 'morning';
+  const adv = advanceToShiftWindow(shiftKey, prev.endDate || date, prev.endTime);
+  if (adv.date !== date) {
+    alert('ต่อเวลาในวันเดียวกันไม่ได้ — งานก่อนหน้าจบ ' + prev.endTime
+      + ' ซึ่งเลยเวลาทำงานของกะที่เลือกในวันนี้แล้ว จุดต่อเวลาที่ทำได้จริงคือ '
+      + fmtDateThai(parseISODate(adv.date)) + ' ' + adv.time);
+    return;
+  }
+  const fieldKey = shiftKey === 'both' ? bothModeStartFieldKey(adv.time) : (shiftKey === 'night' ? 'night' : 'morning');
+  const mEl = document.getElementById('pf-start-morning'), nEl = document.getElementById('pf-start-night');
+  if (mEl) mEl.value = fieldKey === 'morning' ? adv.time : '';
+  if (nEl) nEl.value = fieldKey === 'night' ? adv.time : '';
+  if (shiftKey === 'both') setPlanShiftButtons('both', fieldKey);
+  updatePlanEndTime();
+  refreshPlanFormContinueBtn();
+}
+
 // เติมวันที่/เวลาเริ่มให้เป็นท้ายคิวจริง — เฉพาะตอนเพิ่มงานใหม่
 // (แก้ไขงานเดิมต้องคงเวลาที่บันทึกไว้ ไม่ไปเปลี่ยนให้เอง)
 function refreshPlanFormAppendStart() {
   if (currentEditingPlanTaskId) return;
   const dateEl = document.getElementById('pf-date'), shiftEl = document.getElementById('pf-shift');
-  if (!dateEl || !shiftEl) return;
+  if (!dateEl || !shiftEl || !dateEl.value) return;
   const shiftKey = shiftEl.value || 'morning';
-  const q = planQueueEndFor(currentPlanWorkType, dateEl.value, shiftKey);
-  dateEl.value = q.date;
-  const fieldKey = shiftKey === 'both' ? bothModeStartFieldKey(q.time) : (shiftKey === 'night' ? 'night' : 'morning');
+  const shift = SHIFTS[shiftKey] || SHIFTS.morning;
+  const date = dateEl.value;
+  // ผู้ใช้เลือกวันมาเองแล้ว — ห้ามย้ายวันให้ (เดิมเขียนทับ ทำให้เลือกวันไม่ติดเลย)
+  // คิดแค่ "เวลาเริ่ม" ของวันนั้น: วันว่าง = ต้นกะ, วันมีงาน = ต่อท้ายงานสุดท้ายของวันนั้น
+  let time = shift.start;
+  if (planDayHasWork(currentPlanWorkType, date)) {
+    const p = planAppendStartFor(currentPlanWorkType, date, shiftKey);
+    time = p.date === date ? p.time : shift.start; // ล้นออกนอกวันแล้ว ใช้ต้นกะไว้ก่อน ให้ผู้ใช้ปรับ/กดปุ่มต่อเวลาเอง
+  }
+  const fieldKey = shiftKey === 'both' ? bothModeStartFieldKey(time) : (shiftKey === 'night' ? 'night' : 'morning');
   const mEl = document.getElementById('pf-start-morning'), nEl = document.getElementById('pf-start-night');
-  if (mEl) mEl.value = fieldKey === 'morning' ? q.time : '';
-  if (nEl) nEl.value = fieldKey === 'night' ? q.time : '';
+  if (mEl) mEl.value = fieldKey === 'morning' ? time : '';
+  if (nEl) nEl.value = fieldKey === 'night' ? time : '';
   if (shiftKey === 'both') setPlanShiftButtons('both', fieldKey);
+  // ย้ายวันเองแล้ว แถบเตือน "เลื่อนวันให้อัตโนมัติ" ของตอนเปิดฟอร์มไม่เกี่ยวอีก
+  const moved = document.getElementById('pf-queue-moved');
+  if (moved) { moved.style.display = 'none'; moved.innerHTML = ''; }
 }
 
 function findPrecedingPlanTask(task) {
@@ -5315,6 +5379,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   fillPlanRollReadonly(task ? task.rollSet : null, task ? task.rollColor : null, task ? task.rollIds : null, currentEditingPlanTaskId); // คำนวณเวลาเริ่ม/จบของแต่ละกะให้อัตโนมัติในตัว — คงรายการ Roll ที่เลือกไว้เดิมถ้าเป็นการแก้ไข
   // แก้ไขงานเดิม — คงวันที่จบที่บันทึกไว้ถ้ามีค่าจริง ไม่ทับด้วยค่าคำนวณใหม่ แต่ถ้าเดิมว่าง/เป็น "—" ให้ใช้ค่าที่คำนวณอัตโนมัติแทน
   if (task && task.endDate) document.getElementById('pf-enddate').value = task.endDate;
+  refreshPlanFormContinueBtn();
   document.getElementById('modal-overlay').classList.add('open');
 
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
