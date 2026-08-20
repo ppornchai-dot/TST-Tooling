@@ -3487,10 +3487,17 @@ function syncRollStatusWithProdBlock() {
   });
 }
 
+// shifts = กะที่ประเภทงานนั้นทำได้จริง — งานขัด Roll ทำเฉพาะกะเช้า ส่วน CNC ทำได้ทุกกะ
 const PLAN_WORKTYPE_META = {
-  cnc:    { label: 'แผนงาน CNC', field: 'grindTime', metricLabel: 'เวลาแต่ง Roll (นาที)' },
-  polish: { label: 'แผนงานขัด Roll', field: 'polishTime', metricLabel: 'เวลาขัด Roll (นาที)' },
+  cnc:    { label: 'แผนงาน CNC', field: 'grindTime', metricLabel: 'เวลาแต่ง Roll (นาที)', shifts: ['morning', 'night', 'both'] },
+  polish: { label: 'แผนงานขัด Roll', field: 'polishTime', metricLabel: 'เวลาขัด Roll (นาที)', shifts: ['morning'] },
 };
+function planWorkTypeShifts(workType) {
+  return (PLAN_WORKTYPE_META[workType] || {}).shifts || ['morning', 'night', 'both'];
+}
+function planWorkTypeAllowsShift(workType, shiftKey) {
+  return planWorkTypeShifts(workType).includes(shiftKey);
+}
 let currentPlanWorkType = 'cnc';
 let currentEditingPlanTaskId = null; // taskId ของงานที่กำลังแก้ไขอยู่ในฟอร์มวางแผน (null ถ้าเป็นการเพิ่มงานใหม่) — ใช้กันไม่ให้ตัวเองถูกนับเป็น "งานอื่น" ตอนหา Roll ที่ยังไม่ถูกวางแผน
 
@@ -3547,6 +3554,20 @@ function switchPlanShiftFilter(key) {
   renderCurrentPlanView();
 }
 
+// ซ่อนปุ่มกรองกะที่ประเภทงานนี้ไม่ได้ทำ (งานขัด Roll ทำเฉพาะกะเช้า จึงไม่มีกะดึก/2 กะ ให้กรอง)
+// ถ้ากำลังกรองกะที่หายไปอยู่ ให้กลับไปเป็น "ทั้งหมด" ไม่งั้นจะเห็นตารางว่างโดยไม่รู้สาเหตุ
+function refreshPlanShiftFilterButtons() {
+  const allowed = planWorkTypeShifts(currentPlanWorkType);
+  let resetFilter = false;
+  document.querySelectorAll('.plan-shift-btn').forEach(b => {
+    const key = b.getAttribute('data-shift') || '';
+    const show = !key || allowed.includes(key);
+    b.style.display = show ? '' : 'none';
+    if (!show && currentPlanShiftFilter === key) resetFilter = true;
+  });
+  if (resetFilter) switchPlanShiftFilter('');
+}
+
 function planMetricTime(rollId) {
   const r = toolingData.roll.find(x => x.id === rollId);
   const field = PLAN_WORKTYPE_META[currentPlanWorkType].field;
@@ -3555,6 +3576,7 @@ function planMetricTime(rollId) {
 
 function switchPlanWorkType(type) {
   currentPlanWorkType = type;
+  refreshPlanShiftFilterButtons();
   document.querySelectorAll('.plan-worktype-btn').forEach(b => {
     const active = b.getAttribute('data-worktype') === type;
     b.style.color = active ? 'var(--accent)' : '';
@@ -4296,7 +4318,7 @@ function planTaskFormFields() {
         <span id="pf-ot-hint-morning" style="font-size:11px;color:var(--text-3);">พัก 20 นาทีก่อนเริ่ม OT</span>
       </div>
     </div>
-    <div class="modal-row three">
+    <div class="modal-row three" id="pf-night-row">
       <div class="form-group"><label class="form-label">🌙 เริ่มงานกะดึก</label><input class="form-input" id="pf-start-night" type="text" inputmode="numeric" placeholder="เช่น 20:00" maxlength="5" onchange="normalizeTimeInput(this);updatePlanEndTime()"></div>
       <div class="form-group"><label class="form-label">จบงานกะดึก — คำนวณให้อัตโนมัติ</label><input class="form-input" id="pf-end-night" type="text" disabled></div>
       <div class="form-group"><label class="form-label">เวลา OT กะดึก (ชม.)</label><input class="form-input" id="pf-otcap-night" type="number" min="0" step="0.5" value="0" onchange="clampOtCapInput(this);updatePlanEndTime()">
@@ -4798,12 +4820,24 @@ function bothModeStartValue() {
 // bothStartKey ใช้เฉพาะตอน key === 'both' — ระบุว่าช่องไหน (morning/night) เป็นตัวป้อนค่าจริงของงาน "2 กะ" นี้ (ดู bothModeStartFieldKey) ค่าเริ่มต้นเป็น 'morning' ถ้าไม่ระบุ
 function setPlanShiftButtons(key, bothStartKey) {
   document.getElementById('pf-shift').value = key;
+  // ซ่อนปุ่มกะที่ประเภทงานนี้ไม่ได้ทำ (งานขัด Roll เหลือแต่กะเช้า)
+  const wt = currentEditingPlanTaskId
+    ? ((planTasks.find(t => t.id === currentEditingPlanTaskId) || {}).workType || currentPlanWorkType)
+    : currentPlanWorkType;
+  const allowed = planWorkTypeShifts(wt);
   document.querySelectorAll('.pf-shift-btn').forEach(b => {
-    const active = b.getAttribute('data-shift') === key;
+    const bk = b.getAttribute('data-shift');
+    // งานเก่าที่บันทึกกะนั้นไว้แล้ว ยังต้องเห็นปุ่มของกะตัวเอง ไม่งั้นจะดูเหมือนไม่มีกะ
+    b.style.display = (allowed.includes(bk) || bk === key) ? '' : 'none';
+    const active = bk === key;
     b.style.color = active ? 'var(--accent)' : '';
     b.style.borderColor = active ? 'var(--accent)' : '';
     b.style.background = active ? 'var(--accent-glow)' : '';
   });
+  // ช่องของกะดึกไม่ต้องแสดงเลยถ้าประเภทงานนี้ไม่มีกะดึก/2 กะ
+  const showNight = allowed.includes('night') || allowed.includes('both') || key === 'night' || key === 'both';
+  const nightRow = document.getElementById('pf-night-row');
+  if (nightRow) nightRow.style.display = showNight ? '' : 'none';
   // ช่องเริ่มงานกรอกเองได้เฉพาะช่องเดียวเสมอ: กะเช้า/กะดึกก็ตามกะที่เลือกตรงตัว ส่วน "2 กะ" ใช้ช่องไหนขึ้นกับว่าเวลาที่ต่อมา/กรอกไว้ตกอยู่ในช่วงกะเช้าหรือกะดึกจริงตามนาฬิกา (bothStartKey)
   // อีกช่องที่เหลือเป็นแค่ผลคำนวณโชว์ผล (ดู renderShiftSegmentFields) ไม่ให้ผู้ใช้กำหนดเอง
   const startMorningEl = document.getElementById('pf-start-morning');
@@ -4824,6 +4858,14 @@ function setPlanShiftButtons(key, bothStartKey) {
 // ผู้ใช้กดเลือกกะเอง — เติมเวลาเริ่มมาตรฐานของกะนั้นให้ ไม่ต่อเวลาจากงานก่อนหน้า (วางแผนของวันที่กดเพิ่มตรงๆ)
 // ไม่ทับค่าที่ผู้ใช้พิมพ์เองไว้แล้วในช่องนั้น
 function selectPlanShift(key) {
+  // กันตั้งกะที่ประเภทงานนี้ไม่ได้ทำ (เผื่อกดจากปุ่มที่ยังค้างอยู่/เรียกจากโค้ดอื่น)
+  const wt = currentEditingPlanTaskId
+    ? ((planTasks.find(t => t.id === currentEditingPlanTaskId) || {}).workType || currentPlanWorkType)
+    : currentPlanWorkType;
+  if (!planWorkTypeAllowsShift(wt, key)) {
+    alert(PLAN_WORKTYPE_META[wt].label + ' ทำเฉพาะ' + planWorkTypeShifts(wt).map(k => SHIFTS[k].label).join(' / ') + 'เท่านั้น');
+    return;
+  }
   const startMorningEl = document.getElementById('pf-start-morning');
   const startNightEl = document.getElementById('pf-start-night');
   if (key === 'both') {
@@ -5392,7 +5434,9 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   // chainFrom เหลือไว้ใช้เป็นค่าเริ่มต้นของ "ผู้ปฏิบัติงาน" อย่างเดียว เพราะมักเป็นคนเดิมกับงานล่าสุด
   const chainFrom = !task ? findLatestPlanTaskEnd(workType) : null;
   const pickedDate = task ? task.date : (presetDate || toISODate(planViewDate));
-  const defaultShift = (task ? task.shift : currentPlanShiftFilter) || 'morning';
+  let defaultShift = (task ? task.shift : currentPlanShiftFilter) || 'morning';
+  // งานใหม่ต้องเริ่มด้วยกะที่ประเภทงานนี้ทำได้ (งานขัด Roll = กะเช้าเท่านั้น)
+  if (!task && !planWorkTypeAllowsShift(workType, defaultShift)) defaultShift = planWorkTypeShifts(workType)[0] || 'morning';
   // งานใหม่ไปต่อ "ท้ายคิว" จริงของประเภทงานนี้ ซึ่งอาจเลยวันที่กดเพิ่มไปแล้ว
   const queueEnd = task ? null : planQueueEndFor(workType, pickedDate, defaultShift);
   const formDate = task ? task.date : queueEnd.date;
