@@ -5138,18 +5138,23 @@ function advanceToShiftWindow(shiftKey, date, time, otCaps) {
   return { date: next, time: shift.start };
 }
 
-function planAppendStartFor(workType, dateIso, shiftKey) {
-  const shift = SHIFTS[shiftKey] || SHIFTS.morning;
-  if (!dateIso) return { date: dateIso, time: shift.start };
+// งานสุดท้ายของวันนั้น (ประเภทงาน + กะที่เข้ากันได้) — null ถ้าวันนั้นไม่มีงาน
+// เทียบด้วยลำดับเวลาใน "วันทำงาน" (08:00 ไล่ไปจนถึง 05:00 ของเช้าวันถัดไป)
+// ไม่ใช่เวลานาฬิกาตรงๆ ไม่งั้นงานกะดึกที่จบหลังเที่ยงคืนจะถูกมองว่าจบเร็วสุดของวัน
+function planLastTaskOnDay(workType, dateIso, shiftKey) {
+  if (!dateIso) return null;
   const sameDay = planTasks.filter(t => t.workType === workType && t.date === dateIso
     && t.endTime && t.endTime !== '—'
     // กะเดียวกัน หรือฝ่ายใดฝ่ายหนึ่งเป็น "2 กะ" ซึ่งกินเวลาทั้งวันทำงาน
     && (t.shift === shiftKey || t.shift === 'both' || shiftKey === 'both'));
-  if (!sameDay.length) return { date: dateIso, time: shift.start };
-  // เทียบด้วยลำดับเวลาใน "วันทำงาน" (08:00 ไล่ไปจนถึง 05:00 ของเช้าวันถัดไป)
-  // ไม่ใช่เวลานาฬิกาตรงๆ ไม่งั้นงานกะดึกที่จบหลังเที่ยงคืนจะถูกมองว่าจบเร็วสุดของวัน
-  const last = sameDay.reduce((a, b) => historyDayOrderMin(b.endTime) > historyDayOrderMin(a.endTime) ? b : a);
-  if (!last.endTime) return { date: dateIso, time: shift.start };
+  if (!sameDay.length) return null;
+  return sameDay.reduce((a, b) => historyDayOrderMin(b.endTime) > historyDayOrderMin(a.endTime) ? b : a);
+}
+
+function planAppendStartFor(workType, dateIso, shiftKey) {
+  const shift = SHIFTS[shiftKey] || SHIFTS.morning;
+  const last = planLastTaskOnDay(workType, dateIso, shiftKey);
+  if (!last || !last.endTime) return { date: dateIso, time: shift.start };
   // ใช้ endDate จริงของงานนั้น งานที่จบข้ามเที่ยงคืนจะได้วันถูก ไม่ค้างอยู่วันเดิม
   // ยึดโควตา OT ของงานก่อนหน้า เพราะเป็นตัวที่ทำให้งานนั้นจบเลยหน้าต่างกะมาได้
   return advanceToShiftWindow(shiftKey, last.endDate || dateIso, last.endTime, last.otCapMinutesByShift);
@@ -5169,23 +5174,20 @@ function planDayHasWork(workType, dateIso) {
     && (t.date === dateIso || (t.date < dateIso && (t.endDate || t.date) >= dateIso)));
 }
 
+// จุดเริ่มของงานใหม่ = "ต่อจากงานสุดท้ายของวันที่กดเพิ่ม" เท่านั้น
+// ไม่ไปเทียบกับท้ายคิวรวมของประเภทงานอีกแล้ว — กดเพิ่มวันที่ 20 ก็ต้องได้วันที่ 20
+// จะเลื่อนเป็นวันถัดไปเฉพาะกรณีที่วันนั้นเต็มจริง (เลยหน้าต่างกะ + OT ที่มีแล้ว) ซึ่ง advanceToShiftWindow จัดการให้
 function planQueueEndFor(workType, dateIso, shiftKey) {
   const shift = SHIFTS[shiftKey] || SHIFTS.morning;
   // วันที่เลือกยังไม่มีงานเลย → เริ่มต้นกะของวันนั้นเสมอ (กะเช้า = 08:00)
-  // ไม่ต้องไปต่อท้ายคิวรวม เพราะวันนั้นไม่มีงานให้แทรกอยู่แล้ว
   if (!planDayHasWork(workType, dateIso)) return { date: dateIso, time: shift.start };
   const day = planAppendStartFor(workType, dateIso, shiftKey);
-  let best = day;
-  // ท้ายคิวรวมของประเภทงานนี้ — อาจเลยวันที่กดเพิ่มไปแล้ว ต้องไม่เริ่มก่อนจุดนี้เด็ดขาด
-  const last = findLatestPlanTaskEnd(workType);
-  if (last && last.endDate && last.endTime) {
-    const fromChain = advanceToShiftWindow(shiftKey, last.endDate, last.endTime, last.otCapMinutesByShift);
-    if ((fromChain.date + ' ' + fromChain.time) > (best.date + ' ' + best.time)) best = fromChain;
-  }
   // ข้ามวันหยุดบริษัท/วันอาทิตย์ (เกณฑ์เดียวกับที่ autoFixPlanSequencing ใช้)
-  const fixed = nextValidPlanContinuePoint(shiftKey, best.date, best.time);
-  // nextValidPlanContinuePoint อาจย้ายวันแล้วตั้งเวลาเป็น 08:00 — ยืนยันอีกครั้งว่าอยู่ในหน้าต่างกะ
-  return advanceToShiftWindow(shiftKey, fixed.date, fixed.time, last && last.otCapMinutesByShift);
+  const fixed = nextValidPlanContinuePoint(shiftKey, day.date, day.time);
+  // ตรวจหน้าต่างกะอีกครั้งหลัง nextValidPlanContinuePoint แต่ต้องส่งโควตา OT ของงานสุดท้ายไปด้วย
+  // ถ้าลืมส่ง จุดที่อยู่ในช่วง OT จะถูกตีว่าเลยเวลาทำงานแล้วเด้งไปวันถัดไป (เคยพลาดมาแล้ว)
+  const lastCaps = (planLastTaskOnDay(workType, dateIso, shiftKey) || {}).otCapMinutesByShift;
+  return advanceToShiftWindow(shiftKey, fixed.date, fixed.time, lastCaps);
 }
 
 // งานที่วางแผนไว้ก่อนหน้า "ในวันเดียวกัน" กับที่ฟอร์มเลือกอยู่ — ตัวที่จบช้าสุด
@@ -5544,8 +5546,8 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     movedNote.style.display = moved ? '' : 'none';
     movedNote.innerHTML = moved
       ? `เลื่อนไปวันที่ <b>${escapeHtmlAttr(fmtDateThai(parseISODate(formDate)))} ${escapeHtmlAttr(startValue)}</b> ให้อัตโนมัติ
-         เพราะคิว${escapeHtmlAttr(workTypeLabel)}ที่วางไว้ยาวเลยวันที่ ${escapeHtmlAttr(fmtDateThai(parseISODate(pickedDate)))} ไปแล้ว
-         — ถ้าวางไว้วันที่กดจะกลายเป็นแทรกกลางคิวแล้วดันงานเดิมทั้งหมด เปลี่ยนวัน/เวลาเองได้ถ้าต้องการ`
+         เพราะวันที่ ${escapeHtmlAttr(fmtDateThai(parseISODate(pickedDate)))} วางงานเต็มเวลาทำงานของกะแล้ว (รวม OT ที่ตั้งไว้)
+         — ถ้าจะวางเพิ่มในวันเดิม ให้เปลี่ยนวันกลับแล้วเพิ่มเวลา OT เอง`
       : '';
   }
   if (defaultShift === 'both') {
