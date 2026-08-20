@@ -2129,7 +2129,10 @@ function openInUseRollPicker() {
         <h3>เลือกชุด Roll ที่กำลังใช้งาน</h3>
         <button class="modal-close" onclick="closeInUseRollPicker()">✕</button>
       </div>
+      <!-- แถบเลือกเครื่องกับช่องค้นหาอยู่นอก .modal-body ที่เลื่อน (flex:0 0 auto) จึงค้างอยู่ตลอด
+           เลื่อนดูรายการชุด Roll ยาวๆ แล้วยังเห็นว่ากำลังตั้งของเครื่องไหนอยู่ และสลับเครื่องได้ทันที -->
       <div style="flex:0 0 auto;padding:14px 22px 0;">
+        <div id="inuse-picker-tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;"></div>
         <input class="form-input" id="inuse-picker-search" placeholder="ค้นหา Size Roll เช่น 75x38 หรือ Forming"
                oninput="renderInUseRollPicker()" autocomplete="off">
       </div>
@@ -2205,24 +2208,25 @@ function renderInUseRollPicker() {
   const columns = cats.map(c => [c, bucket(c)]);
   if (other.length) columns.push(['อื่นๆ', other]);
 
+  // แถบเลือกเครื่องอยู่คนละที่กับตัวรายการ (นอกกล่องที่เลื่อน) จึงเรนเดอร์แยกกัน
+  const tabs = document.getElementById('inuse-picker-tabs');
+  if (tabs) tabs.innerHTML = machines.map(m => {
+    const on = m === inUsePickerMachine;
+    // นับว่าเครื่องนี้มีชุดครบกี่หมวดแล้ว เห็นภาพรวมได้จากแท็บโดยไม่ต้องกดเข้าไปดูทีละเครื่อง
+    const filled = cats.filter(c => inUseSetsForMachine(m)
+      .some(s => (parseSizeRollName(s).category || '') === c && inUseColorOnMachine(s, m))).length;
+    return `<button onclick="${jsCallAttr('switchInUsePickerMachine', m)}"
+      style="display:inline-flex;align-items:center;gap:6px;padding:6px 13px;border-radius:99px;cursor:pointer;
+             font-size:13px;font-weight:800;border:1px solid ${on ? 'var(--accent)' : 'var(--border)'};
+             background:${on ? 'var(--accent)' : 'transparent'};color:${on ? '#fff' : 'var(--text-2)'};">
+      ${escapeHtmlAttr(machineLabel(m))}
+      <span style="font-size:11px;font-weight:700;padding:0 6px;border-radius:99px;
+                   background:${on ? 'rgba(255,255,255,.22)' : 'var(--bg-panel)'};
+                   color:${on ? '#fff' : (filled === 3 ? 'var(--green)' : 'var(--text-3)')};">${filled}/3</span>
+    </button>`;
+  }).join('');
+
   body.innerHTML = `
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
-      ${machines.map(m => {
-        const on = m === inUsePickerMachine;
-        // นับว่าเครื่องนี้มีชุดครบกี่หมวดแล้ว เห็นภาพรวมได้จากแท็บโดยไม่ต้องกดเข้าไปดูทีละเครื่อง
-        const filled = cats.filter(c => inUseSetsForMachine(m)
-          .some(s => (parseSizeRollName(s).category || '') === c && inUseColorOnMachine(s, m))).length;
-        return `<button onclick="${jsCallAttr('switchInUsePickerMachine', m)}"
-          style="display:inline-flex;align-items:center;gap:6px;padding:6px 13px;border-radius:99px;cursor:pointer;
-                 font-size:13px;font-weight:800;border:1px solid ${on ? 'var(--accent)' : 'var(--border)'};
-                 background:${on ? 'var(--accent)' : 'transparent'};color:${on ? '#fff' : 'var(--text-2)'};">
-          ${escapeHtmlAttr(machineLabel(m))}
-          <span style="font-size:11px;font-weight:700;padding:0 6px;border-radius:99px;
-                       background:${on ? 'rgba(255,255,255,.22)' : 'var(--bg-panel)'};
-                       color:${on ? '#fff' : (filled === 3 ? 'var(--green)' : 'var(--text-3)')};">${filled}/3</span>
-        </button>`;
-      }).join('')}
-    </div>
     <div style="font-size:12px;color:var(--text-3);line-height:1.6;margin-bottom:${inUsePickerNotice ? '8' : '12'}px;">
       แสดงเฉพาะ Size Roll ที่ผูกกับ <b style="color:var(--text-1);">${escapeHtmlAttr(machineLabel(inUsePickerMachine))}</b>
       — แตะสีเพื่อตั้งว่าชุดนั้น <b style="color:var(--inuse);">กำลังใช้งานที่เครื่องนี้</b> แตะสีเดิมซ้ำเพื่อยกเลิก<br>
