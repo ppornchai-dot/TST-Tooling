@@ -4000,16 +4000,31 @@ function planTaskDayParts(t) {
   return groups.map((g, i) => ({ ...t, ...g, __origin: t, __partIndex: i, __partCount: groups.length }));
 }
 
+// งานตามแผนของทุกวัน หลังตัดงานที่ทำข้ามวันเป็น "ส่วนของแต่ละวัน" แล้ว → Map<iso, parts[]>
+// ทุกมุมมอง (รายวัน/สัปดาห์/เดือน) ต้องอ่านจากตัวนี้ตัวเดียว
+// เดิมมุมมองรายวันตัดเป็นส่วนรายวัน แต่รายสัปดาห์/รายเดือนใช้งานก้อนเต็มแล้วลงเฉพาะวันเจ้าของงาน
+// งานที่ทำข้ามวันจึงโผล่ 2 วันในรายวัน แต่โผล่วันเดียวในรายเดือน — เป็นเหตุที่ตัวเลขไม่ตรงกัน
+// คิดครั้งเดียวแล้วแจกตามวัน เพราะ planTaskDayParts() ต้องคำนวณตารางเวลาใหม่ ราคาแพงเกินจะเรียกซ้ำทุกวันในปฏิทิน
+function planDayPartsByDate() {
+  const map = new Map();
+  planTasks
+    .filter(t => matchesCurrentPlanFilter(t))
+    .flatMap(t => planTaskDayParts(t))
+    .forEach(p => {
+      const d = taskDisplayDate(p);
+      if (!map.has(d)) map.set(d, []);
+      map.get(d).push(p);
+    });
+  map.forEach(list => list.sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime)));
+  return map;
+}
+
 function renderPlanDay() {
   const iso = toISODate(planViewDate);
   const meta = PLAN_WORKTYPE_META[currentPlanWorkType];
   document.getElementById('plan-daterange-label').textContent = fmtDateThai(planViewDate);
   document.getElementById('plan-day-title').textContent = meta.label + ' — วันที่ ' + fmtDateThai(planViewDate);
-  const tasks = planTasks
-    .filter(t => matchesCurrentPlanFilter(t))
-    .flatMap(t => planTaskDayParts(t))
-    .filter(p => taskDisplayDate(p) === iso)
-    .sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
+  const tasks = planDayPartsByDate().get(iso) || [];
   document.getElementById('plan-day-tbody').innerHTML = tasks.map((t, i) => {
     const expandable = (t.rollIds || []).length > 1;
     const expanded = expandable && expandedPlanDayTaskId === t.id;
@@ -4046,8 +4061,11 @@ function renderPlanDay() {
 function planCalendarChip(t, editable, extraStyle) {
   const color = planRollColorLabel(t);
   const hasColor = color && color !== '—';
-  const sub = (hasColor ? color + ' · ' : '') + t.rollId;
-  const fullTitle = `${SHIFTS[t.shift]?.label || ''} — ${t.rollSet}${hasColor ? ' · ' + color : ''} — ${t.rollId} — ${t.rollName}`;
+  // งานที่ทำข้ามวันถูกตัดเป็นส่วนของแต่ละวัน — บอกว่าเป็นส่วนที่เท่าไร ไม่งั้นดูเหมือนงานซ้ำสองวัน
+  const partTag = t.__partCount > 1 ? ` (${t.__partIndex + 1}/${t.__partCount})` : '';
+  const sub = (hasColor ? color + ' · ' : '') + t.rollId + partTag;
+  const fullTitle = `${SHIFTS[t.shift]?.label || ''} — ${t.rollSet}${hasColor ? ' · ' + color : ''} — ${t.rollId} — ${t.rollName}`
+    + (partTag ? ` — ส่วนที่ ${t.__partIndex + 1}/${t.__partCount} ของงานที่ทำข้ามวัน (${t.startTime}–${t.endTime})` : '');
   // โหมดลบ: คลิกที่งานคือติ๊กเลือก/ยกเลิกเลือก (ไม่เปิดฟอร์มแก้ไข) และมีเครื่องหมายบอกว่าเลือกอยู่
   if (planDeleteMode) {
     const picked = planDeleteSelected.has(t.id);
@@ -4068,9 +4086,10 @@ function renderPlanWeek() {
     `<th>${THAI_WEEKDAYS_MON_FIRST[(d.getDay()+6)%7]}<br><span class="muted" style="font-weight:400;">${fmtDateThaiShort(d)}</span></th>`
   ).join('');
 
+  const partsByDate = planDayPartsByDate(); // เกณฑ์เดียวกับมุมมองรายวัน/รายเดือน
   document.getElementById('plan-week-tbody').innerHTML = days.map(d => {
     const iso = toISODate(d);
-    const tasks = planTasks.filter(t => taskDisplayDate(t) === iso && matchesCurrentPlanFilter(t)).sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
+    const tasks = partsByDate.get(iso) || [];
     const editable = canEditPlan();
     const items = tasks.map(t => planDragWrap(t, iso,
       `${planCalendarChip(t, editable, 'flex:1;min-width:0;')}${editable ? `<button title="ลบ" onclick="deletePlanTask('${t.id}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:11px;padding:0;flex:0 0 auto;">✕</button>` : ''}`,
@@ -4097,6 +4116,7 @@ function renderPlanMonth() {
   const leadingBlanks = firstWeekday;
 
   const editable = canEditPlan();
+  const partsByDate = planDayPartsByDate(); // เกณฑ์เดียวกับมุมมองรายวัน/รายสัปดาห์
   let html = '';
   for (let i = 0; i < leadingBlanks; i++) {
     html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"></div>`;
@@ -4107,7 +4127,7 @@ function renderPlanMonth() {
     const holidayName = companyHolidays.find(h => h.date === iso)?.name || null;
     const isSunday = d.getDay() === 0;
     const dayOffBg = (isSunday || holidayName) ? 'background:#FDF3D8;' : '';
-    const tasks = planTasks.filter(t => taskDisplayDate(t) === iso && matchesCurrentPlanFilter(t)).sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
+    const tasks = partsByDate.get(iso) || [];
     const chips = tasks.map(t => planDragWrap(t, iso, planCalendarChip(t, editable, 'flex:1;min-width:0;'), editable)).join('');
     html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;${dayOffBg}" title="${holidayName ? escapeHtmlAttr(holidayName) : ''}">
       <div style="display:flex;justify-content:space-between;align-items:center;">
