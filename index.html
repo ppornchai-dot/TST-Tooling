@@ -4987,7 +4987,19 @@ function planAppendStartFor(workType, dateIso, shiftKey) {
 // (เช่นวันที่ 20 มีงานจบ 14:20 ของวันที่ 21) ใส่งานใหม่ลงวันที่ 20 เท่ากับแทรกกลางคิว
 // แล้ว autoFixPlanSequencing จะไปดันงานที่อยู่หลังจุดนั้นทั้งหมด — เป็นอาการ "แทรกงานก่อนหน้า"
 // จึงเลือกจุดที่ "ช้ากว่า" ระหว่างจุดต่อคิวของวันนั้น กับท้ายคิวรวมของประเภทงานนี้
+// วันนั้นมีงานของประเภทนี้อยู่จริงไหม — นับงานที่ "กินเวลาคาบวันนั้น" ด้วย
+// (งานที่เริ่มวันก่อนแล้วจบวันนี้ ก็ถือว่าวันนี้ไม่ว่าง ไม่งั้นจะไปเริ่ม 08:00 ทับงานนั้น)
+function planDayHasWork(workType, dateIso) {
+  if (!dateIso) return false;
+  return planTasks.some(t => t.workType === workType && t.endTime && t.endTime !== '—'
+    && (t.date === dateIso || (t.date < dateIso && (t.endDate || t.date) >= dateIso)));
+}
+
 function planQueueEndFor(workType, dateIso, shiftKey) {
+  const shift = SHIFTS[shiftKey] || SHIFTS.morning;
+  // วันที่เลือกยังไม่มีงานเลย → เริ่มต้นกะของวันนั้นเสมอ (กะเช้า = 08:00)
+  // ไม่ต้องไปต่อท้ายคิวรวม เพราะวันนั้นไม่มีงานให้แทรกอยู่แล้ว
+  if (!planDayHasWork(workType, dateIso)) return { date: dateIso, time: shift.start };
   const day = planAppendStartFor(workType, dateIso, shiftKey);
   let best = day;
   // ท้ายคิวรวมของประเภทงานนี้ — อาจเลยวันที่กดเพิ่มไปแล้ว ต้องไม่เริ่มก่อนจุดนี้เด็ดขาด
