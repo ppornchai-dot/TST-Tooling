@@ -5142,6 +5142,15 @@ function planMinToHHMM(min) {
 // เวลา OT ต่อท้ายหน้าต่างกะปกติ (พัก OT_BREAK_MIN นาทีแรกโดยหักจากโควตา ดู advancePlanCursor)
 // ถ้าไม่นับ OT ด้วย งานที่จบ 17:00 พร้อม OT 6 ชม. จะถูกมองว่า "เลยเวลาทำงานของวันนี้แล้ว" ทั้งที่ยังทำต่อได้
 const OT_WINDOW_MAX_MIN = 720; // กันค่า OT ที่กรอกเกินจริงจนลามไปทับกะถัดไป
+// เวลาทำงานปกติของกะหนึ่งต่อวัน (นาที) หักเวลาพักแล้ว — ใช้ตัดสินว่างานหนึ่ง "ทำจบได้ในวันเดียว" ไหม
+function shiftDailyCapacityMin(shiftKey) {
+  const s = SHIFTS[shiftKey] || SHIFTS.morning;
+  const win = (s.windows || []).reduce((sum, w) =>
+    sum + (w.endMin > w.startMin ? (w.endMin - w.startMin) : (1440 - w.startMin + w.endMin)), 0);
+  const brk = (s.breaks || []).reduce((sum, b) => sum + Math.max(0, b.endMin - b.startMin), 0);
+  return Math.max(0, win - brk);
+}
+
 function shiftAllowsMinute(shiftKey, min, otCaps) {
   const shift = SHIFTS[shiftKey] || SHIFTS.morning;
   const caps = otCaps || {};
@@ -5608,7 +5617,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
 
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const g = id => (document.getElementById(id)||{}).value.trim();
-    const date = g('pf-date');
+    let date = g('pf-date'); // ปรับได้ ถ้าเวลาที่เหลือในวันไม่พอแล้วต้องยกงานไปวันถัดไปทั้งก้อน
     const setName = document.getElementById('pf-rollset').value;
     const colorKey = document.getElementById('pf-rollcolor').value;
     const rolls = getSelectedRollsForPlan();
@@ -5625,12 +5634,30 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     const hasPieceOverride = Object.keys(pieceOverride).length > 0;
     const totalTime = pieceMinutesList.reduce((a, b) => a + b, 0);
     const shiftKey = document.getElementById('pf-shift').value || 'morning';
-    const startTime = shiftKey === 'night' ? g('pf-start-night') : shiftKey === 'both' ? bothModeStartValue() : g('pf-start-morning');
+    let startTime = shiftKey === 'night' ? g('pf-start-night') : shiftKey === 'both' ? bothModeStartValue() : g('pf-start-morning');
     const otCapMinutesByShift = getOtCapMinutes();
+    // เวลาที่เหลือในวันไม่พอ แต่ตัวงานทำจบได้ในวันเดียว → ยกไปเริ่มต้นกะของวันทำงานถัดไปทั้งก้อน
+    // ไม่ปล่อยให้งานเดียวคาบสองวัน (เช่นเริ่ม 16:30 เหลือ 30 นาที แล้วที่เหลือไปโผล่วันถัดไป)
+    // งานที่ยาวเกินความจุของวันอยู่แล้วไม่เข้าเงื่อนไขนี้ — ต้องคาบวันจริงๆ ปล่อยให้ตัวตัดวันจัดการตามเดิม
+    let movedToNextDay = null;
+    if (mode !== 'edit') {
+      const cap = shiftDailyCapacityMin(shiftKey) + Math.max(0, (otCapMinutesByShift[shiftKey === 'night' ? 'night' : 'morning'] || 0));
+      if (totalTime > 0 && totalTime <= cap) {
+        const probe = computePlanEnd(date, startTime, totalTime, shiftKey, otCapMinutesByShift);
+        if (probe.date && probe.date !== date) {
+          let nd = addDaysIso(date, 1), guard = 0;
+          while (isPlanDayOff(nd) && ++guard < 60) nd = addDaysIso(nd, 1);
+          movedToNextDay = { from: date + ' ' + startTime, to: nd };
+          date = nd;
+          startTime = SHIFTS[shiftKey].start;
+        }
+      }
+    }
     // คำนวณวันที่/เวลาจบงาน + OT ซ้ำตรงนี้เสมอ กันกรณีช่อง "วันที่จบงาน" บนหน้าจอยังไม่ทันอัปเดตตามค่าล่าสุด
     const computedEnd = computePlanEnd(date, startTime, totalTime, shiftKey, otCapMinutesByShift);
     const endTime = computedEnd.time;
-    const endDate = g('pf-enddate') || computedEnd.date || date;
+    // ถ้าย้ายวันเริ่มไปแล้ว ค่า "วันที่จบงาน" บนหน้าจอเป็นของวันเดิม ใช้ค่าที่คำนวณใหม่เท่านั้น
+    const endDate = movedToNextDay ? (computedEnd.date || date) : (g('pf-enddate') || computedEnd.date || date);
     // เก็บเป็น "ตำแหน่งลำดับ" ในรายการที่พบ (ไม่ใช่ r.id ตรงๆ) เพราะ Roll หลายตัวอาจมี id/ชื่อซ้ำกันได้ ตำแหน่งลำดับจะระบุตัวที่เลือกได้แม่นยำกว่า
     const selectedIndexes = ((document.getElementById('pf-rollids') || {}).value || '').split(',').filter(Boolean).map(Number);
     const data = {
@@ -5688,6 +5715,12 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     mergeAdjacentPlanTasks();
     persistState();
     renderCurrentPlanView();
+    // ย้ายวันให้เอง ต้องบอกด้วย ไม่ให้ผู้ใช้ไปเจอเองว่างานไม่ได้อยู่วันที่กด
+    if (movedToNextDay) {
+      alert('เวลาที่เหลือของวันไม่พอสำหรับงานนี้ (' + totalTime + ' นาที) — ยกไปวางวันที่ '
+        + fmtDateThai(parseISODate(movedToNextDay.to)) + ' ' + SHIFTS[shiftKey].start + ' ทั้งงานแล้ว'
+        + '\nถ้าต้องการให้ทำต่อในวันเดิม ให้กดแก้ไขงานแล้วเพิ่มเวลา OT ของวันนั้น');
+    }
     const btn = this;
     const orig = btn.innerHTML;
     btn.innerHTML = '✓ บันทึกแล้ว';
