@@ -1120,6 +1120,7 @@ canvas{display:block;}
             <span style="width:11px;height:11px;border-radius:50%;background:var(--red);flex-shrink:0;"></span>ชุด Roll รอแต่ง</span>
           <span style="margin-left:auto;font-size:12px;color:var(--text-3);">
             <span id="dash-roll-waitdress-count" style="font-weight:700;color:var(--red);">0</span> ชุด
+            <span style="font-size:11px;" title="ชุดที่วางแผนแต่งไว้แล้วจะไปอยู่ในการ์ด &quot;ชุด Roll กำลังแต่ง&quot; ไม่นับซ้ำที่นี่">· ยังไม่ได้วางแผน</span>
           </span>
         </div>
         <div id="dash-roll-waitdress-list" style="padding:12px 14px;"></div>
@@ -1131,6 +1132,7 @@ canvas{display:block;}
             <span style="width:11px;height:11px;border-radius:50%;background:var(--st-waitpolish);flex-shrink:0;"></span>ชุด Roll รอขัด</span>
           <span style="margin-left:auto;font-size:12px;color:var(--text-3);">
             <span id="dash-roll-waitpolish-count" style="font-weight:700;color:var(--st-waitpolish);">0</span> ชุด
+            <span style="font-size:11px;" title="ชุดที่วางแผนขัดไว้แล้วจะไปอยู่ในการ์ด &quot;ชุด Roll กำลังขัด&quot; ไม่นับซ้ำที่นี่">· ยังไม่ได้วางแผน</span>
           </span>
         </div>
         <div id="dash-roll-waitpolish-list" style="padding:12px 14px;"></div>
@@ -2137,16 +2139,30 @@ function renderDashboardInUseRoll() {
     'ไม่มีชุด Roll ที่กำลังใช้งานอยู่ตอนนี้', 'var(--inuse)', 'var(--inuse-dim)');
   renderDashboardRollStatusCard('dash-roll-ready-list', 'dash-roll-ready-count', 'ready',
     'ไม่มีชุด Roll ที่พร้อมใช้งานตอนนี้', 'var(--green)', 'var(--green-dim)');
+  // ส่งประเภทงานไปด้วย เพื่อตัดชุดที่วางแผนแต่ง/ขัดไว้แล้วออกจากรายการ "รอ"
   renderDashboardRollStatusCard('dash-roll-waitdress-list', 'dash-roll-waitdress-count', 'waitdress',
-    'ไม่มีชุด Roll ที่รอแต่งตอนนี้', 'var(--red)', 'var(--red-dim)');
+    'ไม่มีชุด Roll ที่รอแต่งตอนนี้ (ที่ยังไม่ได้วางแผน)', 'var(--red)', 'var(--red-dim)', 'cnc');
   renderDashboardRollStatusCard('dash-roll-waitpolish-list', 'dash-roll-waitpolish-count', 'waitpolish',
-    'ไม่มีชุด Roll ที่รอขัดตอนนี้', 'var(--st-waitpolish)', 'var(--st-waitpolish-dim)');
+    'ไม่มีชุด Roll ที่รอขัดตอนนี้ (ที่ยังไม่ได้วางแผน)', 'var(--st-waitpolish)', 'var(--st-waitpolish-dim)', 'polish');
 }
 
-function renderDashboardRollStatusCard(listId, countId, status, emptyText, badgeColor, rowBg) {
+// ชุด Roll (set|ชุดสี) ที่ถูกวางแผนงานประเภทนั้นไว้แล้วและยังทำไม่จบ
+// ใช้เกณฑ์เดียวกับการ์ด "กำลังแต่ง/กำลังขัด" (getWorkingRollEntries) สองการ์ดจึงไม่ซ้อนกันเอง
+// งานที่ทำจบครบแล้วไม่นับ — ชุดนั้นถือว่ายังรอคิวอยู่จนกว่าจะเปลี่ยนสถานะในทะเบียน
+function plannedRollKeySet(workType) {
+  const set = new Set();
+  if (!workType) return set;
+  getWorkingRollEntries(workType).forEach(e => set.add(e.set + '|' + e.colorKey));
+  return set;
+}
+
+function renderDashboardRollStatusCard(listId, countId, status, emptyText, badgeColor, rowBg, plannedWorkType) {
   const el = document.getElementById(listId);
   if (!el) return;
-  const entries = getRollColorEntriesByStatus(status);
+  // รอแต่ง/รอขัด ที่วางแผนไปแล้วไม่ต้องโชว์ซ้ำ — ไปอยู่ในการ์ดกำลังแต่ง/กำลังขัดแล้ว
+  const skip = plannedRollKeySet(plannedWorkType);
+  const entries = getRollColorEntriesByStatus(status)
+    .filter(e => !skip.has(e.set + '|' + (e.colorKey || NO_COLOR_KEY)));
   const countEl = document.getElementById(countId);
   if (countEl) countEl.textContent = entries.length;
   if (!entries.length) {
