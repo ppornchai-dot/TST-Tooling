@@ -4757,6 +4757,8 @@ function setPlanOtherWork(on) {
   planFormOtherWork = !!on;
   const show = el => { const e = document.getElementById(el); if (e) e.style.display = planFormOtherWork ? 'none' : ''; };
   ['pf-row-rollset', 'pf-row-rollids', 'pf-row-plantime'].forEach(show);
+  // สลับโหมดแล้วล้างกรอบแดงที่อาจค้างจากการเตือนครั้งก่อน
+  clearPlanFieldWarn('pf-rollset'); clearPlanFieldWarn('pf-rollcolor');
   const otherRow = document.getElementById('pf-other-row');
   if (otherRow) otherRow.style.display = planFormOtherWork ? '' : 'none';
   const btn = document.getElementById('pf-other-toggle');
@@ -5331,8 +5333,12 @@ function updatePlanEndTime() {
   });
 }
 
+// ล้างกรอบแดงที่ขึ้นตอนเตือนว่ายังไม่ได้เลือก ทันทีที่ผู้ใช้เลือกค่าแล้ว
+function clearPlanFieldWarn(id) { const e = document.getElementById(id); if (e) e.style.borderColor = ''; }
+
 function onPlanRollSetChange() {
   const setName = document.getElementById('pf-rollset').value;
+  clearPlanFieldWarn('pf-rollset');
   populatePlanRollColorSelect(setName, null);
   fillPlanRollReadonly(setName, null, null, currentEditingPlanTaskId);
 }
@@ -5340,6 +5346,7 @@ function onPlanRollSetChange() {
 function onPlanRollColorChange() {
   const setName = document.getElementById('pf-rollset').value;
   const colorKey = document.getElementById('pf-rollcolor').value;
+  clearPlanFieldWarn('pf-rollcolor');
   fillPlanRollReadonly(setName, colorKey, null, currentEditingPlanTaskId);
 }
 
@@ -5868,8 +5875,24 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     if (other) {
       if (!other.name) { alert('กรุณากรอกชื่องาน'); return; }
       if (!other.total) { alert('กรุณากรอกเวลาต่อชิ้น (นาที)'); return; }
-    } else if (!setName || !rolls.length) {
-      alert('กรุณาเลือกวันที่ และเลือก Roll อย่างน้อย 1 รายการ'); return;
+    } else {
+      // บอกให้ตรงว่าขาดช่องไหน และถ้าเป็นงานที่ไม่เกี่ยวกับ Roll ให้ชี้ไปที่ปุ่มงานอื่นๆ
+      const focusField = id => { const e = document.getElementById(id); if (e) { e.style.borderColor = 'var(--red)'; e.focus(); } };
+      if (!setName) {
+        focusField('pf-rollset');
+        alert('ยังไม่ได้เลือก Size Roll — เลือก Size Roll และชุดสี Roll ก่อนบันทึก'
+          + '\nถ้างานนี้ไม่ใช่งานแต่ง/ขัด Roll ให้กดปุ่ม "🛠 งานอื่นๆ ที่ไม่ใช่แต่ง/ขัด Roll" ด้านบน แล้วกรอกชื่องานกับเวลาเอง');
+        return;
+      }
+      if (!colorKey) {
+        focusField('pf-rollcolor');
+        alert('ยังไม่ได้เลือกชุดสี Roll ของ ' + setName + ' — เลือกชุดสีก่อนบันทึก');
+        return;
+      }
+      if (!rolls.length) {
+        alert('ยังไม่ได้เลือกรายการ Roll — เลือก Roll อย่างน้อย 1 รายการก่อนบันทึก');
+        return;
+      }
     }
     const field = PLAN_WORKTYPE_META[workType].field;
     // เวลาต่อชิ้นที่แก้เองในฟอร์ม (ถ้ามี) ชนะค่าทะเบียน — ใช้ทั้งคิดเวลารวม ตัดวัน และบันทึกลงงาน
