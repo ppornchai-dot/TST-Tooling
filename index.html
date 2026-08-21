@@ -349,6 +349,9 @@ table.daily-tech-view > tbody > tr > td:nth-child(10):not([colspan]){display:non
 .chip-brown{background:rgba(169,117,43,0.10);color:#A9752B;}
 .chip-brown::before{background:#A9752B;}
 /* ป้ายงานในปฏิทินแผนงาน — ยืมสีของกะจาก .chip-* แต่จัดเป็นบล็อก 2 บรรทัด (Size Roll / ชุดสี · จำนวน) อ่านง่ายกว่าทรงแคปซูลที่ข้อความยาวแล้วตัดบรรทัดในตัวเอง */
+/* "รอทำ" — ยังไม่เริ่ม จึงทำให้ดูจางกว่าสถานะอื่น (พื้นเทา ขอบประ) ให้แยกออกจากงานที่มีความคืบหน้าแล้ว */
+.chip-wait{background:var(--bg-panel);color:var(--text-2);box-shadow:inset 0 0 0 1px var(--border);}
+.chip-wait::before{background:var(--text-3);}
 .chip.plan-cal-chip{display:block;border-radius:6px;padding:4px 7px;font-size:10px;line-height:1.35;text-align:left;letter-spacing:0;}
 .chip.plan-cal-chip::before{display:none;}
 .chip.plan-cal-chip .pcc-set{display:block;font-weight:800;}
@@ -1564,6 +1567,15 @@ canvas{display:block;}
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="both" onclick="switchPlanShiftFilter('both')">🌤🌙 2 กะ</button>
         <button class="btn btn-ghost btn-sm plan-edit-only" style="margin-left:auto;" onclick="openCompanyHolidaysModal()">📅 วันหยุดบริษัท</button>
         <button class="btn btn-ghost btn-sm plan-edit-only" style="color:var(--red);border-color:var(--red);" onclick="togglePlanDeleteMode()">🗑 ลบแผนงาน</button>
+      </div>
+
+      <!-- คำอธิบายสีของงานในปฏิทิน — สีบอก "ความคืบหน้า" ไม่ใช่กะ (กะดูได้จากทูลทิปของงาน) -->
+      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:12px;font-size:11px;color:var(--text-3);">
+        <span>สีของงาน:</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:3px;background:var(--green);"></span>ทำแล้ว</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:3px;background:var(--accent);"></span>กำลังทำ</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:3px;background:var(--bg-panel);box-shadow:inset 0 0 0 1px var(--border);"></span>รอทำ</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:3px;background:var(--red);"></span>ค้าง (เลยวันแล้วยังไม่เสร็จ)</span>
       </div>
 
       <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
@@ -4207,20 +4219,47 @@ function renderPlanDay() {
 
 // ป้ายงานในปฏิทินแผนงาน (รายสัปดาห์/รายเดือน) — โชว์ Size Roll + ชุดสี + จำนวน Roll
 // เพราะเดิมโชว์แค่ "5 Roll" ซึ่งแยกไม่ออกว่าเป็นชุดไหน ยาวเกินช่องก็ตัดด้วย ... และดูเต็มๆ ได้จากการชี้ค้าง
+// สถานะความคืบหน้าของงานตามแผนหนึ่งงาน — ใช้ระบายสีในปฏิทินวางแผน
+// เกณฑ์เดียวกับการ์ด "กำลังแต่ง/กำลังขัด" หน้า Dashboard (getWorkingRollEntries)
+// ลำดับความสำคัญ: ทำแล้ว > ค้าง (เลยวันแล้วยังไม่เสร็จ) > กำลังทำ > รอทำ
+const PLAN_PROGRESS_META = {
+  done:  { label: 'ทำแล้ว',   chip: 'chip-green',  color: 'var(--green)' },
+  late:  { label: 'ค้าง',     chip: 'chip-red',    color: 'var(--red)' },
+  doing: { label: 'กำลังทำ',  chip: 'chip-blue',   color: 'var(--accent)' },
+  wait:  { label: 'รอทำ',     chip: 'chip-wait',   color: 'var(--text-3)' },
+};
+function planTaskProgressState(t) {
+  const d = taskDisplayDate(t);
+  const pieces = (dailyPieceStatus[d] || {})[t.id] || {};
+  const dayStatus = (dailyStatusByDate[d] || {})[t.id];
+  const ids = t.rollIds || [];
+  let done = 0, doing = 0;
+  ids.forEach(idx => {
+    const st = (pieces[idx] || {}).status;
+    if (st === 'done') done++;
+    else if (st === 'in_progress' || st === 'paused') doing++;
+  });
+  if (dayStatus === 'done' || (ids.length && done >= ids.length)) return 'done';
+  const started = !!(doing || done || dayStatus === 'in_progress');
+  if (d < dailyTodayIso()) return 'late';
+  return started ? 'doing' : 'wait';
+}
+
 function planCalendarChip(t, editable, extraStyle) {
+  const prog = PLAN_PROGRESS_META[planTaskProgressState(t)] || PLAN_PROGRESS_META.wait;
   const color = planRollColorLabel(t);
   const hasColor = color && color !== '—';
   // งานที่ทำข้ามวันถูกตัดเป็นส่วนของแต่ละวัน — บอกว่าเป็นส่วนที่เท่าไร ไม่งั้นดูเหมือนงานซ้ำสองวัน
   const partTag = t.__partCount > 1 ? ` (${t.__partIndex + 1}/${t.__partCount})` : '';
   const sub = (hasColor ? color + ' · ' : '') + t.rollId + partTag;
-  const fullTitle = `${SHIFTS[t.shift]?.label || ''} — ${t.rollSet}${hasColor ? ' · ' + color : ''} — ${t.rollId} — ${t.rollName}`
+  const fullTitle = `[${prog.label}] ${SHIFTS[t.shift]?.label || ''} — ${t.rollSet}${hasColor ? ' · ' + color : ''} — ${t.rollId} — ${t.rollName}`
     + (partTag ? ` — ส่วนที่ ${t.__partIndex + 1}/${t.__partCount} ของงานที่ทำข้ามวัน (${t.startTime}–${t.endTime})` : '');
   // โหมดลบ: คลิกที่งานคือติ๊กเลือก/ยกเลิกเลือก (ไม่เปิดฟอร์มแก้ไข) และมีเครื่องหมายบอกว่าเลือกอยู่
   if (planDeleteMode) {
     const picked = planDeleteSelected.has(t.id);
-    return `<span class="chip plan-cal-chip ${shiftChipClass(t.shift)}${picked ? ' pcc-picked' : ' pcc-pickable'}" data-taskid="${escapeHtmlAttr(t.id)}" style="${extraStyle || ''}cursor:pointer;" onclick="togglePlanDeleteSelect('${t.id}')" title="${escapeHtmlAttr((picked ? 'เลือกอยู่ — คลิกเพื่อยกเลิก' : 'คลิกเพื่อเลือกลบ') + ' · ' + fullTitle)}"><span class="pcc-set">${picked ? '☑ ' : '☐ '}${escapeHtmlAttr(t.rollSet)}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span></span>`;
+    return `<span class="chip plan-cal-chip ${prog.chip}${picked ? ' pcc-picked' : ' pcc-pickable'}" data-taskid="${escapeHtmlAttr(t.id)}" style="${extraStyle || ''}cursor:pointer;" onclick="togglePlanDeleteSelect('${t.id}')" title="${escapeHtmlAttr((picked ? 'เลือกอยู่ — คลิกเพื่อยกเลิก' : 'คลิกเพื่อเลือกลบ') + ' · ' + fullTitle)}"><span class="pcc-set">${picked ? '☑ ' : '☐ '}${escapeHtmlAttr(t.rollSet)}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span></span>`;
   }
-  return `<span class="chip plan-cal-chip ${shiftChipClass(t.shift)}" style="${extraStyle || ''}${editable ? 'cursor:pointer;' : ''}" ${editable ? `onclick="openPlanTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(fullTitle)}"><span class="pcc-set">${escapeHtmlAttr(t.rollSet)}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span></span>`;
+  return `<span class="chip plan-cal-chip ${prog.chip}" style="${extraStyle || ''}${editable ? 'cursor:pointer;' : ''}" ${editable ? `onclick="openPlanTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(fullTitle)}"><span class="pcc-set">${escapeHtmlAttr(t.rollSet)}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span></span>`;
 }
 
 function renderPlanWeek() {
