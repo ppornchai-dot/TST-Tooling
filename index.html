@@ -4025,6 +4025,21 @@ function togglePlanDayTaskDetail(taskId) {
 
 // แกะ rollIds (ตำแหน่งลำดับใน getMatchingRollsForPlan) กลับเป็น Roll จริงแต่ละตัว แล้วคำนวณเวลาเริ่ม/จบแยกทีละชิ้นต่อเนื่องกัน
 function planTaskPieceBreakdown(t) {
+  // งานอื่นๆ ไม่มี Roll ในทะเบียนให้จับคู่ — สร้างรายชิ้นจาก rollIds + เวลาต่อชิ้นที่กรอกไว้
+  // ถ้าไม่ทำ ตัวกรอง .filter(p => p.roll) ด้านล่างจะทิ้งทุกชิ้น แล้วช่างจะไม่มีปุ่มเริ่ม/จบงานให้กด
+  if (t.otherWork) {
+    const ids = t.rollIds || [];
+    if (!ids.length) return [];
+    const mins = ids.map(idx => {
+      const ov = t.rollMinutesOverride && t.rollMinutesOverride[idx];
+      return ov != null ? ov : Math.round((t.totalTime || 0) / ids.length);
+    });
+    const sched = computePlanPieceSchedule(t.date, t.startTime, mins, t.shift, t.otCapMinutesByShift || {});
+    return ids.map((idx, i) => ({
+      roll: { id: '—', name: (t.rollName || t.rollSet || 'งาน') + (ids.length > 1 ? ' — รายการที่ ' + (i + 1) : '') },
+      minutes: mins[i], range: sched[i] || {}, continued: false,
+    }));
+  }
   const scoped = getMatchingRollsForPlan(t.rollSet, t.rollColor);
   // เก็บคู่ (roll, ตำแหน่งเดิมใน rollIds) ไว้ด้วยกันตอนกรอง Roll ที่หาไม่เจอทิ้ง กันไม่ให้ index เพี้ยนตอนไปเทียบกับ rollMinutesOverride
   const pairs = (t.rollIds || []).map(idx => ({ idx, roll: scoped[idx] })).filter(p => p.roll);
@@ -4478,7 +4493,22 @@ function planTaskFormFields() {
         <span id="pf-ot-hint-night" style="font-size:11px;color:var(--text-3);">พัก 20 นาทีก่อนเริ่ม OT</span>
       </div>
     </div>
-    <div class="modal-row">
+    <!-- สลับเป็น "งานอื่นๆ" ที่ไม่เกี่ยวกับ Roll — กรอกชื่องานกับเวลาเองแทนการเลือก Size Roll -->
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      <button type="button" class="btn btn-ghost btn-sm" id="pf-other-toggle" onclick="togglePlanOtherWork()"
+        style="font-size:12px;">🛠 งานอื่นๆ ที่ไม่ใช่แต่ง/ขัด Roll</button>
+      <span id="pf-other-hint" style="font-size:11px;color:var(--text-3);"></span>
+    </div>
+    <div class="modal-row three" id="pf-other-row" style="display:none;">
+      <div class="form-group"><label class="form-label">ชื่องาน</label>
+        <input class="form-input" id="pf-other-name" type="text" placeholder="เช่น เปลี่ยนลูกปืน, ทำความสะอาดเครื่อง"></div>
+      <div class="form-group"><label class="form-label">จำนวนชิ้น/รายการ</label>
+        <input class="form-input" id="pf-other-qty" type="number" min="1" step="1" value="1" onchange="recalcPlanOtherTotal()" oninput="recalcPlanOtherTotal()"></div>
+      <div class="form-group"><label class="form-label">เวลาต่อชิ้น (นาที)</label>
+        <input class="form-input" id="pf-other-per" type="number" min="0" step="1" placeholder="เช่น 30" onchange="recalcPlanOtherTotal()" oninput="recalcPlanOtherTotal()">
+        <span id="pf-other-total" style="font-size:11px;color:var(--text-3);"></span></div>
+    </div>
+    <div class="modal-row" id="pf-row-rollset">
       <div class="form-group"><label class="form-label">Size Roll</label>
         <select class="form-select" id="pf-rollset" onchange="onPlanRollSetChange()"></select>
       </div>
@@ -4486,7 +4516,7 @@ function planTaskFormFields() {
         <select class="form-select" id="pf-rollcolor" onchange="onPlanRollColorChange()"></select>
       </div>
     </div>
-    <div class="modal-row">
+    <div class="modal-row" id="pf-row-rollids">
       <div class="form-group"><label class="form-label">จำนวน Roll ที่เลือก</label><input class="form-input" id="pf-rollid" disabled></div>
       <div class="form-group"><label class="form-label">รายชื่อ Roll — เลือกเฉพาะรายการที่ต้องการได้</label>
         <div class="roll-ms" style="position:relative;">
@@ -4499,7 +4529,7 @@ function planTaskFormFields() {
         </div>
       </div>
     </div>
-    <div class="modal-row full">
+    <div class="modal-row full" id="pf-row-plantime">
       <div class="form-group"><label class="form-label" id="pf-plantime-label">เวลาแต่ง Roll (นาที) — จากทะเบียน Tooling</label><input class="form-input" id="pf-plantime" type="text" disabled>
         <span id="pf-plantime-hours" style="font-size:11px;color:var(--text-3);"></span>
         <div style="margin-top:6px;">
@@ -4699,6 +4729,50 @@ function planFormSelectedPieces() {
   const order = ((document.getElementById('pf-rollids') || {}).value || '').split(',').filter(Boolean).map(Number);
   return order.filter(idx => scoped[idx]).map(idx => ({ idx, roll: scoped[idx] }));
 }
+
+// ─── งานอื่นๆ ที่ไม่ใช่แต่ง/ขัด Roll ────────────────────────────────────────────
+// เก็บลงโครงเดิมของแผนงาน โดยใช้ "ชื่องาน" แทนช่อง Size Roll เพื่อให้ทุกหน้าที่แสดงอยู่แล้ว
+// (ปฏิทิน, งานประจำวัน, ประวัติ) แสดงชื่องานได้ทันทีโดยไม่ต้องแก้เพิ่ม
+// rollIds ตั้งเป็น 0..n-1 ตามจำนวนชิ้นที่กรอก และเก็บเวลาต่อชิ้นไว้ใน rollMinutesOverride
+// ช่างจึงกดเริ่ม/จบงานรายชิ้นได้เหมือนงาน Roll ทั้งที่ไม่มี Roll จริงในทะเบียน
+let planFormOtherWork = false;
+
+function planOtherWorkFields() {
+  const name = ((document.getElementById('pf-other-name') || {}).value || '').trim();
+  const qty = Math.max(1, Math.round(parseFloat((document.getElementById('pf-other-qty') || {}).value) || 0) || 1);
+  const per = Math.max(0, Math.round(parseFloat((document.getElementById('pf-other-per') || {}).value) || 0));
+  return { name, qty, per, total: qty * per };
+}
+
+function recalcPlanOtherTotal() {
+  const f = planOtherWorkFields();
+  const el = document.getElementById('pf-other-total');
+  if (el) el.textContent = f.total ? 'รวม ' + f.total + ' นาที (' + formatMinutesAsHm(f.total) + ')' : '';
+  const timeEl = document.getElementById('pf-plantime');
+  if (timeEl) timeEl.value = f.total ? String(f.total) : '';
+  updatePlanEndTime();
+}
+
+function setPlanOtherWork(on) {
+  planFormOtherWork = !!on;
+  const show = el => { const e = document.getElementById(el); if (e) e.style.display = planFormOtherWork ? 'none' : ''; };
+  ['pf-row-rollset', 'pf-row-rollids', 'pf-row-plantime'].forEach(show);
+  const otherRow = document.getElementById('pf-other-row');
+  if (otherRow) otherRow.style.display = planFormOtherWork ? '' : 'none';
+  const btn = document.getElementById('pf-other-toggle');
+  if (btn) {
+    btn.style.background = planFormOtherWork ? 'var(--accent)' : '';
+    btn.style.color = planFormOtherWork ? '#fff' : '';
+    btn.textContent = planFormOtherWork ? '↩ กลับไปงานแต่ง/ขัด Roll' : '🛠 งานอื่นๆ ที่ไม่ใช่แต่ง/ขัด Roll';
+  }
+  const hint = document.getElementById('pf-other-hint');
+  if (hint) hint.textContent = planFormOtherWork
+    ? 'กรอกชื่องานและเวลาเอง ไม่ต้องเลือก Size Roll'
+    : '';
+  if (planFormOtherWork) recalcPlanOtherTotal(); else updatePlanEndTime();
+}
+
+function togglePlanOtherWork() { setPlanOtherWork(!planFormOtherWork); }
 
 function togglePlanPieceMinutes() {
   const box = document.getElementById('pf-piece-minutes');
@@ -5765,25 +5839,54 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   fillPlanRollReadonly(task ? task.rollSet : null, task ? task.rollColor : null, task ? task.rollIds : null, currentEditingPlanTaskId); // คำนวณเวลาเริ่ม/จบของแต่ละกะให้อัตโนมัติในตัว — คงรายการ Roll ที่เลือกไว้เดิมถ้าเป็นการแก้ไข
   // แก้ไขงานเดิม — คงวันที่จบที่บันทึกไว้ถ้ามีค่าจริง ไม่ทับด้วยค่าคำนวณใหม่ แต่ถ้าเดิมว่าง/เป็น "—" ให้ใช้ค่าที่คำนวณอัตโนมัติแทน
   if (task && task.endDate) document.getElementById('pf-enddate').value = task.endDate;
+  // โหมด "งานอื่นๆ" — แก้ไขงานเดิมที่เป็นงานอื่น ให้กลับมาอยู่โหมดนั้นพร้อมค่าที่บันทึกไว้
+  if (task && task.otherWork) {
+    const qty = (task.rollIds || []).length || 1;
+    const per = Math.round((task.totalTime || 0) / qty);
+    document.getElementById('pf-other-name').value = task.rollSet || '';
+    document.getElementById('pf-other-qty').value = qty;
+    document.getElementById('pf-other-per').value = per;
+    setPlanOtherWork(true);
+  } else {
+    document.getElementById('pf-other-name').value = '';
+    document.getElementById('pf-other-qty').value = 1;
+    document.getElementById('pf-other-per').value = '';
+    setPlanOtherWork(false);
+  }
   refreshPlanFormContinueBtn();
   document.getElementById('modal-overlay').classList.add('open');
 
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const g = id => (document.getElementById(id)||{}).value.trim();
     let date = g('pf-date'); // ปรับได้ ถ้าเวลาที่เหลือในวันไม่พอแล้วต้องยกงานไปวันถัดไปทั้งก้อน
-    const setName = document.getElementById('pf-rollset').value;
-    const colorKey = document.getElementById('pf-rollcolor').value;
-    const rolls = getSelectedRollsForPlan();
-    if (!date || !setName || !rolls.length) { alert('กรุณาเลือกวันที่ และเลือก Roll อย่างน้อย 1 รายการ'); return; }
+    const other = planFormOtherWork ? planOtherWorkFields() : null;
+    // งานอื่นๆ ใช้ "ชื่องาน" แทน Size Roll และไม่ต้องเลือก Roll — ตรวจความครบถ้วนแยกกัน
+    const setName = other ? other.name : document.getElementById('pf-rollset').value;
+    const colorKey = other ? '' : document.getElementById('pf-rollcolor').value;
+    const rolls = other ? [] : getSelectedRollsForPlan();
+    if (!date) { alert('กรุณาเลือกวันที่'); return; }
+    if (other) {
+      if (!other.name) { alert('กรุณากรอกชื่องาน'); return; }
+      if (!other.total) { alert('กรุณากรอกเวลาต่อชิ้น (นาที)'); return; }
+    } else if (!setName || !rolls.length) {
+      alert('กรุณาเลือกวันที่ และเลือก Roll อย่างน้อย 1 รายการ'); return;
+    }
     const field = PLAN_WORKTYPE_META[workType].field;
     // เวลาต่อชิ้นที่แก้เองในฟอร์ม (ถ้ามี) ชนะค่าทะเบียน — ใช้ทั้งคิดเวลารวม ตัดวัน และบันทึกลงงาน
-    const pieces = planFormSelectedPieces();
-    const pieceMinutesList = pieces.map(p => planFormEffectiveMinutes(p.idx, p.roll));
+    // งานอื่นๆ ไม่มี Roll ในทะเบียน จึงสร้างรายชิ้นจาก "จำนวนชิ้น × เวลาต่อชิ้น" ที่กรอกเอง
+    const pieces = other ? [] : planFormSelectedPieces();
+    const pieceMinutesList = other
+      ? Array.from({ length: other.qty }, () => other.per)
+      : pieces.map(p => planFormEffectiveMinutes(p.idx, p.roll));
     const pieceOverride = {};
-    pieces.forEach(p => {
-      const eff = planFormEffectiveMinutes(p.idx, p.roll);
-      if (eff !== planFormRegistryMinutes(p.roll)) pieceOverride[p.idx] = eff;
-    });
+    if (other) {
+      for (let i = 0; i < other.qty; i++) pieceOverride[i] = other.per;
+    } else {
+      pieces.forEach(p => {
+        const eff = planFormEffectiveMinutes(p.idx, p.roll);
+        if (eff !== planFormRegistryMinutes(p.roll)) pieceOverride[p.idx] = eff;
+      });
+    }
     const hasPieceOverride = Object.keys(pieceOverride).length > 0;
     const totalTime = pieceMinutesList.reduce((a, b) => a + b, 0);
     const shiftKey = document.getElementById('pf-shift').value || 'morning';
@@ -5812,12 +5915,15 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     // ถ้าย้ายวันเริ่มไปแล้ว ค่า "วันที่จบงาน" บนหน้าจอเป็นของวันเดิม ใช้ค่าที่คำนวณใหม่เท่านั้น
     const endDate = movedToNextDay ? (computedEnd.date || date) : (g('pf-enddate') || computedEnd.date || date);
     // เก็บเป็น "ตำแหน่งลำดับ" ในรายการที่พบ (ไม่ใช่ r.id ตรงๆ) เพราะ Roll หลายตัวอาจมี id/ชื่อซ้ำกันได้ ตำแหน่งลำดับจะระบุตัวที่เลือกได้แม่นยำกว่า
-    const selectedIndexes = ((document.getElementById('pf-rollids') || {}).value || '').split(',').filter(Boolean).map(Number);
+    const selectedIndexes = other
+      ? Array.from({ length: other.qty }, (_, i) => i) // งานอื่นๆ: ชิ้นที่ 1..n ไม่ได้อ้างทะเบียน Roll
+      : ((document.getElementById('pf-rollids') || {}).value || '').split(',').filter(Boolean).map(Number);
     const data = {
       date, rollSet: setName, rollColor: colorKey || null,
       rollIds: selectedIndexes,
-      rollId: rolls.length + ' Roll',
-      rollName: rolls.map(r => r.name).join(', '),
+      rollId: other ? (other.qty + ' รายการ') : (rolls.length + ' Roll'),
+      rollName: other ? other.name : rolls.map(r => r.name).join(', '),
+      otherWork: other ? true : undefined, // ทำเครื่องหมายว่าเป็นงานอื่น ไม่ต้องไปหา Roll ในทะเบียน
       totalTime,
       startTime: startTime || '—',
       endTime: endTime || '—',
@@ -5834,8 +5940,11 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     // ถ้าเวลาทำงานยาวข้ามคืนไปมากกว่า 1 วันปฏิทิน ตัดเป็นงานแยกทีละวันจริงแทนที่จะเก็บเป็นงานก้อนเดียว
     // แก้ไขงานที่มี splitGroupId (เคยถูกตัดวันไว้แล้ว) ต้องแก้ "เฉพาะงานที่กำลังแก้ไข" เท่านั้น ห้ามลบ/คำนวณใหม่ทับ "พี่น้อง" วันอื่นในกลุ่มเดียวกัน
     // (เดิมเคยลบพี่น้องทั้งกลุ่มทิ้งด้วย ทำให้แก้ไข/ลบงานวันเดียวกลับไปเปลี่ยนข้อมูลของวันอื่นที่ไม่เกี่ยวข้องโดยไม่ตั้งใจ)
-    const splitGroups = splitPlanDataAcrossDays({ date, shift: shiftKey, startTime, otCapMinutesByShift, rollIds: selectedIndexes }, rolls, workType,
-      hasPieceOverride ? pieceMinutesList : undefined);
+    // งานอื่นๆ ไม่มี Roll ในทะเบียนให้ตัดวันตามชิ้น เก็บเป็นงานก้อนเดียว
+    // (ถ้าเวลาไม่พอในวันนั้น กฎ "ยกไปวันถัดไปทั้งก้อน" ด้านบนจัดการให้แล้ว)
+    const splitGroups = other ? null
+      : splitPlanDataAcrossDays({ date, shift: shiftKey, startTime, otCapMinutesByShift, rollIds: selectedIndexes }, rolls, workType,
+        hasPieceOverride ? pieceMinutesList : undefined);
     if (splitGroups) {
       if (mode === 'edit') planTasks = planTasks.filter(x => x.id !== task.id);
       const newGroupId = 'SG-' + String(planTaskSeq + 1).padStart(4, '0');
