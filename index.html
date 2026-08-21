@@ -2439,19 +2439,51 @@ function openReleasedStatusDialog(cleared, reasonText) {
   }
   document.getElementById('released-status-reason').innerHTML = escapeHtmlAttr(reasonText || '')
     + '<br>เลือกสถานะต่อไปของชุดเหล่านี้ก่อน จะได้ไม่ค้างเป็น "พร้อมใช้งาน" ทั้งที่ยังไม่ได้แต่ง/ขัด';
-  document.getElementById('released-status-list').innerHTML = releasedStatusPending.map((x, i) => `
-    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light);">
+  ensureRollLifeFg(); // ต้องมีน้ำหนักผลิตมาแสดงประกอบการตัดสินใจ (โหลดเสร็จแล้ววาดรายการใหม่ให้)
+  renderReleasedStatusList();
+  ov.classList.add('open');
+}
+
+// แสดงน้ำหนักผลิต/% ของแต่ละชุดที่ถูกปลด เพื่อให้เลือกสถานะถัดไปได้ถูก
+// (เกินรอบแล้วควรไปแต่ง ยังเหลือเยอะอาจกลับไปพร้อมใช้งานได้เลย)
+function renderReleasedStatusList() {
+  const box = document.getElementById('released-status-list');
+  if (!box) return;
+  // เก็บค่าที่ผู้ใช้เลือกไว้ก่อน กันการวาดใหม่ (ตอนน้ำหนักโหลดเสร็จ) ล้างสิ่งที่เพิ่งเลือก
+  const picked = releasedStatusPending.map((x, i) => {
+    const sel = document.getElementById('released-status-' + i);
+    return sel ? sel.value : null;
+  });
+  box.innerHTML = releasedStatusPending.map((x, i) => {
+    const u = rollUsageForSetColor(x.set, x.colorKey);
+    const band = rollUsageBand(u.prodPct);
+    const weightLine = u.producedTon == null
+      ? (rollLifeFgLoading ? '<span class="muted">กำลังโหลดน้ำหนักผลิต…</span>' : '<span class="muted">ยังไม่มีข้อมูลน้ำหนักผลิต</span>')
+      : `น้ำหนักผลิต <b style="color:${band.color};">${u.producedTon.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b>
+         / ${u.usedTon != null ? escapeHtmlAttr(u.usedTon.toLocaleString()) : '—'} ตัน
+         ${u.prodPct == null ? '' : `<b style="color:${band.color};">(${u.prodPct}%)</b>`}
+         ${u.leftTon == null ? '' : (u.leftTon > 0
+            ? ` · เหลือ ${u.leftTon.toLocaleString(undefined, { maximumFractionDigits: 2 })} ตัน`
+            : ` · <b style="color:var(--red);">เกินมา ${Math.abs(u.leftTon).toLocaleString(undefined, { maximumFractionDigits: 2 })} ตัน</b>`)}
+         ${u.carryTon ? `<br><span style="font-size:10px;">รวมยกมา ${u.carryTon.toLocaleString(undefined, { maximumFractionDigits: 2 })} ตัน</span>` : ''}`;
+    const advice = u.prodPct == null ? ''
+      : (u.prodPct >= 100 ? '<span style="color:var(--red);font-weight:700;">เกินรอบการแต่งแล้ว — ควรไปแต่ง</span>'
+        : (u.prodPct > 90 ? '<span style="color:var(--amber);font-weight:700;">ใกล้ครบรอบการแต่ง</span>'
+          : '<span style="color:var(--green);font-weight:700;">ยังเหลือรอบใช้งานอยู่</span>'));
+    return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border-light);">
       <span style="flex:1;min-width:0;font-size:13px;">
         <b>${escapeHtmlAttr(x.set)}</b><br>
         <span style="font-size:11px;color:var(--text-3);">ชุดสี ${escapeHtmlAttr(x.colorLabel)}</span>
+        <div style="font-size:11px;color:var(--text-2);line-height:1.6;margin-top:2px;">${weightLine}</div>
+        ${advice ? `<div style="font-size:11px;line-height:1.5;">${advice}</div>` : ''}
       </span>
       <select class="form-select" id="released-status-${i}" style="width:150px;flex-shrink:0;">
         ${Object.entries(ROLL_COLOR_STATUS_META).filter(([k]) => k !== 'inuse').map(([k, meta]) =>
-          `<option value="${k}"${k === RELEASED_DEFAULT_STATUS ? ' selected' : ''}
+          `<option value="${k}"${k === (picked[i] || RELEASED_DEFAULT_STATUS) ? ' selected' : ''}
             style="background:${meta.optBg};color:${meta.color};font-weight:700;">${escapeHtmlAttr(meta.label)}</option>`).join('')}
       </select>
-    </div>`).join('');
-  ov.classList.add('open');
+    </div>`;
+  }).join('');
 }
 
 function saveReleasedStatuses() {
@@ -2500,36 +2532,41 @@ function afterInUseRollChange() {
 // รายการ "ชุด Roll" (Size Roll + ชุดสี) พร้อม % การใช้รอบการแต่ง
 // สูตรทั้งหมดใช้ตัวเดียวกับหน้าอายุ Roll (producedTonForRollSet + rollCarryTonFor + rollUsageBand)
 // จะได้ไม่มีทางที่ตัวเลขสองหน้าไม่ตรงกัน — ที่ต่างคือหน้านี้เอาแค่ชุดที่เข้าเกณฑ์เตือน
+// ตัวเลขการใช้รอบการแต่งของ "ชุด Roll หนึ่งชุด" — จุดเดียวที่คิดสูตรนี้
+// ใช้ร่วมกันทั้งการ์ด Dashboard, หน้าต่างถามสถานะชุดที่ถูกปลด และที่อื่นที่ต้องการเลขเดียวกัน
+function rollUsageForSetColor(setName, colorKey) {
+  let usedTon = null, count = 0;
+  toolingData.roll.forEach(roll => {
+    if (roll.set !== setName || (roll.color || NO_COLOR_KEY) !== colorKey) return;
+    count++;
+    const life = rollLifeFor(roll);
+    // น้ำหนักต่อรอบการแต่งของชุด = ค่าที่มากสุดในชุด (เกณฑ์เดียวกับหน้าอายุ Roll)
+    if (life.usedTon != null) usedTon = usedTon == null ? life.usedTon : Math.max(usedTon, life.usedTon);
+  });
+  const dressReset = rollDressResetFor(setName, colorKey);
+  const fgTon = producedTonForRollSet(setName, colorKey, rollLifeFgByKeyDate, rollLifeFgDates,
+    dressReset ? dressReset.from : null);
+  const carryTon = rollCarryTonFor(setName, colorKey);
+  const producedTon = (fgTon == null && !carryTon) ? null
+    : Math.round(((fgTon || 0) + carryTon) * 100) / 100;
+  const prodPct = (producedTon != null && usedTon > 0)
+    ? Math.round(producedTon / usedTon * 1000) / 10 : null;
+  const leftTon = (usedTon != null && producedTon != null)
+    ? Math.round((usedTon - producedTon) * 100) / 100 : null;
+  return { count, usedTon, dressReset, fgTon, carryTon, producedTon, prodPct, leftTon };
+}
+
 function rollUsageRows() {
   const map = new Map();
   toolingData.roll.forEach(roll => {
     const colorKey = roll.color || NO_COLOR_KEY;
     const key = roll.set + '|' + colorKey;
-    if (!map.has(key)) {
-      const meta = colorKey === NO_COLOR_KEY ? null : getSetPalette(roll.set).find(c => c.key === colorKey);
-      map.set(key, { set: roll.set, colorKey, colorLabel: meta ? meta.label : 'ไม่ระบุสี',
-                     dot: meta ? meta.dot : '#9CA3AF', count: 0, usedTon: null });
-    }
-    const g = map.get(key);
-    g.count++;
-    const life = rollLifeFor(roll);
-    // น้ำหนักต่อรอบการแต่งของชุด = ค่าที่มากสุดในชุด (เกณฑ์เดียวกับหน้าอายุ Roll)
-    if (life.usedTon != null) g.usedTon = g.usedTon == null ? life.usedTon : Math.max(g.usedTon, life.usedTon);
+    if (map.has(key)) return;
+    const meta = colorKey === NO_COLOR_KEY ? null : getSetPalette(roll.set).find(c => c.key === colorKey);
+    map.set(key, { set: roll.set, colorKey, colorLabel: meta ? meta.label : 'ไม่ระบุสี',
+                   dot: meta ? meta.dot : '#9CA3AF', ...rollUsageForSetColor(roll.set, colorKey) });
   });
-  const rows = [...map.values()];
-  rows.forEach(g => {
-    g.dressReset = rollDressResetFor(g.set, g.colorKey);
-    g.fgTon = producedTonForRollSet(g.set, g.colorKey, rollLifeFgByKeyDate, rollLifeFgDates,
-      g.dressReset ? g.dressReset.from : null);
-    g.carryTon = rollCarryTonFor(g.set, g.colorKey);
-    g.producedTon = (g.fgTon == null && !g.carryTon) ? null
-      : Math.round(((g.fgTon || 0) + g.carryTon) * 100) / 100;
-    g.prodPct = (g.producedTon != null && g.usedTon > 0)
-      ? Math.round(g.producedTon / g.usedTon * 1000) / 10 : null;
-    g.leftTon = (g.usedTon != null && g.producedTon != null)
-      ? Math.round((g.usedTon - g.producedTon) * 100) / 100 : null;
-  });
-  return rows;
+  return [...map.values()];
 }
 
 function renderDashboardRollWeight() {
@@ -7455,6 +7492,9 @@ function ensureRollLifeFg() {
     renderRollLife();
     // การ์ด "น้ำหนักใกล้หมด / หมดแล้ว" หน้า Dashboard ใช้ข้อมูลก้อนเดียวกัน ต้องวาดใหม่ด้วยเมื่อโหลดเสร็จ
     if (typeof renderDashboardRollWeight === 'function') renderDashboardRollWeight();
+    // หน้าต่างถามสถานะชุดที่ถูกปลดอาจเปิดอยู่ระหว่างรอน้ำหนัก — เติมตัวเลขให้เห็นทันทีที่มา
+    const relOv = document.getElementById('released-status-overlay');
+    if (relOv && relOv.classList.contains('open')) renderReleasedStatusList();
   });
 }
 
