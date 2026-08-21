@@ -1138,65 +1138,6 @@ canvas{display:block;}
         <div id="dash-roll-waitpolish-list" style="padding:12px 14px;"></div>
       </div>
 
-      <!-- CALENDAR -->
-      <div class="card" style="margin-bottom:18px;">
-        <div class="card-header">
-          <span class="card-title">ปฏิทินงาน</span>
-          <div style="display:flex;align-items:center;gap:10px;margin-left:auto;">
-            <span class="legend-dot" style="--c:#3DD68C;">สำเร็จ</span>
-            <span class="legend-dot" style="--c:#F0A830;">ค้าง</span>
-            <span class="legend-dot" style="--c:#E87070;">ตกแผน</span>
-            <span class="legend-dot" style="--c:#6BAEDD;">แผนงาน</span>
-            <div style="width:1px;height:16px;background:var(--border);margin:0 4px;"></div>
-            <div class="cal-nav">
-              <button class="btn btn-ghost btn-sm" onclick="calShift(-1)">‹</button>
-              <span class="cal-nav-month" id="cal-month-label"></span>
-              <button class="btn btn-ghost btn-sm" onclick="calShift(1)">›</button>
-            </div>
-          </div>
-        </div>
-        <div class="dash-cal-row" style="display:grid;grid-template-columns:1fr 260px;gap:0;">
-          <div style="padding:16px 16px 16px 16px;border-right:1px solid var(--border-light);">
-            <div class="cal-grid" id="cal-grid"></div>
-          </div>
-          <div style="padding:16px;">
-            <div class="cal-detail" id="cal-detail">
-              <div class="cal-detail-empty">
-                <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                คลิกวันที่เพื่อดูรายการงาน
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- BOTTOM ROW -->
-      <div class="grid-3-2">
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">แผนงานสัปดาห์นี้</span>
-            <span style="font-size:11px;color:var(--text-3);">30 มิ.ย. – 6 ก.ค. 2569</span>
-          </div>
-          <div class="card-body" style="padding:0;">
-            <table>
-              <thead><tr><th>WO</th><th>งาน</th><th>ผู้รับผิดชอบ</th><th>สถานะ</th></tr></thead>
-              <tbody>
-                <tr><td colspan="4" style="padding:32px;text-align:center;color:var(--text-3);">ยังไม่มีแผนงานในสัปดาห์นี้</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">กิจกรรมล่าสุด</span>
-          </div>
-          <div class="card-body">
-            <div style="text-align:center;color:var(--text-3);font-size:13px;padding:24px 0;">ยังไม่มีกิจกรรม</div>
-          </div>
-        </div>
-      </div>
-
     </div><!-- /dashboard -->
 
 
@@ -2073,8 +2014,8 @@ function initDashboard() {
   // แต่ initDashboard() ถูกเรียกกลางสคริปต์ตอนบูต เรียกตรงๆ จะชน TDZ แล้วสคริปต์ตายกลางทาง
   // เลื่อนไปเป็นงานถัดไปให้สคริปต์รันจบก่อน (ช้าไม่ถึงเฟรม ไม่มีผลกับที่ผู้ใช้เห็น)
   setTimeout(renderDashboardRollWeight, 0);
-  renderCal();
-  renderCalDetail(null);
+  // เอาการ์ดปฏิทินงาน / แผนงานสัปดาห์นี้ / กิจกรรมล่าสุด ออกจากหน้า Dashboard แล้ว
+  // ฟังก์ชัน renderCal()/renderCalDetail() ยังอยู่และเช็ก element ก่อนทำงาน จึงไม่ต้องเรียกที่นี่อีก
 }
 
 // ─── DASHBOARD: ชุด Roll กำลังใช้งาน ──────────────────────────────────────────
