@@ -2352,6 +2352,7 @@ function inUsePickerRowHtml(setName, machine) {
 // เลือกชุด Roll ให้ "เครื่องหนึ่ง" โดยตรง — เครื่องมาจากแท็บที่กำลังเปิด ไม่ต้องเดาจากที่ผูกไว้
 function setInUseRollForMachine(machine, setName, colorKey) {
   if (!canEditPlan()) return;
+  const revert = snapshotRollStatusState(); // เก็บก่อนแก้ เพื่อให้ปุ่ม "ยกเลิก" คืนค่าได้ครบ
   const already = inUseColorOnMachine(setName, machine) === colorKey;
   // Size Roll หนึ่งใช้ได้ทีละสีเท่านั้น (ของจริงใส่เข้าเครื่องได้ชุดเดียว) ล้างสีอื่นของชุดนี้ก่อน
   Object.keys(rollColorStatus).forEach(k => {
@@ -2374,7 +2375,7 @@ function setInUseRollForMachine(machine, setName, colorKey) {
   // ถามสถานะต่อไปของชุดที่ถูกปลด หลัง re-render แล้วเพื่อให้กล่องนี้อยู่บนสุด
   if (cleared.length) openReleasedStatusDialog(cleared,
     'เปลี่ยนชุดที่ใช้งานของ ' + (machine === INUSE_UNASSIGNED ? 'ชุดที่ยังไม่ผูกเครื่อง' : 'เครื่อง ' + machine)
-    + ' หมวด ' + (parseSizeRollName(setName).category || '') + ' เป็น ' + setName);
+    + ' หมวด ' + (parseSizeRollName(setName).category || '') + ' เป็น ' + setName, revert);
 }
 
 // เครื่องที่ชุดนี้ถือว่า "ใช้อยู่" — ถ้าระบุเครื่องไว้ก็คือเครื่องนั้นเครื่องเดียว
@@ -2415,8 +2416,15 @@ function clearInUseMachineConflicts(setName, colorKey) {
 // ตั้งค่าเริ่มไว้ที่ "รอแต่ง" เพราะเป็นเส้นทางปกติหลังถอดออกจากเครื่อง แต่เปลี่ยนได้ทุกตัว
 const RELEASED_DEFAULT_STATUS = 'waitdress';
 let releasedStatusPending = []; // [{ set, colorKey, colorLabel }]
+// สำเนาสถานะ/เครื่องก่อนการสลับชุด — ปุ่ม "ยกเลิก" ใช้คืนค่าทุกอย่างกลับไปเหมือนก่อนกด
+// ต้องเก็บก่อนแก้ทุกครั้ง ไม่ใช่แค่ของชุดที่ถูกปลด เพราะการสลับแก้ทั้งชุดใหม่และชุดเก่าพร้อมกัน
+let releasedStatusRevert = null;
+function snapshotRollStatusState() {
+  return { status: JSON.stringify(rollColorStatus), machine: JSON.stringify(rollColorActiveMachine) };
+}
 
-function openReleasedStatusDialog(cleared, reasonText) {
+function openReleasedStatusDialog(cleared, reasonText, revertSnapshot) {
+  releasedStatusRevert = revertSnapshot || null;
   releasedStatusPending = cleared.map(x => ({ ...x, colorLabel: rollColorLabelFor(x.set, x.colorKey) }));
   if (!releasedStatusPending.length) return;
   let ov = document.getElementById('released-status-overlay');
@@ -2433,12 +2441,16 @@ function openReleasedStatusDialog(cleared, reasonText) {
         <div id="released-status-reason" style="font-size:12px;color:var(--text-3);line-height:1.6;margin-bottom:12px;"></div>
         <div id="released-status-list"></div>
       </div>
-      <div class="modal-footer"><button class="btn btn-primary" onclick="saveReleasedStatuses()">บันทึกสถานะ</button></div>
+      <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-ghost" id="released-status-cancel" onclick="cancelReleasedStatuses()">ยกเลิก</button>
+        <button class="btn btn-primary" onclick="saveReleasedStatuses()">บันทึกสถานะ</button>
+      </div>
     </div>`;
     document.body.appendChild(ov);
   }
   document.getElementById('released-status-reason').innerHTML = escapeHtmlAttr(reasonText || '')
-    + '<br>เลือกสถานะต่อไปของชุดเหล่านี้ก่อน จะได้ไม่ค้างเป็น "พร้อมใช้งาน" ทั้งที่ยังไม่ได้แต่ง/ขัด';
+    + '<br>เลือกสถานะต่อไปของชุดเหล่านี้ก่อน จะได้ไม่ค้างเป็น "พร้อมใช้งาน" ทั้งที่ยังไม่ได้แต่ง/ขัด'
+    + '<br><b>กด "ยกเลิก" = ไม่เปลี่ยนอะไรเลย</b> ชุดเดิมกลับมาเป็นกำลังใช้งานที่เครื่องเดิมเหมือนก่อนกด';
   ensureRollLifeFg(); // ต้องมีน้ำหนักผลิตมาแสดงประกอบการตัดสินใจ (โหลดเสร็จแล้ววาดรายการใหม่ให้)
   renderReleasedStatusList();
   ov.classList.add('open');
@@ -2486,6 +2498,26 @@ function renderReleasedStatusList() {
   }).join('');
 }
 
+// ยกเลิก = ไม่เลือกสถานะ และคืนทุกอย่างกลับไปเหมือนก่อนกดสลับชุด
+// (ชุดเดิมกลับมาเป็นกำลังใช้งานที่เครื่องเดิม ชุดที่เพิ่งเลือกกลับไปสถานะเดิมของมัน)
+function cancelReleasedStatuses() {
+  const ov = document.getElementById('released-status-overlay');
+  if (releasedStatusRevert) {
+    rollColorStatus = JSON.parse(releasedStatusRevert.status);
+    rollColorActiveMachine = JSON.parse(releasedStatusRevert.machine);
+    persistState();
+  }
+  releasedStatusPending = [];
+  releasedStatusRevert = null;
+  inUsePickerNotice = '';
+  if (ov) ov.classList.remove('open');
+  if (typeof renderInUseRollPicker === 'function' && document.getElementById('inuse-picker-body')) renderInUseRollPicker();
+  renderDashboardInUseRoll();
+  renderDashboardWorkingRoll();
+  if (typeof renderRollSetList === 'function') { try { renderRollSetList(); } catch (e) {} }
+  updateRollKpi();
+}
+
 function saveReleasedStatuses() {
   releasedStatusPending.forEach((x, i) => {
     const sel = document.getElementById('released-status-' + i);
@@ -2495,6 +2527,7 @@ function saveReleasedStatuses() {
     if (status === 'ready') delete rollColorStatus[k]; else rollColorStatus[k] = status;
   });
   releasedStatusPending = [];
+  releasedStatusRevert = null; // บันทึกแล้วไม่ต้องคืนค่าอีก
   const ov = document.getElementById('released-status-overlay');
   if (ov) ov.classList.remove('open');
   persistState();
@@ -8185,6 +8218,7 @@ function rollRowMachinePickerHtml(setName, colorKey, machines) {
 // เวอร์ชันที่ระบุ Size Roll มาตรงๆ — ตัวเดิม setRollColorActiveMachine() อิง selectedRollSet
 function setRollColorActiveMachineFor(setName, colorKey, machine) {
   if (rollColorStatusFor(setName, colorKey) !== 'inuse') return; // กันไว้ที่ตัวฟังก์ชันด้วย ไม่ใช่แค่ปิดปุ่ม
+  const revert = snapshotRollStatusState(); // เก็บก่อนแก้ เพื่อให้ปุ่ม "ยกเลิก" คืนค่าได้ครบ
   const k = setName + '|' + colorKey;
   if (rollColorActiveMachine[k] === machine) delete rollColorActiveMachine[k];
   else rollColorActiveMachine[k] = machine;
@@ -8195,7 +8229,7 @@ function setRollColorActiveMachineFor(setName, colorKey, machine) {
   renderDashboardWorkingRoll();
   if (cleared.length) openReleasedStatusDialog(cleared,
     'ย้าย ' + setName + ' · ' + rollColorLabelFor(setName, colorKey) + ' ไปเครื่อง ' + machine
-    + ' จึงปลดชุดเดิมของเครื่องนั้นในหมวด ' + (parseSizeRollName(setName).category || '') + ' ออก');
+    + ' จึงปลดชุดเดิมของเครื่องนั้นในหมวด ' + (parseSizeRollName(setName).category || '') + ' ออก', revert);
 }
 
 // ดรอปดาวน์สถานะบนแถวเลย เปลี่ยนได้ทันทีโดยไม่ต้องเลือกแถวก่อน
@@ -8219,6 +8253,7 @@ function rollRowStatusSelectHtml(setName, colorKey) {
 // เวอร์ชันที่ระบุ Size Roll มาตรงๆ — ตัวเดิม setRollColorStatus() อิง selectedRollSet
 // ซึ่งใช้ไม่ได้กับดรอปดาวน์บนแถว เพราะเปลี่ยนสถานะแถวไหนก็ได้โดยไม่ต้องเลือกแถวนั้นก่อน
 function setRollColorStatusFor(setName, colorKey, status) {
+  const revert = snapshotRollStatusState(); // เก็บก่อนแก้ เพื่อให้ปุ่ม "ยกเลิก" คืนค่าได้ครบ
   const k = setName + '|' + colorKey;
   if (status === 'ready') delete rollColorStatus[k]; else rollColorStatus[k] = status;
   let cleared = [];
@@ -8234,7 +8269,7 @@ function setRollColorStatusFor(setName, colorKey, status) {
   renderDashboardWorkingRoll();
   if (cleared.length) openReleasedStatusDialog(cleared,
     'ตั้ง ' + setName + ' · ' + rollColorLabelFor(setName, colorKey) + ' เป็นกำลังใช้งาน จึงปลดชุดเดิมของเครื่องเดียวกันในหมวด '
-    + (parseSizeRollName(setName).category || '') + ' ออก');
+    + (parseSizeRollName(setName).category || '') + ' ออก', revert);
 }
 
 // จัดการชุดสีรายสี — ย้ายมาไว้ในฟอร์ม "แก้ไข Size Roll" หลังเอาแผงที่กางใต้แถวออก
