@@ -9552,9 +9552,12 @@ function renderDailyTasks() {
       ? escapeHtmlAttr(rollNames.slice(0, 2).join(', ')) + ` <span class="muted" style="font-weight:400;">…อีก ${rollNames.length - 2} ชิ้น</span>`
       : escapeHtmlAttr(item.task);
     const row = `<tr${item.expandable ? ` style="cursor:pointer;${rowOpacity}" onclick="toggleDailyTaskDetail('${item.key}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : (rowOpacity ? ` style="${rowOpacity}"` : '')}>
-      <td onclick="event.stopPropagation();">${item.editable ? `<input type="checkbox" ${status==='done'?'checked':''} onchange="toggleDailyTask('${item.key}')" style="width:16px;height:16px;cursor:pointer;">` : `<input type="checkbox" ${status==='done'?'checked':''} disabled style="width:16px;height:16px;">`}</td>
+      <!-- ช่องติ๊กที่กดได้จริงเท่านั้นที่กัน event ไว้ — ช่องที่ปิดใช้งาน (งานตามแผน) ปล่อยให้คลิกกางรายละเอียดได้ -->
+      <td${item.editable ? ' onclick="event.stopPropagation();"' : ''}>${item.editable ? `<input type="checkbox" ${status==='done'?'checked':''} onchange="toggleDailyTask('${item.key}')" style="width:16px;height:16px;cursor:pointer;">` : `<input type="checkbox" ${status==='done'?'checked':''} disabled style="width:16px;height:16px;">`}</td>
       <td class="muted">${item.expandable ? `<span aria-hidden="true" style="display:inline-block;width:12px;transition:transform .15s;transform:rotate(${expanded ? 90 : 0}deg);">▸</span> ` : ''}${i + 1}</td>
-      <td onclick="event.stopPropagation();">${actions}</td>
+      <!-- กัน event เฉพาะตอนที่ช่องนี้มีปุ่มจริง — ถ้าว่าง (งานหลายชิ้น/งานที่เสร็จแล้ว) ต้องปล่อยให้คลิกทะลุไปกางรายละเอียดได้
+           ไม่งั้นช่องว่างที่อยู่ติดลูกศร ▸ จะกลืนคลิกไปเฉยๆ กดกางไม่ได้ -->
+      <td${actions ? ' onclick="event.stopPropagation();"' : ''}>${actions}</td>
       <td>${escapeHtmlAttr(item.rollSet)}</td>
       <td>${escapeHtmlAttr(item.rollColor)}</td>
       <td class="muted">${escapeHtmlAttr(item.rollId)}</td>
