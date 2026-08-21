@@ -5949,11 +5949,9 @@ function openPlanTaskModal(mode, taskId, presetDate) {
       planTaskSeq++;
       planTasks.push({ id: 'PT-' + String(planTaskSeq).padStart(4, '0'), workType, ...data, splitGroupId: null });
     }
-    // งาน "2 กะ" ที่จบพอดีตรงขอบเขตกะ (08:00/17:00/20:00/05:00) แปลว่าไม่มีเวลาทำงานต่อในจุดนั้นแล้ว — ถ้า Roll set/สีเดียวกันนี้ยังมีเวลาที่ต้องวางแผนเหลืออยู่ ให้สร้างงานต่อให้อัตโนมัติทันที (ดู autoContinueRemainingRollTime)
-    if (shiftKey === 'both') {
-      const finalGrp = splitGroups ? splitGroups[splitGroups.length - 1] : null;
-      autoContinueRemainingRollTime(workType, setName, colorKey || null, otCapMinutesByShift, data.workerId, finalGrp ? finalGrp.endDate : data.endDate, finalGrp ? finalGrp.endTime : data.endTime);
-    }
+    // เดิม: งาน "2 กะ" ที่ยังมี Roll ของชุดเดียวกันเหลือไม่ได้วางแผน ระบบจะสร้างงานต่อให้อัตโนมัติทันที
+    // ซึ่งขัดกับการ "เลือกวางแผนเฉพาะบางชิ้น" — เลือกไว้ 2 ชิ้น แต่ได้งานที่เหลืออีก 3 ชิ้นมาด้วยโดยไม่ได้สั่ง
+    // ตอนนี้วางแผนเท่าที่เลือกเท่านั้น ส่วนที่เหลือค่อยกด + เพิ่มงาน เองเมื่อต้องการ
     autoFixPlanSequencing();
     mergeAdjacentPlanTasks();
     persistState();
