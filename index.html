@@ -314,16 +314,16 @@ tbody tr.roll-row-selected:hover{background:var(--accent-glow);}
    ซ่อนคอลัมน์ 1 (ช่องติ๊ก), 5 (รหัส), 8 (ผู้รับผิดชอบ), 9 (เวลาแต่ง) เหลือ ลำดับ/SIZE ROLL/ชุดสี ROLL/ชื่อ ROLL/กะ/เริ่ม-จบงาน/สถานะ/จัดการ
    ไม่ซ่อนคอลัมน์ 6 (ชื่อ ROLL) เพราะ "งานแทรก" ที่ไม่มีข้อมูล Roll ใช้คอลัมน์นี้แสดงชื่องาน ถ้าซ่อนช่างจะเห็นแถวเปล่าไม่รู้ว่างานอะไร
    (ตัวที่ทำให้แถวสูงเต็มจอคือการดัมป์ชื่อ Roll ทั้งหมด ซึ่งแก้แล้วด้วยการย่อเหลือ 2 ชื่อ + จำนวนที่เหลือ)
-   ไม่ซ่อนคอลัมน์ท้าย (จัดการ) เพราะเป็นที่อยู่ของปุ่มเริ่ม/จบงานของงานชิ้นเดียว
+   ไม่ซ่อนคอลัมน์ 3 (จัดการ) เพราะเป็นที่อยู่ของปุ่มเริ่ม/จบงานของงานชิ้นเดียว — ย้ายมาต้นแถวแล้ว เลขคอลัมน์ที่ซ่อนจึงเลื่อนไป 1
    ใช้ > เจาะจงลูกตรงเท่านั้น กันกฎรั่วไปโดนตารางย่อยรายชิ้นที่ซ้อนอยู่ข้างใน และ :not([colspan]) กันไปซ่อนแถวรายละเอียด/แถว "ยังไม่มีงาน" ที่ใช้ colspan */
 table.daily-tech-view > thead > tr > th:nth-child(1),
-table.daily-tech-view > thead > tr > th:nth-child(5),
-table.daily-tech-view > thead > tr > th:nth-child(8),
+table.daily-tech-view > thead > tr > th:nth-child(6),
 table.daily-tech-view > thead > tr > th:nth-child(9),
+table.daily-tech-view > thead > tr > th:nth-child(10),
 table.daily-tech-view > tbody > tr > td:nth-child(1):not([colspan]),
-table.daily-tech-view > tbody > tr > td:nth-child(5):not([colspan]),
-table.daily-tech-view > tbody > tr > td:nth-child(8):not([colspan]),
-table.daily-tech-view > tbody > tr > td:nth-child(9):not([colspan]){display:none;}
+table.daily-tech-view > tbody > tr > td:nth-child(6):not([colspan]),
+table.daily-tech-view > tbody > tr > td:nth-child(9):not([colspan]),
+table.daily-tech-view > tbody > tr > td:nth-child(10):not([colspan]){display:none;}
 
 /* ─── STATUS CHIPS ───────────────────────────── */
 .chip{
@@ -1535,7 +1535,8 @@ canvas{display:block;}
         <div class="table-wrap">
           <table id="tbl-daily">
             <thead>
-              <tr><th></th><th>ลำดับ</th><th>SIZE ROLL</th><th>ชุดสี ROLL</th><th>รหัส</th><th>ชื่อ ROLL</th><th>กะ</th><th>ผู้รับผิดชอบ</th><th>เวลาแต่ง ROLL (นาที)</th><th>เริ่มงาน</th><th>จบงาน</th><th>สถานะ</th><th>จัดการ</th></tr>
+              <!-- คอลัมน์ "จัดการ" (ปุ่มเริ่ม/จบงาน) ย้ายมาไว้ต้นแถวให้อยู่แนวเดียวกับปุ่มของตารางย่อยรายชิ้น -->
+              <tr><th></th><th>ลำดับ</th><th>จัดการ</th><th>SIZE ROLL</th><th>ชุดสี ROLL</th><th>รหัส</th><th>ชื่อ ROLL</th><th>กะ</th><th>ผู้รับผิดชอบ</th><th>เวลาแต่ง ROLL (นาที)</th><th>เริ่มงาน</th><th>จบงาน</th><th>สถานะ</th></tr>
             </thead>
             <tbody id="tbody-daily"></tbody>
           </table>
@@ -9611,6 +9612,7 @@ function renderDailyTasks() {
     const row = `<tr${item.expandable ? ` style="cursor:pointer;${rowOpacity}" onclick="toggleDailyTaskDetail('${item.key}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : (rowOpacity ? ` style="${rowOpacity}"` : '')}>
       <td onclick="event.stopPropagation();">${item.editable ? `<input type="checkbox" ${status==='done'?'checked':''} onchange="toggleDailyTask('${item.key}')" style="width:16px;height:16px;cursor:pointer;">` : `<input type="checkbox" ${status==='done'?'checked':''} disabled style="width:16px;height:16px;">`}</td>
       <td class="muted">${item.expandable ? `<span aria-hidden="true" style="display:inline-block;width:12px;transition:transform .15s;transform:rotate(${expanded ? 90 : 0}deg);">▸</span> ` : ''}${i + 1}</td>
+      <td onclick="event.stopPropagation();">${actions}</td>
       <td>${escapeHtmlAttr(item.rollSet)}</td>
       <td>${escapeHtmlAttr(item.rollColor)}</td>
       <td class="muted">${escapeHtmlAttr(item.rollId)}</td>
@@ -9621,7 +9623,6 @@ function renderDailyTasks() {
       <td class="muted">${startTimeDisplay}</td>
       <td class="muted">${endTimeDisplay}</td>
       <td><span class="chip ${meta.chip}">${meta.label}</span></td>
-      <td onclick="event.stopPropagation();">${actions}</td>
     </tr>`;
     return row + (expanded ? renderPlanDayTaskDetailRow(item.raw, 13, true, blockReason) : '');
   }).join('') || `<tr><td colspan="13" style="padding:32px;text-align:center;color:var(--text-3);">ยังไม่มีงานในวันนี้ — กด "+ เพิ่มงานแทรก" เพื่อเริ่มสร้างงานแทรกเอง</td></tr>`;
