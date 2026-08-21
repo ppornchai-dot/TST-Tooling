@@ -1089,6 +1089,18 @@ canvas{display:block;}
         <div id="dash-roll-inuse-list" style="padding:12px 14px;"></div>
       </div>
 
+      <!-- ROLL WEIGHT NEAR / OVER THE DRESSING CYCLE -->
+      <div class="card" style="margin-bottom:18px;">
+        <div class="card-header">
+          <span class="card-title" style="font-size:17px;color:var(--red);display:inline-flex;align-items:center;gap:8px;">
+            <span style="width:11px;height:11px;border-radius:50%;background:var(--red);flex-shrink:0;"></span>น้ำหนักใกล้หมด / หมดแล้ว</span>
+          <span style="margin-left:auto;font-size:12px;color:var(--text-3);">
+            <span id="dash-roll-weight-count" style="font-weight:700;color:var(--red);">0</span> ชุด
+          </span>
+        </div>
+        <div id="dash-roll-weight-list" style="padding:12px 14px;"></div>
+      </div>
+
       <!-- ROLL READY -->
       <div class="card" style="margin-bottom:18px;">
         <div class="card-header">
@@ -2032,6 +2044,10 @@ function initDashboard() {
   renderToolingStatusTable();
   renderDashboardInUseRoll();
   renderDashboardWorkingRoll();
+  // การ์ดนี้อ่านตัวแปรของตัวดึงน้ำหนักผลิต (rollLifeFgByKeyDate, fgWeightFetchError ฯลฯ) ซึ่งประกาศอยู่ท้ายไฟล์
+  // แต่ initDashboard() ถูกเรียกกลางสคริปต์ตอนบูต เรียกตรงๆ จะชน TDZ แล้วสคริปต์ตายกลางทาง
+  // เลื่อนไปเป็นงานถัดไปให้สคริปต์รันจบก่อน (ช้าไม่ถึงเฟรม ไม่มีผลกับที่ผู้ใช้เห็น)
+  setTimeout(renderDashboardRollWeight, 0);
   renderCal();
   renderCalDetail(null);
 }
@@ -2478,6 +2494,89 @@ function afterInUseRollChange() {
   renderDashboardWorkingRoll();
   if (typeof renderRollColorList === 'function' && currentPage === 'registry') { renderRollSetList(); renderRollColorList(); }
   updateRollKpi();
+}
+
+// ─── DASHBOARD: น้ำหนักใกล้หมด / หมดแล้ว ──────────────────────────────────────
+// รายการ "ชุด Roll" (Size Roll + ชุดสี) พร้อม % การใช้รอบการแต่ง
+// สูตรทั้งหมดใช้ตัวเดียวกับหน้าอายุ Roll (producedTonForRollSet + rollCarryTonFor + rollUsageBand)
+// จะได้ไม่มีทางที่ตัวเลขสองหน้าไม่ตรงกัน — ที่ต่างคือหน้านี้เอาแค่ชุดที่เข้าเกณฑ์เตือน
+function rollUsageRows() {
+  const map = new Map();
+  toolingData.roll.forEach(roll => {
+    const colorKey = roll.color || NO_COLOR_KEY;
+    const key = roll.set + '|' + colorKey;
+    if (!map.has(key)) {
+      const meta = colorKey === NO_COLOR_KEY ? null : getSetPalette(roll.set).find(c => c.key === colorKey);
+      map.set(key, { set: roll.set, colorKey, colorLabel: meta ? meta.label : 'ไม่ระบุสี',
+                     dot: meta ? meta.dot : '#9CA3AF', count: 0, usedTon: null });
+    }
+    const g = map.get(key);
+    g.count++;
+    const life = rollLifeFor(roll);
+    // น้ำหนักต่อรอบการแต่งของชุด = ค่าที่มากสุดในชุด (เกณฑ์เดียวกับหน้าอายุ Roll)
+    if (life.usedTon != null) g.usedTon = g.usedTon == null ? life.usedTon : Math.max(g.usedTon, life.usedTon);
+  });
+  const rows = [...map.values()];
+  rows.forEach(g => {
+    g.dressReset = rollDressResetFor(g.set, g.colorKey);
+    g.fgTon = producedTonForRollSet(g.set, g.colorKey, rollLifeFgByKeyDate, rollLifeFgDates,
+      g.dressReset ? g.dressReset.from : null);
+    g.carryTon = rollCarryTonFor(g.set, g.colorKey);
+    g.producedTon = (g.fgTon == null && !g.carryTon) ? null
+      : Math.round(((g.fgTon || 0) + g.carryTon) * 100) / 100;
+    g.prodPct = (g.producedTon != null && g.usedTon > 0)
+      ? Math.round(g.producedTon / g.usedTon * 1000) / 10 : null;
+    g.leftTon = (g.usedTon != null && g.producedTon != null)
+      ? Math.round((g.usedTon - g.producedTon) * 100) / 100 : null;
+  });
+  return rows;
+}
+
+function renderDashboardRollWeight() {
+  const el = document.getElementById('dash-roll-weight-list');
+  if (!el) return;
+  ensureRollLifeFg(); // ดึงข้อมูลน้ำหนักผลิตทั้งหมด (โหลดเสร็จแล้วจะ render หน้านี้ใหม่ให้เอง)
+  const rows = rollUsageRows().filter(g => g.prodPct != null && g.prodPct > 90);
+  const over = rows.filter(g => g.prodPct >= 100).sort((a, b) => b.prodPct - a.prodPct);
+  const near = rows.filter(g => g.prodPct < 100).sort((a, b) => b.prodPct - a.prodPct);
+  const countEl = document.getElementById('dash-roll-weight-count');
+  if (countEl) countEl.textContent = rows.length;
+
+  if (rollLifeFgLoading && !rows.length) {
+    el.innerHTML = '<div style="padding:4px;color:var(--text-3);font-size:13px;">กำลังโหลดน้ำหนักผลิต…</div>';
+    return;
+  }
+  if (!rows.length) {
+    el.innerHTML = '<div style="padding:4px;color:var(--text-3);font-size:13px;">ยังไม่มีชุด Roll ที่น้ำหนักใกล้หมดหรือหมดแล้ว</div>';
+    return;
+  }
+  const group = (label, list, color, bg) => list.length ? `
+    <div style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;letter-spacing:.01em;
+                color:${color};background:${bg};border-left:4px solid ${color};border-radius:0 6px 6px 0;
+                padding:7px 11px;margin:10px 0 7px;">
+      <span style="width:9px;height:9px;border-radius:50%;background:${color};flex-shrink:0;"></span>${label}
+      <span style="margin-left:auto;font-size:12px;font-weight:800;color:${color};opacity:.85;">${list.length} ชุด</span>
+    </div>
+    ${list.map(g => `<div onclick="${jsCallAttr('goToRollSetColor', g.set, g.colorKey)}"
+      style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:8px;cursor:pointer;
+             border:1px solid ${color};background:${bg};margin-bottom:6px;transition:filter .12s;"
+      onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
+      title="${escapeHtmlAttr('ผลิต ' + (g.producedTon || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })
+        + ' / ' + (g.usedTon || 0).toLocaleString() + ' ตันต่อรอบ' + (g.carryTon ? ' (รวมยกมา ' + g.carryTon.toLocaleString() + ')' : ''))}">
+      <span style="width:9px;height:9px;border-radius:50%;background:${g.dot};flex-shrink:0;"></span>
+      <span style="flex:1;min-width:0;">
+        <span style="display:block;font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(g.set)}</span>
+        <span style="display:block;font-size:11px;color:var(--text-3);">${escapeHtmlAttr(g.colorLabel)} ·
+          ผลิต ${escapeHtmlAttr((g.producedTon || 0).toLocaleString(undefined, { maximumFractionDigits: 2 }))} /
+          ${escapeHtmlAttr((g.usedTon || 0).toLocaleString())} ตัน ·
+          ${g.leftTon != null && g.leftTon > 0 ? 'เหลือ ' + escapeHtmlAttr(g.leftTon.toLocaleString(undefined, { maximumFractionDigits: 2 })) + ' ตัน'
+            : 'เกินมา ' + escapeHtmlAttr(Math.abs(g.leftTon || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })) + ' ตัน'}</span>
+      </span>
+      <span style="font-size:13px;font-weight:800;color:${color};flex-shrink:0;white-space:nowrap;">${g.prodPct}%</span>
+    </div>`).join('')}` : '';
+
+  el.innerHTML = group('หมดแล้ว (≥ 100%)', over, 'var(--red)', 'var(--red-dim)')
+    + group('ใกล้หมด (> 90%)', near, 'var(--amber)', 'var(--amber-dim)');
 }
 
 // ─── DASHBOARD: ชุด Roll กำลังแต่ง / กำลังขัด ─────────────────────────────────
@@ -7354,6 +7453,8 @@ function ensureRollLifeFg() {
     rollLifeFgDates = fgWeightDates;
     rollLifeFgLoading = false;
     renderRollLife();
+    // การ์ด "น้ำหนักใกล้หมด / หมดแล้ว" หน้า Dashboard ใช้ข้อมูลก้อนเดียวกัน ต้องวาดใหม่ด้วยเมื่อโหลดเสร็จ
+    if (typeof renderDashboardRollWeight === 'function') renderDashboardRollWeight();
   });
 }
 
