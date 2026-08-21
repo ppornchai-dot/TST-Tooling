@@ -6830,108 +6830,11 @@ function reconcileLastPieceBoundary(workType, rollSet, rollColor) {
   return anyFixed;
 }
 
-(function backfillMissedPlanContinuations() {
-  const groups = new Map();
-  planTasks.forEach(t => {
-    const key = [t.workType, t.rollSet, t.rollColor].join('|');
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(t);
-  });
-
-  // เก็บ Roll ที่ตกหล่นทั้งหมดจากทุกกลุ่ม พร้อมงานที่ให้เวลาไปล่าสุด (จุดที่ควรต่อกลับไป) — เรียงจากจุดที่ต้องต่อเก่าสุดไปใหม่สุด
-  // เพื่อแทรก+ดันคิวทีละจุดตามลำดับเวลาจริง ไม่ให้แทรกจุดหลังไปทับจุดก่อนหน้าที่เพิ่งขยับเสร็จ
-  const pending = [];
-  groups.forEach(tasks => {
-    const latest = tasks.reduce((a, b) => (b.endDate + ' ' + b.endTime) > (a.endDate + ' ' + a.endTime) ? b : a);
-    if (latest.shift !== 'both') return;
-    const field = PLAN_WORKTYPE_META[latest.workType].field;
-    const matchedRolls = getMatchingRollsForPlan(latest.rollSet, latest.rollColor);
-    const usedMinutesForIdx = (idx, fullMinutes) => tasks.reduce((sum, t) => {
-      if (!(t.rollIds || []).includes(idx)) return sum;
-      const override = t.rollMinutesOverride && t.rollMinutesOverride[idx];
-      return sum + (override != null ? override : fullMinutes);
-    }, 0);
-    matchedRolls.forEach((r, idx) => {
-      const full = parseFloat(r[field]) || 0;
-      if (!full) return;
-      const used = usedMinutesForIdx(idx, full);
-      // เฉพาะ Roll ที่ "เริ่มทำไปแล้วบางส่วน" (used > 0) แต่ยังไม่ครบ (used < full) — ไม่แตะ Roll ที่ยังไม่เคยถูกวางแผนเลย (used === 0) เพราะนั่นเป็นของที่ผู้ใช้ยังไม่ได้ตั้งใจวางแผน ไม่ใช่ของตกหล่น
-      if (!(used > 0 && used < full)) return;
-      const owner = tasks.filter(t => (t.rollIds || []).includes(idx))
-        .reduce((a, b) => (b.endDate + ' ' + b.endTime) > (a.endDate + ' ' + a.endTime) ? b : a);
-      pending.push({ workType: latest.workType, rollSet: latest.rollSet, rollColor: latest.rollColor, roll: r, idx, remaining: full - used, owner });
-    });
-  });
-  if (!pending.length) return;
-  pending.sort((a, b) => (a.owner.endDate + ' ' + a.owner.endTime).localeCompare(b.owner.endDate + ' ' + b.owner.endTime));
-
-  // ดันงานประเภทเดียวกันทั้งคิว (ไม่ใช่แค่ Size Roll/สีเดียวกัน — เครื่อง/คิวช่างประเภทเดียวกันใช้ตารางเวลารวมกัน) ให้ต่อเวลากันสนิทอีกครั้ง หลังแทรกงานใหม่เข้าไป
-  // ต่างจาก autoFixPlanSequencing ตรงที่งานที่เพิ่ง "แทรก" เข้าไปใหม่ (priorityTaskId) ต้องมาก่อนงานอื่นเสมอถ้าเวลาเริ่มชนกันพอดี — ไม่ใช่เรียงตาม id ตามปกติ เพราะงานที่แทรกทีหลังจะมี id ใหม่กว่าเสมอทั้งที่ควรได้คิวก่อน (เป็น Roll ที่ค้างรออยู่นานกว่า)
-  function cascadeWithPriority(workType, priorityTaskId) {
-    let changed = true, guard = 0;
-    while (changed && guard++ < 2000) {
-      changed = false;
-      const chain = planTasks
-        .filter(t => t.workType === workType && t.endDate && t.endTime && t.endTime !== '—')
-        .sort((a, b) => {
-          const ak = a.date + ' ' + (a.startTime || ''), bk = b.date + ' ' + (b.startTime || '');
-          if (ak !== bk) return ak.localeCompare(bk);
-          if (a.id === priorityTaskId) return -1;
-          if (b.id === priorityTaskId) return 1;
-          return a.id < b.id ? -1 : 1;
-        });
-      for (let i = 1; i < chain.length; i++) {
-        const prev = chain[i - 1], cur = chain[i];
-        const target = nextValidPlanContinuePoint(prev.shift, prev.endDate, prev.endTime);
-        const targetDate = target.date, targetTime = target.time;
-        const curKey = cur.date + ' ' + cur.startTime, targetKey = targetDate + ' ' + targetTime;
-        if (curKey >= targetKey) continue;
-        cur.date = targetDate; cur.shift = prev.shift; cur.startTime = targetTime;
-        const computed = computePlanEnd(cur.date, cur.startTime, cur.totalTime, cur.shift, cur.otCapMinutesByShift || {});
-        cur.endTime = computed.time; cur.endDate = computed.date || cur.date;
-        cur.otMinutes = computed.otMinutes || 0; cur.otMinutesByShift = computed.otMinutesByShift || {};
-        changed = true;
-      }
-    }
-  }
-
-  pending.forEach(p => {
-    // p.owner อาจถูกขยับเวลาไปแล้วจากการแทรก Roll ตัวก่อนหน้าในลูปนี้ — ใช้ object เดิม ค่า endDate/endTime จะเป็นค่าล่าสุดเสมอเพราะ cascadeWithPriority แก้ไข object ตรงๆ ไม่ได้สร้างใหม่
-    // จุดที่ควรแทรกกลับไปต่อจริงอาจไม่ใช่ p.owner.endDate/endTime ตรงๆ ถ้าจบพอดีขอบเขตกะหรือไปตกวันหยุด (ดู nextValidPlanContinuePoint)
-    const anchor = nextValidPlanContinuePoint('both', p.owner.endDate, p.owner.endTime);
-    const computed = computePlanEnd(anchor.date, anchor.time, p.remaining, 'both', p.owner.otCapMinutesByShift || {});
-    planTaskSeq++;
-    const newTask = {
-      id: 'PT-' + String(planTaskSeq).padStart(4, '0'), workType: p.workType,
-      date: anchor.date, rollSet: p.rollSet, rollColor: p.rollColor,
-      rollIds: [p.idx], rollId: '1 Roll', rollName: p.roll.name,
-      totalTime: p.remaining,
-      startTime: anchor.time, endTime: computed.time || '—', endDate: computed.date || anchor.date,
-      shift: 'both', otCapMinutesByShift: p.owner.otCapMinutesByShift || {},
-      otMinutes: computed.otMinutes || 0, otMinutesByShift: computed.otMinutesByShift || {},
-      rollMinutesOverride: { [p.idx]: p.remaining },
-      workerId: p.owner.workerId,
-      splitGroupId: null,
-    };
-    planTasks.push(newTask);
-    cascadeWithPriority(p.workType, newTask.id);
-  });
-  mergeAdjacentPlanTasks();
-
-  // หลังแทรก+ดันคิว งานที่เคยถูกตัดไว้ที่ขอบเขตกะอยู่แล้วอาจได้เวลาไม่ตรงกับที่ควรจะเป็นจริง (เพราะจุดเริ่มขยับจากการแทรกงานอื่นก่อนหน้า) — ไล่ตรวจ+แก้ทุกกลุ่มจนกว่าจะนิ่ง (แก้จุดหนึ่งอาจกระทบจุดถัดไปในคิวเดียวกันต่อ)
-  let reconcileGuard = 0;
-  let reconcileChanged = true;
-  while (reconcileChanged && reconcileGuard++ < 50) {
-    reconcileChanged = false;
-    const keysToCheck = new Set(pending.map(p => [p.workType, p.rollSet, p.rollColor].join('|')));
-    keysToCheck.forEach(key => {
-      const [workType, rollSet, rollColor] = key.split('|');
-      if (reconcileLastPieceBoundary(workType, rollSet, rollColor === '' ? null : rollColor)) reconcileChanged = true;
-    });
-    if (reconcileChanged) { autoFixPlanSequencing(); mergeAdjacentPlanTasks(); }
-  }
-  persistState();
-})();
+// เดิมมี backfillMissedPlanContinuations() รันตอนโหลดหน้าทุกครั้ง — ไล่หา Roll ที่ "เวลาที่วางแผนไว้น้อยกว่าเวลาเต็มในทะเบียน"
+// แล้วสร้างงานต่อให้อัตโนมัติเพื่อเก็บเวลาส่วนที่เหลือ พร้อมดันคิวงานอื่นและบันทึกลงข้อมูลเลย
+// ปัญหา: มันแยกไม่ออกระหว่าง "ทำค้างไว้" กับ "ตั้งใจวางแผนเฉพาะบางชิ้น/ตั้งเวลาต่อชิ้นสั้นกว่าทะเบียนเอง"
+// ผลคือวางแผนวันที่ 21 แล้วมีงานงอกไปวันที่ 24-26 เองโดยไม่ได้สั่ง (เคสที่ผู้ใช้แจ้ง)
+// ตัดออกทั้งก้อน — ส่วนที่เหลือให้กด + เพิ่มงาน เองเมื่อต้องการ
 
 // currentUser/adminViewAsName ต้องประกาศไว้ก่อนจุดนี้ (ก่อน initDashboard()/renderCurrentPlanView() ที่เรียกด้านล่าง) เพราะ renderCurrentPlanView() เรียก canEditPlan() ซึ่งอ่านค่าทั้งสองตัวนี้ผ่าน effectiveRole()
 // ตัวแปรจริงยังอยู่ที่หมวด LOGIN / ROLE-BASED UI ท้ายไฟล์เหมือนเดิม ย้ายมาแค่การประกาศ (let ... = null) มาไว้ตรงนี้
