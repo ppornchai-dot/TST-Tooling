@@ -1014,33 +1014,33 @@ canvas{display:block;}
           <div class="kpi-icon blue">
             <svg width="18" height="18" fill="none" stroke="var(--accent)" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
           </div>
-          <div class="kpi-label">งานทั้งหมดเดือนนี้</div>
-          <div class="kpi-value">107</div>
-          <div class="kpi-change up">▲ 8 จากเดือนที่แล้ว</div>
+          <div class="kpi-label" id="dash-kpi-total-label">งานทั้งหมดเดือนนี้</div>
+          <div class="kpi-value" id="dash-kpi-total">—</div>
+          <div class="kpi-change up" id="dash-kpi-total-sub"></div>
         </div>
         <div class="kpi-card green">
           <div class="kpi-icon green">
             <svg width="18" height="18" fill="none" stroke="var(--green)" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
           </div>
           <div class="kpi-label">งานสำเร็จ</div>
-          <div class="kpi-value">84</div>
-          <div class="kpi-change up" style="color:var(--green);">78.5% ของแผน</div>
+          <div class="kpi-value" id="dash-kpi-done">—</div>
+          <div class="kpi-change up" style="color:var(--green);" id="dash-kpi-done-sub"></div>
         </div>
         <div class="kpi-card amber">
           <div class="kpi-icon amber">
             <svg width="18" height="18" fill="none" stroke="var(--amber)" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg>
           </div>
-          <div class="kpi-label">งานค้าง</div>
-          <div class="kpi-value">16</div>
-          <div class="kpi-change down" style="color:var(--amber);">▲ 3 จากสัปดาห์ที่แล้ว</div>
+          <div class="kpi-label" id="dash-kpi-open-label">งานค้าง</div>
+          <div class="kpi-value" id="dash-kpi-open">—</div>
+          <div class="kpi-change down" style="color:var(--amber);" id="dash-kpi-open-sub"></div>
         </div>
         <div class="kpi-card red">
           <div class="kpi-icon red">
             <svg width="18" height="18" fill="none" stroke="var(--red)" stroke-width="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/></svg>
           </div>
-          <div class="kpi-label">งานตกแผน</div>
-          <div class="kpi-value">7</div>
-          <div class="kpi-change down" style="color:var(--red);">เกินกำหนด — ต้องติดตาม</div>
+          <div class="kpi-label" id="dash-kpi-overdue-label">งานตกแผน</div>
+          <div class="kpi-value" id="dash-kpi-overdue">—</div>
+          <div class="kpi-change down" style="color:var(--red);" id="dash-kpi-overdue-sub"></div>
         </div>
       </div>
 
@@ -1988,8 +1988,92 @@ function initDashboard() {
   // แต่ initDashboard() ถูกเรียกกลางสคริปต์ตอนบูต เรียกตรงๆ จะชน TDZ แล้วสคริปต์ตายกลางทาง
   // เลื่อนไปเป็นงานถัดไปให้สคริปต์รันจบก่อน (ช้าไม่ถึงเฟรม ไม่มีผลกับที่ผู้ใช้เห็น)
   setTimeout(renderDashboardRollWeight, 0);
+  // เลื่อนออกไปเป็นงานถัดไปด้วยเหตุผลเดียวกัน — initDashboard() ถูกเรียกกลางสคริปต์ตอนบูต
+  // ส่วน KPI อ่าน planTasks / dailyStatusByDate / dailyPieceStatus ที่ประกาศอยู่ถัดจากจุดนั้นไป
+  setTimeout(renderDashboardKpi, 0);
   // เอาการ์ดปฏิทินงาน / แผนงานสัปดาห์นี้ / กิจกรรมล่าสุด ออกจากหน้า Dashboard แล้ว
   // ฟังก์ชัน renderCal()/renderCalDetail() ยังอยู่และเช็ก element ก่อนทำงาน จึงไม่ต้องเรียกที่นี่อีก
+}
+
+// ─── DASHBOARD: KPI แถวบนสุด ─────────────────────────────────────────────────
+// เดิมเลขทั้ง 4 ใบฝังไว้ในหน้าเป็นตัวอย่าง (107/84/16/7) ไม่เคยอัปเดตตามข้อมูลจริง
+// นับเป็น "รายการงานตามแผน" (1 รายการมีได้หลายชิ้น Roll) แบบเดียวกับที่หน้าวางแผนแสดง
+// สถานะของแต่ละรายการใช้ planTaskProgressState() ตัวเดียวกับสีในปฏิทินแผนงาน ตัวเลขสองที่จึงตรงกันเสมอ
+function dashboardKpiCounts(ym) {
+  const byState = { done: 0, late: 0, doing: 0, wait: 0 };
+  let total = 0, pieces = 0;
+  planTasks.forEach(t => {
+    if (taskDisplayDate(t).slice(0, 7) !== ym) return;
+    total++;
+    pieces += Math.max(1, (t.rollIds || []).length);
+    const st = planTaskProgressState(t);
+    if (byState[st] !== undefined) byState[st]++;
+  });
+  return { total, pieces, ...byState, open: total - byState.done };
+}
+
+function renderDashboardKpi() {
+  const el = id => document.getElementById(id);
+  if (!el('dash-kpi-total')) return;
+  const now = new Date();
+  const thisYm = toISODate(now).slice(0, 7);
+  const prevYm = toISODate(new Date(now.getFullYear(), now.getMonth() - 1, 1)).slice(0, 7);
+  const cur = dashboardKpiCounts(thisYm), last = dashboardKpiCounts(prevYm);
+  const set = (id, text, title) => {
+    const e = el(id); if (!e) return;
+    e.textContent = text;
+    if (title != null) e.title = title;
+  };
+
+  // 1) งานทั้งหมดเดือนนี้ — เทียบกับเดือนที่แล้วด้วยเกณฑ์เดียวกัน
+  const diff = cur.total - last.total;
+  const arrow = diff > 0 ? '▲ ' : diff < 0 ? '▼ ' : '± ';
+  set('dash-kpi-total', cur.total.toLocaleString(),
+    'รายการงานตามแผน (CNC + ขัด Roll) ที่วันของงานอยู่ในเดือนนี้ — ' + cur.pieces.toLocaleString() + ' ชิ้น Roll');
+  // เดือนที่แล้วไม่มีแผนงานเลย เขียน "▲ 53 จากเดือนที่แล้ว (0)" แล้วอ่านสับสน จึงบอกตรงๆ
+  set('dash-kpi-total-sub', (last.total === 0
+      ? 'เดือนที่แล้วไม่มีแผนงาน'
+      : arrow + Math.abs(diff).toLocaleString() + ' จากเดือนที่แล้ว (' + last.total.toLocaleString() + ')')
+    + ' · ' + cur.pieces.toLocaleString() + ' ชิ้น Roll');
+  const totalSub = el('dash-kpi-total-sub');
+  if (totalSub) {
+    totalSub.className = 'kpi-change ' + (diff < 0 ? 'down' : 'up');
+    totalSub.style.color = diff < 0 ? 'var(--amber)' : '';
+  }
+
+  // 2) งานสำเร็จ — % ของแผนเดือนนี้
+  const pct = cur.total ? Math.round(cur.done / cur.total * 1000) / 10 : null;
+  set('dash-kpi-done', cur.done.toLocaleString(), 'รายการที่ทำครบทุกชิ้นแล้วในเดือนนี้');
+  set('dash-kpi-done-sub', pct == null ? 'ยังไม่มีแผนงานเดือนนี้' : pct + '% ของแผน');
+
+  // 3) งานค้าง — ยังไม่เสร็จทั้งหมดของเดือนนี้ แยกให้เห็นว่าค้างจริง/กำลังทำ/ยังไม่ถึงคิว
+  set('dash-kpi-open', cur.open.toLocaleString(),
+    'รายการของเดือนนี้ที่ยังทำไม่ครบ — เลยวันแล้ว ' + cur.late + ' · กำลังทำ ' + cur.doing + ' · รอทำ ' + cur.wait);
+  set('dash-kpi-open-sub', 'เลยวันแล้ว ' + cur.late.toLocaleString()
+    + ' · กำลังทำ ' + cur.doing.toLocaleString() + ' · รอทำ ' + cur.wait.toLocaleString());
+
+  // 4) งานตกแผน — เลยเวลาจบตามแผนแล้วยังไม่เสร็จ (เกณฑ์เดียวกับหน้างานค้าง) เฉพาะของเดือนนี้
+  const overdue = collectOverdueRecords().filter(r => String(r.dateIso || '').slice(0, 7) === thisYm);
+  const worst = overdue.reduce((m, r) => Math.max(m, r.overdueDays || 0), 0);
+  set('dash-kpi-overdue', overdue.length.toLocaleString(),
+    'เลยเวลาจบตามแผนแล้วยังไม่เสร็จ — เกณฑ์เดียวกับหน้างานค้าง');
+  set('dash-kpi-overdue-sub', overdue.length
+    ? 'เกินกำหนด — ช้าสุด ' + worst.toLocaleString() + ' วัน'
+    : 'ไม่มีงานเกินกำหนด');
+  const odSub = el('dash-kpi-overdue-sub');
+  if (odSub) odSub.style.color = overdue.length ? 'var(--red)' : 'var(--green)';
+
+  // คำบรรยายใต้หัวข้อหน้าเคยฝัง "อัปเดต 30 มิ.ย. 2569" ไว้ตายตัว — ใช้เวลาซิงก์ขึ้นคลาวด์ล่าสุดจริง
+  const stamp = cloudUpdatedAt ? new Date(cloudUpdatedAt) : null;
+  const sub = 'ภาพรวมระบบ Tooling — ' + (stamp && !isNaN(stamp)
+    ? 'อัปเดตล่าสุด ' + fmtDateThai(stamp) + ' '
+      + String(stamp.getHours()).padStart(2, '0') + ':' + String(stamp.getMinutes()).padStart(2, '0')
+    : 'ยังไม่ได้ซิงก์ข้อมูลกับคลาวด์');
+  if (PAGE_META.dashboard) PAGE_META.dashboard.sub = sub;
+  if (currentPage === 'dashboard') {
+    const topSub = document.getElementById('page-sub');
+    if (topSub) topSub.textContent = sub;
+  }
 }
 
 // ─── DASHBOARD: ชุด Roll กำลังใช้งาน ──────────────────────────────────────────
@@ -3760,6 +3844,9 @@ function renderCurrentPlanView() {
   if (currentPlanView === 'day') renderPlanDay();
   else if (currentPlanView === 'week') renderPlanWeek();
   else if (currentPlanView === 'month') renderPlanMonth();
+  // KPI แถวบนของ Dashboard นับจาก planTasks — ทุกจุดที่แก้แผนงานเรียกฟังก์ชันนี้อยู่แล้ว
+  // เกาะไว้ที่นี่จึงไม่ต้องไปเติมทีละจุด (บันทึก/ลบ/ลาก/แยกวัน ฯลฯ)
+  renderDashboardKpi();
 }
 
 function switchPlanView(mode) {
@@ -10079,6 +10166,7 @@ function collectOverdueRecords() {
     else reason = 'เลยกำหนดที่วางแผนไว้ — ยังไม่เริ่มงาน';
     records.push({
       wo: t.id, typeLabel: t.workType === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)',
+      dateIso, // ใช้กรองเฉพาะเดือนนี้ในการ์ด KPI หน้า Dashboard
       tooling: `${t.rollSet || '—'}${t.rollColor ? ' — ' + planRollColorLabel(t) : ''}`,
       reason, who: workerName(t.workerId),
       dueLabel: `${fmtDateThaiShort(parseISODate(dateIso))} ${t.endTime || ''}`,
@@ -10092,6 +10180,9 @@ function collectOverdueRecords() {
 
 // อัปเดตเลข badge สีแดงข้างเมนู "งานค้าง" ให้ตรงกับจำนวนงานที่เลยกำหนดจริงตอนนี้ — เรียกจากทุกจุดที่ทำให้จำนวนนี้เปลี่ยนได้ (โหลดหน้าเว็บ/render หน้างานประจำวัน/render หน้างานค้างเอง)
 function updatePendingBadge() {
+  // KPI แถวบนของ Dashboard นับจากความคืบหน้าของงานชุดเดียวกัน — ฟังก์ชันนี้ถูกเรียกจาก
+  // ทุกจุดที่ทำให้จำนวนงานค้างเปลี่ยนอยู่แล้ว (กดเริ่ม/จบ/พักงาน) จึงอัปเดตพร้อมกันตรงนี้
+  renderDashboardKpi();
   const badge = document.getElementById('pending-badge');
   if (!badge) return;
   const count = collectOverdueRecords().length;
