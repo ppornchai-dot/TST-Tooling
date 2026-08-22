@@ -1559,12 +1559,10 @@ canvas{display:block;}
 
       <!-- เอาปุ่มเลือกดู ⚙ CNC / ✦ ขัด Roll ออกแล้ว — ทุกมุมมองแสดงทั้งสองประเภทพร้อมกัน
            รายวันแบ่งเป็นหัวข้อเหมือนหน้างานประจำวัน ส่วนรายสัปดาห์/รายเดือนติดไอคอนประเภทไว้ที่ป้ายงาน -->
+      <!-- เอาปุ่มกรองกะ (ทั้งหมด/กะเช้า/กะดึก/2 กะ) ออกแล้ว — ทุกมุมมองแสดงงานทุกกะเสมอ
+           กะของแต่ละงานดูได้จากคอลัมน์ "กะ" ในมุมมองรายวัน และจากทูลทิปของป้ายงานในรายสัปดาห์/รายเดือน -->
       <div class="mobile-wrap" id="plan-shift-row" style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
-        <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="" onclick="switchPlanShiftFilter('')" style="color:var(--accent);border-color:var(--accent);">ทั้งหมด</button>
-        <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="morning" onclick="switchPlanShiftFilter('morning')">🌤 กะเช้า</button>
-        <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="night" onclick="switchPlanShiftFilter('night')">🌙 กะดึก</button>
-        <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="both" onclick="switchPlanShiftFilter('both')">🌤🌙 2 กะ</button>
-        <button class="btn btn-ghost btn-sm plan-edit-only" style="margin-left:auto;" onclick="openCompanyHolidaysModal()">📅 วันหยุดบริษัท</button>
+        <button class="btn btn-ghost btn-sm plan-edit-only" onclick="openCompanyHolidaysModal()">📅 วันหยุดบริษัท</button>
         <button class="btn btn-ghost btn-sm plan-edit-only" style="color:var(--red);border-color:var(--red);" onclick="togglePlanDeleteMode()">🗑 ลบแผนงาน</button>
       </div>
 
@@ -2970,12 +2968,8 @@ function goToPlanTask(taskId, dateIso, workType) {
   // ไม่ต้องสลับประเภทงานอีกแล้ว — ทุกมุมมองแสดงทั้ง CNC และขัด Roll พร้อมกัน
   // แต่ยังตั้งประเภทของฟอร์มให้ตรงไว้ เผื่อผู้ใช้กดเพิ่มงานต่อจากตรงนี้
   if (currentPlanWorkType !== (workType || t.workType)) switchPlanWorkType(workType || t.workType);
-  // กะที่กรองอยู่ก็ซ่อนงานได้ — ล้างตัวกรองกะเพื่อให้เห็นงานที่กดมาแน่ๆ
-  if (typeof currentPlanShiftFilter !== 'undefined' && currentPlanShiftFilter
-      && !shiftMatchesFilter(t.shift, currentPlanShiftFilter)) {
-    currentPlanShiftFilter = null;
-    document.querySelectorAll('.plan-shift-btn').forEach(b => b.classList.toggle('active', !b.getAttribute('data-shift')));
-  }
+  // ไม่มีตัวกรองกะแล้ว แต่ล้างค่าที่อาจค้างจาก state เก่าไว้ กันงานที่กดมาถูกซ่อน
+  currentPlanShiftFilter = null;
   if (currentPlanView !== 'day') switchPlanView('day');
   planViewDate = parseISODate(day);
   renderCurrentPlanView();
@@ -3895,7 +3889,7 @@ const SHIFTS = {
   night:   { key: 'night',   label: 'กะดึก',  start: '20:00', end: '05:00', windows: [{ startMin: 20 * 60, endMin: 5 * 60, shiftKey: 'night' }], breaks: [{ startMin: 0, endMin: 60, shiftKey: 'night', type: 'lunch_night' }] },
   both:    { key: 'both',    label: '2 กะ',   start: '08:00', end: '05:00', windows: [{ startMin: 8 * 60, endMin: 17 * 60, shiftKey: 'morning' }, { startMin: 20 * 60, endMin: 5 * 60, shiftKey: 'night' }], breaks: [{ startMin: 12 * 60, endMin: 13 * 60, shiftKey: 'morning', type: 'lunch' }, { startMin: 0, endMin: 60, shiftKey: 'night', type: 'lunch_night' }] },
 };
-let currentPlanShiftFilter = null; // null = ทั้งหมด
+let currentPlanShiftFilter = null; // เลิกใช้แล้ว (เอาปุ่มกรองกะออก) — คงไว้ null เสมอ
 
 function isMinuteInWindow(minOfDay, w) {
   return w.startMin < w.endMin
@@ -3930,6 +3924,7 @@ function shiftMatchesFilter(shiftKey, filterKey) {
   return shiftKey === filterKey || shiftKey === 'both';
 }
 
+// ไม่มีปุ่มกรองกะแล้ว — เก็บฟังก์ชันไว้เผื่อมีปุ่มเก่าค้างอยู่ในหน้าที่เบราว์เซอร์แคชไว้
 function switchPlanShiftFilter(key) {
   currentPlanShiftFilter = key || null;
   document.querySelectorAll('.plan-shift-btn').forEach(b => {
@@ -3940,18 +3935,9 @@ function switchPlanShiftFilter(key) {
   renderCurrentPlanView();
 }
 
-// แสดงปุ่มกรองกะทุกกะที่มีประเภทงานใดทำได้ — ตอนนี้ทุกมุมมองแสดงทั้ง CNC และขัด Roll พร้อมกัน
-// (งานขัด Roll ทำเฉพาะกะเช้า แต่งาน CNC ทำกะดึก/2 กะได้ จึงต้องมีปุ่มให้กรองครบ)
+// ปุ่มกรองกะถูกเอาออกไปแล้ว — เหลือไว้กันไม่ให้ตัวกรองค้างค่าเก่าจาก state ที่เคยบันทึกไว้
 function refreshPlanShiftFilterButtons() {
-  const allowed = new Set(Object.keys(PLAN_WORKTYPE_META).flatMap(k => planWorkTypeShifts(k)));
-  let resetFilter = false;
-  document.querySelectorAll('.plan-shift-btn').forEach(b => {
-    const key = b.getAttribute('data-shift') || '';
-    const show = !key || allowed.has(key);
-    b.style.display = show ? '' : 'none';
-    if (!show && currentPlanShiftFilter === key) resetFilter = true;
-  });
-  if (resetFilter) switchPlanShiftFilter('');
+  currentPlanShiftFilter = null;
 }
 
 // เวลาต่อชิ้นจากทะเบียน Tooling — ต้องอิงประเภทงานของ "งานนั้น" ไม่ใช่ประเภทที่ฟอร์มกำลังตั้งอยู่
@@ -4062,19 +4048,18 @@ function planDateGoToday() {
   closePlanDatePicker();
   renderCurrentPlanView();
 }
-// วันที่ (iso) ที่มีแผนงานอยู่แล้ว — ใช้ทำจุดสีในปฏิทินป๊อปอัพ (นับทั้ง CNC และขัด Roll)
+// วันที่ (iso) ที่มีแผนงานอยู่แล้ว — ใช้ทำจุดสีในปฏิทินป๊อปอัพ (นับทุกกะ ทั้ง CNC และขัด Roll)
 function planDatesWithTasks() {
   const set = new Set();
-  planTasks.forEach(t => { if (shiftMatchesFilter(t.shift, currentPlanShiftFilter)) set.add(taskDisplayDate(t)); });
+  planTasks.forEach(t => set.add(taskDisplayDate(t)));
   return set;
 }
-// เงื่อนไขกรองงานตามแผนที่ใช้ร่วมกันทุกมุมมอง (รายวัน/สัปดาห์/เดือน) — กะที่เลือกอยู่ (ถ้ามี)
-// ไม่มีตัวกรองประเภทงานให้กดแล้ว ทุกมุมมองแสดงทั้ง CNC และขัด Roll พร้อมกัน
-// เว้นช่าง CNC / ช่างขัด Roll ที่ยังเห็นเฉพาะประเภทของตัวเองตามบทบาท
+// เงื่อนไขกรองงานตามแผนที่ใช้ร่วมกันทุกมุมมอง (รายวัน/สัปดาห์/เดือน)
+// ไม่มีปุ่มกรองประเภทงานและกะให้กดแล้ว ทุกมุมมองแสดงงานทุกกะทั้งสองประเภทพร้อมกัน
+// เหลือข้อจำกัดเดียวคือช่าง CNC / ช่างขัด Roll ที่เห็นเฉพาะประเภทของตัวเองตามบทบาท
 function matchesCurrentPlanFilter(t) {
   const forced = forcedWorkTypeForRole();
-  if (forced && t.workType !== forced) return false;
-  return shiftMatchesFilter(t.shift, currentPlanShiftFilter);
+  return !forced || t.workType === forced;
 }
 function shiftChipClass(shiftKey) {
   return shiftKey === 'night' ? 'chip-purple' : shiftKey === 'both' ? 'chip-cyan' : 'chip-amber';
@@ -6145,7 +6130,8 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   // chainFrom เหลือไว้ใช้เป็นค่าเริ่มต้นของ "ผู้ปฏิบัติงาน" อย่างเดียว เพราะมักเป็นคนเดิมกับงานล่าสุด
   const chainFrom = !task ? findLatestPlanTaskEnd(workType) : null;
   const pickedDate = task ? task.date : (presetDate || toISODate(planViewDate));
-  let defaultShift = (task ? task.shift : currentPlanShiftFilter) || 'morning';
+  // งานใหม่เริ่มที่กะเช้าเสมอ (เดิมยึดกะที่กำลังกรองอยู่ ซึ่งไม่มีปุ่มกรองกะแล้ว)
+  let defaultShift = (task ? task.shift : null) || 'morning';
   // งานใหม่ต้องเริ่มด้วยกะที่ประเภทงานนี้ทำได้ (งานขัด Roll = กะเช้าเท่านั้น)
   if (!task && !planWorkTypeAllowsShift(workType, defaultShift)) defaultShift = planWorkTypeShifts(workType)[0] || 'morning';
   // งานใหม่ไปต่อ "ท้ายคิว" จริงของประเภทงานนี้ ซึ่งอาจเลยวันที่กดเพิ่มไปแล้ว
@@ -11617,13 +11603,11 @@ function applyRoleUI() {
   const allowEditPlan = canEditPlan();
   document.querySelectorAll('.plan-edit-only').forEach(el => { el.style.display = allowEditPlan ? '' : 'none'; });
 
-  // แถวกรองกะ (ทั้งหมด/กะเช้า/กะดึก/2 กะ) ซ่อนทั้งแถวสำหรับช่าง — ปุ่มอีกสองตัวในแถวเดียวกัน (วันหยุดบริษัท/ล้างแผน)
-  // เป็น plan-edit-only ที่ถูกซ่อนอยู่แล้ว จึงไม่เหลือแถวว่างค้างไว้ และต้องคืนตัวกรองเป็น "ทั้งหมด" ให้ช่างเห็นงานทุกกะ
+  // แถวนี้เหลือแค่ปุ่ม วันหยุดบริษัท / ลบแผนงาน ซึ่งเป็น plan-edit-only ทั้งคู่ — ซ่อนทั้งแถวสำหรับช่าง
+  // ไม่ให้เหลือแถวว่างค้างไว้ (ปุ่มกรองกะถูกเอาออกจากแถวนี้ไปแล้ว)
   const planShiftRow = document.getElementById('plan-shift-row');
-  if (planShiftRow) {
-    planShiftRow.style.display = allowEditPlan ? '' : 'none';
-    if (!allowEditPlan && currentPlanShiftFilter) switchPlanShiftFilter('');
-  }
+  if (planShiftRow) planShiftRow.style.display = allowEditPlan ? '' : 'none';
+  currentPlanShiftFilter = null;
   // มุมมองที่กำลังเปิดอยู่ตอนนี้ (รายวัน/สัปดาห์/เดือน) เช็คสิทธิ์เองในฟังก์ชัน render ตรงๆ อยู่แล้ว — แค่สั่ง render ใหม่ให้ตรงกับสิทธิ์ล่าสุด
   if (document.getElementById('plan-month-grid')) renderCurrentPlanView();
 
