@@ -1487,7 +1487,7 @@ canvas{display:block;}
       <div class="section-sub" id="daily-section-sub">เช็คลิสต์งานประจำวันของทีม Tooling — วันที่ 2 ก.ค. 2569</div>
 
       <!-- เอาปุ่มกรอง ทั้งหมด/CNC/ขัด Roll ออกแล้ว — ตารางแบ่งหัวข้อเป็น 2 ประเภทงานให้เห็นทั้งคู่ในหน้าเดียว
-           ช่าง CNC / ช่างขัด Roll ยังเห็นเฉพาะประเภทของตัวเอง ผ่าน forcedDailyWorkType() -->
+           ช่าง CNC / ช่างขัด Roll ยังเห็นเฉพาะประเภทของตัวเอง ผ่าน forcedWorkTypeForRole() -->
       <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
         <button class="btn btn-ghost btn-sm daily-datenav-btn" onclick="dailyNav(-1)">‹ ก่อนหน้า</button>
         <div style="position:relative;display:inline-flex;">
@@ -1557,11 +1557,8 @@ canvas{display:block;}
       <div class="section-title" id="plan-section-title">วางแผน</div>
       <div class="section-sub">ตารางแผนการบำรุงรักษาและงาน Tooling ประจำปี 2569</div>
 
-      <div class="mobile-wrap" style="display:flex;gap:8px;margin-bottom:12px;">
-        <button class="btn btn-ghost btn-sm plan-worktype-btn" data-worktype="cnc" onclick="switchPlanWorkType('cnc')" style="color:var(--accent);border-color:var(--accent);">⚙ CNC</button>
-        <button class="btn btn-ghost btn-sm plan-worktype-btn" data-worktype="polish" onclick="switchPlanWorkType('polish')">✦ ขัด Roll</button>
-      </div>
-
+      <!-- เอาปุ่มเลือกดู ⚙ CNC / ✦ ขัด Roll ออกแล้ว — ทุกมุมมองแสดงทั้งสองประเภทพร้อมกัน
+           รายวันแบ่งเป็นหัวข้อเหมือนหน้างานประจำวัน ส่วนรายสัปดาห์/รายเดือนติดไอคอนประเภทไว้ที่ป้ายงาน -->
       <div class="mobile-wrap" id="plan-shift-row" style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="" onclick="switchPlanShiftFilter('')" style="color:var(--accent);border-color:var(--accent);">ทั้งหมด</button>
         <button class="btn btn-ghost btn-sm plan-shift-btn" data-shift="morning" onclick="switchPlanShiftFilter('morning')">🌤 กะเช้า</button>
@@ -1612,8 +1609,8 @@ canvas{display:block;}
       <div id="plan-view-day" class="plan-view-panel" style="display:none;">
         <div class="card">
           <div class="card-header">
-            <span class="card-title" id="plan-day-title">งานตามแผน — วันที่ 2 ก.ค. 2569</span>
-            <button class="btn btn-primary btn-sm plan-edit-only" onclick="addPlanTaskForCurrentDay()">+ เพิ่มงาน</button>
+            <span class="card-title" id="plan-day-title">แผนงาน — วันที่ 2 ก.ค. 2569</span>
+            <!-- ปุ่มเพิ่มงานอยู่ที่หัวข้อของแต่ละประเภทงานในตารางแล้ว (ดู PLAN_DAY_SECTIONS) จะได้ไม่ต้องเดาว่ากำลังเพิ่มงานประเภทไหน -->
           </div>
           <div class="table-wrap">
             <table>
@@ -1629,7 +1626,8 @@ canvas{display:block;}
                   <th rowspan="3">จัดการ</th>
                 </tr>
                 <tr>
-                  <th rowspan="2" id="plan-day-plancol-header">เวลาแต่ง Roll (นาที)</th>
+                  <!-- ตารางนี้รวมทั้ง CNC และขัด Roll แล้ว หัวคอลัมน์จึงใช้คำกลางๆ (ชื่อเฉพาะอยู่ที่หัวข้อแต่ละประเภท) -->
+                  <th rowspan="2" id="plan-day-plancol-header">เวลาทำงาน (นาที)</th>
                   <th colspan="2" style="text-align:center;">เวลา</th>
                 </tr>
                 <tr>
@@ -2970,7 +2968,8 @@ function goToPlanTask(taskId, dateIso, workType) {
   if (!t) { alert('งานตามแผนนี้ถูกลบหรือย้ายไปแล้ว'); renderDashboardWorkingRoll(); return; }
   const day = dateIso || taskDisplayDate(t);
   showPage('plan');
-  // ประเภทงาน (CNC/ขัด Roll) ต้องตรงก่อน ไม่งั้นงานจะถูกกรองออกจากทุกมุมมอง
+  // ไม่ต้องสลับประเภทงานอีกแล้ว — ทุกมุมมองแสดงทั้ง CNC และขัด Roll พร้อมกัน
+  // แต่ยังตั้งประเภทของฟอร์มให้ตรงไว้ เผื่อผู้ใช้กดเพิ่มงานต่อจากตรงนี้
   if (currentPlanWorkType !== (workType || t.workType)) switchPlanWorkType(workType || t.workType);
   // กะที่กรองอยู่ก็ซ่อนงานได้ — ล้างตัวกรองกะเพื่อให้เห็นงานที่กดมาแน่ๆ
   if (typeof currentPlanShiftFilter !== 'undefined' && currentPlanShiftFilter
@@ -3942,38 +3941,35 @@ function switchPlanShiftFilter(key) {
   renderCurrentPlanView();
 }
 
-// ซ่อนปุ่มกรองกะที่ประเภทงานนี้ไม่ได้ทำ (งานขัด Roll ทำเฉพาะกะเช้า จึงไม่มีกะดึก/2 กะ ให้กรอง)
-// ถ้ากำลังกรองกะที่หายไปอยู่ ให้กลับไปเป็น "ทั้งหมด" ไม่งั้นจะเห็นตารางว่างโดยไม่รู้สาเหตุ
+// แสดงปุ่มกรองกะทุกกะที่มีประเภทงานใดทำได้ — ตอนนี้ทุกมุมมองแสดงทั้ง CNC และขัด Roll พร้อมกัน
+// (งานขัด Roll ทำเฉพาะกะเช้า แต่งาน CNC ทำกะดึก/2 กะได้ จึงต้องมีปุ่มให้กรองครบ)
 function refreshPlanShiftFilterButtons() {
-  const allowed = planWorkTypeShifts(currentPlanWorkType);
+  const allowed = new Set(Object.keys(PLAN_WORKTYPE_META).flatMap(k => planWorkTypeShifts(k)));
   let resetFilter = false;
   document.querySelectorAll('.plan-shift-btn').forEach(b => {
     const key = b.getAttribute('data-shift') || '';
-    const show = !key || allowed.includes(key);
+    const show = !key || allowed.has(key);
     b.style.display = show ? '' : 'none';
     if (!show && currentPlanShiftFilter === key) resetFilter = true;
   });
   if (resetFilter) switchPlanShiftFilter('');
 }
 
-function planMetricTime(rollId) {
+// เวลาต่อชิ้นจากทะเบียน Tooling — ต้องอิงประเภทงานของ "งานนั้น" ไม่ใช่ประเภทที่ฟอร์มกำลังตั้งอยู่
+// เพราะตารางรายวันแสดงทั้ง CNC และขัด Roll ในตารางเดียวกันแล้ว
+function planMetricTime(rollId, workType) {
   const r = toolingData.roll.find(x => x.id === rollId);
-  const field = PLAN_WORKTYPE_META[currentPlanWorkType].field;
+  const field = PLAN_WORKTYPE_META[workType || currentPlanWorkType].field;
   return (r && r[field] && r[field] !== '—') ? r[field] : '—';
 }
 
+// ไม่ใช่ตัวกรองมุมมองอีกแล้ว — เหลือหน้าที่เดียวคือบอกว่า "ฟอร์มเพิ่มงาน" กำลังตั้งงานประเภทไหน
+// (ปุ่ม + เพิ่มงาน ของแต่ละหัวข้อในมุมมองรายวันเรียกตัวนี้ก่อนเปิดฟอร์ม)
 function switchPlanWorkType(type) {
   currentPlanWorkType = type;
   refreshPlanShiftFilterButtons();
-  document.querySelectorAll('.plan-worktype-btn').forEach(b => {
-    const active = b.getAttribute('data-worktype') === type;
-    b.style.color = active ? 'var(--accent)' : '';
-    b.style.borderColor = active ? 'var(--accent)' : '';
-  });
-  document.getElementById('plan-day-plancol-header').textContent = PLAN_WORKTYPE_META[type].metricLabel;
   const planTimeLabel = document.getElementById('pf-plantime-label');
   if (planTimeLabel) planTimeLabel.textContent = PLAN_WORKTYPE_META[type].metricLabel + ' — จากทะเบียน Tooling';
-  renderCurrentPlanView();
 }
 
 function planRollColorLabel(t) {
@@ -4067,15 +4063,19 @@ function planDateGoToday() {
   closePlanDatePicker();
   renderCurrentPlanView();
 }
-// วันที่ (iso) ที่มีแผนงานอยู่แล้วของประเภทงานที่กำลังดู (CNC/ขัด Roll) — ใช้ทำจุดสีในปฏิทินป๊อปอัพ
+// วันที่ (iso) ที่มีแผนงานอยู่แล้ว — ใช้ทำจุดสีในปฏิทินป๊อปอัพ (นับทั้ง CNC และขัด Roll)
 function planDatesWithTasks() {
   const set = new Set();
-  planTasks.forEach(t => { if (t.workType === currentPlanWorkType && shiftMatchesFilter(t.shift, currentPlanShiftFilter)) set.add(taskDisplayDate(t)); });
+  planTasks.forEach(t => { if (shiftMatchesFilter(t.shift, currentPlanShiftFilter)) set.add(taskDisplayDate(t)); });
   return set;
 }
-// เงื่อนไขกรองงานตามแผนที่ใช้ร่วมกันทุกมุมมอง (รายวัน/สัปดาห์/เดือน) — ประเภทงาน (CNC/ขัด Roll) + กะที่เลือกอยู่ (ถ้ามี)
+// เงื่อนไขกรองงานตามแผนที่ใช้ร่วมกันทุกมุมมอง (รายวัน/สัปดาห์/เดือน) — กะที่เลือกอยู่ (ถ้ามี)
+// ไม่มีตัวกรองประเภทงานให้กดแล้ว ทุกมุมมองแสดงทั้ง CNC และขัด Roll พร้อมกัน
+// เว้นช่าง CNC / ช่างขัด Roll ที่ยังเห็นเฉพาะประเภทของตัวเองตามบทบาท
 function matchesCurrentPlanFilter(t) {
-  return t.workType === currentPlanWorkType && shiftMatchesFilter(t.shift, currentPlanShiftFilter);
+  const forced = forcedWorkTypeForRole();
+  if (forced && t.workType !== forced) return false;
+  return shiftMatchesFilter(t.shift, currentPlanShiftFilter);
 }
 function shiftChipClass(shiftKey) {
   return shiftKey === 'night' ? 'chip-purple' : shiftKey === 'both' ? 'chip-cyan' : 'chip-amber';
@@ -4446,13 +4446,18 @@ function planDayPartsByDate() {
   return map;
 }
 
+// หัวข้อประเภทงานในมุมมองรายวัน — ชุดเดียวกับที่หน้างานประจำวันใช้ เพื่อให้สองหน้าอ่านเหมือนกัน
+const PLAN_DAY_SECTIONS = [
+  { key: 'cnc',    icon: '⚙', label: 'แต่ง Roll (CNC)', color: 'var(--accent)', bg: 'var(--accent-glow)', empty: 'ไม่มีงานแต่ง Roll ในวันนี้' },
+  { key: 'polish', icon: '✦', label: 'ขัด Roll',        color: 'var(--purple)', bg: 'var(--purple-dim)',  empty: 'ไม่มีงานขัด Roll ในวันนี้' },
+];
+
 function renderPlanDay() {
   const iso = toISODate(planViewDate);
-  const meta = PLAN_WORKTYPE_META[currentPlanWorkType];
   document.getElementById('plan-daterange-label').textContent = fmtDateThai(planViewDate);
-  document.getElementById('plan-day-title').textContent = meta.label + ' — วันที่ ' + fmtDateThai(planViewDate);
+  document.getElementById('plan-day-title').textContent = 'แผนงาน — วันที่ ' + fmtDateThai(planViewDate);
   const tasks = planDayPartsByDate().get(iso) || [];
-  document.getElementById('plan-day-tbody').innerHTML = tasks.map((t, i) => {
+  const rowHtmlFor = (t, i) => {
     const expandable = (t.rollIds || []).length > 1;
     const expanded = expandable && expandedPlanDayTaskId === t.id;
     const row = `
@@ -4463,7 +4468,7 @@ function renderPlanDay() {
       <td class="muted">${escapeHtmlAttr(t.rollId)}</td>
       <td><strong>${escapeHtmlAttr(t.rollName)}</strong>${t.__partCount > 1 ? ` <span class="chip chip-blue" title="งานก้อนนี้ทำข้ามวัน — แสดงแยกเฉพาะส่วนที่ทำในวันนี้">ส่วนที่ ${t.__partIndex + 1}/${t.__partCount}</span>` : ''}</td>
       <td>${shiftChipHtml(t.shift)}</td>
-      <td class="muted" style="text-align:right;">${escapeHtmlAttr(t.totalTime != null ? String(t.totalTime) : planMetricTime(t.rollId))}</td>
+      <td class="muted" style="text-align:right;">${escapeHtmlAttr(t.totalTime != null ? String(t.totalTime) : planMetricTime(t.rollId, t.workType))}</td>
       <td class="muted">${escapeHtmlAttr(t.startTime || '—')}</td>
       <td class="muted">${escapeHtmlAttr(t.endTime || '—')}${t.endDate && t.endDate !== t.date ? ` <span style="color:var(--accent);font-weight:700;">(+${Math.round((parseISODate(t.endDate)-parseISODate(t.date))/86400000)} วัน)</span>` : ''}${t.otMinutes ? ` <span class="chip chip-red" title="เวลาทำงานนอกช่วงกะ">OT ${formatMinutesAsHm(t.otMinutes).replace('≈ ', '')}</span>` : ''}</td>
       <td style="display:flex;gap:4px;" onclick="event.stopPropagation();">
@@ -4480,7 +4485,28 @@ function renderPlanDay() {
       </td>
     </tr>`;
     return row + (expanded ? renderPlanDayTaskDetailRow(t) : '');
-  }).join('') || `<tr><td colspan="10" style="padding:32px;text-align:center;color:var(--text-3);">ไม่มีงานตามแผนในวันนี้</td></tr>`;
+  };
+
+  // แบ่งเป็นหัวข้อ CNC / ขัด Roll เหมือนหน้างานประจำวัน — ลำดับเริ่มนับใหม่จาก 1 ในแต่ละหัวข้อ
+  // (เลขลำดับใช้แสดงเท่านั้น ตัวระบุงานคือ data-taskid)
+  const forcedType = forcedWorkTypeForRole();
+  document.getElementById('plan-day-tbody').innerHTML = PLAN_DAY_SECTIONS.filter(s => !forcedType || s.key === forcedType).map(s => {
+    const items = tasks.filter(t => (t.workType === 'polish' ? 'polish' : 'cnc') === s.key);
+    const mins = items.reduce((sum, t) => sum + (t.totalTime != null ? Number(t.totalTime) || 0 : 0), 0);
+    const head = `<tr><td colspan="10" style="background:${s.bg};padding:9px 12px;border-left:4px solid ${s.color};border-top:2px solid ${s.color};">
+      <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:${s.color};">
+        <span aria-hidden="true">${s.icon}</span>${escapeHtmlAttr(s.label)}
+      </span>
+      <span style="float:right;display:inline-flex;align-items:center;gap:10px;">
+        <span style="font-size:12px;font-weight:700;color:${s.color};opacity:.9;">${
+          items.length ? items.length + ' รายการ · ' + formatMinutesAsHm(mins).replace('≈ ', '') : 'ไม่มีงาน'}</span>
+        ${canEditPlan() ? `<button class="btn btn-ghost btn-sm" onclick="${jsCallAttr('addPlanTaskForCurrentDay', s.key)}"
+          style="font-size:12px;font-weight:800;padding:3px 11px;color:${s.color};border-color:${s.color};">+ เพิ่มงาน${escapeHtmlAttr(s.key === 'polish' ? 'ขัด' : 'แต่ง')}</button>` : ''}
+      </span>
+    </td></tr>`;
+    return head + (items.length ? items.map(rowHtmlFor).join('')
+      : `<tr><td colspan="10" style="padding:14px;text-align:center;color:var(--text-3);font-size:12.5px;">${escapeHtmlAttr(s.empty)}</td></tr>`);
+  }).join('');
 }
 
 // ป้ายงานในปฏิทินแผนงาน (รายสัปดาห์/รายเดือน) — โชว์ Size Roll + ชุดสี + จำนวน Roll
@@ -4518,23 +4544,25 @@ function planCalendarChip(t, editable, extraStyle) {
   // งานที่ทำข้ามวันถูกตัดเป็นส่วนของแต่ละวัน — บอกว่าเป็นส่วนที่เท่าไร ไม่งั้นดูเหมือนงานซ้ำสองวัน
   const partTag = t.__partCount > 1 ? ` (${t.__partIndex + 1}/${t.__partCount})` : '';
   const sub = (hasColor ? color + ' · ' : '') + t.rollId + partTag;
-  const fullTitle = `[${prog.label}] ${SHIFTS[t.shift]?.label || ''} — ${t.rollSet}${hasColor ? ' · ' + color : ''} — ${t.rollId} — ${t.rollName}`
+  // ปฏิทินรวมทั้ง CNC และขัด Roll ไว้ด้วยกันแล้ว ติดไอคอนประเภทงานไว้หน้าชื่อชุดให้แยกออกด้วยตาเปล่า
+  const typeIcon = t.workType === 'polish' ? '✦ ' : '⚙ ';
+  const typeLabel = (PLAN_WORKTYPE_META[t.workType] || {}).label || '';
+  const fullTitle = `[${prog.label}] ${typeLabel} · ${SHIFTS[t.shift]?.label || ''} — ${t.rollSet}${hasColor ? ' · ' + color : ''} — ${t.rollId} — ${t.rollName}`
     + (partTag ? ` — ส่วนที่ ${t.__partIndex + 1}/${t.__partCount} ของงานที่ทำข้ามวัน (${t.startTime}–${t.endTime})` : '');
   // โหมดลบ: คลิกที่งานคือติ๊กเลือก/ยกเลิกเลือก (ไม่เปิดฟอร์มแก้ไข) และมีเครื่องหมายบอกว่าเลือกอยู่
   if (planDeleteMode) {
     const picked = planDeleteSelected.has(t.id);
-    return `<span class="chip plan-cal-chip ${prog.chip}${picked ? ' pcc-picked' : ' pcc-pickable'}" data-taskid="${escapeHtmlAttr(t.id)}" style="${extraStyle || ''}cursor:pointer;" onclick="togglePlanDeleteSelect('${t.id}')" title="${escapeHtmlAttr((picked ? 'เลือกอยู่ — คลิกเพื่อยกเลิก' : 'คลิกเพื่อเลือกลบ') + ' · ' + fullTitle)}"><span class="pcc-set">${picked ? '☑ ' : '☐ '}${escapeHtmlAttr(t.rollSet)}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span></span>`;
+    return `<span class="chip plan-cal-chip ${prog.chip}${picked ? ' pcc-picked' : ' pcc-pickable'}" data-taskid="${escapeHtmlAttr(t.id)}" style="${extraStyle || ''}cursor:pointer;" onclick="togglePlanDeleteSelect('${t.id}')" title="${escapeHtmlAttr((picked ? 'เลือกอยู่ — คลิกเพื่อยกเลิก' : 'คลิกเพื่อเลือกลบ') + ' · ' + fullTitle)}"><span class="pcc-set">${picked ? '☑ ' : '☐ '}${typeIcon}${escapeHtmlAttr(t.rollSet)}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span></span>`;
   }
-  return `<span class="chip plan-cal-chip ${prog.chip}" style="${extraStyle || ''}${editable ? 'cursor:pointer;' : ''}" ${editable ? `onclick="openPlanTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(fullTitle)}"><span class="pcc-set">${escapeHtmlAttr(t.rollSet)}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span></span>`;
+  return `<span class="chip plan-cal-chip ${prog.chip}" style="${extraStyle || ''}${editable ? 'cursor:pointer;' : ''}" ${editable ? `onclick="openPlanTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(fullTitle)}"><span class="pcc-set">${typeIcon}${escapeHtmlAttr(t.rollSet)}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span></span>`;
 }
 
 function renderPlanWeek() {
   const monday = getMonday(planViewDate);
   const days = Array.from({length: 7}, (_, i) => { const d = new Date(monday); d.setDate(d.getDate() + i); return d; });
   const sunday = days[6];
-  const meta = PLAN_WORKTYPE_META[currentPlanWorkType];
   document.getElementById('plan-daterange-label').textContent = `${fmtDateThaiShort(monday)} – ${fmtDateThai(sunday)}`;
-  document.getElementById('plan-week-title').textContent = `${meta.label} — สัปดาห์ ${fmtDateThaiShort(monday)} – ${fmtDateThai(sunday)}`;
+  document.getElementById('plan-week-title').textContent = `แผนงาน — สัปดาห์ ${fmtDateThaiShort(monday)} – ${fmtDateThai(sunday)}`;
 
   document.getElementById('plan-week-thead-row').innerHTML = days.map(d =>
     `<th>${THAI_WEEKDAYS_MON_FIRST[(d.getDay()+6)%7]}<br><span class="muted" style="font-weight:400;">${fmtDateThaiShort(d)}</span></th>`
@@ -4560,9 +4588,8 @@ function renderPlanWeek() {
 function renderPlanMonth() {
   const year = planViewDate.getFullYear();
   const month = planViewDate.getMonth();
-  const meta = PLAN_WORKTYPE_META[currentPlanWorkType];
   document.getElementById('plan-daterange-label').textContent = `${THAI_MONTHS_FULL[month]} ${year + 543}`;
-  document.getElementById('plan-month-title').textContent = `${meta.label} — ${THAI_MONTHS_FULL[month]} ${year + 543}`;
+  document.getElementById('plan-month-title').textContent = `แผนงาน — ${THAI_MONTHS_FULL[month]} ${year + 543}`;
 
   const firstDay = new Date(year, month, 1);
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -4708,7 +4735,9 @@ document.addEventListener('pointermove', onPlanDragMove);
 document.addEventListener('pointerup', onPlanDragUp);
 document.addEventListener('pointercancel', onPlanDragUp);
 
-function addPlanTaskForCurrentDay() {
+// workType มาจากปุ่ม "+ เพิ่มงาน" ของหัวข้อที่กด — ฟอร์มจะได้ตั้งงานให้ประเภทที่ถูกต้อง
+function addPlanTaskForCurrentDay(workType) {
+  if (workType && workType !== currentPlanWorkType) switchPlanWorkType(workType);
   openPlanTaskModal('add', null, toISODate(planViewDate));
 }
 
@@ -9627,8 +9656,9 @@ function finishDailyTask(idx, workerId) {
 }
 
 // ช่าง CNC เห็นเฉพาะงานแต่ง Roll และช่างขัด Roll เห็นเฉพาะงานขัด — คืน null ถ้าไม่ถูกจำกัด (admin/หัวหน้า/ช่างเครื่อง)
-// แทนปุ่มกรองเดิมที่เอาออกไปแล้ว (เกณฑ์เดียวกับ forcedHistoryTypeForRole ของหน้าประวัติ)
-function forcedDailyWorkType() {
+// ใช้ทั้งหน้างานประจำวันและหน้าวางแผน แทนปุ่มกรองประเภทงานที่เอาออกไปแล้วทั้งสองหน้า
+// (เกณฑ์เดียวกับ forcedHistoryTypeForRole ของหน้าประวัติ)
+function forcedWorkTypeForRole() {
   const r = effectiveRole();
   if (r === 'cnc') return 'cnc';
   if (r === 'polish') return 'polish';
@@ -9872,7 +9902,7 @@ function dailyGoToday() {
 function dailyDatesWithTasks() {
   const set = new Set();
   planTasks.forEach(t => {
-    const forced = forcedDailyWorkType();
+    const forced = forcedWorkTypeForRole();
     if (forced && t.workType !== forced) return;
     if (!shiftMatchesFilter(t.shift, currentDailyShiftFilter)) return;
     set.add(taskDisplayDate(t));
@@ -10002,7 +10032,7 @@ function renderDailyTasks() {
       shiftHtml: '—', who: t.who, workerId: null, editable: true, expandable: false,
       section: 'checklist',
     }));
-  const forcedType = forcedDailyWorkType();
+  const forcedType = forcedWorkTypeForRole();
   const plannedItems = planTasks
     .filter(t => taskDisplayDate(t) === dailyViewDate)
     .filter(t => !forcedType || t.workType === forcedType)
@@ -11569,22 +11599,11 @@ function applyRoleUI() {
     showPage(defaultPageForRole(role));
   }
 
-  const cncTabBtn = document.querySelector('.plan-worktype-btn[data-worktype="cnc"]');
-  const polishTabBtn = document.querySelector('.plan-worktype-btn[data-worktype="polish"]');
-  if (cncTabBtn && polishTabBtn) {
-    if (role === 'cnc') {
-      cncTabBtn.style.display = ''; polishTabBtn.style.display = 'none';
-      switchPlanWorkType('cnc');
-    } else if (role === 'polish') {
-      cncTabBtn.style.display = 'none'; polishTabBtn.style.display = '';
-      switchPlanWorkType('polish');
-    } else {
-      cncTabBtn.style.display = ''; polishTabBtn.style.display = '';
-    }
-  }
-
-  // หน้า "งานประจำวัน" ไม่มีปุ่มกรองประเภทงานแล้ว — ตารางแบ่งหัวข้อเป็น CNC / ขัด Roll ให้เห็นทั้งคู่
-  // การจำกัดตามบทบาทย้ายไปอยู่ที่ forcedDailyWorkType() ซึ่ง renderDailyTasks อ่านเองทุกครั้ง
+  // หน้า "วางแผน" กับ "งานประจำวัน" ไม่มีปุ่มกรองประเภทงานแล้ว — ตารางแบ่งหัวข้อเป็น CNC / ขัด Roll ให้เห็นทั้งคู่
+  // การจำกัดตามบทบาทย้ายไปอยู่ที่ forcedWorkTypeForRole() ซึ่งทั้งสองหน้าอ่านเองทุกครั้งที่เรนเดอร์
+  // ยังตั้งประเภทของฟอร์มเพิ่มงานให้ตรงกับบทบาทไว้ เผื่อช่างกดเพิ่มงานเอง
+  const forcedPlanType = forcedWorkTypeForRole();
+  if (forcedPlanType && currentPlanWorkType !== forcedPlanType) switchPlanWorkType(forcedPlanType);
 }
 
 function initAuth() {
