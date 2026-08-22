@@ -1650,9 +1650,8 @@ canvas{display:block;}
               <thead>
                 <tr id="plan-week-thead-row"></tr>
               </thead>
-              <tbody>
-                <tr id="plan-week-tbody" style="vertical-align:top;"></tr>
-              </tbody>
+              <!-- tbody เป็นตัวเดียวกับที่เรนเดอร์ เพราะต้องใส่แถวหัวข้อ CNC / ขัด Roll คั่นด้วย (ดู PLAN_DAY_SECTIONS) -->
+              <tbody id="plan-week-tbody" style="vertical-align:top;"></tbody>
             </table>
           </div>
         </div>
@@ -4446,11 +4445,49 @@ function planDayPartsByDate() {
   return map;
 }
 
-// หัวข้อประเภทงานในมุมมองรายวัน — ชุดเดียวกับที่หน้างานประจำวันใช้ เพื่อให้สองหน้าอ่านเหมือนกัน
+// หัวข้อประเภทงาน — ใช้ร่วมกันทั้ง 3 มุมมองของหน้าวางแผน (รายวัน/สัปดาห์/เดือน)
+// ชุดเดียวกับที่หน้างานประจำวันใช้ เพื่อให้ทุกหน้าอ่านเหมือนกัน
 const PLAN_DAY_SECTIONS = [
   { key: 'cnc',    icon: '⚙', label: 'แต่ง Roll (CNC)', color: 'var(--accent)', bg: 'var(--accent-glow)', empty: 'ไม่มีงานแต่ง Roll ในวันนี้' },
   { key: 'polish', icon: '✦', label: 'ขัด Roll',        color: 'var(--purple)', bg: 'var(--purple-dim)',  empty: 'ไม่มีงานขัด Roll ในวันนี้' },
 ];
+// งานเก่าที่ไม่มี workType ถือเป็นงาน CNC เหมือนที่ทุกหน้าทำอยู่
+function planTaskSectionKey(t) { return t.workType === 'polish' ? 'polish' : 'cnc'; }
+// ช่าง CNC / ช่างขัด Roll เห็นหัวข้อของตัวเองอย่างเดียว
+function planSectionsForRole() {
+  const forced = forcedWorkTypeForRole();
+  return PLAN_DAY_SECTIONS.filter(s => !forced || s.key === forced);
+}
+// นับงานของหัวข้อนี้ในช่วงวันที่กำลังดู พร้อมเวลารวม — ใช้โชว์ข้างหัวข้อทุกมุมมอง
+function planSectionCount(partsByDate, sectionKey, isoList) {
+  let count = 0, mins = 0;
+  isoList.forEach(iso => (partsByDate.get(iso) || []).forEach(t => {
+    if (planTaskSectionKey(t) !== sectionKey) return;
+    count++;
+    mins += t.totalTime != null ? (Number(t.totalTime) || 0) : 0;
+  }));
+  return { count, mins };
+}
+// แถวหัวข้อสำหรับตาราง (รายวัน/รายสัปดาห์) — colSpan ต่างกันตามจำนวนคอลัมน์ของแต่ละมุมมอง
+// addForIso: ใส่ iso ถ้าต้องการปุ่ม "+ เพิ่มงาน" ที่หัวข้อ (มุมมองรายวันใช้), null ถ้าไม่ต้องการ
+function planSectionHeaderRow(s, colSpan, stat, addForIso) {
+  return `<tr><td colspan="${colSpan}" style="background:${s.bg};padding:9px 12px;border-left:4px solid ${s.color};border-top:2px solid ${s.color};">
+    <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:${s.color};">
+      <span aria-hidden="true">${s.icon}</span>${escapeHtmlAttr(s.label)}
+    </span>
+    <span style="float:right;display:inline-flex;align-items:center;gap:10px;">
+      <span style="font-size:12px;font-weight:700;color:${s.color};opacity:.9;">${
+        stat.count ? stat.count + ' รายการ' + (stat.mins ? ' · ' + formatMinutesAsHm(stat.mins).replace('≈ ', '') : '') : 'ไม่มีงาน'}</span>
+      ${addForIso && canEditPlan() ? `<button class="btn btn-ghost btn-sm" onclick="${jsCallAttr('addPlanTaskOnDate', addForIso, s.key)}"
+        style="font-size:12px;font-weight:800;padding:3px 11px;color:${s.color};border-color:${s.color};">+ เพิ่มงาน${escapeHtmlAttr(s.key === 'polish' ? 'ขัด' : 'แต่ง')}</button>` : ''}
+    </span>
+  </td></tr>`;
+}
+// เพิ่มงานในวันที่ระบุ ของประเภทที่ระบุ — ใช้จากปุ่มเพิ่มงานทุกมุมมอง
+function addPlanTaskOnDate(dateIso, workType) {
+  if (workType && workType !== currentPlanWorkType) switchPlanWorkType(workType);
+  openPlanTaskModal('add', null, dateIso);
+}
 
 function renderPlanDay() {
   const iso = toISODate(planViewDate);
@@ -4489,23 +4526,12 @@ function renderPlanDay() {
 
   // แบ่งเป็นหัวข้อ CNC / ขัด Roll เหมือนหน้างานประจำวัน — ลำดับเริ่มนับใหม่จาก 1 ในแต่ละหัวข้อ
   // (เลขลำดับใช้แสดงเท่านั้น ตัวระบุงานคือ data-taskid)
-  const forcedType = forcedWorkTypeForRole();
-  document.getElementById('plan-day-tbody').innerHTML = PLAN_DAY_SECTIONS.filter(s => !forcedType || s.key === forcedType).map(s => {
-    const items = tasks.filter(t => (t.workType === 'polish' ? 'polish' : 'cnc') === s.key);
-    const mins = items.reduce((sum, t) => sum + (t.totalTime != null ? Number(t.totalTime) || 0 : 0), 0);
-    const head = `<tr><td colspan="10" style="background:${s.bg};padding:9px 12px;border-left:4px solid ${s.color};border-top:2px solid ${s.color};">
-      <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:${s.color};">
-        <span aria-hidden="true">${s.icon}</span>${escapeHtmlAttr(s.label)}
-      </span>
-      <span style="float:right;display:inline-flex;align-items:center;gap:10px;">
-        <span style="font-size:12px;font-weight:700;color:${s.color};opacity:.9;">${
-          items.length ? items.length + ' รายการ · ' + formatMinutesAsHm(mins).replace('≈ ', '') : 'ไม่มีงาน'}</span>
-        ${canEditPlan() ? `<button class="btn btn-ghost btn-sm" onclick="${jsCallAttr('addPlanTaskForCurrentDay', s.key)}"
-          style="font-size:12px;font-weight:800;padding:3px 11px;color:${s.color};border-color:${s.color};">+ เพิ่มงาน${escapeHtmlAttr(s.key === 'polish' ? 'ขัด' : 'แต่ง')}</button>` : ''}
-      </span>
-    </td></tr>`;
-    return head + (items.length ? items.map(rowHtmlFor).join('')
-      : `<tr><td colspan="10" style="padding:14px;text-align:center;color:var(--text-3);font-size:12.5px;">${escapeHtmlAttr(s.empty)}</td></tr>`);
+  const partsByDate = planDayPartsByDate();
+  document.getElementById('plan-day-tbody').innerHTML = planSectionsForRole().map(s => {
+    const items = tasks.filter(t => planTaskSectionKey(t) === s.key);
+    return planSectionHeaderRow(s, 10, planSectionCount(partsByDate, s.key, [iso]), iso)
+      + (items.length ? items.map(rowHtmlFor).join('')
+        : `<tr><td colspan="10" style="padding:14px;text-align:center;color:var(--text-3);font-size:12.5px;">${escapeHtmlAttr(s.empty)}</td></tr>`);
   }).join('');
 }
 
@@ -4569,20 +4595,24 @@ function renderPlanWeek() {
   ).join('');
 
   const partsByDate = planDayPartsByDate(); // เกณฑ์เดียวกับมุมมองรายวัน/รายเดือน
-  document.getElementById('plan-week-tbody').innerHTML = days.map(d => {
-    const iso = toISODate(d);
-    const tasks = partsByDate.get(iso) || [];
-    const editable = canEditPlan();
-    const items = tasks.map(t => planDragWrap(t, iso,
-      `${planCalendarChip(t, editable, 'flex:1;min-width:0;')}${editable ? `<button title="ลบ" onclick="deletePlanTask('${t.id}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:11px;padding:0;flex:0 0 auto;">✕</button>` : ''}`,
-      editable)).join('');
-    return `<td style="min-width:110px;">
-      <div class="plan-drop-zone" data-day="${iso}" style="display:flex;flex-direction:column;gap:4px;min-height:30px;">
-        ${items || '<span class="muted">—</span>'}
-        ${editable ? `<button class="btn btn-ghost btn-sm" style="padding:2px 6px;font-size:11px;" onclick="openPlanTaskModal('add', null, '${iso}')">+ เพิ่ม</button>` : ''}
-      </div>
-    </td>`;
-  }).join('');
+  const editable = canEditPlan();
+  // แบ่งเป็นแถวหัวข้อ CNC / ขัด Roll แล้วแต่ละหัวข้อมีแถวของ 7 วันเป็นของตัวเอง
+  // ปุ่ม "+ เพิ่ม" ในแต่ละช่องจึงรู้ว่ากำลังเพิ่มงานประเภทไหนของวันไหน
+  document.getElementById('plan-week-tbody').innerHTML =
+    planSectionsForRole().map(s => planSectionHeaderRow(s, 7, planSectionCount(partsByDate, s.key, days.map(toISODate)))
+      + '<tr style="vertical-align:top;">' + days.map(d => {
+        const iso = toISODate(d);
+        const tasks = (partsByDate.get(iso) || []).filter(t => planTaskSectionKey(t) === s.key);
+        const items = tasks.map(t => planDragWrap(t, iso,
+          `${planCalendarChip(t, editable, 'flex:1;min-width:0;')}${editable ? `<button title="ลบ" onclick="deletePlanTask('${t.id}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:11px;padding:0;flex:0 0 auto;">✕</button>` : ''}`,
+          editable)).join('');
+        return `<td style="min-width:110px;">
+          <div class="plan-drop-zone" data-day="${iso}" style="display:flex;flex-direction:column;gap:4px;min-height:30px;">
+            ${items || '<span class="muted">—</span>'}
+            ${editable ? `<button class="btn btn-ghost btn-sm" style="padding:2px 6px;font-size:11px;" onclick="${jsCallAttr('addPlanTaskOnDate', iso, s.key)}">+ เพิ่ม</button>` : ''}
+          </div>
+        </td>`;
+      }).join('') + '</tr>').join('');
 }
 
 function renderPlanMonth() {
@@ -4598,27 +4628,41 @@ function renderPlanMonth() {
 
   const editable = canEditPlan();
   const partsByDate = planDayPartsByDate(); // เกณฑ์เดียวกับมุมมองรายวัน/รายสัปดาห์
-  let html = '';
-  for (let i = 0; i < leadingBlanks; i++) {
-    html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"></div>`;
-  }
-  for (let day = 1; day <= daysInMonth; day++) {
-    const d = new Date(year, month, day);
-    const iso = toISODate(d);
-    const holidayName = companyHolidays.find(h => h.date === iso)?.name || null;
-    const isSunday = d.getDay() === 0;
-    const dayOffBg = (isSunday || holidayName) ? 'background:#FDF3D8;' : '';
-    const tasks = partsByDate.get(iso) || [];
-    const chips = tasks.map(t => planDragWrap(t, iso, planCalendarChip(t, editable, 'flex:1;min-width:0;'), editable)).join('');
-    html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;${dayOffBg}" title="${holidayName ? escapeHtmlAttr(holidayName) : ''}">
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <strong style="font-size:12px;">${day}</strong>
-        ${editable ? `<button title="เพิ่มงาน" onclick="openPlanTaskModal('add', null, '${iso}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:13px;line-height:1;padding:0;">+</button>` : ''}
-      </div>
-      <div class="plan-drop-zone" data-day="${iso}" style="margin-top:6px;display:flex;flex-direction:column;gap:4px;min-height:30px;">${chips}</div>
+  const monthIsos = Array.from({length: daysInMonth}, (_, i) => toISODate(new Date(year, month, i + 1)));
+
+  // ปฏิทินหนึ่งชุดต่อประเภทงาน วางซ้อนกันในกริดเดิม (หัวข้อกินเต็มแถวด้วย grid-column:1/-1)
+  // ใช้กริด 7 คอลัมน์ชุดเดียวกับแถวชื่อวันด้านบน ทั้งสองชุดจึงเรียงคอลัมน์ตรงกันเสมอ
+  document.getElementById('plan-month-grid').innerHTML = planSectionsForRole().map(s => {
+    const stat = planSectionCount(partsByDate, s.key, monthIsos);
+    let html = `<div style="grid-column:1/-1;background:${s.bg};border-left:4px solid ${s.color};border-radius:6px;
+         padding:8px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px;">
+      <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:${s.color};">
+        <span aria-hidden="true">${s.icon}</span>${escapeHtmlAttr(s.label)}
+      </span>
+      <span style="margin-left:auto;font-size:12px;font-weight:700;color:${s.color};opacity:.9;">${
+        stat.count ? stat.count + ' รายการ' + (stat.mins ? ' · ' + formatMinutesAsHm(stat.mins).replace('≈ ', '') : '') : 'ไม่มีงานเดือนนี้'}</span>
     </div>`;
-  }
-  document.getElementById('plan-month-grid').innerHTML = html;
+    for (let i = 0; i < leadingBlanks; i++) {
+      html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"></div>`;
+    }
+    for (let day = 1; day <= daysInMonth; day++) {
+      const d = new Date(year, month, day);
+      const iso = toISODate(d);
+      const holidayName = companyHolidays.find(h => h.date === iso)?.name || null;
+      const isSunday = d.getDay() === 0;
+      const dayOffBg = (isSunday || holidayName) ? 'background:#FDF3D8;' : '';
+      const tasks = (partsByDate.get(iso) || []).filter(t => planTaskSectionKey(t) === s.key);
+      const chips = tasks.map(t => planDragWrap(t, iso, planCalendarChip(t, editable, 'flex:1;min-width:0;'), editable)).join('');
+      html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;${dayOffBg}" title="${holidayName ? escapeHtmlAttr(holidayName) : ''}">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <strong style="font-size:12px;">${day}</strong>
+          ${editable ? `<button title="${escapeHtmlAttr('เพิ่มงาน' + s.label)}" onclick="${jsCallAttr('addPlanTaskOnDate', iso, s.key)}" style="border:none;background:none;color:${s.color};cursor:pointer;font-size:13px;line-height:1;padding:0;font-weight:800;">+</button>` : ''}
+        </div>
+        <div class="plan-drop-zone" data-day="${iso}" style="margin-top:6px;display:flex;flex-direction:column;gap:4px;min-height:30px;">${chips}</div>
+      </div>`;
+    }
+    return html;
+  }).join('');
 }
 
 // ─── ลากสลับลำดับก่อน–หลังของงานในปฏิทินแผนงาน ────────────────────────────────
@@ -4735,10 +4779,10 @@ document.addEventListener('pointermove', onPlanDragMove);
 document.addEventListener('pointerup', onPlanDragUp);
 document.addEventListener('pointercancel', onPlanDragUp);
 
-// workType มาจากปุ่ม "+ เพิ่มงาน" ของหัวข้อที่กด — ฟอร์มจะได้ตั้งงานให้ประเภทที่ถูกต้อง
+// เพิ่มงานในวันที่กำลังดูอยู่ — ตัวเรียกทุกที่ย้ายไปใช้ addPlanTaskOnDate ที่ระบุวันตรงๆ แล้ว
+// เก็บไว้เผื่อมีปุ่มเก่าอ้างอยู่ (เช่นในเบราว์เซอร์ที่ยังแคชหน้าเดิมไว้)
 function addPlanTaskForCurrentDay(workType) {
-  if (workType && workType !== currentPlanWorkType) switchPlanWorkType(workType);
-  openPlanTaskModal('add', null, toISODate(planViewDate));
+  addPlanTaskOnDate(toISODate(planViewDate), workType);
 }
 
 function planTaskFormFields() {
