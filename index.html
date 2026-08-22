@@ -1397,6 +1397,8 @@ canvas{display:block;}
         </div>
       </div>
       <div id="prodweight-range-note" style="margin-top:4px;"></div>
+      <!-- แถบบอกว่าวันนี้บล็อกเดินขนาดไหน และระบุชุดสี Roll ที่เดินครบหรือยัง (ดู renderProdWeightRunBanner) -->
+      <div id="prodweight-run-banner" style="margin-top:10px;"></div>
       <div id="prodweight-grid" style="margin-top:10px;"></div>
     </div>
 
@@ -6933,6 +6935,9 @@ let fgWeightFetchError = null;
 let fgWeightMeta = null; // สรุปผลการดึงรอบล่าสุด ใช้แสดงว่าตัวเลขบนการ์ดมาจากช่วงไหน กี่รายการ
 let fgWeightByKeyDate = {}; // { 'GI|4x2': { 'YYYY-MM-DD': kg } } สำหรับตารางน้ำหนักผลิตต่อวัน
 let fgWeightDates = [];     // วันที่ที่มีการผลิตจริงในช่วงที่ดึงมา (เรียงแล้ว)
+// ยอดผลิต "ของวันเดียว" แยกแคชไว้ต่างหาก ไม่ปนกับช่วงวันที่ผู้ใช้เลือกดูในตาราง
+// เพราะแถบ "วันนี้บล็อกเดินขนาดไหน" ต้องรู้ของวันนี้เสมอ แม้ผู้ใช้เลือกดูช่วงย้อนหลังที่ไม่คลุมวันนี้
+let fgRunningCache = {}; // { 'YYYY-MM-DD': { kgByKey:{}, machinesByKey:{}, error } }
 
 // ชุดสีที่ระบุไว้ "เจาะจงวันนั้น" เท่านั้น (ไม่รวมค่าที่อนุมานจากสถานะกำลังใช้งาน)
 function explicitRunColorFor(date, setName) {
@@ -6958,6 +6963,7 @@ function setRunColor(date, setName, colorKey) {
   if (!Object.keys(rollRunColor[date]).length) delete rollRunColor[date];
   persistState();
   renderRunColorPicker();
+  renderProdWeightRunBanner();
   renderProdWeight();
 }
 
@@ -7005,14 +7011,18 @@ let runColorPickerDate = null;
 // ชุดที่ผูก 2 เครื่องจะเห็นได้จากทั้งสองแท็บ เลือกที่ไหนก็ได้ผลเดียวกัน
 const RUNCOLOR_ALL = '__all__';
 let runColorPickerMachine = RUNCOLOR_ALL;
+// null = แสดงทุกชุด (กดจากปุ่ม ✎ บนหัวคอลัมน์วันที่)
+// { title, sets:[ชื่อชุด], info:Map } = จำกัดเฉพาะชุดที่เดินงานวันนั้น (เด้งถามชุดสีที่เดิน) — ซ่อนแท็บเครื่อง/ช่องค้นหา
+let runColorPickerScope = null;
 
 function switchRunColorMachine(machine) {
   runColorPickerMachine = machine;
   renderRunColorPicker();
 }
 
-function openRunColorPicker(dateIso) {
+function openRunColorPicker(dateIso, scope) {
   runColorPickerDate = dateIso;
+  runColorPickerScope = scope || null;
   let ov = document.getElementById('runcolor-overlay');
   if (!ov) {
     ov = document.createElement('div');
@@ -7043,14 +7053,20 @@ function closeRunColorPicker() {
   const ov = document.getElementById('runcolor-overlay');
   if (ov) ov.classList.remove('open');
   runColorPickerDate = null;
+  runColorPickerScope = null;
+  renderProdWeightRunBanner(); // ปิดแล้วให้แถบด้านบนอัปเดตจำนวนที่ระบุแล้วทันที
 }
 
 function renderRunColorPicker() {
   const body = document.getElementById('runcolor-body');
   if (!body || !runColorPickerDate) return;
   const d = runColorPickerDate;
+  const scope = runColorPickerScope;
   const titleEl = document.getElementById('runcolor-title');
-  if (titleEl) titleEl.textContent = 'ชุด Roll ที่ใช้เดิน — ' + fmtDateThai(parseISODate(d));
+  if (titleEl) titleEl.textContent = (scope ? scope.title : 'ชุด Roll ที่ใช้เดิน') + ' — ' + fmtDateThai(parseISODate(d));
+  // โหมดเจาะจงชุดที่เดินงาน: รายการสั้นอยู่แล้ว ซ่อนแท็บเครื่องกับช่องค้นหาไว้ ไม่ให้เผลอกรองจนรายการหาย
+  const searchEl = document.getElementById('runcolor-search');
+  if (searchEl) { searchEl.style.display = scope ? 'none' : ''; if (scope) searchEl.value = ''; }
 
   // จัดกลุ่มตามขนาดแล้วเรียง Forming/Sizing/TH เหมือนหน้าอื่น
   const inMachine = setName => {
@@ -7061,7 +7077,7 @@ function renderRunColorPicker() {
   const groups = new Map();
   getRollSets().forEach(setName => {
     if (!toolingData.roll.some(r => r.set === setName)) return;
-    if (!inMachine(setName)) return;
+    if (scope ? !scope.sets.includes(setName) : !inMachine(setName)) return;
     const key = rollSetSizeGroupKey(setName);
     if (!groups.has(key)) groups.set(key, { label: rollSetSizeGroupLabel(setName), sets: [] });
     const g = groups.get(key);
@@ -7091,8 +7107,17 @@ function renderRunColorPicker() {
           const explicit = explicitRunColorFor(d, setName);
           const inuse = inUseColorFor(setName);
           const effective = explicit || inuse;
+          // โหมดเจาะจงชุดที่เดินงาน: บอกด้วยว่าเดินอยู่เครื่องไหน และวันนั้นผลิตไปกี่ตัน
+          const runInfo = scope && scope.info ? scope.info.get(setName) : null;
+          const runBadge = !runInfo ? '' : `<span style="flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--text-3);">
+              ${runInfo.machines.length ? `<span style="padding:1px 7px;border-radius:99px;background:var(--accent-glow);color:var(--accent);font-weight:800;">เครื่อง ${escapeHtmlAttr(runInfo.machines.join('/'))}</span>` : ''}
+              ${runInfo.kg > 0 ? `<span title="น้ำหนักที่ขนาดนี้ผลิตได้ในวันนั้น">${(Math.round(runInfo.kg / 10) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })} ตัน</span>` : ''}
+              ${runInfo.sharedFrom ? `<span style="color:var(--accent);" title="ขนาดที่เดินยืม Forming ชุดนี้ไปใช้ร่วม">ยืมไปเดิน ${escapeHtmlAttr(fgKeyLabel(runInfo.sharedFrom))}</span>` : ''}
+              ${runInfo.fromBlock && !(runInfo.kg > 0) ? '<span title="มาจากบล็อกที่วางไว้ ยังไม่มียอดผลิตของวันนั้น">ตามบล็อก</span>' : ''}
+            </span>`;
           return `<div style="display:flex;align-items:center;gap:10px;padding:7px 6px;border-bottom:1px solid var(--border-light);">
             <span style="flex:0 0 62px;font-size:12px;font-weight:800;color:${catColor};">${escapeHtmlAttr(cat || setName)}</span>
+            ${runBadge}
             <span style="flex:1;display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
               ${palette.map(c => {
                 const on = effective === c.key;
@@ -7124,13 +7149,19 @@ function renderRunColorPicker() {
   const note = document.getElementById('runcolor-note');
   const inferredCount = [...groups.values()].reduce((n, g) =>
     n + g.sets.filter(s => !explicitRunColorFor(d, s) && inUseColorFor(s)).length, 0);
-  if (note) note.innerHTML = `1 Size Roll เดินได้วันละ 1 ชุดสี — ปกติระบบยึดจากชุดที่สถานะ <b>กำลังใช้งาน</b> อยู่ให้เลย (ปุ่มขอบประ)<br>
-      ระบุทับได้เฉพาะวันที่เดินคนละชุดกับตอนนี้ กดสีที่ระบุไว้ซ้ำเพื่อยกเลิกการระบุ &nbsp;·&nbsp;
-      <b style="color:var(--text-1);">ระบุเอง ${chosenCount}</b> · อ้างจากกำลังใช้งาน ${inferredCount} · รวม ${setCount} รายการ`;
+  if (note) note.innerHTML = (scope
+    ? `ขนาดเหล่านี้ <b style="color:var(--text-1);">เดินงานอยู่ในบล็อกของวันนี้</b> — เลือกให้ตรงว่าแต่ละหมวดเดินด้วยชุดสีไหน
+       เพื่อให้น้ำหนักผลิตของวันนี้ไปลงชุดที่เดินจริง (ปุ่มขอบประ = ระบบเดาจากสถานะ <b>กำลังใช้งาน</b> ยังไม่ได้ยืนยัน)<br>
+       1 Size Roll เดินได้วันละ 1 ชุดสี · กดสีที่ระบุไว้ซ้ำเพื่อยกเลิกการระบุ &nbsp;·&nbsp;`
+    : `1 Size Roll เดินได้วันละ 1 ชุดสี — ปกติระบบยึดจากชุดที่สถานะ <b>กำลังใช้งาน</b> อยู่ให้เลย (ปุ่มขอบประ)<br>
+      ระบุทับได้เฉพาะวันที่เดินคนละชุดกับตอนนี้ กดสีที่ระบุไว้ซ้ำเพื่อยกเลิกการระบุ &nbsp;·&nbsp;`)
+    + ` <b style="color:var(--text-1);">ระบุเอง ${chosenCount}</b> · อ้างจากกำลังใช้งาน ${inferredCount} · รวม ${setCount} รายการ`;
 
   // แท็บเครื่อง — เลขบนแท็บคือจำนวน Size Roll ที่ผูกกับเครื่องนั้น (ที่มี Roll จริง)
   const tabsEl = document.getElementById('runcolor-tabs');
-  if (tabsEl) {
+  if (tabsEl && scope) { tabsEl.style.display = 'none'; tabsEl.innerHTML = ''; }
+  else if (tabsEl) {
+    tabsEl.style.display = 'flex';
     const withRolls = getRollSets().filter(s => toolingData.roll.some(r => r.set === s));
     const hasUnassigned = withRolls.some(s => !(rollSetMachines[s] || []).length);
     const tabs = [RUNCOLOR_ALL, ...ROLL_MACHINES, ...(hasUnassigned ? [INUSE_UNASSIGNED] : [])];
@@ -7152,7 +7183,7 @@ function renderRunColorPicker() {
   }
 
   body.innerHTML = rows || `<div style="padding:16px;text-align:center;color:var(--text-3);font-size:13px;">${
-    q ? 'ไม่พบ Size Roll ตามคำค้น' : 'ไม่มี Size Roll ที่ผูกกับเครื่องนี้'}</div>`;
+    scope ? 'วันนี้บล็อกไม่ได้เดินขนาดไหนเลย' : (q ? 'ไม่พบ Size Roll ตามคำค้น' : 'ไม่มี Size Roll ที่ผูกกับเครื่องนี้')}</div>`;
 }
 
 // การเดินบางขนาดใช้ Roll "Forming" ของอีกขนาดร่วมด้วย น้ำหนักที่ผลิตได้จึงต้องนับให้ Forming ชุดนั้นด้วย
@@ -7176,6 +7207,160 @@ function sharedFormingSources(setName) {
 function fgKeyLabel(fgKey) {
   const hit = getRollSets().find(s => rollSetFgKey(s) === fgKey);
   return hit ? rollSetSizeGroupLabel(hit) : fgKey;
+}
+
+// ─── Size Roll ที่ "เดินงานอยู่" ในบล็อกของวันนั้น ───────────────────────────────
+// หน้าบล็อกแผนผลิตเป็น iframe ของระบบ TST Production อ่านข้อมูลตรงๆ ไม่ได้ (ถูก CORS กั้น)
+// แต่ API ยอดผลิต (/api/trans/fg) ส่ง production_date + machine_id มาด้วย — ขนาดที่มียอดผลิตของวันนั้น
+// ก็คือขนาดที่บล็อกวันนั้นเดินงานจริง และรู้ด้วยว่าเดินอยู่เครื่องไหน
+// ดึงแยกเป็นวันเดียวและแคชไว้ เพื่อให้ไม่ขึ้นกับช่วงวันที่ที่ผู้ใช้เลือกดูในตาราง
+async function loadFgRunningOn(dateIso) {
+  if (fgRunningCache[dateIso]) return fgRunningCache[dateIso];
+  try {
+    const res = await fetch(FG_API_URL + '?from=' + dateIso + '&to=' + dateIso);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    const kgByKey = {}, machinesByKey = {};
+    (json.rows || []).forEach(r => {
+      // API เคยส่งวันข้างเคียงติดมาด้วย จึงกรองด้วย production_date อีกชั้น
+      if (String(r.production_date || '').slice(0, 10) !== dateIso) return;
+      const key = fgProductCodeToKey(r.product_code);
+      if (!key) return;
+      kgByKey[key] = (kgByKey[key] || 0) + (parseFloat(r.weight_kg) || 0);
+      if (!machinesByKey[key]) machinesByKey[key] = [];
+      if (r.machine_id && !machinesByKey[key].includes(r.machine_id)) machinesByKey[key].push(r.machine_id);
+    });
+    Object.values(machinesByKey).forEach(list => list.sort());
+    fgRunningCache[dateIso] = { kgByKey, machinesByKey };
+  } catch (e) {
+    fgRunningCache[dateIso] = { kgByKey: {}, machinesByKey: {}, error: e.message };
+  }
+  return fgRunningCache[dateIso];
+}
+
+// ชุด Roll ทุกหมวด (Forming/Sizing/TH) ที่กำลังเดินงานในวันนั้น
+// คืน Map(ชื่อชุด → { machines:[], kg, fromBlock, sharedFrom }) เรียงตามลำดับชุดในทะเบียน
+// ต้องเรียก loadFgRunningOn(dateIso) ให้เสร็จก่อน ไม่งั้นจะได้แค่ส่วนที่มาจากบล็อกภายใน
+function runningRollSetsOn(dateIso) {
+  const sets = getRollSets();
+  const out = new Map();
+  const add = (setName, patch) => {
+    if (!setName) return;
+    if (!sets.includes(setName)) return;
+    if (!toolingData.roll.some(r => r.set === setName)) return; // ยังไม่มี Roll จริงในชุดนั้น ไม่ต้องถาม
+    if (!out.has(setName)) out.set(setName, { machines: [], kg: 0, fromBlock: false, sharedFrom: null });
+    const hit = out.get(setName);
+    (patch.machines || []).forEach(m => { if (m && !hit.machines.includes(m)) hit.machines.push(m); });
+    hit.kg += patch.kg || 0;
+    if (patch.fromBlock) hit.fromBlock = true;
+    if (patch.sharedFrom && !hit.sharedFrom) hit.sharedFrom = patch.sharedFrom;
+  };
+
+  // 1) จากยอดผลิตจริงของวันนั้น
+  const cached = fgRunningCache[dateIso];
+  const kgByKey = cached ? cached.kgByKey
+    : Object.fromEntries(Object.keys(fgWeightByKeyDate).map(k => [k, (fgWeightByKeyDate[k] || {})[dateIso] || 0]));
+  Object.keys(kgByKey).forEach(fgKey => {
+    if (!(kgByKey[fgKey] > 0)) return;
+    const machines = cached ? (cached.machinesByKey[fgKey] || []) : [];
+    sets.filter(s => rollSetFgKey(s) === fgKey).forEach(s => add(s, { machines, kg: kgByKey[fgKey] }));
+    // ขนาดนี้ยืม Forming ของอีกขนาดมาเดินด้วย — Forming ชุดนั้นก็กำลังเดินอยู่จริง ต้องถามสีด้วย
+    const borrowed = FG_SHARED_FORMING[fgKey];
+    if (borrowed) sets.filter(s => rollSetFgKey(s) === borrowed && parseSizeRollName(s).category === 'Forming')
+      .forEach(s => add(s, { machines, sharedFrom: fgKey }));
+  });
+
+  // 2) จากบล็อกภายในของแอปเอง (ถ้ามีวางไว้) — รู้ล่วงหน้าได้ก่อนที่จะมียอดผลิตของวันนั้น
+  prodBlockEntries.forEach(e => {
+    if (!prodBlockEntryDates(e).includes(dateIso)) return;
+    ['forming', 'sizing', 'th'].forEach(cat => {
+      const ref = e[cat];
+      if (ref && ref.set) add(ref.set, { machines: [e.machine], fromBlock: true });
+    });
+  });
+
+  return new Map([...out.entries()].sort((a, b) => sets.indexOf(a[0]) - sets.indexOf(b[0])));
+}
+
+// จำว่าเด้งถามชุดไหนของวันไหนไปแล้ว (เก็บในเครื่อง ไม่ต้องซิงก์ขึ้นคลาวด์)
+// จำเป็น "รายชุด" ไม่ใช่แค่รายวัน เพราะบล็อกอาจเปลี่ยนกลางวัน — ขนาดที่เพิ่งเริ่มเดินต้องเด้งถามใหม่
+const RUNCOLOR_PROMPT_KEY = 'tst_runcolor_prompt_asked';
+function runColorPromptAsked(dateIso) {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RUNCOLOR_PROMPT_KEY) || 'null');
+    return raw && raw.date === dateIso && Array.isArray(raw.sets) ? raw.sets : [];
+  } catch (e) { return []; }
+}
+function markRunColorPromptAsked(dateIso, setNames) {
+  const merged = [...new Set([...runColorPromptAsked(dateIso), ...setNames])];
+  try { localStorage.setItem(RUNCOLOR_PROMPT_KEY, JSON.stringify({ date: dateIso, sets: merged })); }
+  catch (e) { /* จำไม่ได้ก็แค่เด้งซ้ำ ไม่กระทบข้อมูล */ }
+}
+function openRunColorPromptFor(dateIso) {
+  const running = runningRollSetsOn(dateIso);
+  if (!running.size) return false;
+  markRunColorPromptAsked(dateIso, [...running.keys()]);
+  openRunColorPicker(dateIso, { title: 'ชุด Roll ที่เดินงาน', info: running, sets: [...running.keys()] });
+  return true;
+}
+function openRunColorPromptToday() { return openRunColorPromptFor(toISODate(new Date())); }
+
+function maybeAutoOpenRunColorPrompt() {
+  const ov = document.getElementById('runcolor-overlay');
+  if (ov && ov.classList.contains('open')) return;  // เปิดอยู่แล้ว ไม่ต้องเด้งซ้อน
+  const today = toISODate(new Date());
+  const running = runningRollSetsOn(today);
+  if (!running.size) return;                         // วันนี้บล็อกไม่ได้เดินขนาดไหนเลย
+  const asked = runColorPromptAsked(today);
+  // เด้งเมื่อยังมีชุดที่เดินอยู่แต่ยังไม่ได้ระบุสี และยังไม่เคยถูกถามในวันนี้
+  const needAsk = [...running.keys()].filter(s => !explicitRunColorFor(today, s) && !asked.includes(s));
+  if (!needAsk.length) return;
+  openRunColorPromptFor(today);
+}
+
+// แถบบนหน้าน้ำหนักผลิต — วันนี้บล็อกเดินขนาดไหน ระบุชุดสีที่เดินครบหรือยัง
+function renderProdWeightRunBanner() {
+  const el = document.getElementById('prodweight-run-banner');
+  if (!el) return;
+  const today = toISODate(new Date());
+  const running = runningRollSetsOn(today);
+  if (!running.size) {
+    const err = (fgRunningCache[today] || {}).error;
+    el.innerHTML = err
+      ? `<div style="background:var(--red-dim);color:var(--red);border-radius:8px;padding:10px 14px;font-size:12px;">อ่านงานที่เดินวันนี้จากระบบ Production ไม่สำเร็จ (${escapeHtmlAttr(err)})</div>`
+      : '';
+    return;
+  }
+  const sets = [...running.keys()];
+  const missing = sets.filter(s => !explicitRunColorFor(today, s));
+  const sizes = [...new Set(sets.map(s => rollSetSizeGroupLabel(s)))];
+  const done = sets.length - missing.length;
+  const complete = !missing.length;
+  const accent = complete ? 'var(--green)' : 'var(--amber)';
+  const bg = complete ? 'var(--green-dim)' : 'var(--amber-dim)';
+  const machineOf = s => (running.get(s).machines || []).join('/');
+  const sizeChips = sizes.map(label => {
+    const inSize = sets.filter(s => rollSetSizeGroupLabel(s) === label);
+    const mc = [...new Set(inSize.map(machineOf).filter(Boolean))].join('/');
+    const left = inSize.filter(s => !explicitRunColorFor(today, s)).length;
+    return `<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:99px;font-size:12px;font-weight:800;
+                 background:var(--bg-card);color:var(--text-1);box-shadow:inset 0 0 0 1px var(--border);">
+      ${escapeHtmlAttr(label)}${mc ? `<span style="font-weight:700;font-size:11px;color:var(--text-3);">เครื่อง ${escapeHtmlAttr(mc)}</span>` : ''}
+      ${left ? `<span style="font-weight:800;font-size:11px;color:var(--amber);">รอระบุ ${left}</span>` : '<span style="font-size:11px;color:var(--green);font-weight:800;">✓</span>'}
+    </span>`;
+  }).join('');
+  el.innerHTML = `<div style="background:${bg};border-left:4px solid ${accent};border-radius:8px;padding:11px 14px;
+       display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+    <div style="flex:1;min-width:260px;">
+      <div style="font-size:13px;font-weight:800;color:${accent};margin-bottom:5px;">
+        วันนี้ ${escapeHtmlAttr(fmtDateThai(parseISODate(today)))} บล็อกเดินงาน ${sizes.length} ขนาด
+        <span style="font-weight:700;color:var(--text-2);">· ระบุชุดสี Roll ที่เดินแล้ว ${done}/${sets.length} รายการ</span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">${sizeChips}</div>
+    </div>
+    <button class="btn ${complete ? 'btn-ghost' : 'btn-primary'} btn-sm" onclick="openRunColorPromptToday()"
+      style="flex:0 0 auto;font-weight:800;">${complete ? 'แก้ชุดสีที่เดินวันนี้' : 'ระบุชุดสี Roll ที่เดินวันนี้'}</button>
+  </div>`;
 }
 
 // ปุ่มเลือกช่วงเร็ว — เดิมมีแค่ช่องวันที่ที่ตั้งต้นเป็น 2020-01-01 ทำให้เผลอแก้แค่วัน/เดือน
@@ -7241,6 +7426,10 @@ async function renderProdWeight() {
   renderProdWeightRangeNote(fromDate, toDate);
   const fgByKey = await fetchFgWeightByKey(fromDate, toDate);
   renderProdWeightRangeNote(fromDate, toDate);
+  // งานที่บล็อกเดินอยู่ "วันนี้" — ดึงแยกจากช่วงที่เลือกดู แล้วเด้งถามชุดสีที่เดินถ้ายังไม่ได้ระบุ
+  await loadFgRunningOn(toISODate(new Date()));
+  renderProdWeightRunBanner();
+  maybeAutoOpenRunColorPrompt();
   const sets = getRollSets();
   if (!sets.length) {
     grid.innerHTML = `<div style="text-align:center;color:var(--text-3);font-size:13px;padding:24px 0;grid-column:1/-1;">ยังไม่มีชุด Roll ในทะเบียน Tooling</div>`;
