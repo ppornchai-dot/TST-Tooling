@@ -1486,12 +1486,8 @@ canvas{display:block;}
       <div class="section-title">งานประจำวัน</div>
       <div class="section-sub" id="daily-section-sub">เช็คลิสต์งานประจำวันของทีม Tooling — วันที่ 2 ก.ค. 2569</div>
 
-      <div class="mobile-wrap" style="display:flex;gap:8px;margin-bottom:12px;">
-        <button class="btn btn-ghost btn-sm daily-worktype-btn" data-worktype="" onclick="switchDailyWorkTypeFilter('')" style="color:var(--accent);border-color:var(--accent);">ทั้งหมด</button>
-        <button class="btn btn-ghost btn-sm daily-worktype-btn" data-worktype="cnc" onclick="switchDailyWorkTypeFilter('cnc')">⚙ CNC</button>
-        <button class="btn btn-ghost btn-sm daily-worktype-btn" data-worktype="polish" onclick="switchDailyWorkTypeFilter('polish')">✦ ขัด Roll</button>
-      </div>
-
+      <!-- เอาปุ่มกรอง ทั้งหมด/CNC/ขัด Roll ออกแล้ว — ตารางแบ่งหัวข้อเป็น 2 ประเภทงานให้เห็นทั้งคู่ในหน้าเดียว
+           ช่าง CNC / ช่างขัด Roll ยังเห็นเฉพาะประเภทของตัวเอง ผ่าน forcedDailyWorkType() -->
       <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
         <button class="btn btn-ghost btn-sm daily-datenav-btn" onclick="dailyNav(-1)">‹ ก่อนหน้า</button>
         <div style="position:relative;display:inline-flex;">
@@ -3762,7 +3758,7 @@ let dailyViewDate = dailyTodayIso();
 let dailyStatusByDate = {};
 // เวลาเริ่ม/จบงานจริงที่บันทึกจากปุ่ม "เริ่มงาน"/"จบงาน" ของงานตามแผน (CNC/ขัด Roll) แยกตามวันที่ที่ดู — { 'YYYY-MM-DD': { [planTaskId]: {startTime, endTime} } }
 let dailyActualTimes = {};
-let currentDailyWorkTypeFilter = null; // null = ทั้งหมด — กรองเฉพาะงานที่มาจากหน้าวางแผน (CNC/ขัด Roll) ไม่กรองเช็คลิสต์ที่เพิ่มเอง
+// ไม่มีตัวกรองประเภทงานในหน้างานประจำวันแล้ว — ตารางแบ่งหัวข้อเป็น CNC / ขัด Roll เสมอ (ดู DAILY_SECTIONS)
 let currentDailyShiftFilter = null;    // null = ทั้งหมด
 let expandedDailyTaskId = null;        // งานที่กำลังกางดูเวลาแยกรายชิ้นอยู่ (ถ้ามี)
 // วันที่ (iso) ที่เคยสร้างแผนวันถัดไปต่อให้อัตโนมัติแล้ว (หลังเช็คลิสต์ของวันนั้นครบทุกรายการ) — กันไม่ให้สร้างซ้ำทุกครั้งที่ติ๊ก
@@ -9630,14 +9626,13 @@ function finishDailyTask(idx, workerId) {
   renderDailyTasks();
 }
 
-function switchDailyWorkTypeFilter(type) {
-  currentDailyWorkTypeFilter = type || null;
-  document.querySelectorAll('.daily-worktype-btn').forEach(b => {
-    const active = (b.getAttribute('data-worktype') || '') === (type || '');
-    b.style.color = active ? 'var(--accent)' : '';
-    b.style.borderColor = active ? 'var(--accent)' : '';
-  });
-  renderDailyTasks();
+// ช่าง CNC เห็นเฉพาะงานแต่ง Roll และช่างขัด Roll เห็นเฉพาะงานขัด — คืน null ถ้าไม่ถูกจำกัด (admin/หัวหน้า/ช่างเครื่อง)
+// แทนปุ่มกรองเดิมที่เอาออกไปแล้ว (เกณฑ์เดียวกับ forcedHistoryTypeForRole ของหน้าประวัติ)
+function forcedDailyWorkType() {
+  const r = effectiveRole();
+  if (r === 'cnc') return 'cnc';
+  if (r === 'polish') return 'polish';
+  return null;
 }
 
 function switchDailyShiftFilter(key) {
@@ -9877,7 +9872,8 @@ function dailyGoToday() {
 function dailyDatesWithTasks() {
   const set = new Set();
   planTasks.forEach(t => {
-    if (currentDailyWorkTypeFilter && t.workType !== currentDailyWorkTypeFilter) return;
+    const forced = forcedDailyWorkType();
+    if (forced && t.workType !== forced) return;
     if (!shiftMatchesFilter(t.shift, currentDailyShiftFilter)) return;
     set.add(taskDisplayDate(t));
   });
@@ -10004,13 +10000,16 @@ function renderDailyTasks() {
       key: t.id, date: t.date || dailyViewDate, startTime: t.time || '—', endTimeHtml: '—', duration: '—',
       rollSet: '—', rollColor: '—', rollId: t.ref || '—', task: t.task,
       shiftHtml: '—', who: t.who, workerId: null, editable: true, expandable: false,
+      section: 'checklist',
     }));
+  const forcedType = forcedDailyWorkType();
   const plannedItems = planTasks
     .filter(t => taskDisplayDate(t) === dailyViewDate)
-    .filter(t => !currentDailyWorkTypeFilter || t.workType === currentDailyWorkTypeFilter)
+    .filter(t => !forcedType || t.workType === forcedType)
     .filter(t => shiftMatchesFilter(t.shift, currentDailyShiftFilter))
     .map(t => ({
       key: t.id,
+      section: t.workType === 'polish' ? 'polish' : 'cnc',
       date: t.date,
       startTime: t.startTime || '—',
       endTimeHtml: `${escapeHtmlAttr(t.endTime || '—')}${t.endDate && t.endDate !== t.date ? ` <span style="color:var(--accent);font-weight:700;">(+${Math.round((parseISODate(t.endDate)-parseISODate(t.date))/86400000)} วัน)</span>` : ''}${t.otMinutes ? ` <span class="chip chip-red" title="เวลาทำงานนอกช่วงกะ">OT ${formatMinutesAsHm(t.otMinutes).replace('≈ ', '')}</span>` : ''}`,
@@ -10025,7 +10024,7 @@ function renderDailyTasks() {
 
   applyDailyTechView();
 
-  tbody.innerHTML = allItems.map((item, i) => {
+  const rowHtmlFor = (item, i) => {
     const status = getDailyStatus(item.key);
     const meta = DAILY_STATUS_META[status];
     const isMine = !restrictWorkerId || item.workerId == null || item.workerId === restrictWorkerId;
@@ -10073,7 +10072,39 @@ function renderDailyTasks() {
       <td><span class="chip ${meta.chip}">${meta.label}</span></td>
     </tr>`;
     return row + (expanded ? renderPlanDayTaskDetailRow(item.raw, 13, true, blockReason) : '');
-  }).join('') || `<tr><td colspan="13" style="padding:32px;text-align:center;color:var(--text-3);">ยังไม่มีงานในวันนี้ — กด "+ เพิ่มงานแทรก" เพื่อเริ่มสร้างงานแทรกเอง</td></tr>`;
+  };
+
+  // แบ่งตารางเป็นหัวข้อตามประเภทงานเลย ไม่ต้องมีปุ่มกรองให้เลือกดูทีละอย่าง
+  // ลำดับในแต่ละหัวข้อเริ่มนับใหม่จาก 1 (เลขนี้ใช้แสดงเท่านั้น ตัวระบุงานคือ item.key)
+  const sectionHeader = (meta, items) => {
+    const pieces = items.reduce((s, it) => s + Math.max(1, ((it.raw || {}).rollIds || []).length), 0);
+    const donePieces = items.reduce((s, it) => {
+      const ids = (it.raw || {}).rollIds || [];
+      if (!ids.length) return s + (getDailyStatus(it.key) === 'done' ? 1 : 0);
+      return s + ids.filter(idx => getDailyPieceEntry(it.key, idx).status === 'done').length;
+    }, 0);
+    return `<tr><td colspan="13" style="background:${meta.bg};padding:9px 12px;border-left:4px solid ${meta.color};border-top:2px solid ${meta.color};">
+      <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:${meta.color};">
+        <span aria-hidden="true">${meta.icon}</span>${escapeHtmlAttr(meta.label)}
+      </span>
+      <span style="float:right;font-size:12px;font-weight:700;color:${meta.color};opacity:.9;">${
+        items.length ? items.length + ' รายการ · ' + donePieces + '/' + pieces + ' ชิ้น' : 'ไม่มีงาน'}</span>
+    </td></tr>`;
+  };
+  const emptyRow = text => `<tr><td colspan="13" style="padding:14px;text-align:center;color:var(--text-3);font-size:12.5px;">${escapeHtmlAttr(text)}</td></tr>`;
+
+  const DAILY_SECTIONS = [
+    { key: 'cnc',       icon: '⚙', label: 'แต่ง Roll (CNC)', color: 'var(--accent)', bg: 'var(--accent-glow)', empty: 'ไม่มีงานแต่ง Roll ในวันนี้', always: true },
+    { key: 'polish',    icon: '✦', label: 'ขัด Roll',        color: 'var(--purple)', bg: 'var(--purple-dim)',  empty: 'ไม่มีงานขัด Roll ในวันนี้',  always: true },
+    { key: 'checklist', icon: '＋', label: 'งานแทรก',         color: 'var(--text-2)', bg: 'var(--bg-panel)',    empty: '',                          always: false },
+  ];
+  tbody.innerHTML = DAILY_SECTIONS.filter(s => {
+    if (forcedType && (s.key === 'cnc' || s.key === 'polish')) return s.key === forcedType;
+    return s.always || allItems.some(it => it.section === s.key);
+  }).map(s => {
+    const items = allItems.filter(it => it.section === s.key);
+    return sectionHeader(s, items) + (items.length ? items.map(rowHtmlFor).join('') : emptyRow(s.empty));
+  }).join('');
 
   // นับเป็น "จำนวนชิ้น Roll" ไม่ใช่จำนวนงาน — งานตามแผน 1 รายการมีหลายชิ้น แต่ละชิ้นมีสถานะของตัวเอง (ดู dailyPieceStatus)
   // งานแทรกที่เพิ่มเอง ไม่มีข้อมูล Roll จึงนับเป็น 1 ชิ้นตามสถานะของงานนั้น
@@ -11552,21 +11583,8 @@ function applyRoleUI() {
     }
   }
 
-  // ช่าง CNC / ช่างขัด Roll เห็นเฉพาะแผนงานประเภทของตัวเองในหน้า "งานประจำวัน" — ซ่อนทั้งปุ่ม "ทั้งหมด" และปุ่มอีกประเภทหนึ่งไปเลย
-  const dailyAllBtn = document.querySelector('.daily-worktype-btn[data-worktype=""]');
-  const dailyCncBtn = document.querySelector('.daily-worktype-btn[data-worktype="cnc"]');
-  const dailyPolishBtn = document.querySelector('.daily-worktype-btn[data-worktype="polish"]');
-  if (dailyAllBtn && dailyCncBtn && dailyPolishBtn) {
-    if (role === 'cnc') {
-      dailyAllBtn.style.display = 'none'; dailyCncBtn.style.display = ''; dailyPolishBtn.style.display = 'none';
-      switchDailyWorkTypeFilter('cnc');
-    } else if (role === 'polish') {
-      dailyAllBtn.style.display = 'none'; dailyCncBtn.style.display = 'none'; dailyPolishBtn.style.display = '';
-      switchDailyWorkTypeFilter('polish');
-    } else {
-      dailyAllBtn.style.display = ''; dailyCncBtn.style.display = ''; dailyPolishBtn.style.display = '';
-    }
-  }
+  // หน้า "งานประจำวัน" ไม่มีปุ่มกรองประเภทงานแล้ว — ตารางแบ่งหัวข้อเป็น CNC / ขัด Roll ให้เห็นทั้งคู่
+  // การจำกัดตามบทบาทย้ายไปอยู่ที่ forcedDailyWorkType() ซึ่ง renderDailyTasks อ่านเองทุกครั้ง
 }
 
 function initAuth() {
