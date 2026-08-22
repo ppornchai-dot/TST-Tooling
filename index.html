@@ -2002,7 +2002,11 @@ function getRollColorEntriesByStatus(status) {
     colorKeysUsed.forEach(colorKey => {
       if (rollColorStatusFor(setName, colorKey) !== status) return;
       const colorMeta = colorKey === NO_COLOR_KEY ? null : getSetPalette(setName).find(c => c.key === colorKey);
-      const activeMachine = rollColorActiveMachineFor(setName, colorKey);
+      // "เครื่องที่ใช้อยู่" มีความหมายเฉพาะตอนชุดนี้กำลังใช้งานจริง — สถานะอื่น (พร้อมใช้งาน/รอแต่ง/รอขัด)
+      // ชุดไม่ได้อยู่บนเครื่องไหน ต้องแสดงทุกเครื่องที่ผูกไว้ในทะเบียนตามเดิม
+      // ค่าที่เคยเลือกไว้ยังเก็บอยู่โดยตั้งใจ (พอกลับมาเป็นกำลังใช้งานจะได้ไม่ต้องเลือกซ้ำ ดู rollRowMachinePickerHtml)
+      // เดิมเอาค่าที่ค้างนั้นมาใช้กับทุกสถานะ ชุดที่เคยเดินอยู่ P3 จึงโชว์ "P3" ทั้งที่ทะเบียนผูกไว้ P2/P3
+      const activeMachine = status === 'inuse' ? rollColorActiveMachineFor(setName, colorKey) : null;
       entries.push({
         set: setName,
         colorKey,
@@ -2337,8 +2341,9 @@ function setInUseRollForMachine(machine, setName, colorKey) {
 
 // เครื่องที่ชุดนี้ถือว่า "ใช้อยู่" — ถ้าระบุเครื่องไว้ก็คือเครื่องนั้นเครื่องเดียว
 // ถ้าไม่ระบุ ถือว่าครอบทุกเครื่องที่ผูกกับ Size Roll นี้ (เกณฑ์เดียวกับที่การ์ดหน้า Dashboard ใช้แสดง)
+// เครื่องที่ระบุไว้ใช้ได้เฉพาะตอนสถานะเป็น "กำลังใช้งาน" — ค่าที่ค้างจากรอบก่อนต้องไม่ไปบีบขอบเขตของชุดที่เลิกใช้แล้ว
 function inUseMachineScope(setName, colorKey) {
-  const active = rollColorActiveMachineFor(setName, colorKey);
+  const active = rollColorStatusFor(setName, colorKey) === 'inuse' ? rollColorActiveMachineFor(setName, colorKey) : null;
   if (active) return [active];
   return (rollSetMachines[setName] || []).slice();
 }
