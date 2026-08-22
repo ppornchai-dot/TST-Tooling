@@ -1399,6 +1399,10 @@ canvas{display:block;}
           <button class="btn btn-ghost btn-sm" onclick="setProdWeightRange('month')">เดือนนี้</button>
           <button class="btn btn-ghost btn-sm" onclick="setProdWeightRange('all')">ทั้งหมด</button>
         </div>
+        <!-- ปิดใช้งานไว้จนกว่าตารางจะมีข้อมูลจริง (ดู prodWeightExport ท้าย renderProdWeight) -->
+        <button class="btn btn-sm" id="prodweight-export-btn" onclick="exportProdWeightXlsx()" disabled
+          style="margin-left:auto;font-weight:800;background:var(--green);color:#fff;border:1px solid var(--green);"
+          title="บันทึกตารางนี้เป็นไฟล์ Excel (.xlsx) — ตัวเลขชุดเดียวกับที่เห็นบนจอ">⬇ บันทึกเป็น Excel</button>
       </div>
       <div id="prodweight-range-note" style="margin-top:4px;"></div>
       <!-- แถบบอกว่าวันนี้บล็อกเดินขนาดไหน และระบุชุดสี Roll ที่เดินครบหรือยัง (ดู renderProdWeightRunBanner) -->
@@ -7262,6 +7266,9 @@ let fgWeightDates = [];     // วันที่ที่มีการผล�
 // ยอดผลิต "ของวันเดียว" แยกแคชไว้ต่างหาก ไม่ปนกับช่วงวันที่ผู้ใช้เลือกดูในตาราง
 // เพราะแถบ "วันนี้บล็อกเดินขนาดไหน" ต้องรู้ของวันนี้เสมอ แม้ผู้ใช้เลือกดูช่วงย้อนหลังที่ไม่คลุมวันนี้
 let fgRunningCache = {}; // { 'YYYY-MM-DD': { kgByKey:{}, machinesByKey:{}, error } }
+// โมเดลของตารางน้ำหนักผลิตที่เรนเดอร์ล่าสุด — เก็บไว้ตอนเรนเดอร์แล้วใช้ตอนเซฟเป็นไฟล์ Excel
+// เก็บจากตอนเรนเดอร์เพื่อให้ไฟล์ตรงกับที่เห็นบนจอเสมอ ไม่ต้องคำนวณซ้ำแล้วเสี่ยงได้เลขไม่ตรงกัน
+let prodWeightExport = null;
 
 // ชุดสีที่ระบุไว้ "เจาะจงวันนั้น" เท่านั้น (ไม่รวมค่าที่อนุมานจากสถานะกำลังใช้งาน)
 function explicitRunColorFor(date, setName) {
@@ -7728,6 +7735,71 @@ function renderProdWeightRangeNote(fromDate, toDate) {
   </div>`;
 }
 
+// ─── บันทึกตารางน้ำหนักผลิตเป็นไฟล์ Excel ─────────────────────────────────────
+// ใช้ตัวเลขจาก prodWeightExport ที่เก็บไว้ตอนเรนเดอร์ ไฟล์จึงตรงกับตารางบนจอเสมอ
+// ตารางบนจอใช้แถวหัวข้อคั่นแต่ละขนาด ส่วนในไฟล์แผ่กลับเป็นคอลัมน์ "ขนาด" ให้กรอง/พิวอทต่อได้
+function exportProdWeightXlsx() {
+  if (typeof XLSX === 'undefined') {
+    alert('ไม่สามารถโหลดไลบรารีสร้างไฟล์ Excel ได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วลองใหม่');
+    return;
+  }
+  const m = prodWeightExport;
+  if (!m || !m.rows.length) {
+    alert('ยังไม่มีข้อมูลในตารางให้บันทึก — กด "ค้นหา" ให้ตารางแสดงข้อมูลก่อน');
+    return;
+  }
+  const dayLabels = m.days.map(d => fmtDateThaiShort(parseISODate(d)));
+  const num2 = v => (v == null ? null : Math.round(v * 100) / 100);
+
+  // ── แผ่นที่ 1: รายชุดสี (ตรงกับตารางบนจอ) ──
+  const aoa = [
+    ['น้ำหนักผลิต — TST Tooling (หน่วย: ตัน)'],
+    ['ช่วงข้อมูล', fmtDateThai(parseISODate(m.fromDate)) + ' – ' + fmtDateThai(parseISODate(m.toDate)),
+     '', 'ผลิตจริงรวมทุกขนาด', m.grandTon, 'ยกมาที่กรอกเอง', num2(m.carryTotalTon),
+     ...(m.rowCount != null ? ['จาก ' + m.rowCount.toLocaleString() + ' รายการ'] : [])],
+    ['บันทึกเมื่อ', fmtDateThai(new Date()) + ' ' + nowHHMM()],
+    ['หมายเหตุ', '* = อ้างจากชุดที่สถานะกำลังใช้งาน ยังไม่ได้ระบุเจาะจงของวันนั้น · ⁺ = รวมน้ำหนักที่มาใช้ Forming ร่วมจากขนาดอื่น'
+      + ' · คอลัมน์รายวันเป็นยอดผลิตจริงล้วน ยอด "ยกมา" ไม่ผูกกับวันใดวันหนึ่ง แต่ถูกบวกในคอลัมน์รวม'],
+  ];
+  if (m.fetchError) aoa.push(['คำเตือน', 'ดึงข้อมูลจากระบบ Production ไม่สำเร็จ (' + m.fetchError + ') ตัวเลขอาจไม่ครบ']);
+  if (m.dayColsTrimmed) aoa.push(['คำเตือน', 'ช่วงที่เลือกกว้างเกินกว่าจะแสดงครบทุกวัน — แสดงเฉพาะวันที่มีการผลิต']);
+  aoa.push([]);
+  aoa.push(['ขนาด (Size Roll)', 'หมวด', 'ชุดสี', 'ยกมา (ตัน)', ...dayLabels, 'รวม (ตัน)', 'หมายเหตุวัน']);
+  m.rows.forEach(r => {
+    // รวมสัญลักษณ์ของทุกวันไว้ท้ายแถว เพื่อไม่ให้ช่องตัวเลขกลายเป็นข้อความแล้วบวกใน Excel ไม่ได้
+    const marks = r.flags.map((f, i) => (f ? dayLabels[i] + f : '')).filter(Boolean).join(', ');
+    aoa.push([r.size, r.cat, r.color, num2(r.carry) || null, ...r.cells.map(num2), num2(r.total) || null, marks]);
+  });
+  aoa.push([]);
+  aoa.push(['รวมทุกขนาด (นับขนาดละครั้ง ไม่นับซ้ำตามหมวด/ชุดสี)', '', '', num2(m.carryTotalTon) || null,
+    ...m.dayTotalsTon.map(v => num2(v) || null), num2(m.grandTon + m.carryTotalTon) || null, '']);
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{ wch: 26 }, { wch: 10 }, { wch: 12 }, { wch: 11 },
+    ...m.days.map(() => ({ wch: 9 })), { wch: 11 }, { wch: 30 }];
+
+  // ── แผ่นที่ 2: สรุปต่อขนาด ──
+  const sum = [
+    ['สรุปน้ำหนักผลิตต่อขนาด (หน่วย: ตัน)'],
+    ['ช่วงข้อมูล', fmtDateThai(parseISODate(m.fromDate)) + ' – ' + fmtDateThai(parseISODate(m.toDate))],
+    [],
+    ['ขนาด (Size Roll)', 'จำนวนชุดสี', 'จำนวนลูก', 'ผลิตจริง (ตัน)', 'ยกมา (ตัน)', 'รวม (ตัน)', ...dayLabels],
+  ];
+  m.groups.forEach(g => sum.push([g.size, g.colorSets, g.pieces, num2(g.producedTon) || null,
+    num2(g.carryTon) || null, num2(g.producedTon + g.carryTon) || null, ...g.cells.map(num2)]));
+  sum.push([]);
+  sum.push(['รวมทุกขนาด', '', '', num2(m.grandTon) || null, num2(m.carryTotalTon) || null,
+    num2(m.grandTon + m.carryTotalTon) || null, ...m.dayTotalsTon.map(v => num2(v) || null)]);
+  const ws2 = XLSX.utils.aoa_to_sheet(sum);
+  ws2['!cols'] = [{ wch: 26 }, { wch: 11 }, { wch: 10 }, { wch: 13 }, { wch: 11 }, { wch: 11 },
+    ...m.days.map(() => ({ wch: 9 }))];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'น้ำหนักผลิต');
+  XLSX.utils.book_append_sheet(wb, ws2, 'สรุปต่อขนาด');
+  XLSX.writeFile(wb, `น้ำหนักผลิต_${m.fromDate}_ถึง_${m.toDate}.xlsx`);
+}
+
 // รวม Roll Set ที่เป็นขนาดเดียวกัน (ต่างกันแค่ขั้นตอน Forming/Sizing/TH) ไว้เป็นการ์ดเดียว — ใช้ usage สูงสุดในกลุ่มแทนการรวม
 // เพราะเป็นเนื้อเหล็กชิ้นเดียวกันที่ไหลผ่านแต่ละขั้นตอนต่อกัน ไม่ใช่ Roll ที่ทำงานคู่ขนานแยกกัน
 function rollSetGroupDisplayName(setName) {
@@ -7812,6 +7884,7 @@ async function renderProdWeight() {
   const dayKg = {};
   let grandKg = 0;
   let carryTotal = 0; // ยอดยกมาที่กรอกเอง รวมทุกชุด — แยกจาก grandKg ที่ต้องตรงกับยอดจริงจาก API
+  const exportRows = [], exportGroups = []; // เก็บไปทำไฟล์ Excel (ดู exportProdWeightXlsx)
 
   const body = ordered.map(([, g]) => {
     const perDay = (g.fgKey && fgWeightByKeyDate[g.fgKey]) || {};
@@ -7858,6 +7931,13 @@ async function renderProdWeight() {
         const carryTon = rollCarryTonFor(setName, c.key);
         carryTotal += carryTon;
         groupCarry += carryTon;
+        exportRows.push({
+          size: g.label, cat: cat || setName, setName, color: c.label, carry: carryTon,
+          // ตันของแต่ละวัน — ว่าง (null) ถ้าวันนั้นไม่มียอด เพื่อให้ช่องใน Excel ว่างจริง ไม่ใช่เลข 0
+          cells: cells.map(x => (x.kg ? ton(x.kg) : null)),
+          flags: cells.map(x => (x.kg ? ((x.inferred ? '*' : '') + (x.shareKg ? '⁺' : '')) : '')),
+          total: Math.round((ton(rowKg) + carryTon) * 100) / 100,
+        });
         return `<tr>
         <td class="pw-fz1" title="${escapeHtmlAttr(setName)}"><strong style="color:${catColor};">${escapeHtmlAttr(cat || setName)}</strong></td>
         <td class="pw-fz2"><span style="display:inline-flex;align-items:center;gap:6px;">
@@ -7892,6 +7972,10 @@ async function renderProdWeight() {
       const rs = toolingData.roll.filter(r => r.set === s);
       return n + (rs.length ? new Set(rs.map(r => r.color || NO_COLOR_KEY)).size : 0);
     }, 0);
+    exportGroups.push({
+      size: g.label, colorSets, pieces, producedTon: ton(groupKg), carryTon: groupCarry,
+      cells: days.map(d => (perDay[d] ? ton(perDay[d]) : null)),
+    });
     return `<tr><td colspan="${days.length + 4}" style="background:var(--bg-panel);padding:11px 12px;border-top:2px solid var(--text-1);">
       <span class="pw-group-label" style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);background:var(--bg-panel);padding-right:8px;">
         <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(g.label)}
@@ -7907,6 +7991,16 @@ async function renderProdWeight() {
       })()}</span>
     </td></tr>${rows}`;
   }).join('');
+
+  // เก็บโมเดลของตารางที่เพิ่งสร้างไว้ให้ปุ่ม "บันทึกเป็น Excel" ใช้ — ตัวเลขชุดเดียวกับที่แสดงบนจอ
+  prodWeightExport = {
+    fromDate, toDate, days, rows: exportRows, groups: exportGroups,
+    dayTotalsTon: days.map(d => ton(dayKg[d])), grandTon: ton(grandKg), carryTotalTon: carryTotal,
+    fetchError: fgByKey ? null : (fgWeightFetchError || 'ไม่ทราบสาเหตุ'), dayColsTrimmed,
+    rowCount: fgWeightMeta ? fgWeightMeta.rowCount : null,
+  };
+  const exportBtn = document.getElementById('prodweight-export-btn');
+  if (exportBtn) exportBtn.disabled = !exportRows.length;
 
   const colCount = days.length + 4;
   grid.innerHTML = errorBanner + `<div class="card"><div class="table-wrap table-wrap-sticky"><table>
