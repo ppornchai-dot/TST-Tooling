@@ -4069,11 +4069,10 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
       const groupBorder = (si === 0 && i > 0) ? 'border-top:2px solid var(--border);' : '';
       const breakStyle = isBreak ? 'background:var(--bg-hover);font-style:italic;' : '';
       const continuedBadge = p.continued ? ' <span class="muted" style="font-weight:400;font-style:italic;">(ต่อ)</span>' : '';
-      // เทียบขนาดที่วัดได้จริงหลังแต่ง/ขัด (บันทึกตอนกด "จบงาน") กับเส้นผ่านศูนย์กลางเดิมในทะเบียน Tooling — โชว์แค่แถวแรกของชิ้นที่จบแล้ว
-      // เติมสัญลักษณ์ Ø หน้าตัวเลขให้เห็นชัดว่าเป็นเส้นผ่านศูนย์กลาง (ข้ามถ้ามี Ø ติดมากับค่าเดิมอยู่แล้ว กันซ้ำ)
-      const withDiaSymbol = v => { const s = String(v).trim(); return s.startsWith('Ø') ? s : 'Ø' + s; };
+      // เทียบขนาดที่วัดได้จริงหลังแต่ง/ขัด (บันทึกตอนกด "จบงาน") กับ OD มาตรฐาน — โชว์แค่แถวแรกของชิ้นที่จบแล้ว
+      // ใช้ตัวจัดรูปแบบเดียวกับหน้าประวัติการทำงาน (odCompareHtml) ให้อ่านได้เหมือนกันทั้งสองหน้า
       const measuredSizeLine = (interactive && isFirstRow && !isBreak && pieceEntry.measuredSize)
-        ? `<div class="muted" style="font-size:11px;font-weight:400;">วัดได้ ${escapeHtmlAttr(withDiaSymbol(pieceEntry.measuredSize))}${pieceEntry.registryDiameter ? ` <span title="เส้นผ่านศูนย์กลางเดิมในทะเบียน Tooling">(ทะเบียน ${escapeHtmlAttr(withDiaSymbol(pieceEntry.registryDiameter))})</span>` : ''}</div>` : '';
+        ? odCompareHtml(pieceEntry.measuredSize, pieceEntry.registryDiameter, t.rollSet) : '';
       // เหตุผลที่พักงานชิ้นนี้ (กด "⏸ พักงาน") — โชว์แค่แถวแรกของชิ้นนั้น จนกว่าจะกดทำต่อ
       const pauseReasonLine = (interactive && isFirstRow && !isBreak && pieceEntry.status === 'paused' && pieceEntry.pauseReason)
         ? `<div class="muted" style="font-size:11px;font-weight:400;color:var(--amber);">⏸ พักงาน: ${escapeHtmlAttr(pieceEntry.pauseReason)}${pieceEntry.pausedAt ? ` (${escapeHtmlAttr(pieceEntry.pausedAt)})` : ''}</div>` : '';
@@ -7652,6 +7651,44 @@ function rollLifeNum(v) {
   return isNaN(n) ? null : n;
 }
 
+// ─── เทียบ "OD มาตรฐาน" กับขนาดที่วัดได้จริงหลังแต่ง/ขัด ─────────────────────
+// ค่ามาตรฐานยึด "OD ตอนใหม่" ใน rollLifeSpec ของชุดนั้นก่อน เพราะเป็นค่ามาตรฐานที่กรอกไว้ตรงๆ
+// ถ้ายังไม่ได้กรอกเกณฑ์ชุดนั้น ถอยไปใช้เส้นผ่านศูนย์กลางในทะเบียน Tooling ที่บันทึกติดไว้ตอนกดจบงาน
+// (ค่านี้เก็บ ณ เวลาที่จบงาน จึงตรงกับตอนนั้นจริง ไม่เพี้ยนตามการแก้ทะเบียนภายหลัง)
+// Roll ถูกแต่งให้เล็กลงเป็นเรื่องปกติ ผลต่างที่ติดลบจึงไม่ทำสีเตือน — เตือนเฉพาะตอนเล็กกว่า OD เล็กสุด
+// หรือใหญ่กว่ามาตรฐาน (ผิดปกติ น่าจะกรอกผิดหรือวัดผิด)
+function odCompareHtml(measuredSize, registryDiameter, setName) {
+  const measured = rollLifeNum(measuredSize);
+  const fmtOD = n => 'Ø' + (Math.round(n * 100) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const rawMeasured = String(measuredSize == null ? '' : measuredSize).trim();
+  const measuredText = measured != null ? fmtOD(measured) : (rawMeasured.startsWith('Ø') ? rawMeasured : 'Ø' + rawMeasured);
+  if (!rawMeasured) return '';
+
+  const spec = rollLifeSpec[setName] || {};
+  const specNew = rollLifeNum(spec.newOD), minOD = rollLifeNum(spec.minOD);
+  const reg = rollLifeNum(registryDiameter);
+  const std = specNew != null ? specNew : reg;
+  const stdLabel = specNew != null ? 'มาตรฐาน' : 'ทะเบียน';
+  const stdTitle = specNew != null
+    ? 'OD ตอนใหม่ (มาตรฐาน) ของชุดนี้ ตามเกณฑ์อายุ Roll'
+    : 'เส้นผ่านศูนย์กลางในทะเบียน Tooling ที่บันทึกไว้ตอนกดจบงาน — ยังไม่ได้กรอกเกณฑ์ OD มาตรฐานของชุดนี้';
+
+  if (std == null || measured == null) {
+    return `<div class="muted" style="font-size:11px;font-weight:400;">วัดได้ ${escapeHtmlAttr(measuredText)}</div>`;
+  }
+  const diff = Math.round((measured - std) * 100) / 100;
+  const diffColor = diff > 0 ? 'var(--amber)' : 'var(--text-3)';
+  const diffText = (diff > 0 ? '+' : diff < 0 ? '−' : '±') + Math.abs(diff).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const belowMin = minOD != null && measured < minOD;
+  return `<div class="muted" style="font-size:11px;font-weight:400;line-height:1.5;">
+    <span title="${escapeHtmlAttr(stdTitle)}">${stdLabel} ${escapeHtmlAttr(fmtOD(std))}</span>
+    <span style="opacity:.6;">→</span>
+    <span style="font-weight:700;color:var(--text-2);" title="ขนาดที่วัดได้จริงหลังแต่ง/ขัด">วัดได้ ${escapeHtmlAttr(measuredText)}</span>
+    <span style="font-weight:700;color:${diffColor};" title="${escapeHtmlAttr('ผลต่างจาก' + stdLabel + ' ' + fmtOD(std) + (diff > 0 ? ' — ใหญ่กว่ามาตรฐาน ตรวจสอบค่าที่กรอก' : ''))}">${escapeHtmlAttr(diffText)}</span>
+    ${belowMin ? `<span style="color:var(--red);font-weight:700;" title="เล็กกว่า OD เล็กสุดที่กำหนดไว้สำหรับชุดนี้">· ต่ำกว่าเกณฑ์ ${escapeHtmlAttr(fmtOD(minOD))}</span>` : ''}
+  </div>`;
+}
+
 function rollLifeFor(roll) {
   const spec = rollLifeSpec[roll.set] || {};
   const newOD = rollLifeNum(spec.newOD), minOD = rollLifeNum(spec.minOD), maxTon = rollLifeNum(spec.maxTon);
@@ -9869,6 +9906,9 @@ function collectHistoryRecords() {
           tooling: `${t.rollSet || '—'}${t.rollColor ? ' — ' + planRollColorLabel(t) : ''}`,
           detail: (roll ? roll.name : 'ชิ้นที่ ' + (idxNum + 1)) + (seq >= 0 && order.length ? ` (ชิ้นที่ ${seq + 1}/${order.length})` : ''),
           measuredSize: entry.measuredSize || null,
+          // เก็บไว้ให้หน้าประวัติเทียบ OD มาตรฐานกับขนาดที่วัดได้ (ดู odCompareHtml)
+          registryDiameter: entry.registryDiameter || null,
+          rollSetName: t.rollSet || null,
           who: workerName(t.workerId),
           // บันทึกที่ถูกย้ายวันไปแล้วไม่นับชั่วโมง — ชิ้นเดียวกันถูกนับอีกครั้งในวันที่ย้ายไป
           // ถ้านับทั้งสองที่ ยอด "ชม." ของวันเดิมจะบวมขึ้นจากงานที่ไม่ได้ทำในวันนั้น
@@ -9956,7 +9996,7 @@ function renderHistory() {
       <td class="muted">${escapeHtmlAttr(r.wo)}</td>
       <td>${escapeHtmlAttr(r.typeLabel)}</td>
       <td>${escapeHtmlAttr(r.tooling)}</td>
-      <td>${escapeHtmlAttr(r.detail)}${r.measuredSize ? `<div class="muted" style="font-size:11px;font-weight:400;">วัดได้ ${escapeHtmlAttr(String(r.measuredSize).trim().startsWith('Ø') ? r.measuredSize : 'Ø' + r.measuredSize)}</div>` : ''}</td>
+      <td>${escapeHtmlAttr(r.detail)}${r.measuredSize ? odCompareHtml(r.measuredSize, r.registryDiameter, r.rollSetName) : ''}</td>
       <td class="muted">${escapeHtmlAttr(r.who)}</td>
       <td class="muted">${r.hours != null ? r.hours + ' ชม.' : '—'}${(r.startTime || r.endTime) ? `<div style="font-size:11px;">${escapeHtmlAttr(r.startTime || '—')} – ${escapeHtmlAttr(r.endTime || '—')}</div>` : ''}</td>
       <td><span class="chip ${r.resultChip || 'chip-green'}"${r.resultNote ? ` title="${escapeHtmlAttr(r.resultNote)}"` : ''}>${escapeHtmlAttr(r.result)}</span>${
