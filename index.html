@@ -9797,6 +9797,28 @@ function renderDailyTasks() {
 }
 
 // ─── ประวัติการทำงาน (หน้า History) ───────────────────────────────────────
+// สถานะรายชิ้นเก็บแยก "ตามวัน" (dailyPieceStatus[วัน][งาน][ชิ้น]) ส่วนหน้างานประจำวันอ่านจาก
+// taskDisplayDate(t) คือวันของงานตอนนี้เท่านั้น พอวางแผนงานใหม่/ย้ายวัน บันทึกของวันเดิมจึงค้างอยู่
+// หน้าประวัติไล่ทุกวัน ถ้าเอา entry.status มาแสดงตรงๆ บันทึกที่ค้างจะขึ้น "กำลังทำ" ไปตลอด
+// ทั้งที่หน้างานประจำวันไม่มีงานนั้นค้างอยู่แล้ว — จึงตัดสินจากบริบทว่าบันทึกนั้นยังเป็นงานปัจจุบันจริงไหม
+//   ย้ายไปวันอื่น = งานไม่ได้อยู่วันนี้แล้ว บันทึกนี้เป็นของรอบก่อนย้าย
+//   ไม่ได้ปิดงาน = งานยังอยู่วันเดิม แต่วันนั้นผ่านไปแล้วและไม่มีใครกดจบงาน
+//   กำลังทำ/พักงาน = เหลือไว้เฉพาะงานที่ยังเป็นของวันปัจจุบันจริงๆ
+function historyPieceOutcome(dateIso, task, rollIdx, entry) {
+  if (entry.status === 'done') return { key: 'done', note: '' };
+  if (entry.status !== 'in_progress' && entry.status !== 'paused') return null;
+  const owning = taskDisplayDate(task);
+  if (owning !== dateIso) {
+    const later = pieceEntryFor(owning, task.id, rollIdx);
+    return { key: 'moved', note: 'งาน ' + task.id + ' ถูกวางแผนใหม่เป็นวันที่ ' + fmtDateThai(parseISODate(owning))
+      + ' — บันทึกนี้เป็นของรอบก่อนย้าย' + (later.status === 'done' ? ' (ชิ้นนี้ทำเสร็จแล้วในวันที่ย้ายไป)' : '') };
+  }
+  if (dateIso < dailyTodayIso()) {
+    return { key: 'unclosed', note: 'กดเริ่มงานไว้เมื่อ ' + (entry.startTime || '—') + ' แต่ไม่ได้กดจบงานในวันนั้น' };
+  }
+  return { key: entry.status, note: '' };
+}
+
 // รวบรวมงานที่ "สำเร็จ" แล้วทั้งหมด จากงานตามแผน (CNC/ขัด Roll) + เช็คลิสต์ที่เพิ่มเอง ไล่ทุกวันที่เคยมีการบันทึกสถานะไว้ในหน้างานประจำวัน (ไม่ใช่แค่วันที่กำลังดูอยู่)
 function collectHistoryRecords() {
   const records = [];
@@ -9817,9 +9839,11 @@ function collectHistoryRecords() {
   // งานตามแผน (CNC/ขัด Roll) บันทึกประวัติ "ทีละชิ้น Roll" ตั้งแต่กดเริ่มงาน ไม่ต้องรอให้จบครบทั้งชุด
   // (เดิมรอ dailyStatusByDate ของงานเป็น 'done' คือครบทุกชิ้นก่อน ทำให้ระหว่างทำงานยังไม่เห็นอะไรเลย)
   const PIECE_RESULT_META = {
-    done:        { label: 'สำเร็จ',   chip: 'chip-green' },
-    in_progress: { label: 'กำลังทำ',  chip: 'chip-blue'  },
-    paused:      { label: 'พักงาน',   chip: 'chip-amber' },
+    done:        { label: 'สำเร็จ',        chip: 'chip-green' },
+    in_progress: { label: 'กำลังทำ',       chip: 'chip-blue'  },
+    paused:      { label: 'พักงาน',        chip: 'chip-amber' },
+    moved:       { label: 'ย้ายไปวันอื่น', chip: 'chip-wait'  },
+    unclosed:    { label: 'ไม่ได้ปิดงาน',  chip: 'chip-red'   },
   };
   Object.keys(dailyPieceStatus).forEach(dateIso => {
     const byTask = dailyPieceStatus[dateIso] || {};
@@ -9831,8 +9855,9 @@ function collectHistoryRecords() {
       const order = t.rollIds || [];
       Object.keys(byTask[taskId]).forEach(rollIdx => {
         const entry = pieceEntryFor(dateIso, taskId, rollIdx);
-        const meta = PIECE_RESULT_META[entry.status];
-        if (!meta) return; // ยังไม่ได้เริ่ม (pending) — ไม่นับเป็นประวัติ
+        const outcome = historyPieceOutcome(dateIso, t, rollIdx, entry);
+        if (!outcome) return; // ยังไม่ได้เริ่ม (pending) — ไม่นับเป็นประวัติ
+        const meta = PIECE_RESULT_META[outcome.key];
         const idxNum = Number(rollIdx);
         const roll = scoped[idxNum];
         const seq = order.indexOf(idxNum);
@@ -9845,10 +9870,12 @@ function collectHistoryRecords() {
           detail: (roll ? roll.name : 'ชิ้นที่ ' + (idxNum + 1)) + (seq >= 0 && order.length ? ` (ชิ้นที่ ${seq + 1}/${order.length})` : ''),
           measuredSize: entry.measuredSize || null,
           who: workerName(t.workerId),
-          hours: minutes ? Math.round((minutes / 60) * 10) / 10 : null,
+          // บันทึกที่ถูกย้ายวันไปแล้วไม่นับชั่วโมง — ชิ้นเดียวกันถูกนับอีกครั้งในวันที่ย้ายไป
+          // ถ้านับทั้งสองที่ ยอด "ชม." ของวันเดิมจะบวมขึ้นจากงานที่ไม่ได้ทำในวันนั้น
+          hours: (outcome.key === 'moved' || !minutes) ? null : Math.round((minutes / 60) * 10) / 10,
           startTime: entry.startTime || null,
           endTime: entry.endTime || null,
-          result: meta.label, resultChip: meta.chip,
+          result: meta.label, resultChip: meta.chip, resultNote: outcome.note || '',
           // กะยึดเวลาที่กดเริ่มจริง ถ้าไม่มีเวลาเริ่มจึงถอยไปใช้กะของงานตามแผน
           shiftKey: shiftKeyForTime(entry.startTime) || (entry.startTime ? 'other' : (t.shift === 'both' ? 'unknown' : (t.shift || 'unknown'))),
           sortKey: dateIso + ' ' + String(historyDayOrderMin(entry.startTime) + 1).padStart(4, '0') + ' ' + String(seq).padStart(3, '0'),
@@ -9932,7 +9959,8 @@ function renderHistory() {
       <td>${escapeHtmlAttr(r.detail)}${r.measuredSize ? `<div class="muted" style="font-size:11px;font-weight:400;">วัดได้ ${escapeHtmlAttr(String(r.measuredSize).trim().startsWith('Ø') ? r.measuredSize : 'Ø' + r.measuredSize)}</div>` : ''}</td>
       <td class="muted">${escapeHtmlAttr(r.who)}</td>
       <td class="muted">${r.hours != null ? r.hours + ' ชม.' : '—'}${(r.startTime || r.endTime) ? `<div style="font-size:11px;">${escapeHtmlAttr(r.startTime || '—')} – ${escapeHtmlAttr(r.endTime || '—')}</div>` : ''}</td>
-      <td><span class="chip ${r.resultChip || 'chip-green'}">${escapeHtmlAttr(r.result)}</span></td>
+      <td><span class="chip ${r.resultChip || 'chip-green'}"${r.resultNote ? ` title="${escapeHtmlAttr(r.resultNote)}"` : ''}>${escapeHtmlAttr(r.result)}</span>${
+        r.resultNote ? `<div class="muted" style="font-size:10.5px;font-weight:400;margin-top:3px;max-width:190px;line-height:1.4;">${escapeHtmlAttr(r.resultNote)}</div>` : ''}</td>
     </tr>`;
 
   const dayHeader = (dateIso, list) => {
