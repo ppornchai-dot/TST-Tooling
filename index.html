@@ -1008,6 +1008,10 @@ canvas{display:block;}
     ══════════════════════════════════════════ -->
     <div class="page active" id="page-dashboard">
 
+      <!-- แถบเตือนเมื่อ Production Block เปลี่ยน Size ของเครื่องใด แต่ยังไม่ได้เลือกชุด Roll ที่ใช้งานใหม่
+           ค้างอยู่ข้ามวันจนกว่าจะเลือกครบ (ดู renderDashboardSizeChangeAlert) -->
+      <div id="dash-size-change-alert" style="display:none;"></div>
+
       <!-- KPI ROW -->
       <div class="kpi-grid">
         <div class="kpi-card blue">
@@ -1991,6 +1995,8 @@ function initDashboard() {
   // เลื่อนออกไปเป็นงานถัดไปด้วยเหตุผลเดียวกัน — initDashboard() ถูกเรียกกลางสคริปต์ตอนบูต
   // ส่วน KPI อ่าน planTasks / dailyStatusByDate / dailyPieceStatus ที่ประกาศอยู่ถัดจากจุดนั้นไป
   setTimeout(renderDashboardKpi, 0);
+  // เฝ้าดูการเปลี่ยน Size ของ Production Block วันนี้ — เลื่อนออกไปเช่นกันเพราะอ่านตัวแปรของตัวดึงน้ำหนักผลิต
+  setTimeout(refreshSizeChangeWatch, 0);
   // เอาการ์ดปฏิทินงาน / แผนงานสัปดาห์นี้ / กิจกรรมล่าสุด ออกจากหน้า Dashboard แล้ว
   // ฟังก์ชัน renderCal()/renderCalDetail() ยังอยู่และเช็ก element ก่อนทำงาน จึงไม่ต้องเรียกที่นี่อีก
 }
@@ -2219,7 +2225,12 @@ function openInUseRollPicker() {
                oninput="renderInUseRollPicker()" autocomplete="off">
       </div>
       <div class="modal-body" id="inuse-picker-body" style="flex:1 1 auto;min-height:0;overflow-y:auto;padding-top:14px;"></div>
-      <div class="modal-footer" style="flex:0 0 auto;"><button class="btn btn-primary" onclick="closeInUseRollPicker()">เสร็จสิ้น</button></div>
+      <div class="modal-footer" style="flex:0 0 auto;display:flex;gap:8px;justify-content:flex-end;">
+        <!-- ไว้ทีหลัง = เงียบแค่รอบการดูหน้านี้ กลับเข้า Dashboard ใหม่หรือรีเฟรชก็เด้งอีก
+             เพราะรายการที่ค้างต้องไม่หายไปจนกว่าจะเลือกจริง -->
+        <button class="btn btn-ghost" id="inuse-picker-snooze" style="display:none;" onclick="snoozeSizeChangePrompt()">ไว้ทีหลัง</button>
+        <button class="btn btn-primary" onclick="closeInUseRollPicker()">เสร็จสิ้น</button>
+      </div>
     </div>`;
     document.body.appendChild(ov);
   }
@@ -2231,6 +2242,156 @@ function openInUseRollPicker() {
 function closeInUseRollPicker() {
   const ov = document.getElementById('inuse-picker-overlay');
   if (ov) ov.classList.remove('open');
+  renderDashboardSizeChangeAlert(); // ปิดแล้วให้แถบเตือนอัปเดตว่าเหลือค้างกี่รายการ
+}
+
+// เปิดหน้าต่างเลือกชุดที่ใช้งานโดยกระโดดไปที่แท็บเครื่องที่ต้องการเลย
+function openInUseRollPickerFor(machine) {
+  if (machine) inUsePickerMachine = machine;
+  openInUseRollPicker();
+}
+
+// ─── เตือนเมื่อ Production Block เปลี่ยน Size ของเครื่องใดในวันปัจจุบัน ─────────────
+// เครื่องหนึ่งเดิน Forming/Sizing/TH ได้อย่างละชุด พอเปลี่ยน Size ที่เดิน ชุด Roll ที่ "กำลังใช้งาน"
+// ของเครื่องนั้นต้องถูกเลือกใหม่ ไม่งั้นน้ำหนักผลิตจะไปลงชุดเดิมที่ถอดออกไปแล้ว
+// คิวนี้เก็บลง state (ซิงก์ขึ้นคลาวด์) เพื่อให้ค้างอยู่จนกว่าจะเลือกจริง — ข้ามวันไปก็ยังเตือนอยู่
+// ตามที่หน้างานขอ: "ถ้ายังไม่เลือกก็ให้ที่เด้งมายังคงขึ้นอยู่แบบนั้น ไม่ว่าจะเปลี่ยนวันไปแล้วก็ตาม"
+let rollSizeChangeQueue = []; // [{ machine, category, fgKey, firstSeenDate, firstSeenAt }]
+let sizeChangePromptSnoozed = false; // กด "ไว้ทีหลัง" — แค่รอบการดูหน้านี้ รีเฟรช/กลับเข้ามาใหม่ก็เด้งอีก
+
+const SIZE_CHANGE_CATS = ['Forming', 'Sizing', 'TH'];
+
+// ชุดที่ตั้งว่ากำลังใช้งานอยู่ที่เครื่องนี้ ในหมวดนี้ (null ถ้ายังไม่ได้ตั้ง)
+function inUseSetOnMachineForCategory(machine, category) {
+  return inUseSetsForMachine(machine)
+    .find(s => (parseSizeRollName(s).category || '') === category && inUseColorOnMachine(s, machine)) || null;
+}
+
+// ขนาดของชุด Roll ที่ "ควรจะ" ถูกใช้ในหมวดนี้ เมื่อเครื่องเดินขนาด fgKey อยู่
+// บางขนาดเดินโดยยืม Forming ของอีกขนาดมาใช้ร่วม (ดู FG_SHARED_FORMING) หมวด Forming จึงต้องแปลงก่อน
+function expectedFgKeyForCategory(fgKey, category) {
+  if (category !== 'Forming') return fgKey;
+  return FG_SHARED_FORMING[fgKey] || fgKey;
+}
+
+// เครื่องไหน/หมวดไหน ที่ขนาดที่เดินอยู่ไม่ตรงกับชุดที่ตั้งว่ากำลังใช้งาน — เทียบจากข้อมูลของวันที่ระบุ
+function machineSizeChangeChecks(dateIso) {
+  const cached = fgRunningCache[dateIso];
+  if (!cached || !cached.latestByMachine) return [];
+  const out = [];
+  Object.keys(cached.latestByMachine).forEach(machine => {
+    const runKey = cached.latestByMachine[machine].fgKey;
+    if (!runKey) return;
+    SIZE_CHANGE_CATS.forEach(category => {
+      const want = expectedFgKeyForCategory(runKey, category);
+      const current = inUseSetOnMachineForCategory(machine, category);
+      if (current && rollSetFgKey(current) === want) return; // ตรงกันแล้ว ไม่ต้องถาม
+      // ต้องมีชุดของขนาดใหม่ผูกกับเครื่องนี้ให้เลือกได้จริง ไม่งั้นถามไปก็กดอะไรไม่ได้
+      const candidates = inUseSetsForMachine(machine)
+        .filter(s => (parseSizeRollName(s).category || '') === category && rollSetFgKey(s) === want);
+      if (!candidates.length) return;
+      out.push({ machine, category, fgKey: want, runKey, current });
+    });
+  });
+  return out;
+}
+
+// คิวยังค้างอยู่จริงไหม — ตัดสินจาก state ในเครื่องเท่านั้น (ไม่ง้อข้อมูล FG ของวันนี้)
+// จึงยังเตือนต่อได้แม้ข้ามวันไปแล้วและวันใหม่ยังไม่มียอดผลิตเข้ามา
+function sizeChangeEntryResolved(e) {
+  const current = inUseSetOnMachineForCategory(e.machine, e.category);
+  if (current && rollSetFgKey(current) === e.fgKey) return true; // เลือกแล้ว
+  // ขนาดนี้ไม่มีชุดผูกกับเครื่องนี้อีกแล้ว (แก้ทะเบียนไป) — ถามต่อก็เลือกไม่ได้ ปล่อยไป
+  return !inUseSetsForMachine(e.machine)
+    .some(s => (parseSizeRollName(s).category || '') === e.category && rollSetFgKey(s) === e.fgKey);
+}
+
+// อัปเดตคิว: เพิ่มรายการใหม่ที่เพิ่งตรวจพบ, แทนที่รายการเดิมของเครื่อง+หมวดเดียวกันเมื่อขนาดเปลี่ยนอีก
+// แล้วตัดรายการที่ถูกเลือกเรียบร้อยแล้วออก — คืน true ถ้าคิวเปลี่ยนไป (ต้องบันทึก)
+function syncRollSizeChangeQueue(dateIso) {
+  const before = JSON.stringify(rollSizeChangeQueue);
+  const stamp = dateIso + ' ' + nowHHMM();
+  machineSizeChangeChecks(dateIso).forEach(c => {
+    const hit = rollSizeChangeQueue.find(e => e.machine === c.machine && e.category === c.category);
+    if (hit && hit.fgKey === c.fgKey) return; // ค้างอยู่แล้ว ไม่ต้องเพิ่มซ้ำ
+    if (hit) { hit.fgKey = c.fgKey; hit.firstSeenDate = dateIso; hit.firstSeenAt = stamp; return; }
+    rollSizeChangeQueue.push({ machine: c.machine, category: c.category, fgKey: c.fgKey,
+      firstSeenDate: dateIso, firstSeenAt: stamp });
+  });
+  rollSizeChangeQueue = rollSizeChangeQueue.filter(e => !sizeChangeEntryResolved(e));
+  const changed = JSON.stringify(rollSizeChangeQueue) !== before;
+  if (changed) persistState();
+  return changed;
+}
+
+// เรียงตามเครื่องแล้วตามหมวด ให้อ่านเป็นชุดเดียวกันทุกที่
+function pendingSizeChanges() {
+  return rollSizeChangeQueue.slice().sort((a, b) =>
+    (ROLL_MACHINES.indexOf(a.machine) - ROLL_MACHINES.indexOf(b.machine))
+    || (SIZE_CHANGE_CATS.indexOf(a.category) - SIZE_CHANGE_CATS.indexOf(b.category)));
+}
+
+function snoozeSizeChangePrompt() {
+  sizeChangePromptSnoozed = true;
+  closeInUseRollPicker();
+}
+
+// แถบเตือนบนสุดของ Dashboard — ค้างอยู่จนกว่าจะเลือกชุดครบทุกรายการ
+function renderDashboardSizeChangeAlert() {
+  const el = document.getElementById('dash-size-change-alert');
+  if (!el) return;
+  // ตัดรายการที่เลือกแล้วออกก่อนแสดง (เลือกจากหน้าอื่นก็ต้องหายจากแถบนี้)
+  const kept = rollSizeChangeQueue.filter(e => !sizeChangeEntryResolved(e));
+  if (kept.length !== rollSizeChangeQueue.length) { rollSizeChangeQueue = kept; persistState(); }
+  const list = pendingSizeChanges();
+  if (!list.length) { el.innerHTML = ''; el.style.display = 'none'; return; }
+  el.style.display = '';
+  const byMachine = new Map();
+  list.forEach(e => { if (!byMachine.has(e.machine)) byMachine.set(e.machine, []); byMachine.get(e.machine).push(e); });
+  const rows = [...byMachine.entries()].map(([machine, items]) => {
+    const sizeLabel = [...new Set(items.map(e => fgKeyLabel(e.fgKey)))].join(', ');
+    const cats = items.map(e => e.category).join(' / ');
+    const since = items.map(e => e.firstSeenDate).sort()[0];
+    return `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:7px 0;border-top:1px solid var(--border-light);">
+      <span style="font-size:15px;font-weight:800;color:#fff;background:var(--inuse);padding:3px 11px;border-radius:6px;flex-shrink:0;">${escapeHtmlAttr(machine)}</span>
+      <span style="flex:1;min-width:220px;font-size:13px;color:var(--text-1);">
+        เดิน <b>${escapeHtmlAttr(sizeLabel)}</b> อยู่ แต่ยังไม่ได้เลือกชุด Roll ที่ใช้งานของหมวด <b>${escapeHtmlAttr(cats)}</b>
+        <span class="muted" style="font-size:11px;">· พบตั้งแต่ ${escapeHtmlAttr(fmtDateThai(parseISODate(since)))}</span>
+      </span>
+      ${canEditPlan() ? `<button class="btn btn-sm" onclick="${jsCallAttr('openInUseRollPickerFor', machine)}"
+        style="flex:0 0 auto;font-size:13px;font-weight:800;padding:6px 14px;border-radius:8px;
+               background:var(--inuse);color:#fff;border:1px solid var(--inuse);">เลือกชุดของเครื่อง ${escapeHtmlAttr(machine)}</button>` : ''}
+    </div>`;
+  }).join('');
+  el.innerHTML = `<div style="background:var(--inuse-dim);border-left:4px solid var(--inuse);border-radius:8px;padding:11px 14px;margin-bottom:18px;">
+    <div style="font-size:14px;font-weight:800;color:var(--inuse);margin-bottom:4px;">
+      ⚠ Production Block เปลี่ยน Size แล้ว — ต้องเลือกชุด Roll ที่ใช้งานใหม่ ${list.length} รายการ
+    </div>
+    <div class="muted" style="font-size:11.5px;line-height:1.5;margin-bottom:4px;">
+      แถบนี้จะค้างอยู่จนกว่าจะเลือกครบ แม้จะข้ามวันไปแล้วก็ตาม
+    </div>
+    ${rows}
+  </div>`;
+}
+
+// เด้งหน้าต่างเลือกชุดที่ใช้งานเมื่อเข้าหน้า Dashboard และยังมีรายการค้าง
+function maybeAutoOpenSizeChangePrompt() {
+  if (!canEditPlan()) return;            // ช่างเลือกไม่ได้ ไม่ต้องเด้งใส่
+  if (sizeChangePromptSnoozed) return;   // กดไว้ทีหลังในรอบนี้
+  const ov = document.getElementById('inuse-picker-overlay');
+  if (ov && ov.classList.contains('open')) return;
+  const list = pendingSizeChanges();
+  if (!list.length) return;
+  openInUseRollPickerFor(list[0].machine);
+}
+
+// ตรวจการเปลี่ยน Size ของวันนี้แล้วอัปเดตแถบเตือน/เด้งหน้าต่าง — เรียกตอนเข้าหน้า Dashboard
+async function refreshSizeChangeWatch() {
+  const today = toISODate(new Date());
+  await loadFgRunningOn(today);
+  syncRollSizeChangeQueue(today);
+  renderDashboardSizeChangeAlert();
+  maybeAutoOpenSizeChangePrompt();
 }
 
 // แยกเป็นแท็บ "ต่อเครื่อง" แล้วในแต่ละเครื่องแสดงเฉพาะ Size Roll ที่ผูกกับเครื่องนั้น
@@ -2308,7 +2469,21 @@ function renderInUseRollPicker() {
     </button>`;
   }).join('');
 
-  body.innerHTML = `
+  // รายการที่ Production Block เปลี่ยน Size แล้วแต่ยังไม่ได้เลือก — ชี้ให้ตรงว่าต้องเลือกหมวดไหนของเครื่องไหน
+  const pending = pendingSizeChanges();
+  const snoozeBtn = document.getElementById('inuse-picker-snooze');
+  if (snoozeBtn) snoozeBtn.style.display = pending.length ? '' : 'none';
+  const pendingHere = pending.filter(e => e.machine === inUsePickerMachine);
+  const pendingHtml = !pending.length ? '' : `<div style="font-size:12px;font-weight:700;color:var(--inuse);background:var(--inuse-dim);
+      border:1px solid var(--inuse);border-radius:8px;padding:8px 11px;margin-bottom:12px;line-height:1.55;">
+      ⚠ Production Block เปลี่ยน Size แล้ว — ยังต้องเลือกอีก ${pending.length} รายการ<br>
+      ${(pendingHere.length ? pendingHere : pending).map(e =>
+        `เครื่อง <b>${escapeHtmlAttr(e.machine)}</b> · หมวด <b>${escapeHtmlAttr(e.category)}</b> → เลือกชุดของ <b>${escapeHtmlAttr(fgKeyLabel(e.fgKey))}</b>`
+      ).join('<br>')}
+      ${pendingHere.length ? '' : '<br><span style="font-weight:600;">(ไม่มีของเครื่องที่กำลังดูอยู่ — สลับแท็บเครื่องด้านบน)</span>'}
+    </div>`;
+
+  body.innerHTML = pendingHtml + `
     <div style="font-size:12px;color:var(--text-3);line-height:1.6;margin-bottom:${inUsePickerNotice ? '8' : '12'}px;">
       แสดงเฉพาะ Size Roll ที่ผูกกับ <b style="color:var(--text-1);">${escapeHtmlAttr(machineLabel(inUsePickerMachine))}</b>
       — แตะสีเพื่อตั้งว่าชุดนั้น <b style="color:var(--inuse);">กำลังใช้งานที่เครื่องนี้</b> แตะสีเดิมซ้ำเพื่อยกเลิก<br>
@@ -2604,6 +2779,7 @@ function afterInUseRollChange() {
   renderInUseRollPicker();
   renderDashboardInUseRoll();
   renderDashboardWorkingRoll();
+  renderDashboardSizeChangeAlert(); // เลือกชุดแล้วรายการที่ค้างต้องหายออกจากแถบเตือนทันที
   if (typeof renderRollColorList === 'function' && currentPage === 'registry') { renderRollSetList(); renderRollColorList(); }
   updateRollKpi();
 }
@@ -6556,7 +6732,7 @@ function buildStateSnapshot() {
     dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
     dailyPieceStatus, rollSizeLog, rollSizeLogSeq, dailyPauseLog, dailyPauseLogSeq,
     prodBlockProducts, prodBlockSeq, prodBlockCells, prodBlockPM, prodBlockSummary,
-    prodBlockEntries, prodBlockEntrySeq, prodBlockActiveMachine, prodBlockViewMonth, rollRunColor,
+    prodBlockEntries, prodBlockEntrySeq, prodBlockActiveMachine, prodBlockViewMonth, rollRunColor, rollSizeChangeQueue,
     rollDressReset, rollDressResetLog, rollCarryTon
   };
 }
@@ -6657,6 +6833,7 @@ function applyState(saved) {
   if (saved.rollSetCategoryTemplates) rollSetCategoryTemplates = saved.rollSetCategoryTemplates;
   if (saved.rollLifeSpec) rollLifeSpec = saved.rollLifeSpec;
   if (saved.rollRunColor) rollRunColor = saved.rollRunColor;
+  if (Array.isArray(saved.rollSizeChangeQueue)) rollSizeChangeQueue = saved.rollSizeChangeQueue;
   if (saved.rollDressReset) rollDressReset = saved.rollDressReset;
   if (Array.isArray(saved.rollDressResetLog)) rollDressResetLog = saved.rollDressResetLog;
   if (saved.rollCarryTon) rollCarryTon = saved.rollCarryTon;
@@ -7312,7 +7489,7 @@ async function loadFgRunningOn(dateIso) {
     const res = await fetch(FG_API_URL + '?from=' + dateIso + '&to=' + dateIso);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
-    const kgByKey = {}, machinesByKey = {};
+    const kgByKey = {}, machinesByKey = {}, latestByMachine = {};
     (json.rows || []).forEach(r => {
       // API เคยส่งวันข้างเคียงติดมาด้วย จึงกรองด้วย production_date อีกชั้น
       if (String(r.production_date || '').slice(0, 10) !== dateIso) return;
@@ -7321,11 +7498,18 @@ async function loadFgRunningOn(dateIso) {
       kgByKey[key] = (kgByKey[key] || 0) + (parseFloat(r.weight_kg) || 0);
       if (!machinesByKey[key]) machinesByKey[key] = [];
       if (r.machine_id && !machinesByKey[key].includes(r.machine_id)) machinesByKey[key].push(r.machine_id);
+      // ขนาดที่ "เดินล่าสุด" ของแต่ละเครื่อง — เครื่องหนึ่งเปลี่ยน Size กลางวันได้ ต้องรู้ว่าตอนนี้เดินอะไรอยู่
+      // เทียบด้วย keyed_at (เวลาที่ระบบ Production บันทึกแถวนั้น) ไม่ใช่ลำดับที่ API ส่งมา
+      if (r.machine_id) {
+        const at = String(r.keyed_at || '');
+        const cur = latestByMachine[r.machine_id];
+        if (!cur || at > cur.at) latestByMachine[r.machine_id] = { fgKey: key, at };
+      }
     });
     Object.values(machinesByKey).forEach(list => list.sort());
-    fgRunningCache[dateIso] = { kgByKey, machinesByKey };
+    fgRunningCache[dateIso] = { kgByKey, machinesByKey, latestByMachine };
   } catch (e) {
-    fgRunningCache[dateIso] = { kgByKey: {}, machinesByKey: {}, error: e.message };
+    fgRunningCache[dateIso] = { kgByKey: {}, machinesByKey: {}, latestByMachine: {}, error: e.message };
   }
   return fgRunningCache[dateIso];
 }
