@@ -2249,11 +2249,20 @@ function renderDashboardRollStatusCard(listId, countId, status, emptyText, badge
 // ─── งานเสร็จแล้ว → ตั้งเป็นพร้อมใช้งานทีเดียวหลายชุด (ใช้ร่วมกันทั้งรอแต่ง/รอขัด) ────────
 // ทางลัดของงานที่ทำบ่อย: แต่ง/ขัดเสร็จเป็นล็อต แล้วต้องมาไล่เปลี่ยนสถานะทีละชุด
 // สองการ์ดใช้โค้ดชุดเดียวกัน ต่างกันแค่ config ด้านล่าง จะได้ไม่มีทางทำงานไม่เหมือนกัน
+// targets = สถานะปลายทางที่เลือกได้หลังงานเสร็จ (ปุ่มท้ายหน้าต่าง เรียงตามลำดับที่ใส่)
+// แต่งเสร็จแล้วมี 2 ทาง: ส่งไปขัดต่อ หรือพร้อมใช้เลย — ขัดเสร็จแล้วเป็นขั้นสุดท้าย เหลือพร้อมใช้ทางเดียว
 const STATUS_DONE_KINDS = {
   waitdress:  { status: 'waitdress',  workType: 'cnc',    title: 'ชุด Roll ที่แต่งเสร็จแล้ว', tick: 'แต่งเสร็จแล้ว',
-                badge: 'var(--red)',           plannedCard: 'ชุด Roll กำลังแต่ง', planned: 'วางแผนแต่ง' },
+                badge: 'var(--red)',           plannedCard: 'ชุด Roll กำลังแต่ง', planned: 'วางแผนแต่ง',
+                targets: [
+                  { status: 'waitpolish', label: 'รอขัด',      color: 'var(--st-waitpolish)' },
+                  { status: 'ready',      label: 'พร้อมใช้งาน', color: 'var(--green)' },
+                ] },
   waitpolish: { status: 'waitpolish', workType: 'polish', title: 'ชุด Roll ที่ขัดเสร็จแล้ว',  tick: 'ขัดเสร็จแล้ว',
-                badge: 'var(--st-waitpolish)', plannedCard: 'ชุด Roll กำลังขัด',  planned: 'วางแผนขัด' },
+                badge: 'var(--st-waitpolish)', plannedCard: 'ชุด Roll กำลังขัด',  planned: 'วางแผนขัด',
+                targets: [
+                  { status: 'ready',      label: 'พร้อมใช้งาน', color: 'var(--green)' },
+                ] },
 };
 let statusDoneKind = 'waitpolish';           // การ์ดที่เปิดหน้าต่างนี้อยู่
 const statusDoneSelected = new Set();        // 'set|colorKey' ที่ติ๊กไว้
@@ -2288,10 +2297,10 @@ function openStatusDonePicker(kind) {
         </div>
       </div>
       <div class="modal-body" id="statusdone-body" style="flex:1 1 auto;min-height:0;overflow-y:auto;padding-top:12px;"></div>
-      <div class="modal-footer" style="flex:0 0 auto;display:flex;gap:8px;justify-content:flex-end;">
+      <!-- ปุ่มสถานะปลายทางสร้างตาม cfg.targets ของการ์ดที่เปิดอยู่ (ดู renderStatusDonePicker) -->
+      <div class="modal-footer" style="flex:0 0 auto;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
         <button class="btn btn-ghost" onclick="closeStatusDonePicker()">ยกเลิก</button>
-        <button class="btn btn-primary" id="statusdone-confirm" style="background:var(--green);border-color:var(--green);"
-          onclick="confirmStatusDone()">✓ ตั้งเป็นพร้อมใช้งาน</button>
+        <span id="statusdone-actions" style="display:flex;gap:8px;flex-wrap:wrap;"></span>
       </div>
     </div>`;
     document.body.appendChild(ov);
@@ -2326,13 +2335,19 @@ function renderStatusDonePicker() {
   const titleEl = document.getElementById('statusdone-title');
   if (titleEl) titleEl.textContent = cfg.title;
   const note = document.getElementById('statusdone-note');
-  if (note) note.innerHTML = `ติ๊กชุดที่${escapeHtmlAttr(cfg.tick)} แล้วกด "ตั้งเป็นพร้อมใช้งาน" — เปลี่ยนได้หลายชุดในครั้งเดียว<br>
+  const targetNames = (cfg.targets || []).map(t => t.label).join(" หรือ ");
+  if (note) note.innerHTML = `ติ๊กชุดที่${escapeHtmlAttr(cfg.tick)} แล้วเลือกสถานะถัดไป — <b style="color:var(--text-1);">${escapeHtmlAttr(targetNames)}</b> · เปลี่ยนได้หลายชุดในครั้งเดียว<br>
       รวมชุดที่${escapeHtmlAttr(cfg.planned)}ไว้แล้วด้วย — วันที่วางแผนว่าจะเสร็จดูได้ท้ายแถวบนการ์ด`;
-  const btn = document.getElementById('statusdone-confirm');
-  if (btn) {
-    btn.disabled = !statusDoneSelected.size;
-    btn.textContent = statusDoneSelected.size
-      ? '✓ ตั้งเป็นพร้อมใช้งาน ' + statusDoneSelected.size + ' ชุด' : '✓ ตั้งเป็นพร้อมใช้งาน';
+  // ปุ่มสถานะปลายทาง — การ์ดรอแต่งมี 2 ทาง (รอขัด / พร้อมใช้งาน) การ์ดรอขัดมีทางเดียว
+  const actions = document.getElementById('statusdone-actions');
+  if (actions) {
+    const n = statusDoneSelected.size;
+    actions.innerHTML = (cfg.targets || []).map(t =>
+      `<button class="btn btn-primary" ${n ? '' : 'disabled'}
+        style="background:${t.color};border-color:${t.color};font-weight:800;"
+        title="${escapeHtmlAttr('ตั้งชุดที่เลือกเป็น' + t.label)}"
+        onclick="${jsCallAttr('confirmStatusDone', t.status)}">→ ${escapeHtmlAttr(t.label)}${n ? ' ' + n + ' ชุด' : ''}</button>`
+    ).join('');
   }
   if (!entries.length) {
     body.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text-3);font-size:13px;">ไม่มีชุด Roll ที่รออยู่ตอนนี้</div>`;
@@ -2363,13 +2378,19 @@ function renderStatusDonePicker() {
   }).join('');
 }
 
-function confirmStatusDone() {
+function confirmStatusDone(target) {
   if (!statusDoneSelected.size) return;
+  const cfg = STATUS_DONE_KINDS[statusDoneKind] || {};
+  const to = (cfg.targets || []).find(t => t.status === target) || (cfg.targets || [])[0];
+  if (!to) return;
   const picked = [...statusDoneSelected];
   // เขียน rollColorStatus ตรงๆ แล้วบันทึกครั้งเดียวท้ายสุด ไม่เรียก setRollColorStatusFor ทีละชุด
   // เพราะตัวนั้น persistState() ในตัว — ติ๊ก 14 ชุดจะยิงอัปโหลด 14 รอบ เสี่ยงชนกันกลางทาง
-  // ปลอดภัยเพราะปลายทางเป็น 'ready' เสมอ ไม่เข้ากฎ 1 เครื่อง 1 ชุดต่อหมวด (กฎนั้นใช้เฉพาะ 'inuse')
-  picked.forEach(k => { delete rollColorStatus[k]; }); // ไม่มีคีย์ = 'ready' (ดู rollColorStatusFor)
+  // ปลอดภัยเพราะปลายทางเป็น 'ready'/'waitpolish' ไม่เข้ากฎ 1 เครื่อง 1 ชุดต่อหมวด (กฎนั้นใช้เฉพาะ 'inuse')
+  picked.forEach(k => {
+    if (to.status === 'ready') delete rollColorStatus[k]; // ไม่มีคีย์ = 'ready' (ดู rollColorStatusFor)
+    else rollColorStatus[k] = to.status;
+  });
   persistState();
   statusDoneSelected.clear();
   closeStatusDonePicker();
@@ -2377,7 +2398,7 @@ function confirmStatusDone() {
   updateRollKpi();
   renderDashboardInUseRoll();
   renderDashboardWorkingRoll();
-  alert('ตั้งเป็นพร้อมใช้งานแล้ว ' + picked.length + ' ชุด');
+  alert('ตั้งเป็น' + to.label + 'แล้ว ' + picked.length + ' ชุด');
 }
 
 // ─── DASHBOARD: เลือกชุด Roll ที่กำลังใช้งาน ได้จากหน้านี้เลย ───────────────────
