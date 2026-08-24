@@ -4713,6 +4713,7 @@ function onPlanDragMove(ev) {
     // วางสลับลำดับกับงานที่ชี้อยู่ — ทำได้เมื่อเป็นกะเดียวกัน เวลาเริ่ม/จบจึงคำนวณอยู่ในรอบกะเดียว
     const rect = over.getBoundingClientRect();
     zone.insertBefore(planDrag.item, ev.clientY > rect.top + rect.height / 2 ? over.nextSibling : over);
+    planDrag.appended = false;
   } else {
     // ชี้ที่ว่างในช่องวัน หรือชี้ที่งาน "คนละกะ" — ย้ายมาต่อท้ายวันนั้น
     // เดิมกรณีคนละกะจะ return ทิ้งไปเลย ทำให้ลากไปวางวันที่มีงานคนละกะอยู่แล้วไม่เกิดอะไรขึ้น
@@ -4721,6 +4722,7 @@ function onPlanDragMove(ev) {
     const addBtn = zone.querySelector(':scope > button');
     if (addBtn) zone.insertBefore(planDrag.item, addBtn);
     else zone.appendChild(planDrag.item);
+    planDrag.appended = true; // ต่อท้ายวัน ไม่ใช่แทรกตามลำดับที่ชี้ — ตอนวางต้องต่อเวลาจากงานสุดท้ายของวันนั้น
   }
   planDrag.moved = true;
 }
@@ -4751,11 +4753,13 @@ function onPlanDragUp() {
   const beforeDays = new Map(planTasks.map(t => [t.id, taskDisplayDate(t)]));
 
   const todayIso = dailyTodayIso();
-  if (targetDay < todayIso) {
-    // วางลงวันที่ผ่านไปแล้ว = บันทึกว่างานนี้ "ทำจริงวันนั้น" ไม่ใช่การวางแผนใหม่
-    // จึงต่อท้ายงานที่มีอยู่ของวันนั้นเฉยๆ ไม่ไปจัดลำดับ/เขียนเวลาของงานอื่นที่ทำไปแล้วทับ
+  // วางต่อท้ายวัน (ปล่อยที่ว่าง หรือปล่อยบนงานคนละกะ) และวางลงวันที่ผ่านไปแล้ว ใช้ทางเดียวกัน:
+  // ต่อเวลาจากงานสุดท้ายของวันนั้นเฉยๆ ไม่ไปจัดลำดับ/เขียนเวลาของงานอื่นทับ
+  // เดิมทุกกรณีวิ่งเข้า resequencePlanDayShift ซึ่งเริ่มไล่จาก "ต้นกะ" และนับแต่งานกะเดียวกัน
+  // งานกะเช้าที่ลากมาวางในวันที่มีแต่งาน 2 กะ จึงได้ 08:00 แล้วไปแทรกเป็นงานแรกของวัน
+  if (targetDay < todayIso || d.appended) {
     task.date = targetDay;
-    task.startTime = planRecordStartOnDay(task.workType, targetDay, d.shift);
+    task.startTime = planAppendStartOnDay(task.workType, targetDay, d.shift, task.id);
     const computed = computePlanEnd(task.date, task.startTime, task.totalTime, task.shift, task.otCapMinutesByShift || {});
     task.endTime = computed.time;
     task.endDate = computed.date || task.date;
@@ -4780,14 +4784,15 @@ function onPlanDragUp() {
   renderDailyTasks();   // งานที่ย้ายวันต้องหลุด/โผล่ในเช็คลิสต์ของวันที่ดูอยู่ให้ตรงกัน (อัปเดต KPI ในตัวอยู่แล้ว)
 }
 
-// เวลาเริ่มสำหรับ "บันทึกว่างานทำจริงในวันที่ผ่านไปแล้ว" — ต้องลงอยู่ในวันนั้นเสมอ
+// เวลาเริ่มสำหรับ "วางงานต่อท้ายวันนั้น" — ต่อจากงานล่าสุดของวันนั้น นับ ทุกกะ ของประเภทงานเดียวกัน
+// ต้องนับข้ามกะด้วย ไม่งั้นงานกะเช้าที่ลากมาวางในวันที่มีแต่งาน "2 กะ" จะได้ต้นกะ (08:00)
+// แล้วไปแทรกเป็นงานแรกของวัน ทั้งที่ผู้ใช้ต้องการวางต่อท้าย
 // ไม่ใช้ planQueueEndFor เพราะตัวนั้นเป็นตัวช่วยวางแผน ถ้าเวลาล้นกะจะดันไปเริ่มวันถัดไปให้
-// ซึ่งขัดกับความตั้งใจ (ผู้ใช้ชี้วันที่ทำจริงมาแล้ว จะย้ายไปวันอื่นไม่ได้)
-// ต่อท้ายงานกะเดียวกันที่จบในวันนั้น ถ้าไม่มีก็เริ่มต้นกะ — เลยเวลากะไปนับเป็น OT ตามจริง
-function planRecordStartOnDay(workType, dateIso, shiftKey) {
+// ซึ่งขัดกับความตั้งใจ (ผู้ใช้ชี้วันมาแล้ว จะย้ายไปวันอื่นไม่ได้) — เลยเวลากะไปนับเป็น OT ตามจริง
+function planAppendStartOnDay(workType, dateIso, shiftKey, excludeId) {
   let last = null;
   planTasks.forEach(t => {
-    if (t.workType !== workType || t.shift !== shiftKey) return;
+    if (t.id === excludeId || t.workType !== workType) return;
     if (taskDisplayDate(t) !== dateIso) return;
     if ((t.endDate || t.date) !== dateIso || !t.endTime || t.endTime === '—') return;
     if (!last || t.endTime > last) last = t.endTime;
