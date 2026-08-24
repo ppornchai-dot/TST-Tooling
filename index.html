@@ -4745,6 +4745,10 @@ function onPlanDragUp() {
   // ตรงกับที่ตกลงไว้ว่า วางแผนวันไหนให้เป็นการวางแผนของวันนั้น เริ่มที่ต้นกะ ไม่ต่อจากของเดิม
   const anchor = (SHIFTS[d.shift] || {}).start || '08:00';
 
+  // จำวันของทุกงานไว้ก่อนแก้ เพื่อย้ายบันทึกความคืบหน้าตามงานที่เปลี่ยนวัน (ดู syncPlanProgressAfterMove)
+  // ทำให้ลากงานที่ทำเสร็จแล้วไปวางวันที่ทำจริงได้ โดยยังเป็น "ทำแล้ว" ในวันใหม่
+  const beforeDays = new Map(planTasks.map(t => [t.id, taskDisplayDate(t)]));
+
   resequencePlanDayShift(targetDay, d.shift, ids, anchor);
   if (d.sourceDay && d.sourceDay !== targetDay) {
     // วันต้นทาง: ปิดช่องว่างที่งานย้ายออกไปทิ้งไว้
@@ -4755,8 +4759,39 @@ function onPlanDragUp() {
     resequencePlanDayShift(d.sourceDay, d.shift, srcIds, anchor);
   }
   autoFixPlanSequencing(); // ลำดับใหม่อาจกินเวลายาวกว่าเดิม — เลื่อนงานถัดๆ ไปที่ทับซ้อนให้เอง
+  syncPlanProgressAfterMove(beforeDays);
   persistState();
   renderCurrentPlanView();
+  renderDailyTasks();   // งานที่ย้ายวันต้องหลุด/โผล่ในเช็คลิสต์ของวันที่ดูอยู่ให้ตรงกัน (อัปเดต KPI ในตัวอยู่แล้ว)
+}
+
+// ย้ายบันทึกความคืบหน้าของงานหนึ่ง (สถานะงาน / สถานะรายชิ้น / เวลาจริงที่กดเริ่ม–จบ) ไปวันใหม่
+// บันทึกทั้งสามชุดเก็บแยกตามวัน ถ้าย้ายงานไปวันอื่นแล้วไม่ย้ายบันทึกตามไปด้วย งานจะกลายเป็น
+// "ยังไม่เริ่ม" ในวันใหม่ แล้วขึ้นค้าง (แดง) ทั้งที่ทำเสร็จแล้ว และหน้าประวัติจะรายงานว่า "ย้ายไปวันอื่น"
+// ส่วน rollSizeLog / dailyPauseLog เป็นบันทึกเหตุการณ์ (มีวันของตัวเองในแต่ละรายการ) จึงไม่แตะ
+function movePlanTaskProgress(taskId, fromIso, toIso) {
+  if (!fromIso || !toIso || fromIso === toIso) return false;
+  let moved = false;
+  [dailyStatusByDate, dailyPieceStatus, dailyActualTimes].forEach(store => {
+    const src = store[fromIso];
+    if (!src || src[taskId] === undefined) return;
+    (store[toIso] || (store[toIso] = {}))[taskId] = src[taskId];
+    delete src[taskId];
+    if (!Object.keys(src).length) delete store[fromIso];
+    moved = true;
+  });
+  return moved;
+}
+
+// เทียบวันของทุกงานก่อน–หลังจัดลำดับใหม่ แล้วย้ายบันทึกความคืบหน้าตามงานที่เปลี่ยนวัน
+// ไล่ทุกงานเพราะ autoFixPlanSequencing() ก็เลื่อนวันงานอื่นได้ ไม่ใช่แค่งานที่ลาก
+function syncPlanProgressAfterMove(beforeDays) {
+  let n = 0;
+  planTasks.forEach(t => {
+    const from = beforeDays.get(t.id);
+    if (from && from !== taskDisplayDate(t) && movePlanTaskProgress(t.id, from, taskDisplayDate(t))) n++;
+  });
+  return n;
 }
 
 // จ่ายเวลาเริ่ม–จบใหม่ให้งานในวัน+กะเดียวกันตามลำดับที่ให้มา เริ่มจาก anchor แล้วไล่ต่อกันไป
