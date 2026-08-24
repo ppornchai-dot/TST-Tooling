@@ -1291,7 +1291,7 @@ canvas{display:block;}
               <div class="table-wrap" style="overflow-x:auto;">
                 <table>
                   <thead><tr>
-                    <th>Size</th><th>ชื่อ Roll</th><th>เส้นผ่าศูนย์กลาง</th><th>ความหนา</th><th>รอบการใช้งาน</th><th>แต่งครั้งที่</th><th>เวลาแต่ง Roll (นาที)</th><th>เวลาขัด Roll (นาที)</th><th>แต่งล่าสุด</th><th>สถานะ</th><th></th>
+                    <th>Size</th><th>ชื่อ Roll</th><th title="ขนาดตอนใส่ครั้งแรก — ไม่เปลี่ยนตามการแต่ง Roll">Ø มาตรฐาน</th><th title="ขนาดล่าสุดหลังแต่ง Roll — อัปเดตทุกครั้งที่จบงานแต่งพร้อมกรอกขนาด">Ø ปัจจุบัน</th><th>ความหนา</th><th>รอบการใช้งาน</th><th>แต่งครั้งที่</th><th>เวลาแต่ง Roll (นาที)</th><th>เวลาขัด Roll (นาที)</th><th>แต่งล่าสุด</th><th>สถานะ</th><th></th>
                   </tr></thead>
                   <tbody id="tbody-roll"></tbody>
                 </table>
@@ -3589,7 +3589,8 @@ const MODAL_FORMS = {
         <div class="form-group"><label class="form-label">ชื่อ Roll</label><input class="form-input" id="f-name" placeholder="เช่น Work Roll #3 (Top)"></div>
       </div>
       <div class="modal-row">
-        <div class="form-group"><label class="form-label">เส้นผ่าศูนย์กลาง <span style="text-transform:none;">(mm.)</span></label><input class="form-input" id="f-diameter" placeholder="เช่น 320"></div>
+        <div class="form-group"><label class="form-label">Ø มาตรฐาน <span style="text-transform:none;">(mm. — ตอนใส่ครั้งแรก)</span></label><input class="form-input" id="f-diameter-std" placeholder="เช่น 320"></div>
+        <div class="form-group"><label class="form-label">Ø ปัจจุบัน <span style="text-transform:none;">(mm. — หลังแต่งล่าสุด)</span></label><input class="form-input" id="f-diameter" placeholder="เช่น 320"></div>
         <div class="form-group"><label class="form-label">ความหนา <span style="text-transform:none;">(mm.)</span></label><input class="form-input" id="f-width" placeholder="เช่น 10"></div>
       </div>
       <div class="modal-row">
@@ -3793,7 +3794,7 @@ function saveModal() {
     const g = id => (document.getElementById(id)||{}).value||'—';
     const newRoll = {
       id: g('f-id')||'RL-NEW', name: g('f-name')||'(ไม่มีชื่อ)',
-      material: '—', diameter: g('f-diameter'),
+      material: '—', diameter: g('f-diameter'), diameterStd: g('f-diameter-std') || g('f-diameter'),
       width: g('f-width'), position: '—',
       usage: g('f-usage'), regrind: g('f-regrind'),
       grindTime: g('f-grindtime')||'—', polishTime: g('f-polishtime')||'—', lastService: g('f-service'), status: g('f-status'),
@@ -9530,7 +9531,8 @@ function renderRollTable(page) {
     return `<tr class="${selected ? 'roll-row-selected' : ''}" style="cursor:pointer;" onclick="selectRollRow(${realIdx}, event)" title="คลิกเพื่อเลือกแถวนี้เป็นจุดแทรกแถวใหม่">
       <td class="muted">${r.id}</td>
       <td><strong>${colorDot}${r.name}</strong></td>
-      <td>${r.diameter}</td>
+      <td class="muted">${rollStdDiameter(r)}</td>
+      <td><strong>${r.diameter}</strong>${rollWearHtml(r)}</td>
       <td>${r.width}</td>
       <td class="muted">${r.usage}</td>
       <td class="muted">${r.regrind}</td>
@@ -9560,6 +9562,8 @@ function editRoll(idx) {
   document.getElementById('f-id').value = r.id;
   document.getElementById('f-name').value = r.name;
   document.getElementById('f-diameter').value = r.diameter === '—' ? '' : r.diameter;
+  const stdEl = document.getElementById('f-diameter-std');
+  if (stdEl) { const s = rollStdDiameter(r); stdEl.value = s === '—' ? '' : s; }
   document.getElementById('f-width').value = r.width === '—' ? '' : r.width;
   document.getElementById('f-usage').value = r.usage === '—' ? '' : r.usage;
   document.getElementById('f-regrind').value = r.regrind === '—' ? '' : r.regrind;
@@ -9574,7 +9578,7 @@ function editRoll(idx) {
     const isFirstInGroup = toolingData.roll.findIndex(x => x.set === r.set) === idx;
     const updated = {
       id: g('f-id'), name: g('f-name'), material: r.material,
-      diameter: g('f-diameter'), width: g('f-width'), position: r.position,
+      diameter: g('f-diameter'), diameterStd: g('f-diameter-std') || r.diameterStd || g('f-diameter'), width: g('f-width'), position: r.position,
       usage: g('f-usage'), regrind: g('f-regrind'),
       grindTime: g('f-grindtime'), polishTime: g('f-polishtime'), lastService: g('f-service'), status: g('f-status'),
       color: (document.getElementById('f-color')||{}).value || null, set: r.set
@@ -10284,6 +10288,27 @@ function voicePrompt(title, placeholder) {
 // ทั้งที่แต่งไปแล้ว — และหน้าอายุ Roll คิด % จาก OD ในทะเบียน จึงคลาดเคลื่อนตามไปด้วย
 // getMatchingRollsForPlan() คืน object ตัวจริงจาก toolingData.roll (filter ไม่ได้ก็อป) แก้ที่นี่คือแก้ทะเบียน
 // bumpRegrind = true เฉพาะตอนจบงานครั้งแรก — แก้ค่าที่วัดผิดภายหลังไม่ต้องนับรอบการแต่งเพิ่ม
+// ─── Ø มาตรฐาน (ตอนใส่ครั้งแรก) แยกจาก Ø ปัจจุบัน (หลังแต่งล่าสุด) ─────────────
+// เดิมมีช่องเดียว การแต่ง Roll เขียนทับไปเลย ขนาดตั้งต้นจึงหายไป เทียบไม่ได้ว่าสึกไปเท่าไร
+// Roll ที่ยังไม่เคยแต่ง (ไม่มี diameterStd) ถือว่า Ø ปัจจุบัน = Ø มาตรฐาน
+function rollStdDiameter(roll) {
+  const std = String((roll || {}).diameterStd || '').trim();
+  return std || String((roll || {}).diameter || '—');
+}
+
+// บอกว่าสึกไปกี่ มม. เทียบกับ Ø มาตรฐาน — โชว์เฉพาะตอนที่ต่างกันจริง
+function rollWearHtml(roll) {
+  const std = parseFloat(String(rollStdDiameter(roll)).replace(/[^0-9.]/g, ''));
+  const cur = parseFloat(String((roll || {}).diameter || '').replace(/[^0-9.]/g, ''));
+  if (!isFinite(std) || !isFinite(cur) || std === cur) return '';
+  const diff = Math.round((cur - std) * 100) / 100;
+  const down = diff < 0;
+  return `<div style="font-size:10.5px;font-weight:700;color:${down ? 'var(--amber)' : 'var(--accent)'};"
+    title="${escapeHtmlAttr(down ? 'เล็กลงจาก Ø มาตรฐาน ' + rollStdDiameter(roll) + ' มม.'
+      : 'ใหญ่กว่า Ø มาตรฐาน ' + rollStdDiameter(roll) + ' มม. — ตรวจค่าที่วัดอีกครั้ง')}">${
+    down ? '▼ ' + Math.abs(diff) : '▲ ' + diff} มม.</div>`;
+}
+
 // อ่านตัวเลข OD จากข้อความที่กรอก/พูดมา — เอาตัวเลขตัวแรก (บางครั้งมีคำปนมา เช่น "โอดีนอก 208.8")
 // OD ของ Roll ที่ใช้จริงอยู่ในช่วง 50–400 มม. ถ้าได้ค่าเกินช่วงแต่หารสิบ/ร้อยแล้วเข้าช่วง
 // ถือว่าพิมพ์จุดทศนิยมตกหาย (เคยเจอ "2088" ที่หมายถึง 208.8) — กันค่าเพี้ยนเข้าทะเบียน
@@ -10303,6 +10328,10 @@ function applyMeasuredSizeToRegistry(roll, size, dateIso, bumpRegrind) {
   const od = parseMeasuredOd(size);
   if (od == null) return false;
   const clean = String(od);
+  // เก็บ Ø มาตรฐานไว้ครั้งแรกที่แต่ง — หลังจากนี้ Ø ปัจจุบันเปลี่ยนได้ แต่ตัวมาตรฐานไม่ถูกเขียนทับอีก
+  if (!String(roll.diameterStd || '').trim() && String(roll.diameter || '').trim()) {
+    roll.diameterStd = String(roll.diameter).trim();
+  }
   roll.diameter = clean;
   roll.lastService = dateIso || dailyViewDate;
   if (bumpRegrind) {
