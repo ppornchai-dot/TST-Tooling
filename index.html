@@ -3060,7 +3060,7 @@ function renderDashboardRollWeight() {
       <span style="width:9px;height:9px;border-radius:50%;background:${color};flex-shrink:0;"></span>${label}
       <span style="margin-left:auto;font-size:12px;font-weight:800;color:${color};opacity:.85;">${list.length} ชุด</span>
     </div>
-    ${list.map(g => `<div onclick="${jsCallAttr('goToRollSetColor', g.set, g.colorKey)}"
+    ${list.map(g => { const plan = plannedFinishForRollColor(g.set, g.colorKey, 'cnc'); return `<div onclick="${jsCallAttr('goToRollSetColor', g.set, g.colorKey)}"
       style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:8px;cursor:pointer;
              border:1px solid ${color};background:${bg};margin-bottom:6px;transition:filter .12s;"
       onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
@@ -3075,8 +3075,18 @@ function renderDashboardRollWeight() {
           ${g.leftTon != null && g.leftTon > 0 ? 'เหลือ ' + escapeHtmlAttr(g.leftTon.toLocaleString(undefined, { maximumFractionDigits: 2 })) + ' ตัน'
             : 'เกินมา ' + escapeHtmlAttr(Math.abs(g.leftTon || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })) + ' ตัน'}</span>
       </span>
+      <!-- วางแผนแต่ง Roll ไว้แล้วหรือยัง — ชุดที่น้ำหนักใกล้หมดต้องรู้ว่ามีคิวแต่งรออยู่ไหม
+           ยังไม่วางแผนขึ้นเป็นคำเตือน เพราะเป็นชุดที่ต้องรีบจัดคิว -->
+      <span style="flex:0 0 auto;font-size:11px;font-weight:800;white-space:nowrap;padding:2px 8px;border-radius:99px;
+             color:${plan ? (plan.done ? 'var(--green)' : 'var(--accent)') : color};
+             background:var(--bg-card);box-shadow:inset 0 0 0 1px ${plan ? (plan.done ? 'var(--green)' : 'var(--accent)') : color};"
+        title="${escapeHtmlAttr(plan
+          ? (plan.done ? 'แต่งเสร็จแล้วเมื่อ ' : 'วางแผนแต่งไว้แล้ว — ตามแผนจะเสร็จวันที่ ') + fmtDateThai(parseISODate(plan.date))
+          : 'ยังไม่ได้วางแผนแต่ง Roll ชุดนี้')}">${plan
+        ? (plan.done ? '✓ แต่งเสร็จ ' : 'วางแผนแล้ว · ') + escapeHtmlAttr(fmtDateThaiShort(parseISODate(plan.date)))
+        : 'ยังไม่ได้วางแผน'}</span>
       <span style="font-size:13px;font-weight:800;color:${color};flex-shrink:0;white-space:nowrap;">${g.prodPct}%</span>
-    </div>`).join('')}` : '';
+    </div>`; }).join('')}` : '';
 
   el.innerHTML = group('หมดแล้ว (≥ 100%)', over, 'var(--red)', 'var(--red-dim)')
     + group('ใกล้หมด (> 90%)', near, 'var(--amber)', 'var(--amber-dim)');
