@@ -4541,10 +4541,16 @@ const PLAN_PROGRESS_META = {
   doing: { label: 'กำลังทำ',  chip: 'chip-blue',   color: 'var(--accent)' },
   wait:  { label: 'รอทำ',     chip: 'chip-wait',   color: 'var(--text-3)' },
 };
+// งานที่ทำข้ามวันถูกตัดเป็น "ส่วนของแต่ละวัน" (ดู planTaskDayParts) แต่ความคืบหน้าถูกบันทึกไว้ที่
+// งานก้อนจริงในวันเดียว (วันของ __origin) เพราะหน้างานประจำวันแสดงงานก้อนจริง ไม่ได้แสดงส่วนย่อย
+// เดิมฟังก์ชันนี้อ่านความคืบหน้าจาก "วันของส่วนย่อย" ซึ่งไม่มีบันทึกอยู่เลย ส่วนที่ 2/2 จึงดูเหมือน
+// ยังไม่ได้เริ่ม แล้วพอเลยวันไปก็กลายเป็น "ค้าง" (แดง) ตลอด ทั้งที่งานทั้งก้อนทำเสร็จแล้ว
+// จึงอ่านบันทึกจากงานก้อนจริง แต่ยังนับเฉพาะชิ้นของส่วนนี้ เพื่อให้แต่ละส่วนบอกความคืบหน้าของตัวเองได้
 function planTaskProgressState(t) {
-  const d = taskDisplayDate(t);
-  const pieces = (dailyPieceStatus[d] || {})[t.id] || {};
-  const dayStatus = (dailyStatusByDate[d] || {})[t.id];
+  const origin = t.__origin || t;
+  const originDate = taskDisplayDate(origin);
+  const pieces = (dailyPieceStatus[originDate] || {})[origin.id] || {};
+  const dayStatus = (dailyStatusByDate[originDate] || {})[origin.id];
   const ids = t.rollIds || [];
   let done = 0, doing = 0;
   ids.forEach(idx => {
@@ -4554,7 +4560,8 @@ function planTaskProgressState(t) {
   });
   if (dayStatus === 'done' || (ids.length && done >= ids.length)) return 'done';
   const started = !!(doing || done || dayStatus === 'in_progress');
-  if (d < dailyTodayIso()) return 'late';
+  // "ค้าง" เทียบกับวันของส่วนนี้เอง — ส่วนที่วางไว้วันที่ 19 ถือว่าค้างเมื่อถึงวันที่ 20
+  if (taskDisplayDate(t) < dailyTodayIso()) return 'late';
   return started ? 'doing' : 'wait';
 }
 
