@@ -3794,7 +3794,7 @@ function saveModal() {
     const g = id => (document.getElementById(id)||{}).value||'—';
     const newRoll = {
       id: g('f-id')||'RL-NEW', name: g('f-name')||'(ไม่มีชื่อ)',
-      material: '—', diameter: g('f-diameter'), diameterStd: g('f-diameter-std') || g('f-diameter'),
+      material: '—', diameter: g('f-diameter-std') !== '—' ? g('f-diameter-std') : g('f-diameter'),
       width: g('f-width'), position: '—',
       usage: g('f-usage'), regrind: g('f-regrind'),
       grindTime: g('f-grindtime')||'—', polishTime: g('f-polishtime')||'—', lastService: g('f-service'), status: g('f-status'),
@@ -9532,7 +9532,7 @@ function renderRollTable(page) {
       <td class="muted">${r.id}</td>
       <td><strong>${colorDot}${r.name}</strong></td>
       <td class="muted">${rollStdDiameter(r)}</td>
-      <td><strong>${r.diameter}</strong>${rollWearHtml(r)}</td>
+      <td>${rollCurrentOdHtml(r)}</td>
       <td>${r.width}</td>
       <td class="muted">${r.usage}</td>
       <td class="muted">${r.regrind}</td>
@@ -9561,7 +9561,8 @@ function editRoll(idx) {
   document.getElementById('modal-body').innerHTML = MODAL_FORMS.roll.fields;
   document.getElementById('f-id').value = r.id;
   document.getElementById('f-name').value = r.name;
-  document.getElementById('f-diameter').value = r.diameter === '—' ? '' : r.diameter;
+  // Ø ปัจจุบัน ปล่อยว่างถ้ายังไม่เคยวัดหลังแต่ง ให้ตรงกับที่ตารางแสดง (ไม่เอา Ø มาตรฐานมาใส่ซ้ำ)
+  document.getElementById('f-diameter').value = (!rollHasCurrentOd(r) || r.diameter === '—') ? '' : r.diameter;
   const stdEl = document.getElementById('f-diameter-std');
   if (stdEl) { const s = rollStdDiameter(r); stdEl.value = s === '—' ? '' : s; }
   document.getElementById('f-width').value = r.width === '—' ? '' : r.width;
@@ -9576,9 +9577,18 @@ function editRoll(idx) {
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const g = id => (document.getElementById(id)||{}).value||'—';
     const isFirstInGroup = toolingData.roll.findIndex(x => x.set === r.set) === idx;
+    // Ø มาตรฐาน / Ø ปัจจุบัน: ถ้าเว้น Ø ปัจจุบันไว้ = ยังไม่เคยวัดหลังแต่ง
+    // เก็บ diameter ให้เท่ากับมาตรฐาน (ที่อื่นยังอ่านค่านี้เป็น OD ปัจจุบัน) และไม่ตั้ง diameterStd
+    // ไม่งั้นจะกลายเป็น "วัดแล้ว" ทันทีที่กดบันทึก และตารางจะเลิกเว้นว่าง
+    const rawStd = ((document.getElementById('f-diameter-std')||{}).value || '').trim();
+    const rawCur = ((document.getElementById('f-diameter')||{}).value || '').trim();
+    const stdVal = rawStd || String(r.diameterStd || '').trim() || rawCur || (r.diameter === '—' ? '' : r.diameter);
+    const hasCur = !!rawCur;
     const updated = {
       id: g('f-id'), name: g('f-name'), material: r.material,
-      diameter: g('f-diameter'), diameterStd: g('f-diameter-std') || r.diameterStd || g('f-diameter'), width: g('f-width'), position: r.position,
+      diameter: (hasCur ? rawCur : stdVal) || '—',
+      ...(hasCur ? { diameterStd: stdVal || rawCur } : {}),
+      width: g('f-width'), position: r.position,
       usage: g('f-usage'), regrind: g('f-regrind'),
       grindTime: g('f-grindtime'), polishTime: g('f-polishtime'), lastService: g('f-service'), status: g('f-status'),
       color: (document.getElementById('f-color')||{}).value || null, set: r.set
@@ -10294,6 +10304,19 @@ function voicePrompt(title, placeholder) {
 function rollStdDiameter(roll) {
   const std = String((roll || {}).diameterStd || '').trim();
   return std || String((roll || {}).diameter || '—');
+}
+
+// Roll ตัวนี้มี "Ø ปัจจุบัน" ที่วัดมาแล้วหรือยัง — diameterStd จะถูกเก็บครั้งแรกที่แต่ง
+// (หรือตอนกรอกทั้งสองช่องเองในฟอร์ม) ถ้ายังไม่มี แปลว่ายังไม่เคยวัดหลังแต่ง
+function rollHasCurrentOd(roll) {
+  return !!String((roll || {}).diameterStd || '').trim();
+}
+
+// ช่อง "Ø ปัจจุบัน" — ยังไม่เคยแต่ง/ยังไม่ได้ใส่ค่า ให้ว่างไว้ ไม่เอา Ø มาตรฐานมาโชว์ซ้ำ
+// เพราะดูแล้วเข้าใจผิดว่าวัดมาแล้วและได้ค่าเท่าเดิม
+function rollCurrentOdHtml(roll) {
+  if (!rollHasCurrentOd(roll)) return '<span class="muted" title="ยังไม่ได้แต่ง Roll หรือยังไม่ได้กรอกขนาดหลังแต่ง">—</span>';
+  return '<strong>' + escapeHtmlAttr(String(roll.diameter || '—')) + '</strong>' + rollWearHtml(roll);
 }
 
 // บอกว่าสึกไปกี่ มม. เทียบกับ Ø มาตรฐาน — โชว์เฉพาะตอนที่ต่างกันจริง
