@@ -1135,8 +1135,14 @@ canvas{display:block;}
 
       <div class="card" style="margin-bottom:18px;">
         <div class="card-header">
-          <span class="card-title" style="font-size:17px;color:var(--st-waitpolish);display:inline-flex;align-items:center;gap:8px;">
-            <span style="width:11px;height:11px;border-radius:50%;background:var(--st-waitpolish);flex-shrink:0;"></span>ชุด Roll รอขัด</span>
+          <span style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-width:0;">
+            <span class="card-title" style="font-size:17px;color:var(--st-waitpolish);display:inline-flex;align-items:center;gap:8px;">
+              <span style="width:11px;height:11px;border-radius:50%;background:var(--st-waitpolish);flex-shrink:0;"></span>ชุด Roll รอขัด</span>
+            <!-- ขัดเสร็จแล้วติ๊กเลือกได้หลายชุดในครั้งเดียว แล้วตั้งเป็นพร้อมใช้งานทีเดียว (ดู openPolishDonePicker) -->
+            <button id="dash-polish-done-btn" class="btn" style="display:none;font-size:13px;font-weight:800;padding:6px 14px;border-radius:8px;
+                    background:var(--green);color:#fff;border:1px solid var(--green);box-shadow:0 1px 3px rgba(21,128,80,.3);"
+                    onclick="openPolishDonePicker()" title="เลือกชุดที่ขัดเสร็จแล้ว แล้วตั้งเป็นพร้อมใช้งาน">✓ ขัดเสร็จแล้ว</button>
+          </span>
           <span style="margin-left:auto;font-size:12px;color:var(--text-3);">
             <span id="dash-roll-waitpolish-count" style="font-weight:700;color:var(--st-waitpolish);">0</span> ชุด
             <span style="font-size:11px;" title="ชุดที่วางแผนขัดไว้แล้วจะไปอยู่ในการ์ด &quot;ชุด Roll กำลังขัด&quot; ไม่นับซ้ำที่นี่">· ยังไม่ได้วางแผน</span>
@@ -2152,6 +2158,9 @@ function renderDashboardInUseRoll() {
     'ไม่มีชุด Roll ที่รอแต่งตอนนี้ (ที่ยังไม่ได้วางแผน)', 'var(--red)', 'var(--red-dim)', 'cnc');
   renderDashboardRollStatusCard('dash-roll-waitpolish-list', 'dash-roll-waitpolish-count', 'waitpolish',
     'ไม่มีชุด Roll ที่รอขัดตอนนี้ (ที่ยังไม่ได้วางแผน)', 'var(--st-waitpolish)', 'var(--st-waitpolish-dim)', 'polish');
+  // ปุ่ม "ขัดเสร็จแล้ว" โผล่เฉพาะตอนมีชุดรอขัดจริง และเฉพาะคนที่แก้ไขได้
+  const polishDoneBtn = document.getElementById('dash-polish-done-btn');
+  if (polishDoneBtn) polishDoneBtn.style.display = (canEditPlan() && polishDoneEntries().length) ? '' : 'none';
 }
 
 // ชุด Roll (set|ชุดสี) ที่ถูกวางแผนงานประเภทนั้นไว้แล้วและยังทำไม่จบ
@@ -2196,6 +2205,129 @@ function renderDashboardRollStatusCard(listId, countId, status, emptyText, badge
     </div>`;
     }).join('')}
   </div>`;
+}
+
+// ─── ชุดที่ขัดเสร็จแล้ว → ตั้งเป็นพร้อมใช้งานทีเดียวหลายชุด ────────────────────────
+// ทางลัดของงานที่ทำบ่อย: ขัดเสร็จเป็นล็อต แล้วต้องมาไล่เปลี่ยนสถานะทีละแถว
+// เขียนผ่าน setRollColorStatusFor ตัวเดียวกับดรอปดาวน์บนแถว จึงได้กฎ/การ re-render ชุดเดียวกัน
+const polishDoneSelected = new Set(); // 'set|colorKey' ที่ติ๊กไว้ในหน้าต่างนี้
+
+function polishDoneEntries() {
+  const skip = plannedRollKeySet('polish'); // ชุดที่วางแผนขัดไว้แล้วไม่อยู่ในการ์ดนี้ ไม่ต้องเอามาให้ติ๊ก
+  return getRollColorEntriesByStatus('waitpolish')
+    .filter(e => !skip.has(e.set + '|' + (e.colorKey || NO_COLOR_KEY)));
+}
+
+function openPolishDonePicker() {
+  if (!canEditPlan()) return;
+  polishDoneSelected.clear();
+  let ov = document.getElementById('polishdone-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'polishdone-overlay';
+    ov.className = 'modal-overlay';
+    ov.onclick = e => { if (e.target === ov) closePolishDonePicker(); };
+    ov.innerHTML = `<div class="modal" style="max-width:680px;display:flex;flex-direction:column;max-height:90vh;overflow:hidden;">
+      <div class="modal-head" style="flex:0 0 auto;">
+        <h3>ชุด Roll ที่ขัดเสร็จแล้ว</h3>
+        <button class="modal-close" onclick="closePolishDonePicker()">✕</button>
+      </div>
+      <div style="flex:0 0 auto;padding:14px 22px 0;">
+        <div style="font-size:12px;color:var(--text-3);line-height:1.6;">
+          ติ๊กชุดที่ขัดเสร็จแล้ว แล้วกด "ตั้งเป็นพร้อมใช้งาน" — เปลี่ยนได้หลายชุดในครั้งเดียว<br>
+          ชุดที่วางแผนขัดไว้แล้วไม่อยู่ในรายการนี้ (อยู่ในการ์ด "ชุด Roll กำลังขัด")
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <button class="btn btn-ghost btn-sm" onclick="togglePolishDoneAll(true)">เลือกทั้งหมด</button>
+          <button class="btn btn-ghost btn-sm" onclick="togglePolishDoneAll(false)">ล้างที่เลือก</button>
+        </div>
+      </div>
+      <div class="modal-body" id="polishdone-body" style="flex:1 1 auto;min-height:0;overflow-y:auto;padding-top:12px;"></div>
+      <div class="modal-footer" style="flex:0 0 auto;display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-ghost" onclick="closePolishDonePicker()">ยกเลิก</button>
+        <button class="btn btn-primary" id="polishdone-confirm" style="background:var(--green);border-color:var(--green);"
+          onclick="confirmPolishDone()">✓ ตั้งเป็นพร้อมใช้งาน</button>
+      </div>
+    </div>`;
+    document.body.appendChild(ov);
+  }
+  renderPolishDonePicker();
+  ov.classList.add('open');
+}
+
+function closePolishDonePicker() {
+  const ov = document.getElementById('polishdone-overlay');
+  if (ov) ov.classList.remove('open');
+  polishDoneSelected.clear();
+}
+
+function togglePolishDoneSelect(setName, colorKey) {
+  const k = setName + '|' + colorKey;
+  if (polishDoneSelected.has(k)) polishDoneSelected.delete(k); else polishDoneSelected.add(k);
+  renderPolishDonePicker();
+}
+
+function togglePolishDoneAll(on) {
+  polishDoneSelected.clear();
+  if (on) polishDoneEntries().forEach(e => polishDoneSelected.add(e.set + '|' + e.colorKey));
+  renderPolishDonePicker();
+}
+
+function renderPolishDonePicker() {
+  const body = document.getElementById('polishdone-body');
+  if (!body) return;
+  const entries = polishDoneEntries();
+  const btn = document.getElementById('polishdone-confirm');
+  if (btn) {
+    btn.disabled = !polishDoneSelected.size;
+    btn.textContent = polishDoneSelected.size
+      ? '✓ ตั้งเป็นพร้อมใช้งาน ' + polishDoneSelected.size + ' ชุด' : '✓ ตั้งเป็นพร้อมใช้งาน';
+  }
+  if (!entries.length) {
+    body.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text-3);font-size:13px;">ไม่มีชุด Roll ที่รอขัดอยู่ตอนนี้</div>`;
+    return;
+  }
+  // จัดกลุ่มตามหมวดเหมือนการ์ดบน Dashboard ให้อ่านเทียบกันได้
+  const buckets = { Forming: [], Sizing: [], TH: [], other: [] };
+  entries.forEach(e => { const c = parseSizeRollName(e.set).category; (buckets[c] || buckets.other).push(e); });
+  const cols = [['Forming', buckets.Forming], ['Sizing', buckets.Sizing], ['TH', buckets.TH]];
+  if (buckets.other.length) cols.push(['อื่นๆ', buckets.other]);
+  body.innerHTML = cols.filter(([, list]) => list.length).map(([label, list]) => {
+    const sorted = list.slice().sort((a, b) => dashRollInUseMachineSortKey(a) - dashRollInUseMachineSortKey(b));
+    return rollSetSectionHeaderHtml(label, list.length, ROLL_SET_SECTION_COLORS[label])
+      + sorted.map(e => {
+        const k = e.set + '|' + e.colorKey;
+        const on = polishDoneSelected.has(k);
+        return `<div onclick="${jsCallAttr('togglePolishDoneSelect', e.set, e.colorKey)}"
+          style="display:flex;align-items:center;gap:10px;padding:8px 10px;margin-bottom:5px;border-radius:8px;cursor:pointer;
+                 border:1px solid ${on ? 'var(--green)' : 'var(--border-light)'};
+                 background:${on ? 'var(--green-dim)' : 'transparent'};">
+          <span style="font-size:14px;flex-shrink:0;">${on ? '☑' : '☐'}</span>
+          <span style="font-size:13px;font-weight:800;color:#fff;background:var(--st-waitpolish);padding:2px 9px;border-radius:6px;flex-shrink:0;">${
+            escapeHtmlAttr(e.machines.length ? e.machines.join('/') : '—')}</span>
+          <span style="width:9px;height:9px;border-radius:50%;background:${e.dot};flex-shrink:0;"></span>
+          <span style="flex:1;min-width:0;font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(e.set)}</span>
+          <span style="font-size:12px;color:var(--text-3);flex-shrink:0;">${escapeHtmlAttr(e.colorLabel)}</span>
+        </div>`;
+      }).join('');
+  }).join('');
+}
+
+function confirmPolishDone() {
+  if (!polishDoneSelected.size) return;
+  const picked = [...polishDoneSelected];
+  // เขียน rollColorStatus ตรงๆ แล้วบันทึกครั้งเดียวท้ายสุด ไม่เรียก setRollColorStatusFor ทีละชุด
+  // เพราะตัวนั้น persistState() ในตัว — ติ๊ก 14 ชุดจะยิงอัปโหลด 14 รอบ เสี่ยงชนกันกลางทาง
+  // ปลอดภัยเพราะปลายทางเป็น 'ready' เสมอ ไม่เข้ากฎ 1 เครื่อง 1 ชุดต่อหมวด (กฎนั้นใช้เฉพาะ 'inuse')
+  picked.forEach(k => { delete rollColorStatus[k]; }); // ไม่มีคีย์ = 'ready' (ดู rollColorStatusFor)
+  persistState();
+  polishDoneSelected.clear();
+  closePolishDonePicker();
+  renderRollSetList();
+  updateRollKpi();
+  renderDashboardInUseRoll();
+  renderDashboardWorkingRoll();
+  alert('ตั้งเป็นพร้อมใช้งานแล้ว ' + picked.length + ' ชุด');
 }
 
 // ─── DASHBOARD: เลือกชุด Roll ที่กำลังใช้งาน ได้จากหน้านี้เลย ───────────────────
