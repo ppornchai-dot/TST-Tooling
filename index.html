@@ -10858,6 +10858,7 @@ function collectHistoryRecords() {
           // บันทึกที่ถูกย้ายวันไปแล้วไม่นับชั่วโมง — ชิ้นเดียวกันถูกนับอีกครั้งในวันที่ย้ายไป
           // ถ้านับทั้งสองที่ ยอด "ชม." ของวันเดิมจะบวมขึ้นจากงานที่ไม่ได้ทำในวันนั้น
           hours: (outcome.key === 'moved' || !minutes) ? null : Math.round((minutes / 60) * 10) / 10,
+          minutes: (outcome.key === 'moved' || !minutes) ? null : minutes,
           startTime: entry.startTime || null,
           endTime: entry.endTime || null,
           result: meta.label, resultChip: meta.chip, resultNote: outcome.note || '',
@@ -10943,7 +10944,7 @@ function renderHistory() {
       <td>${escapeHtmlAttr(r.tooling)}</td>
       <td>${escapeHtmlAttr(r.detail)}${r.measuredSize ? odCompareHtml(r.measuredSize, r.registryDiameter, r.rollSetName) : ''}</td>
       <td class="muted">${escapeHtmlAttr(r.who)}</td>
-      <td class="muted">${r.hours != null ? r.hours + ' ชม.' : '—'}${(r.startTime || r.endTime) ? `<div style="font-size:11px;">${escapeHtmlAttr(r.startTime || '—')} – ${escapeHtmlAttr(r.endTime || '—')}</div>` : ''}</td>
+      <td class="muted">${r.hours != null ? r.hours + ' ชม.' + (r.minutes != null ? ' (' + Math.round(r.minutes).toLocaleString() + ' นาที)' : '') : '—'}${(r.startTime || r.endTime) ? `<div style="font-size:11px;">${escapeHtmlAttr(r.startTime || '—')} – ${escapeHtmlAttr(r.endTime || '—')}</div>` : ''}</td>
       <td><span class="chip ${r.resultChip || 'chip-green'}"${r.resultNote ? ` title="${escapeHtmlAttr(r.resultNote)}"` : ''}>${escapeHtmlAttr(r.result)}</span>${
         r.resultNote ? `<div class="muted" style="font-size:10.5px;font-weight:400;margin-top:3px;max-width:190px;line-height:1.4;">${escapeHtmlAttr(r.resultNote)}</div>` : ''}</td>
     </tr>`;
