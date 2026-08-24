@@ -10327,6 +10327,13 @@ async function finishDailyPiece(taskId, rollIdx, workerId) {
     const label = roll ? roll.name + (roll.diameter ? ` (เดิม ${roll.diameter})` : '') : 'ชิ้นนี้';
     size = await voicePrompt(`บันทึกขนาดที่วัดได้จริงหลังแต่ง Roll ของ "${label}":`, 'พิมพ์ หรือกด 🎤 แล้วพูด');
     if (size === null) return; // กดยกเลิก — ไม่จบงานและไม่บันทึกอะไร
+    // เว้นว่างแล้วจบงานผ่านได้เลย คือสาเหตุที่ทะเบียนไม่มีขนาด OD หลังแต่งเป็นส่วนใหญ่
+    // (ตรวจข้อมูลจริงแล้วพบว่างานแต่งที่จบไป 120 ชิ้น มีขนาดจริงแค่ 29 ชิ้น)
+    // ยังจบได้ถ้าวัดไม่ได้จริงๆ แต่ต้องยืนยันก่อน ไม่ให้เว้นว่างโดยไม่ตั้งใจ
+    if (!String(size).trim()
+        && !confirm('ยังไม่ได้กรอกขนาด OD หลังแต่ง Roll ของ "' + (roll ? roll.name : 'ชิ้นนี้') + '"\n\n'
+                    + 'จบงานโดยไม่บันทึกขนาดหรือไม่?\n'
+                    + '(กด "ยกเลิก" เพื่อกลับไปกรอกขนาด — ขนาดนี้ใช้คิดอายุ Roll)')) return;
   }
   const dateMap = dailyPieceStatus[dailyViewDate] || (dailyPieceStatus[dailyViewDate] = {});
   const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
