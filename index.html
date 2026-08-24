@@ -10279,6 +10279,27 @@ function voicePrompt(title, placeholder) {
 // จบงานชิ้นนี้ — งานแต่ง Roll (CNC) ต้องบันทึกขนาดที่วัดได้จริงเป็นล็อกแยกต่างหากด้วย (ไม่ทับข้อมูลเดิมในทะเบียน Tooling)
 // งานขัด Roll ไม่ต้องวัดขนาด (ขัดผิวไม่ได้เปลี่ยนขนาด) กดจบงานได้ทันทีโดยไม่ถามอะไร
 // เมื่อจบครบทุกชิ้นของงานนั้นแล้ว จะทำเครื่องหมายงานหลักเป็น "สำเร็จ" ให้อัตโนมัติ (และอาจไปกระตุ้นการวางแผนวันถัดไปอัตโนมัติต่อ ถ้าทั้งวันเสร็จครบพอดี)
+// นำขนาดที่วัดได้หลังแต่ง Roll ไปอัปเดตทะเบียน Tooling ด้วย
+// เดิมบันทึกไว้แค่ในประวัติรายชิ้น (dailyPieceStatus/rollSizeLog) ทะเบียนจึงยังโชว์ OD เดิมอยู่
+// ทั้งที่แต่งไปแล้ว — และหน้าอายุ Roll คิด % จาก OD ในทะเบียน จึงคลาดเคลื่อนตามไปด้วย
+// getMatchingRollsForPlan() คืน object ตัวจริงจาก toolingData.roll (filter ไม่ได้ก็อป) แก้ที่นี่คือแก้ทะเบียน
+// bumpRegrind = true เฉพาะตอนจบงานครั้งแรก — แก้ค่าที่วัดผิดภายหลังไม่ต้องนับรอบการแต่งเพิ่ม
+function applyMeasuredSizeToRegistry(roll, size, dateIso, bumpRegrind) {
+  if (!roll) return false;
+  const clean = String(size == null ? '' : size).trim().replace(/^Ø\s*/, '').trim();
+  if (!clean) return false;
+  roll.diameter = clean;
+  roll.lastService = dateIso || dailyViewDate;
+  if (bumpRegrind) {
+    // รูปแบบเดิมเป็น "แต่งครั้งที่/สูงสุด" เช่น 3/5 — เพิ่มตัวหน้า คงตัวหลังไว้ ('—' ถือว่ายังไม่เคยแต่ง)
+    const parts = String(roll.regrind || '').split('/');
+    const done = (parseInt(parts[0], 10) || 0) + 1;
+    const max = parts[1] !== undefined ? String(parts[1]).trim() : '';
+    roll.regrind = max ? done + '/' + max : String(done);
+  }
+  return true;
+}
+
 async function finishDailyPiece(taskId, rollIdx, workerId) {
   if (!canActOnDailyItem(workerId)) return;
   const task = planTasks.find(t => t.id === taskId);
@@ -10305,6 +10326,8 @@ async function finishDailyPiece(taskId, rollIdx, workerId) {
       taskId, rollIdx, rollId: roll ? roll.id : null, rollName: roll ? roll.name : '—',
       date: dailyViewDate, measuredSize: size, registryDiameter: roll ? roll.diameter : null,
     });
+    // อัปเดตทะเบียนหลัง push ล็อกแล้ว เพื่อให้ registryDiameter ในล็อกยังเป็น "ค่าก่อนแต่ง"
+    applyMeasuredSizeToRegistry(roll, size, dailyViewDate, true);
   }
   const allDone = (task.rollIds || []).every(idx => getDailyPieceEntry(taskId, idx).status === 'done');
   const dayMap = dailyStatusByDate[dailyViewDate] || (dailyStatusByDate[dailyViewDate] = {});
@@ -10314,6 +10337,10 @@ async function finishDailyPiece(taskId, rollIdx, workerId) {
   }
   persistState();
   renderDailyTasks();
+  // OD ในทะเบียนเปลี่ยน → หน้าทะเบียน/อายุ Roll/การ์ดน้ำหนักต้องอัปเดตตาม
+  if (currentPage === 'registry') { renderRollSetList(); renderRollColorList(); }
+  if (currentPage === 'rollLife') renderRollLife();
+  updateRollKpi();
 }
 // พักงานชิ้นนี้ — ต้องระบุเหตุผลเสมอ (ยกเลิก/ปล่อยว่างไม่พักงาน) บันทึกเป็นล็อกแยกไว้ทุกครั้งที่พัก แม้จะกดทำต่อแล้วก็ตาม
 // แก้ขนาด OD ที่บันทึกไปแล้วของชิ้นที่จบงานแล้ว (งานแต่ง Roll/CNC เท่านั้น — งานขัด Roll ไม่ได้บันทึกขนาด)
@@ -10343,8 +10370,11 @@ async function editDailyPieceSize(taskId, rollIdx, workerId) {
     date: dailyViewDate, measuredSize: String(size).trim(), registryDiameter: roll ? roll.diameter : null,
     correctedFrom: oldSize == null ? null : String(oldSize), correctedBy: effectiveUserName(), correctedAt: nowHHMM(),
   });
+  // แก้ค่าที่วัดผิด — ทะเบียนต้องตามไปด้วย แต่ไม่นับรอบการแต่งเพิ่ม (เป็นการแก้ค่าเดิม ไม่ใช่แต่งใหม่)
+  applyMeasuredSizeToRegistry(roll, size, dailyViewDate, false);
   persistState();
   renderDailyTasks();
+  if (currentPage === 'registry') { renderRollSetList(); renderRollColorList(); }
 }
 
 async function pauseDailyPiece(taskId, rollIdx, workerId) {
