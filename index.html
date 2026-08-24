@@ -10786,6 +10786,18 @@ function renderDailyTasks() {
 //   ย้ายไปวันอื่น = งานไม่ได้อยู่วันนี้แล้ว บันทึกนี้เป็นของรอบก่อนย้าย
 //   ไม่ได้ปิดงาน = งานยังอยู่วันเดิม แต่วันนั้นผ่านไปแล้วและไม่มีใครกดจบงาน
 //   กำลังทำ/พักงาน = เหลือไว้เฉพาะงานที่ยังเป็นของวันปัจจุบันจริงๆ
+// นาทีที่ใช้จริงจากเวลาเริ่ม–จบที่กดไว้ (คนละค่ากับ "เวลาแต่ง/ขัด" ตามแผนที่โชว์เป็นชั่วโมง)
+// จบเวลาน้อยกว่าเริ่ม = ข้ามเที่ยงคืน (งานกะดึก) ต้องบวก 24 ชม. ไม่งั้นได้ค่าติดลบ
+function actualMinutesBetween(startHHMM, endHHMM) {
+  const toMin = t => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '').trim());
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  };
+  const a = toMin(startHHMM), b = toMin(endHHMM);
+  if (a == null || b == null) return null;
+  return b >= a ? b - a : b + 24 * 60 - a;
+}
+
 function historyPieceOutcome(dateIso, task, rollIdx, entry) {
   if (entry.status === 'done') return { key: 'done', note: '' };
   if (entry.status !== 'in_progress' && entry.status !== 'paused') return null;
@@ -10944,7 +10956,7 @@ function renderHistory() {
       <td>${escapeHtmlAttr(r.tooling)}</td>
       <td>${escapeHtmlAttr(r.detail)}${r.measuredSize ? odCompareHtml(r.measuredSize, r.registryDiameter, r.rollSetName) : ''}</td>
       <td class="muted">${escapeHtmlAttr(r.who)}</td>
-      <td class="muted">${r.hours != null ? r.hours + ' ชม.' + (r.minutes != null ? ' (' + Math.round(r.minutes).toLocaleString() + ' นาที)' : '') : '—'}${(r.startTime || r.endTime) ? `<div style="font-size:11px;">${escapeHtmlAttr(r.startTime || '—')} – ${escapeHtmlAttr(r.endTime || '—')}</div>` : ''}</td>
+      <td class="muted">${r.hours != null ? r.hours + ' ชม.' + (r.minutes != null ? ' (' + Math.round(r.minutes).toLocaleString() + ' นาที)' : '') : '—'}${(r.startTime || r.endTime) ? `<div style="font-size:11px;">${escapeHtmlAttr(r.startTime || '—')} – ${escapeHtmlAttr(r.endTime || '—')}${(() => { const mm = actualMinutesBetween(r.startTime, r.endTime); return mm == null ? '' : ` <span style="color:var(--text-2);font-weight:700;">(${mm.toLocaleString()} นาที)</span>`; })()}</div>` : ''}</td>
       <td><span class="chip ${r.resultChip || 'chip-green'}"${r.resultNote ? ` title="${escapeHtmlAttr(r.resultNote)}"` : ''}>${escapeHtmlAttr(r.result)}</span>${
         r.resultNote ? `<div class="muted" style="font-size:10.5px;font-weight:400;margin-top:3px;max-width:190px;line-height:1.4;">${escapeHtmlAttr(r.resultNote)}</div>` : ''}</td>
     </tr>`;
