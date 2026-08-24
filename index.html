@@ -1447,11 +1447,14 @@ canvas{display:block;}
           <div class="kpi-icon red"><svg width="18" height="18" fill="none" stroke="var(--red)" stroke-width="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/></svg></div>
           <div class="kpi-label" title="ผลิตไปแล้วเกิน 90% ของน้ำหนักต่อรอบการแต่ง">ใกล้หมดอายุ (&gt; 90%)</div>
           <div class="kpi-value" id="rolllife-kpi-critical">0</div>
+          <!-- รายชื่อชุดที่เข้าเกณฑ์ ตัวเล็กใต้ตัวเลข (ดู renderRollLife) -->
+          <div id="rolllife-kpi-critical-list" style="margin-top:4px;font-size:11px;line-height:1.5;color:var(--red);"></div>
         </div>
         <div class="kpi-card amber">
           <div class="kpi-icon amber"><svg width="18" height="18" fill="none" stroke="var(--amber)" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg></div>
           <div class="kpi-label" title="ผลิตไปแล้ว 80.1–90% ของน้ำหนักต่อรอบการแต่ง">เฝ้าระวัง (80.1–90%)</div>
           <div class="kpi-value" id="rolllife-kpi-warn">0</div>
+          <div id="rolllife-kpi-warn-list" style="margin-top:4px;font-size:11px;line-height:1.5;color:var(--amber);"></div>
         </div>
         <div class="kpi-card green">
           <div class="kpi-icon green"><svg width="18" height="18" fill="none" stroke="var(--green)" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
@@ -8945,6 +8948,26 @@ function renderRollLife() {
   document.getElementById('rolllife-kpi-warn').textContent = bandCount.warn;
   document.getElementById('rolllife-kpi-ok').textContent = bandCount.ok;
   document.getElementById('rolllife-kpi-nospec').textContent = bandCount.nospec;
+
+  // บอกใต้ตัวเลขว่าเป็นชุดไหน — 2 การ์ดที่ต้องลงมือทำ (ใกล้หมดอายุ/เฝ้าระวัง) เท่านั้น
+  // เรียง % มากไปน้อย ตัวที่ใกล้หมดที่สุดอยู่บนสุด กดชื่อแล้วเด้งไปดูในทะเบียน Tooling ได้
+  const bandListHtml = bandKey => {
+    const list = all.filter(g => rollUsageBand(g.prodPct).key === bandKey)
+      .sort((a, b) => (b.prodPct || 0) - (a.prodPct || 0));
+    if (!list.length) return '';
+    // % ปักไว้ท้ายบรรทัดแบบไม่ให้ถูกตัด ส่วนชื่อชุดยาวเกินค่อยตัดด้วย ... (การ์ดแคบ ชื่อชุดยาว)
+    return list.map(g => `<div onclick="${jsCallAttr('goToRollSetColor', g.set, g.colorKey)}"
+      style="cursor:pointer;display:flex;gap:5px;align-items:baseline;"
+      title="${escapeHtmlAttr(g.set + ' · ' + g.colorLabel + ' · ใช้ไป ' + g.prodPct + '% — กดเพื่อดูในทะเบียน Tooling')}">
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">• ${
+        escapeHtmlAttr(rollSetGroupDisplayName(g.set))} <span style="opacity:.75;">${
+        escapeHtmlAttr(parseSizeRollName(g.set).category || '')} · ${escapeHtmlAttr(g.colorLabel)}</span></span>
+      <b style="flex:0 0 auto;">${g.prodPct}%</b></div>`).join('');
+  };
+  const critList = document.getElementById('rolllife-kpi-critical-list');
+  if (critList) critList.innerHTML = bandListHtml('critical');
+  const warnList = document.getElementById('rolllife-kpi-warn-list');
+  if (warnList) warnList.innerHTML = bandListHtml('warn');
 }
 
 function rollSetScope() {
