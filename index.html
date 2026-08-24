@@ -12088,6 +12088,14 @@ function applyRoleUI() {
   // ยังตั้งประเภทของฟอร์มเพิ่มงานให้ตรงกับบทบาทไว้ เผื่อช่างกดเพิ่มงานเอง
   const forcedPlanType = forcedWorkTypeForRole();
   if (forcedPlanType && currentPlanWorkType !== forcedPlanType) switchPlanWorkType(forcedPlanType);
+
+  // เนื้อหาของหน้าเหล่านี้ขึ้นกับบทบาท (หัวข้อที่เห็น / กางรายชิ้น / ขนาดปุ่ม / สิทธิ์แก้ไข)
+  // เดิม applyRoleUI() แค่สลับคลาสกับซ่อนปุ่ม ไม่ได้สั่งเรนเดอร์ใหม่ — กด "ดูเป็น" เปลี่ยนบทบาทแล้ว
+  // ตารางงานประจำวันจึงค้างเป็นของบทบาทเดิม (ยังมีลูกศร ยังเห็นหัวข้ออีกประเภท ปุ่มยังเล็ก)
+  if (document.getElementById('tbody-daily')) renderDailyTasks();
+  if (document.getElementById('tbody-history')) renderHistory();
+  renderDashboardInUseRoll();
+  renderDashboardWorkingRoll();
 }
 
 function initAuth() {
