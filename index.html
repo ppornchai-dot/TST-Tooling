@@ -5539,8 +5539,11 @@ function splitPlanDataAcrossDays(base, rolls, workType, pieceMinutesListOverride
     if (cur && sinceBoundary > 0) cur.pieces.push({ idx: i, minutes: sinceBoundary }); // ส่วนที่เหลือของชิ้นนี้ (ทั้งชิ้น หรือส่วนหลังจุดตัดถ้าเพิ่งแบ่งไป) เป็นของกลุ่มปัจจุบัน
   });
 
-  if (groups.length <= 1) return null;
-  return groups.map(g => {
+  // กลุ่มที่ไม่มีนาทีทำงานจริงเลย ไม่ใช่งานของวันนั้น — เกิดตอนจุดเริ่มอยู่นอกเวลาทำงานและไม่มี OT
+  // ให้รอกะถัดไปทั้งก้อน ถ้าปล่อยไว้จะได้งาน "0 นาที" โผล่ในวันที่ไม่ได้ทำอะไรเลย
+  const real = groups.filter(g => g.pieces.length && g.pieces.reduce((s, p) => s + p.minutes, 0) > 0);
+  if (real.length <= 1) return null;
+  return real.map(g => {
     const rollIds = g.pieces.map(p => base.rollIds[p.idx]);
     const totalTime = g.pieces.reduce((sum, p) => sum + p.minutes, 0);
     const rollMinutesOverride = {};
@@ -6344,11 +6347,23 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     const shiftKey = document.getElementById('pf-shift').value || 'morning';
     let startTime = shiftKey === 'night' ? g('pf-start-night') : shiftKey === 'both' ? bothModeStartValue() : g('pf-start-morning');
     const otCapMinutesByShift = getOtCapMinutes();
-    // เวลาที่เหลือในวันไม่พอ แต่ตัวงานทำจบได้ในวันเดียว → ยกไปเริ่มต้นกะของวันทำงานถัดไปทั้งก้อน
-    // ไม่ปล่อยให้งานเดียวคาบสองวัน (เช่นเริ่ม 16:30 เหลือ 30 นาที แล้วที่เหลือไปโผล่วันถัดไป)
-    // งานที่ยาวเกินความจุของวันอยู่แล้วไม่เข้าเงื่อนไขนี้ — ต้องคาบวันจริงๆ ปล่อยให้ตัวตัดวันจัดการตามเดิม
+    // เก็บเป็น "ตำแหน่งลำดับ" ในรายการที่พบ (ไม่ใช่ r.id ตรงๆ) เพราะ Roll หลายตัวอาจมี id/ชื่อซ้ำกันได้
+    // คำนวณไว้ตรงนี้เพราะตัวตัดวันด้านล่างต้องใช้ก่อนตัดสินว่าจะยกงานไปวันถัดไปไหม
+    const selectedIndexes = other
+      ? Array.from({ length: other.qty }, (_, i) => i) // งานอื่นๆ: ชิ้นที่ 1..n ไม่ได้อ้างทะเบียน Roll
+      : ((document.getElementById('pf-rollids') || {}).value || '').split(',').filter(Boolean).map(Number);
+
+    // ตัดเป็นส่วนของแต่ละวันได้ไหม — ถ้าได้ ให้เติมเวลาที่เหลือของวันนั้นให้เต็มก่อน แล้วต่อส่วนที่เหลือวันถัดไป
+    // เดิมงานที่ "ทำจบได้ในวันเดียว" แต่เวลาที่เหลือไม่พอ จะถูกยกไปวันถัดไปทั้งก้อนทันที
+    // ทำให้เวลา OT ที่เพิ่งใส่ไว้ (เช่นถึง 23:00) ไม่ถูกใช้เลย — ตอนนี้ยกทั้งก้อนเฉพาะตอนที่ตัดไม่ได้จริงๆ
+    // (งานอื่นๆ ไม่มี Roll ในทะเบียนให้ตัดตามชิ้น หรือคำนวณตารางชิ้นไม่ได้)
+    const splitProbe = other ? null : splitPlanDataAcrossDays(
+      { date, shift: shiftKey, startTime, otCapMinutesByShift, rollIds: selectedIndexes }, rolls, workType,
+      hasPieceOverride ? pieceMinutesList : undefined);
+
+    // เวลาที่เหลือในวันไม่พอ ตัวงานทำจบได้ในวันเดียว และตัดวันไม่ได้ → ยกไปเริ่มต้นกะของวันทำงานถัดไปทั้งก้อน
     let movedToNextDay = null;
-    if (mode !== 'edit') {
+    if (mode !== 'edit' && !splitProbe) {
       const cap = shiftDailyCapacityMin(shiftKey) + Math.max(0, (otCapMinutesByShift[shiftKey === 'night' ? 'night' : 'morning'] || 0));
       if (totalTime > 0 && totalTime <= cap) {
         const probe = computePlanEnd(date, startTime, totalTime, shiftKey, otCapMinutesByShift);
@@ -6366,10 +6381,6 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     const endTime = computedEnd.time;
     // ถ้าย้ายวันเริ่มไปแล้ว ค่า "วันที่จบงาน" บนหน้าจอเป็นของวันเดิม ใช้ค่าที่คำนวณใหม่เท่านั้น
     const endDate = movedToNextDay ? (computedEnd.date || date) : (g('pf-enddate') || computedEnd.date || date);
-    // เก็บเป็น "ตำแหน่งลำดับ" ในรายการที่พบ (ไม่ใช่ r.id ตรงๆ) เพราะ Roll หลายตัวอาจมี id/ชื่อซ้ำกันได้ ตำแหน่งลำดับจะระบุตัวที่เลือกได้แม่นยำกว่า
-    const selectedIndexes = other
-      ? Array.from({ length: other.qty }, (_, i) => i) // งานอื่นๆ: ชิ้นที่ 1..n ไม่ได้อ้างทะเบียน Roll
-      : ((document.getElementById('pf-rollids') || {}).value || '').split(',').filter(Boolean).map(Number);
     const data = {
       date, rollSet: setName, rollColor: colorKey || null,
       rollIds: selectedIndexes,
