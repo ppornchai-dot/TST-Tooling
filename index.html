@@ -4709,14 +4709,15 @@ function onPlanDragMove(ev) {
   }
   const over = under.closest('.plan-drag-item[data-draggable]');
   if (over === planDrag.item) return;
-  if (over) {
-    // วางสลับกับงานที่ชี้อยู่ — ต้องเป็นกะเดียวกัน ไม่งั้นเวลาเริ่ม/จบจะคำนวณข้ามรอบกะ
-    if (over.dataset.shift !== planDrag.shift) return;
+  if (over && over.dataset.shift === planDrag.shift) {
+    // วางสลับลำดับกับงานที่ชี้อยู่ — ทำได้เมื่อเป็นกะเดียวกัน เวลาเริ่ม/จบจึงคำนวณอยู่ในรอบกะเดียว
     const rect = over.getBoundingClientRect();
     zone.insertBefore(planDrag.item, ev.clientY > rect.top + rect.height / 2 ? over.nextSibling : over);
   } else {
-    // ชี้ในช่องวันที่ยังไม่มีงาน (หรือที่ว่างใต้รายการ) — ต่อท้ายวันนั้น
-    // ต่อท้ายก่อนปุ่ม "+ เพิ่ม" ของมุมมองสัปดาห์ ไม่งั้นงานจะไปอยู่ใต้ปุ่ม
+    // ชี้ที่ว่างในช่องวัน หรือชี้ที่งาน "คนละกะ" — ย้ายมาต่อท้ายวันนั้น
+    // เดิมกรณีคนละกะจะ return ทิ้งไปเลย ทำให้ลากไปวางวันที่มีงานคนละกะอยู่แล้วไม่เกิดอะไรขึ้น
+    // (ข้อมูลจริงมีทั้งกะเช้าและ 2 กะปนกันทุกวัน จุดที่วางได้จริงจึงเหลือน้อยมาก)
+    // ย้ายวันยังทำได้ แค่ไม่สลับลำดับข้ามกะ เพราะเวลาของสองกะคิดคนละรอบ
     const addBtn = zone.querySelector(':scope > button');
     if (addBtn) zone.insertBefore(planDrag.item, addBtn);
     else zone.appendChild(planDrag.item);
@@ -4749,9 +4750,23 @@ function onPlanDragUp() {
   // ทำให้ลากงานที่ทำเสร็จแล้วไปวางวันที่ทำจริงได้ โดยยังเป็น "ทำแล้ว" ในวันใหม่
   const beforeDays = new Map(planTasks.map(t => [t.id, taskDisplayDate(t)]));
 
-  resequencePlanDayShift(targetDay, d.shift, ids, anchor);
-  if (d.sourceDay && d.sourceDay !== targetDay) {
-    // วันต้นทาง: ปิดช่องว่างที่งานย้ายออกไปทิ้งไว้
+  const todayIso = dailyTodayIso();
+  if (targetDay < todayIso) {
+    // วางลงวันที่ผ่านไปแล้ว = บันทึกว่างานนี้ "ทำจริงวันนั้น" ไม่ใช่การวางแผนใหม่
+    // จึงต่อท้ายงานที่มีอยู่ของวันนั้นเฉยๆ ไม่ไปจัดลำดับ/เขียนเวลาของงานอื่นที่ทำไปแล้วทับ
+    task.date = targetDay;
+    task.startTime = planRecordStartOnDay(task.workType, targetDay, d.shift);
+    const computed = computePlanEnd(task.date, task.startTime, task.totalTime, task.shift, task.otCapMinutesByShift || {});
+    task.endTime = computed.time;
+    task.endDate = computed.date || task.date;
+    task.otMinutes = computed.otMinutes || 0;
+    task.otMinutesByShift = computed.otMinutesByShift || {};
+  } else {
+    resequencePlanDayShift(targetDay, d.shift, ids, anchor);
+  }
+  // ปิดช่องว่างที่งานย้ายออกไปทิ้งไว้ — เฉพาะวันต้นทางที่ยังเป็นวันนี้/อนาคต
+  // วันที่ผ่านไปแล้วเป็นบันทึกของสิ่งที่ทำไปแล้ว ไม่ไปรื้อเวลาใหม่
+  if (d.sourceDay && d.sourceDay !== targetDay && d.sourceDay >= todayIso) {
     const srcIds = planTasks
       .filter(t => t.workType === task.workType && t.shift === d.shift && taskDisplayDate(t) === d.sourceDay)
       .sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime))
@@ -4763,6 +4778,21 @@ function onPlanDragUp() {
   persistState();
   renderCurrentPlanView();
   renderDailyTasks();   // งานที่ย้ายวันต้องหลุด/โผล่ในเช็คลิสต์ของวันที่ดูอยู่ให้ตรงกัน (อัปเดต KPI ในตัวอยู่แล้ว)
+}
+
+// เวลาเริ่มสำหรับ "บันทึกว่างานทำจริงในวันที่ผ่านไปแล้ว" — ต้องลงอยู่ในวันนั้นเสมอ
+// ไม่ใช้ planQueueEndFor เพราะตัวนั้นเป็นตัวช่วยวางแผน ถ้าเวลาล้นกะจะดันไปเริ่มวันถัดไปให้
+// ซึ่งขัดกับความตั้งใจ (ผู้ใช้ชี้วันที่ทำจริงมาแล้ว จะย้ายไปวันอื่นไม่ได้)
+// ต่อท้ายงานกะเดียวกันที่จบในวันนั้น ถ้าไม่มีก็เริ่มต้นกะ — เลยเวลากะไปนับเป็น OT ตามจริง
+function planRecordStartOnDay(workType, dateIso, shiftKey) {
+  let last = null;
+  planTasks.forEach(t => {
+    if (t.workType !== workType || t.shift !== shiftKey) return;
+    if (taskDisplayDate(t) !== dateIso) return;
+    if ((t.endDate || t.date) !== dateIso || !t.endTime || t.endTime === '—') return;
+    if (!last || t.endTime > last) last = t.endTime;
+  });
+  return last || (SHIFTS[shiftKey] || SHIFTS.morning).start;
 }
 
 // ย้ายบันทึกความคืบหน้าของงานหนึ่ง (สถานะงาน / สถานะรายชิ้น / เวลาจริงที่กดเริ่ม–จบ) ไปวันใหม่
@@ -5960,6 +5990,15 @@ function resequencePlanTask(taskId) {
 // ต่อเวลาให้เฉพาะงานที่ "ทับซ้อน" กับงานประเภทเดียวกันก่อนหน้าจริงๆ (เริ่มก่อนงานก่อนหน้าจะจบ) ให้อัตโนมัติทันที — เรียกทุกครั้งหลังบันทึก/ลบ/สร้างงานวางแผน
 // ถ้าผู้ใช้ตั้งใจแก้เวลาเริ่มงานให้มีช่องว่างจากงานก่อนหน้า (ไม่ทับซ้อน) จะไม่ถูกดึงกลับมาต่อกันให้ — ต้องกดปุ่ม "ต่อเวลา" เองถ้าต้องการปิดช่องว่างนั้นภายหลัง
 // ไล่ทีละประเภทงาน เรียงตามเวลาเริ่มจริง แล้วต่อเวลาทีละคู่จากซ้ายไปขวาซ้ำจนกว่าจะไม่มีการทับซ้อนเหลืออยู่ (กันเคสที่ขยับคิวหนึ่งแล้วดันไปทับอีกคิวที่อยู่ถัดไป)
+// งานที่เป็น "บันทึกของสิ่งที่เกิดขึ้นแล้ว" ไม่ใช่แผนที่ยังปรับได้ — เลยวันไปแล้ว หรือเริ่ม/ทำเสร็จแล้ว
+// ตัวจัดลำดับอัตโนมัติต้องไม่ขยับวัน/เวลาของงานเหล่านี้ ไม่งั้นแค่ย้ายงานหนึ่งไปวันที่ทำจริง
+// งานที่ทำเสร็จไปแล้วในวันอื่นจะถูกดันเปลี่ยนวันตามไปด้วย (ตรงกับที่หน้างานย้ำว่า "งานที่จบแล้วก็คือจบเลย")
+function planTaskIsSettled(t) {
+  if (taskDisplayDate(t) < dailyTodayIso()) return true;
+  const st = planTaskProgressState(t);
+  return st === 'done' || st === 'doing';
+}
+
 function autoFixPlanSequencing() {
   const workTypes = Object.keys(PLAN_WORKTYPE_META);
   let anyChanged = false;
@@ -5986,6 +6025,7 @@ function autoFixPlanSequencing() {
         const curKey = cur.date + ' ' + cur.startTime;
         const targetKey = targetDate + ' ' + targetTime;
         if (curKey >= targetKey) continue;
+        if (planTaskIsSettled(cur)) continue; // อดีต/ทำแล้ว — ไม่ขยับ (prev ยังใช้เป็นจุดต่อเวลาให้งานถัดไปได้ตามเดิม)
         cur.date = targetDate;
         cur.shift = prev.shift;
         cur.startTime = targetTime;
