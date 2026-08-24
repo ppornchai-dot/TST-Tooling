@@ -10284,10 +10284,25 @@ function voicePrompt(title, placeholder) {
 // ทั้งที่แต่งไปแล้ว — และหน้าอายุ Roll คิด % จาก OD ในทะเบียน จึงคลาดเคลื่อนตามไปด้วย
 // getMatchingRollsForPlan() คืน object ตัวจริงจาก toolingData.roll (filter ไม่ได้ก็อป) แก้ที่นี่คือแก้ทะเบียน
 // bumpRegrind = true เฉพาะตอนจบงานครั้งแรก — แก้ค่าที่วัดผิดภายหลังไม่ต้องนับรอบการแต่งเพิ่ม
+// อ่านตัวเลข OD จากข้อความที่กรอก/พูดมา — เอาตัวเลขตัวแรก (บางครั้งมีคำปนมา เช่น "โอดีนอก 208.8")
+// OD ของ Roll ที่ใช้จริงอยู่ในช่วง 50–400 มม. ถ้าได้ค่าเกินช่วงแต่หารสิบ/ร้อยแล้วเข้าช่วง
+// ถือว่าพิมพ์จุดทศนิยมตกหาย (เคยเจอ "2088" ที่หมายถึง 208.8) — กันค่าเพี้ยนเข้าทะเบียน
+function parseMeasuredOd(raw) {
+  const m = String(raw == null ? '' : raw).match(/-?\d+(?:\.\d+)?/);
+  if (!m) return null;
+  const v = parseFloat(m[0]);
+  if (v >= 50 && v <= 400) return v;
+  // กู้ได้แค่ "จุดตกหายหนึ่งตำแหน่ง" เท่านั้น (2088 → 208.8 ซึ่งเป็นเคสที่เจอจริง)
+  // ไม่กู้ /100 ขึ้นไป เพราะ 9999 จะกลายเป็น 99.99 เงียบๆ ทั้งที่น่าจะเป็นการพิมพ์ผิดคนละแบบ
+  if (v / 10 >= 50 && v / 10 <= 400) return v / 10;
+  return null; // กู้ไม่ได้ — ไม่แตะทะเบียน (ค่าที่กรอกยังอยู่ในประวัติให้ตรวจย้อนหลังได้)
+}
+
 function applyMeasuredSizeToRegistry(roll, size, dateIso, bumpRegrind) {
   if (!roll) return false;
-  const clean = String(size == null ? '' : size).trim().replace(/^Ø\s*/, '').trim();
-  if (!clean) return false;
+  const od = parseMeasuredOd(size);
+  if (od == null) return false;
+  const clean = String(od);
   roll.diameter = clean;
   roll.lastService = dateIso || dailyViewDate;
   if (bumpRegrind) {
