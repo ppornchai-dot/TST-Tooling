@@ -1133,7 +1133,7 @@ canvas{display:block;}
           </span>
           <span style="margin-left:auto;font-size:12px;color:var(--text-3);">
             <span id="dash-roll-waitdress-count" style="font-weight:700;color:var(--red);">0</span> ชุด
-            <span style="font-size:11px;" title="ชุดที่วางแผนแต่งไว้แล้วจะไปอยู่ในการ์ด &quot;ชุด Roll กำลังแต่ง&quot; ไม่นับซ้ำที่นี่">· ยังไม่ได้วางแผน</span>
+            <span style="font-size:11px;" title="รวมชุดที่วางแผนแต่งไว้แล้ว — วันที่จะแต่งเสร็จอยู่ท้ายแถว">· รวมที่วางแผนแล้ว</span>
           </span>
         </div>
         <div id="dash-roll-waitdress-list" style="padding:12px 14px;"></div>
@@ -1151,7 +1151,7 @@ canvas{display:block;}
           </span>
           <span style="margin-left:auto;font-size:12px;color:var(--text-3);">
             <span id="dash-roll-waitpolish-count" style="font-weight:700;color:var(--st-waitpolish);">0</span> ชุด
-            <span style="font-size:11px;" title="ชุดที่วางแผนขัดไว้แล้วจะไปอยู่ในการ์ด &quot;ชุด Roll กำลังขัด&quot; ไม่นับซ้ำที่นี่">· ยังไม่ได้วางแผน</span>
+            <span style="font-size:11px;" title="รวมชุดที่วางแผนขัดไว้แล้ว — วันที่จะขัดเสร็จอยู่ท้ายแถว">· รวมที่วางแผนแล้ว</span>
           </span>
         </div>
         <div id="dash-roll-waitpolish-list" style="padding:12px 14px;"></div>
@@ -2124,8 +2124,18 @@ function goToRollSetColor(setName, colorKey) {
   selectRollColor(colorKey);
 }
 
-function dashRollInUseChipHtml(e, badgeColor, rowBg) {
+function dashRollInUseChipHtml(e, badgeColor, rowBg, plannedWorkType) {
   const machineLabel = e.machines.length ? e.machines.join('/') : '—';
+  // การ์ดรอแต่ง/รอขัด: บอกท้ายแถวว่าวางแผนไว้เสร็จวันไหน (หรือยังไม่ได้วางแผน)
+  const verb = plannedWorkType === 'polish' ? 'ขัด' : 'แต่ง';
+  const fin = plannedWorkType ? plannedFinishForRollColor(e.set, e.colorKey, plannedWorkType) : null;
+  const finishHtml = !plannedWorkType ? '' : `<span style="margin-left:auto;flex:0 0 auto;font-size:11.5px;font-weight:700;
+      color:${fin ? (fin.done ? 'var(--green)' : 'var(--accent)') : 'var(--text-3)'};"
+      title="${escapeHtmlAttr(fin
+        ? (fin.done ? verb + 'เสร็จแล้วเมื่อ ' : 'ตามแผนจะ' + verb + 'เสร็จวันที่ ') + fmtDateThai(parseISODate(fin.date))
+        : 'ยังไม่ได้วางแผน' + verb + 'ชุดนี้')}">${fin
+      ? (fin.done ? '✓ ' + verb + 'เสร็จ ' : verb + 'เสร็จ ') + escapeHtmlAttr(fmtDateThaiShort(parseISODate(fin.date)))
+      : 'ยังไม่ได้วางแผน'}</span>`;
   return `<div onclick="${jsCallAttr('goToRollSetColor', e.set, e.colorKey)}"
     style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;cursor:pointer;
            border:1px solid var(--border-light);background:${rowBg || 'var(--accent-glow)'};transition:filter .12s;margin-bottom:6px;"
@@ -2135,6 +2145,7 @@ function dashRollInUseChipHtml(e, badgeColor, rowBg) {
     <span style="width:9px;height:9px;border-radius:50%;background:${e.dot};flex-shrink:0;"></span>
     <span style="font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(e.set)}</span>
     <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr(e.colorLabel)}</span>
+    ${finishHtml}
   </div>`;
 }
 
@@ -2157,9 +2168,9 @@ function renderDashboardInUseRoll() {
     'ไม่มีชุด Roll ที่พร้อมใช้งานตอนนี้', 'var(--green)', 'var(--green-dim)');
   // ส่งประเภทงานไปด้วย เพื่อตัดชุดที่วางแผนแต่ง/ขัดไว้แล้วออกจากรายการ "รอ"
   renderDashboardRollStatusCard('dash-roll-waitdress-list', 'dash-roll-waitdress-count', 'waitdress',
-    'ไม่มีชุด Roll ที่รอแต่งตอนนี้ (ที่ยังไม่ได้วางแผน)', 'var(--red)', 'var(--red-dim)', 'cnc');
+    'ไม่มีชุด Roll ที่รอแต่งตอนนี้', 'var(--red)', 'var(--red-dim)', 'cnc');
   renderDashboardRollStatusCard('dash-roll-waitpolish-list', 'dash-roll-waitpolish-count', 'waitpolish',
-    'ไม่มีชุด Roll ที่รอขัดตอนนี้ (ที่ยังไม่ได้วางแผน)', 'var(--st-waitpolish)', 'var(--st-waitpolish-dim)', 'polish');
+    'ไม่มีชุด Roll ที่รอขัดตอนนี้', 'var(--st-waitpolish)', 'var(--st-waitpolish-dim)', 'polish');
   // ปุ่ม "แต่งเสร็จแล้ว" / "ขัดเสร็จแล้ว" โผล่เฉพาะตอนมีชุดรออยู่จริง และเฉพาะคนที่แก้ไขได้
   const doneBtns = [['dash-dress-done-btn', 'waitdress'], ['dash-polish-done-btn', 'waitpolish']];
   doneBtns.forEach(([id, kind]) => {
@@ -2171,6 +2182,8 @@ function renderDashboardInUseRoll() {
 // ชุด Roll (set|ชุดสี) ที่ถูกวางแผนงานประเภทนั้นไว้แล้วและยังทำไม่จบ
 // ใช้เกณฑ์เดียวกับการ์ด "กำลังแต่ง/กำลังขัด" (getWorkingRollEntries) สองการ์ดจึงไม่ซ้อนกันเอง
 // งานที่ทำจบครบแล้วไม่นับ — ชุดนั้นถือว่ายังรอคิวอยู่จนกว่าจะเปลี่ยนสถานะในทะเบียน
+// ไม่มีที่เรียกใช้แล้ว — การ์ดรอแต่ง/รอขัดเลิกซ่อนชุดที่วางแผนไว้ (ไปโชว์วันที่จะเสร็จท้ายแถวแทน)
+// เก็บไว้เพราะเป็นตัวช่วยตอบคำถาม "ชุดไหนถูกวางแผนไว้แล้ว" ที่อาจต้องใช้อีก
 function plannedRollKeySet(workType) {
   const set = new Set();
   if (!workType) return set;
@@ -2178,13 +2191,34 @@ function plannedRollKeySet(workType) {
   return set;
 }
 
+// งานตามแผน (แต่ง/ขัด) ที่ครอบชุดสีนี้ — คืนวันที่เสร็จ และเสร็จครบทุกงานแล้วหรือยัง
+// เสร็จแล้ว → ใช้ "วันที่ทำเสร็จจริง" (วันที่บันทึกความคืบหน้าไว้ ซึ่งอาจเสร็จก่อนแผน)
+// ยังไม่เสร็จ → ใช้วันจบตามแผนของงานสุดท้าย
+// นับงานที่ทำเสร็จแล้วด้วย เพราะ "วันที่แต่งเสร็จ" ที่ต้องการแสดงก็คือวันของงานนั้น
+function plannedFinishForRollColor(setName, colorKey, workType) {
+  const want = colorKey || NO_COLOR_KEY;
+  let planned = null, actual = null, allDone = true, found = false;
+  planTasks.forEach(t => {
+    if (t.workType !== workType || t.rollSet !== setName) return;
+    if ((t.rollColor || NO_COLOR_KEY) !== want) return;
+    found = true;
+    const endDate = t.endDate || t.date;
+    const key = endDate + ' ' + (t.endTime || '');
+    if (!planned || key > planned.key) planned = { key, date: endDate };
+    if (planTaskProgressState(t) === 'done') {
+      const d = taskDisplayDate(t); // วันที่ความคืบหน้าถูกบันทึกไว้ = วันที่ทำจริง
+      if (!actual || d > actual) actual = d;
+    } else allDone = false;
+  });
+  if (!found) return null;
+  return { date: (allDone && actual) ? actual : planned.date, done: allDone };
+}
+
 function renderDashboardRollStatusCard(listId, countId, status, emptyText, badgeColor, rowBg, plannedWorkType) {
   const el = document.getElementById(listId);
   if (!el) return;
-  // รอแต่ง/รอขัด ที่วางแผนไปแล้วไม่ต้องโชว์ซ้ำ — ไปอยู่ในการ์ดกำลังแต่ง/กำลังขัดแล้ว
-  const skip = plannedRollKeySet(plannedWorkType);
-  const entries = getRollColorEntriesByStatus(status)
-    .filter(e => !skip.has(e.set + '|' + (e.colorKey || NO_COLOR_KEY)));
+  // เดิมชุดที่วางแผนแต่ง/ขัดไปแล้วถูกซ่อนออกจากการ์ดนี้ — ตอนนี้ยังแสดงอยู่ พร้อมบอกวันที่จะเสร็จไว้ท้ายแถว
+  const entries = getRollColorEntriesByStatus(status);
   const countEl = document.getElementById(countId);
   if (countEl) countEl.textContent = entries.length;
   if (!entries.length) {
@@ -2206,7 +2240,7 @@ function renderDashboardRollStatusCard(listId, countId, status, emptyText, badge
       const sorted = list.slice().sort((a, b) => dashRollInUseMachineSortKey(a) - dashRollInUseMachineSortKey(b));
       return `<div>
       ${rollSetSectionHeaderHtml(label, list.length, ROLL_SET_SECTION_COLORS[label])}
-      ${sorted.length ? sorted.map(e => dashRollInUseChipHtml(e, badgeColor, rowBg)).join('') : `<div style="padding:4px;color:var(--text-3);font-size:12px;">ไม่มี</div>`}
+      ${sorted.length ? sorted.map(e => dashRollInUseChipHtml(e, badgeColor, rowBg, plannedWorkType)).join('') : `<div style="padding:4px;color:var(--text-3);font-size:12px;">ไม่มี</div>`}
     </div>`;
     }).join('')}
   </div>`;
@@ -2224,13 +2258,11 @@ const STATUS_DONE_KINDS = {
 let statusDoneKind = 'waitpolish';           // การ์ดที่เปิดหน้าต่างนี้อยู่
 const statusDoneSelected = new Set();        // 'set|colorKey' ที่ติ๊กไว้
 
-// ชุดที่รออยู่จริงของการ์ดนั้น — ตัดชุดที่วางแผนไว้แล้วออก ให้ตรงกับที่การ์ดแสดง
+// ชุดที่รออยู่ของการ์ดนั้น — รวมชุดที่วางแผนไว้แล้วด้วย ให้ตรงกับที่การ์ดแสดง
 function statusDoneEntries(kind) {
   const cfg = STATUS_DONE_KINDS[kind];
   if (!cfg) return [];
-  const skip = plannedRollKeySet(cfg.workType);
-  return getRollColorEntriesByStatus(cfg.status)
-    .filter(e => !skip.has(e.set + '|' + (e.colorKey || NO_COLOR_KEY)));
+  return getRollColorEntriesByStatus(cfg.status);
 }
 
 function openStatusDonePicker(kind) {
@@ -2295,7 +2327,7 @@ function renderStatusDonePicker() {
   if (titleEl) titleEl.textContent = cfg.title;
   const note = document.getElementById('statusdone-note');
   if (note) note.innerHTML = `ติ๊กชุดที่${escapeHtmlAttr(cfg.tick)} แล้วกด "ตั้งเป็นพร้อมใช้งาน" — เปลี่ยนได้หลายชุดในครั้งเดียว<br>
-      ชุดที่${escapeHtmlAttr(cfg.planned)}ไว้แล้วไม่อยู่ในรายการนี้ (อยู่ในการ์ด "${escapeHtmlAttr(cfg.plannedCard)}")`;
+      รวมชุดที่${escapeHtmlAttr(cfg.planned)}ไว้แล้วด้วย — วันที่วางแผนว่าจะเสร็จดูได้ท้ายแถวบนการ์ด`;
   const btn = document.getElementById('statusdone-confirm');
   if (btn) {
     btn.disabled = !statusDoneSelected.size;
