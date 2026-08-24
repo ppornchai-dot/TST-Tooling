@@ -3326,6 +3326,9 @@ function renderCalDetail(sel) {
     </div>
     <div class="modal-body" id="modal-body"></div>
     <div class="modal-footer">
+      <!-- ปุ่มลบใช้ร่วมกับทุกฟอร์มที่ใช้โมดัลนี้ — ซ่อนไว้เป็นค่าเริ่มต้น ฟอร์มไหนต้องการค่อยเปิดเอง
+           closeModal() ซ่อนคืนและล้าง onclick ทุกครั้ง กันปุ่มค้างไปลบของฟอร์มอื่น (เหตุผลเดียวกับปุ่มบันทึก) -->
+      <button class="btn btn-ghost" id="modal-delete-btn" style="display:none;margin-right:auto;color:var(--red);border-color:var(--red);font-weight:700;">🗑 ลบงาน</button>
       <button class="btn btn-ghost" onclick="closeModal()">ยกเลิก</button>
       <button class="btn btn-primary" onclick="saveModal()">
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
@@ -3495,6 +3498,9 @@ function closeModal() {
   // ไปทับ (แก้ไข) ข้อมูลแถวเก่าแทนที่จะเพิ่มแถวใหม่ — reset กลับเป็น saveModal ทุกครั้งที่ปิดโมดัลกันไว้
   const btn = document.querySelector('.modal-footer .btn-primary');
   if (btn) btn.onclick = saveModal;
+  // ปุ่มลบเป็นของโมดัลกลางเหมือนกัน ต้องซ่อนคืนและล้าง handler ไม่ให้ค้างไปลบของฟอร์มถัดไป
+  const del = document.getElementById('modal-delete-btn');
+  if (del) { del.style.display = 'none'; del.onclick = null; del.textContent = '🗑 ลบงาน'; }
 }
 
 function closeModalOutside(e) {
@@ -6190,6 +6196,20 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   refreshPlanFormContinueBtn();
   document.getElementById('modal-overlay').classList.add('open');
 
+  // ปุ่มลบงาน — มีเฉพาะตอนแก้ไขงานที่มีอยู่จริง (เพิ่มงานใหม่ยังไม่มีอะไรให้ลบ)
+  const delBtn = document.getElementById('modal-delete-btn');
+  if (delBtn) {
+    if (task && canEditPlan()) {
+      delBtn.style.display = '';
+      delBtn.textContent = '🗑 ลบงานนี้';
+      delBtn.title = 'ลบงาน ' + task.id + ' ออกจากแผน';
+      delBtn.onclick = () => { if (deletePlanTask(task.id)) closeModal(); };
+    } else {
+      delBtn.style.display = 'none';
+      delBtn.onclick = null;
+    }
+  }
+
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const g = id => (document.getElementById(id)||{}).value.trim();
     let date = g('pf-date'); // ปรับได้ ถ้าเวลาที่เหลือในวันไม่พอแล้วต้องยกงานไปวันถัดไปทั้งก้อน
@@ -6339,16 +6359,19 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   };
 }
 
+// คืน true เมื่อลบจริง / false เมื่อกดยกเลิกหรือไม่มีสิทธิ์ — ปุ่มลบในฟอร์มแก้ไขงานใช้ค่านี้
+// ตัดสินว่าจะปิดฟอร์มดีไหม (กดยกเลิกใน confirm แล้วฟอร์มต้องยังอยู่)
 function deletePlanTask(taskId) {
-  if (!canEditPlan()) return;
+  if (!canEditPlan()) return false;
   const t = planTasks.find(x => x.id === taskId);
-  if (!t) return;
-  if (!confirm('ลบงาน "' + t.rollId + ' — ' + t.rollName + '" ออกจากแผน?')) return;
+  if (!t) return false;
+  if (!confirm('ลบงาน "' + t.rollId + ' — ' + t.rollName + '" ออกจากแผน?')) return false;
   planTasks = planTasks.filter(x => x.id !== taskId);
   autoFixPlanSequencing();
   mergeAdjacentPlanTasks();
   persistState();
   renderCurrentPlanView();
+  return true;
 }
 
 // ─── ลบแผนงาน: เลือกงานจากปฏิทินได้เลย ไม่ต้องเปิดกล่องซ้อน ─────────────────────
