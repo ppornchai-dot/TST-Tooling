@@ -325,6 +325,18 @@ table.daily-tech-view > tbody > tr > td:nth-child(6):not([colspan]),
 table.daily-tech-view > tbody > tr > td:nth-child(9):not([colspan]),
 table.daily-tech-view > tbody > tr > td:nth-child(10):not([colspan]){display:none;}
 
+/* ปุ่มเริ่ม/พัก/จบงานรายชิ้น — ในมุมมองช่างทำให้ใหญ่ มีสีพื้น กดด้วยนิ้วง่ายและเห็นชัดจากระยะไกล
+   ใช้คลาสเจาะจงแทนการไล่ตาม onclick และจำกัดใต้ .daily-tech-view เท่านั้น หน้าวางแผนจึงไม่เปลี่ยน */
+table.daily-tech-view .daily-act{padding:10px 16px;font-size:14.5px;font-weight:800;border-radius:9px;line-height:1.2;}
+/* ปุ่ม "จบงาน"/"ทำต่อ" มี style="color:var(--accent)" ติดมาในแท็ก ซึ่งชนะคลาสเสมอ
+   ถ้าไม่ทับด้วย !important ตัวอักษรจะเป็นสีเดียวกับพื้นที่เพิ่งใส่ให้ = อ่านไม่เห็นเลย */
+table.daily-tech-view .daily-act-start,
+table.daily-tech-view .daily-act-resume{background:var(--green);border:1px solid var(--green);color:#fff !important;}
+table.daily-tech-view .daily-act-finish{background:var(--accent);border:1px solid var(--accent);color:#fff !important;}
+table.daily-tech-view .daily-act-pause{background:var(--amber-dim);border:1px solid var(--amber);color:var(--amber) !important;}
+table.daily-tech-view .daily-act:disabled{opacity:.45;}
+table.daily-tech-view .daily-act-wrap{gap:8px;flex-wrap:wrap;}
+
 /* ─── STATUS CHIPS ───────────────────────────── */
 .chip{
   display:inline-flex;align-items:center;gap:5px;
@@ -4567,14 +4579,14 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
           const canEditOD = t.workType !== 'polish';
           inner = `<span class="chip chip-green">✓ เสร็จ</span>${canEditOD ? ` <button class="btn btn-ghost btn-sm" ${lockReason ? `disabled title="${lockReason} — แก้ขนาดไม่ได้"` : 'title="แก้ขนาด OD ที่บันทึกไปแล้ว"'} onclick="editDailyPieceSize('${t.id}','${rollIdx}','${t.workerId || ''}')">✎ แก้ไข OD</button>` : ''}`;
         } else if (pieceStatus === 'paused') {
-          inner = `<span class="chip chip-amber">⏸ ${DL().paused}</span> <button class="btn btn-ghost btn-sm" style="color:var(--accent);" ${lockReason ? `disabled title="${lockReason} — ทำต่อไม่ได้"` : ''} onclick="resumeDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ ${DL().resume}</button>`;
+          inner = `<span class="chip chip-amber">⏸ ${DL().paused}</span> <button class="btn btn-ghost btn-sm daily-act daily-act-resume" style="color:var(--accent);" ${lockReason ? `disabled title="${lockReason} — ทำต่อไม่ได้"` : ''} onclick="resumeDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ ${DL().resume}</button>`;
         } else if (pieceStatus === 'in_progress') {
-          inner = `<div style="display:flex;gap:4px;">
-            <button class="btn btn-ghost btn-sm" style="color:var(--accent);" ${lockReason ? `disabled title="${lockReason} — จบงานนี้ไม่ได้"` : ''} onclick="finishDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">■ ${DL().finish}</button>
-            <button class="btn btn-ghost btn-sm" ${lockReason ? `disabled title="${lockReason} — พักงานนี้ไม่ได้"` : ''} onclick="pauseDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">⏸ ${DL().pause}</button>
+          inner = `<div class="daily-act-wrap" style="display:flex;gap:4px;">
+            <button class="btn btn-ghost btn-sm daily-act daily-act-finish" style="color:var(--accent);" ${lockReason ? `disabled title="${lockReason} — จบงานนี้ไม่ได้"` : ''} onclick="finishDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">■ ${DL().finish}</button>
+            <button class="btn btn-ghost btn-sm daily-act daily-act-pause" ${lockReason ? `disabled title="${lockReason} — พักงานนี้ไม่ได้"` : ''} onclick="pauseDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">⏸ ${DL().pause}</button>
           </div>`;
         } else {
-          inner = `<button class="btn btn-ghost btn-sm" ${lockReason ? `disabled title="${lockReason} — เริ่มงานนี้ไม่ได้"` : ''} onclick="startDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ ${DL().start}</button>`;
+          inner = `<button class="btn btn-ghost btn-sm daily-act daily-act-start" ${lockReason ? `disabled title="${lockReason} — เริ่มงานนี้ไม่ได้"` : ''} onclick="startDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ ${DL().start}</button>`;
         }
         actionCell = `<td onclick="event.stopPropagation();">${inner}</td>`;
       } else if (interactive && !isBreak) {
@@ -10546,17 +10558,21 @@ function renderDailyTasks() {
     } else {
       actions = '';
     }
-    const expanded = item.expandable && expandedDailyTaskId === item.key;
+    // มุมมองช่าง: กางรายชิ้นทุกงานไว้เลย ไม่ต้องกดเข้าไปดูทีละงาน (งานเรียงต่อกันมาให้ทำตามลำดับ)
+    // กางหมดแล้วจึงไม่มีอะไรให้พับ — ตัดลูกศร ▸ กับการกดแถวออกด้วย ไม่ให้กดแล้วเหมือนไม่มีอะไรเกิดขึ้น
+    const techView = isDailyTechRole();
+    const expanded = item.expandable && (techView || expandedDailyTaskId === item.key);
+    const rowClickable = item.expandable && !techView;
     const rowOpacity = isMine ? '' : 'opacity:.55;';
     // งานหลายชิ้นไม่ดัมป์ชื่อ Roll ทั้งหมดลงแถวสรุป (21 ชื่อทำให้แถวเดียวสูงเต็มจอบนมือถือ) — โชว์ 2 ชื่อแรกแล้วบอกจำนวนที่เหลือ รายชิ้นครบดูได้จากการกดขยายแถว
     const rollNames = item.expandable ? String(item.task).split(',').map(s => s.trim()).filter(Boolean) : [];
     const taskLabel = rollNames.length > 2
       ? escapeHtmlAttr(rollNames.slice(0, 2).join(', ')) + ` <span class="muted" style="font-weight:400;">…อีก ${rollNames.length - 2} ชิ้น</span>`
       : escapeHtmlAttr(item.task);
-    const row = `<tr${item.expandable ? ` style="cursor:pointer;${rowOpacity}" onclick="toggleDailyTaskDetail('${item.key}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : (rowOpacity ? ` style="${rowOpacity}"` : '')}>
+    const row = `<tr${rowClickable ? ` style="cursor:pointer;${rowOpacity}" onclick="toggleDailyTaskDetail('${item.key}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : (rowOpacity ? ` style="${rowOpacity}"` : '')}>
       <!-- ช่องติ๊กที่กดได้จริงเท่านั้นที่กัน event ไว้ — ช่องที่ปิดใช้งาน (งานตามแผน) ปล่อยให้คลิกกางรายละเอียดได้ -->
       <td${item.editable ? ' onclick="event.stopPropagation();"' : ''}>${item.editable ? `<input type="checkbox" ${status==='done'?'checked':''} onchange="toggleDailyTask('${item.key}')" style="width:16px;height:16px;cursor:pointer;">` : `<input type="checkbox" ${status==='done'?'checked':''} disabled style="width:16px;height:16px;">`}</td>
-      <td class="muted">${item.expandable ? `<span aria-hidden="true" style="display:inline-block;width:12px;transition:transform .15s;transform:rotate(${expanded ? 90 : 0}deg);">▸</span> ` : ''}${i + 1}</td>
+      <td class="muted">${rowClickable ? `<span aria-hidden="true" style="display:inline-block;width:12px;transition:transform .15s;transform:rotate(${expanded ? 90 : 0}deg);">▸</span> ` : ''}${i + 1}</td>
       <!-- กัน event เฉพาะตอนที่ช่องนี้มีปุ่มจริง — ถ้าว่าง (งานหลายชิ้น/งานที่เสร็จแล้ว) ต้องปล่อยให้คลิกทะลุไปกางรายละเอียดได้
            ไม่งั้นช่องว่างที่อยู่ติดลูกศร ▸ จะกลืนคลิกไปเฉยๆ กดกางไม่ได้ -->
       <td${actions ? ' onclick="event.stopPropagation();"' : ''}>${actions}</td>
