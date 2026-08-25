@@ -327,7 +327,8 @@ table.daily-tech-view > tbody > tr > td:nth-child(10):not([colspan]){display:non
 
 /* ปุ่มเริ่ม/พัก/จบงานรายชิ้น — ในมุมมองช่างทำให้ใหญ่ มีสีพื้น กดด้วยนิ้วง่ายและเห็นชัดจากระยะไกล
    ใช้คลาสเจาะจงแทนการไล่ตาม onclick และจำกัดใต้ .daily-tech-view เท่านั้น หน้าวางแผนจึงไม่เปลี่ยน */
-table.daily-tech-view .daily-act{padding:10px 16px;font-size:14.5px;font-weight:800;border-radius:9px;line-height:1.2;}
+/* nowrap ด้วย — ช่องแคบทำให้ "▶ เริ่มงาน" ตัดเป็น 2 บรรทัด ปุ่มสูงไม่เท่ากัน (39px กับ 56px) */
+table.daily-tech-view .daily-act{padding:10px 16px;font-size:14.5px;font-weight:800;border-radius:9px;line-height:1.2;white-space:nowrap;}
 /* ปุ่ม "จบงาน"/"ทำต่อ" มี style="color:var(--accent)" ติดมาในแท็ก ซึ่งชนะคลาสเสมอ
    ถ้าไม่ทับด้วย !important ตัวอักษรจะเป็นสีเดียวกับพื้นที่เพิ่งใส่ให้ = อ่านไม่เห็นเลย */
 table.daily-tech-view .daily-act-start,
@@ -10921,9 +10922,9 @@ function renderDailyTasks() {
       // งานที่มีหลาย Roll ให้กดเริ่ม/จบงานแยกทีละชิ้นในตารางย่อยด้านล่างแทน ไม่มีปุ่มรวมตรงนี้
       actions = '';
     } else if (status === 'pending') {
-      actions = `<button class="btn btn-ghost btn-sm" ${blockReason ? `disabled title="${blockReason} — เริ่มงานนี้ไม่ได้"` : ''} onclick="startDailyTask('${item.key}','${item.workerId || ''}')">▶ ${DL().start}</button>`;
+      actions = `<button class="btn btn-ghost btn-sm daily-act daily-act-start" ${blockReason ? `disabled title="${blockReason} — เริ่มงานนี้ไม่ได้"` : ''} onclick="startDailyTask('${item.key}','${item.workerId || ''}')">▶ ${DL().start}</button>`;
     } else if (status === 'in_progress') {
-      actions = `<button class="btn btn-ghost btn-sm" style="color:var(--accent);" ${blockReason ? `disabled title="${blockReason} — จบงานนี้ไม่ได้"` : ''} onclick="finishDailyTask('${item.key}','${item.workerId || ''}')">■ ${DL().finish}</button>`;
+      actions = `<button class="btn btn-ghost btn-sm daily-act daily-act-finish" style="color:var(--accent);" ${blockReason ? `disabled title="${blockReason} — จบงานนี้ไม่ได้"` : ''} onclick="finishDailyTask('${item.key}','${item.workerId || ''}')">■ ${DL().finish}</button>`;
     } else {
       actions = '';
     }
