@@ -4619,8 +4619,8 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
       const isBreak = PLAN_BREAK_TYPES.includes(s.type);
       const isFirstRow = si === (firstWorkIdx === -1 ? 0 : firstWorkIdx);
       const isLastRow = si === segs.length - 1;
-      const endBadge = s.endDate && s.startDate && s.endDate !== s.startDate
-        ? ` <span style="color:var(--accent);font-weight:700;">(+${Math.round((parseISODate(s.endDate)-parseISODate(s.startDate))/86400000)} วัน)</span>` : '';
+      // ช่วงย่อยที่ไม่รู้กะ (แถวสำรองตอนไม่มี segments) ให้ยึดกะจริงของงานนั้นแทน ไม่งั้นกะดึกจะขึ้น (+1 วัน) ทั้งที่ยังเป็นกะเดิม
+      const endBadge = endDayBadge(endDayOffset(s.shiftKey || taskSessionShiftKey(t), s.startDate, s.startTime, s.endDate, s.endTime));
       const shiftChip = s.shiftKey ? `<span class="chip ${shiftChipClass(s.shiftKey)}">${SHIFTS[s.shiftKey].label}</span>` : '—';
       const typeMeta = s.type ? PLAN_TIME_TYPE_META[s.type] : null;
       const typeChip = typeMeta ? `<span class="chip ${typeMeta.chip}">${typeMeta.icon}${typeMeta.label}</span>` : '—';
@@ -4807,7 +4807,7 @@ function renderPlanDay() {
       <td>${shiftChipHtml(t.shift)}</td>
       <td class="muted" style="text-align:right;">${escapeHtmlAttr(t.totalTime != null ? String(t.totalTime) : planMetricTime(t.rollId, t.workType))}</td>
       <td class="muted">${escapeHtmlAttr(t.startTime || '—')}</td>
-      <td class="muted">${escapeHtmlAttr(t.endTime || '—')}${t.endDate && t.endDate !== t.date ? ` <span style="color:var(--accent);font-weight:700;">(+${Math.round((parseISODate(t.endDate)-parseISODate(t.date))/86400000)} วัน)</span>` : ''}${t.otMinutes ? ` <span class="chip chip-red" title="เวลาทำงานนอกช่วงกะ">OT ${formatMinutesAsHm(t.otMinutes).replace('≈ ', '')}</span>` : ''}</td>
+      <td class="muted">${escapeHtmlAttr(t.endTime || '—')}${taskEndDayBadge(t)}${t.otMinutes ? ` <span class="chip chip-red" title="เวลาทำงานนอกช่วงกะ">OT ${formatMinutesAsHm(t.otMinutes).replace('≈ ', '')}</span>` : ''}</td>
       <td style="display:flex;gap:4px;" onclick="event.stopPropagation();">
         ${!canEditPlan() ? '<span class="muted">—</span>' : (() => {
           // เทียบลำดับกับ "งานจริงทั้งก้อน" เสมอ ไม่ใช่ส่วนย่อยที่แตกไว้เพื่อแสดงผล — ไม่งั้นส่วนต่อของวันถัดไปจะถูกมองว่าหลุดลำดับทุกครั้ง
@@ -5801,6 +5801,23 @@ function taskSessionShiftKey(t) {
   const minOfDay = h * 60 + m;
   return windowKeyAt(shift, minOfDay) || mostRecentShiftKeyBefore(shift, minOfDay);
 }
+// จำนวน "วันทำงาน" ที่เวลาจบเลยไปจากวันของงาน — ใช้ตัดสินว่าจะขึ้นป้าย "(+N วัน)" ท้ายเวลาจบไหม
+// กะดึกข้ามเที่ยงคืนเป็นเรื่องปกติของรอบกะเดียวกัน (20:00–05:00 แล้วต่อ OT ได้ถึง 08:20) ยังเป็นกะของวันเดิม
+// ไม่ใช่ "วันถัดไป" จึงไม่ต้องขึ้นป้ายให้สับสน — ขึ้นเฉพาะตอนงานยาวจนเลยรอบกะนั้นไปจริง ๆ เช่นไปโผล่กะดึกของอีกวัน
+function endDayOffset(shiftKeyOfSession, startDate, startTime, endDate, endTime) {
+  if (!startDate || !endDate || !endTime) return 0;
+  const a = sessionOwningDate(startDate, startTime || '00:00', shiftKeyOfSession);
+  const b = sessionOwningDate(endDate, endTime, shiftKeyOfSession);
+  const diff = Math.round((parseISODate(b) - parseISODate(a)) / 86400000);
+  return diff > 0 ? diff : 0;
+}
+function endDayBadge(n) {
+  return n > 0 ? ` <span style="color:var(--accent);font-weight:700;">(+${n} วัน)</span>` : '';
+}
+// ป้าย "(+N วัน)" ของงานหนึ่ง — ยึดกะจริงที่งานนั้นเริ่ม (งาน "2 กะ" ดูจากเวลาเริ่ม)
+function taskEndDayBadge(t) {
+  return endDayBadge(endDayOffset(taskSessionShiftKey(t), t.date, t.startTime, t.endDate || t.date, t.endTime));
+}
 // "วันที่" ที่ควรใช้แสดงงานนี้ในมุมมองรายวัน/หน้างานประจำวัน (ดู sessionOwningDate) — คำนวณสดทุกครั้ง ไม่แตะ t.date ที่เก็บไว้จริง
 function taskDisplayDate(t) {
   return sessionOwningDate(t.date, t.startTime || '', taskSessionShiftKey(t));
@@ -5989,14 +6006,19 @@ function absMinuteToClock(absMin) {
   const eh = Math.floor(absMin / 60) % 24, em = absMin % 60;
   return String(eh).padStart(2, '0') + ':' + String(em).padStart(2, '0');
 }
-// แปลงนาทีสัมบูรณ์เป็น "HH:MM" หรือ "HH:MM (+N วัน)" ถ้าข้ามวันไปจากวันที่เริ่มงาน — ใช้กับช่องจบงานที่เป็น text เพื่อโชว์วันที่ข้ามได้
-function absMinuteToClockWithDay(absMin) {
-  const daysElapsed = Math.floor(absMin / 1440);
+// แปลงนาทีสัมบูรณ์เป็น "HH:MM" หรือ "HH:MM (+N วัน)" — นับเป็นวันถัดไปตามรอบกะ ไม่ใช่ตามวันปฏิทิน
+// (กะดึกที่ข้ามเที่ยงคืนตามปกติยังเป็นกะของวันเดิม ดู endDayOffset)
+function absMinuteToClockWithDay(absMin, windowKey, startDate, sessionStartAbsMin) {
   const time = absMinuteToClock(absMin);
-  return daysElapsed > 0 ? `${time} (+${daysElapsed} วัน)` : time;
+  const daysElapsed = Math.floor(absMin / 1440);
+  if (!daysElapsed) return time;
+  if (!startDate) return `${time} (+${daysElapsed} วัน)`;
+  const n = endDayOffset(windowKey, startDate, absMinuteToClock(sessionStartAbsMin || 0),
+    addDaysIso(startDate, daysElapsed), time);
+  return n > 0 ? `${time} (+${n} วัน)` : time;
 }
 // เติมช่องเริ่ม/จบงานของกะเดียว (เช้าหรือดึก) จากผลลัพธ์ segments — ถ้ากะนี้ไม่ได้ถูกใช้งานเลยในรอบการคำนวณนี้ ให้เคลียร์ช่องที่ปิดใช้งานอยู่และโชว์ "—" ที่ช่องจบ
-function renderShiftSegmentFields(key, seg) {
+function renderShiftSegmentFields(key, seg, startDate) {
   const startEl = document.getElementById('pf-start-' + key);
   const endEl = document.getElementById('pf-end-' + key);
   if (!seg) {
@@ -6004,7 +6026,7 @@ function renderShiftSegmentFields(key, seg) {
     if (startEl && startEl.disabled) startEl.value = '';
     return;
   }
-  if (endEl) endEl.value = absMinuteToClockWithDay(seg.end);
+  if (endEl) endEl.value = absMinuteToClockWithDay(seg.end, key, startDate, seg.start);
   if (startEl && startEl.disabled) startEl.value = absMinuteToClock(seg.start);
 }
 
@@ -6033,8 +6055,8 @@ function updatePlanEndTime() {
   const endDateEl = document.getElementById('pf-enddate');
   if (endDateEl) endDateEl.value = result.date || startDate;
   const seg = result.segments || {};
-  renderShiftSegmentFields('morning', seg.morning);
-  renderShiftSegmentFields('night', seg.night);
+  renderShiftSegmentFields('morning', seg.morning, startDate);
+  renderShiftSegmentFields('night', seg.night, startDate);
   const otByShift = result.otMinutesByShift || {};
   // เพดานช่องกรอกเปลี่ยนตามประเภทงาน (CNC 3 ชม. / ขัด Roll 6 ชม.)
   const otMaxHours = otCapMaxMinFor(planFormWorkType()) / 60;
@@ -11140,7 +11162,7 @@ function renderDailyTasks() {
       date: t.date,
       partLabel: t.__partCount > 1 ? `ส่วนที่ ${t.__partIndex + 1}/${t.__partCount}` : '',
       startTime: t.startTime || '—',
-      endTimeHtml: `${escapeHtmlAttr(t.endTime || '—')}${t.endDate && t.endDate !== t.date ? ` <span style="color:var(--accent);font-weight:700;">(+${Math.round((parseISODate(t.endDate)-parseISODate(t.date))/86400000)} วัน)</span>` : ''}${t.otMinutes ? ` <span class="chip chip-red" title="เวลาทำงานนอกช่วงกะ">OT ${formatMinutesAsHm(t.otMinutes).replace('≈ ', '')}</span>` : ''}`,
+      endTimeHtml: `${escapeHtmlAttr(t.endTime || '—')}${taskEndDayBadge(t)}${t.otMinutes ? ` <span class="chip chip-red" title="เวลาทำงานนอกช่วงกะ">OT ${formatMinutesAsHm(t.otMinutes).replace('≈ ', '')}</span>` : ''}`,
       duration: t.totalTime != null ? String(t.totalTime) : planMetricTime(t.rollId),
       rollSet: t.rollSet, rollColor: planRollColorLabel(t), rollId: t.rollId, task: t.rollName,
       shiftHtml: shiftChipHtml(t.shift), who: workerName(t.workerId), workerId: t.workerId,
