@@ -6250,7 +6250,19 @@ function applyPlanFormContinueFromPrev() {
     morning: Math.max(formCaps.morning || 0, prevCaps.morning || 0),
     night: Math.max(formCaps.night || 0, prevCaps.night || 0),
   };
-  const adv = advanceToShiftWindow(shiftKey, prev.endDate || date, prev.endTime, caps, planFormWorkType());
+  let useShift = shiftKey;
+  let adv = advanceToShiftWindow(useShift, prev.endDate || date, prev.endTime, caps, planFormWorkType());
+  // ต่อเวลาในกะที่เลือกไว้ไม่ได้ แต่ "กะของงานก่อนหน้า" ทำต่อตรงจุดนั้นได้ → ใช้กะของงานก่อนหน้า
+  // เช่นงานก่อนหน้าเป็น "2 กะ" ทำถึง 21:24 แต่ฟอร์มค้างเป็นกะเช้าไว้ กะเช้าทำต่อตอน 21:24 ไม่ได้
+  // ทั้งที่งานก่อนหน้ากำลังเดินอยู่ในกะดึกตรงนั้นพอดี ปล่อยไว้เท่ากับทิ้งเวลากะดึกที่เหลือของคืนนั้นเปล่า ๆ
+  // จำกัดไว้แค่กะของงานก่อนหน้าเท่านั้น ไม่ไล่หากะอื่นเอง — งานกะเช้าที่จบ 17:00 พอดีต้องยังเตือนให้ใส่ OT
+  // ตามเดิม ไม่ใช่ถูกสลับไปเป็นงานกะดึกให้เองทั้งที่ผู้ใช้ไม่ได้สั่ง (คนละทีมกัน)
+  let switchedShift = false;
+  if (adv.date !== date && prev.shift && prev.shift !== shiftKey
+      && planWorkTypeAllowsShift(planFormWorkType(), prev.shift)) {
+    const alt = advanceToShiftWindow(prev.shift, prev.endDate || date, prev.endTime, caps, planFormWorkType());
+    if (alt.date === date) { useShift = prev.shift; adv = alt; switchedShift = true; }
+  }
   if (adv.date !== date) {
     const otNote = (caps.morning || caps.night)
       ? ' (นับ OT ที่กรอกไว้แล้ว: กะเช้า ' + Math.round((caps.morning || 0) / 6) / 10 + ' ชม. · กะดึก ' + Math.round((caps.night || 0) / 6) / 10 + ' ชม.)'
@@ -6260,13 +6272,19 @@ function applyPlanFormContinueFromPrev() {
       + '\nจุดต่อเวลาที่ทำได้จริงคือ ' + fmtDateThai(parseISODate(adv.date)) + ' ' + adv.time);
     return;
   }
-  const fieldKey = shiftKey === 'both' ? bothModeStartFieldKey(adv.time) : (shiftKey === 'night' ? 'night' : 'morning');
+  const fieldKey = useShift === 'both' ? bothModeStartFieldKey(adv.time) : (useShift === 'night' ? 'night' : 'morning');
   const mEl = document.getElementById('pf-start-morning'), nEl = document.getElementById('pf-start-night');
   if (mEl) mEl.value = fieldKey === 'morning' ? adv.time : '';
   if (nEl) nEl.value = fieldKey === 'night' ? adv.time : '';
-  if (shiftKey === 'both') setPlanShiftButtons('both', fieldKey);
+  // ตั้งกะให้ตรงกับจุดต่อเวลาเสมอ (setPlanShiftButtons ไม่แตะเวลาที่กรอกไว้ ต่างจาก selectPlanShift)
+  setPlanShiftButtons(useShift, fieldKey);
   updatePlanEndTime();
   refreshPlanFormContinueBtn();
+  // บอกด้วยว่าสลับกะให้ ไม่ให้ผู้ใช้ไปเจอเองว่ากะเปลี่ยน
+  if (switchedShift) {
+    const hint = document.getElementById('pf-continue-hint');
+    if (hint) hint.innerHTML += ` <b style="color:var(--accent);">— สลับเป็น${escapeHtmlAttr(SHIFTS[useShift].label)}ให้ เพราะ ${escapeHtmlAttr(prev.endTime)} เป็นเวลาทำงานของกะนั้น</b>`;
+  }
 }
 
 // เติมวันที่/เวลาเริ่มให้เป็นท้ายคิวจริง — เฉพาะตอนเพิ่มงานใหม่
@@ -6790,7 +6808,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     autoFixPlanSequencing();
     mergeAdjacentPlanTasks();
     // ใส่เวลา OT เพิ่มแล้ววันนั้นยังว่างอยู่ → ถามว่าจะดึงงานวันถัดไปมาเติมให้เต็มเวลาไหม
-    maybePullWorkIntoOtTail(workType, date, shiftKey, otCapMinutesByShift);
+    maybePullWorkIntoFreeTail(workType, date, shiftKey, otCapMinutesByShift);
     persistState();
     renderCurrentPlanView();
     // ย้ายวันให้เอง ต้องบอกด้วย ไม่ให้ผู้ใช้ไปเจอเองว่างานไม่ได้อยู่วันที่กด
@@ -6853,11 +6871,10 @@ function shiftEndWithOtMin(shiftKey, otCaps, workType) {
 }
 
 // จุดที่ยังว่างต่อท้ายงานสุดท้ายของวันนั้น — คืน null ถ้าเต็มแล้วหรือไม่มีงานในวันนั้นเลย
-function planDayOtFreeTail(workType, dateIso, shiftKey, otCaps) {
+function planDayFreeTail(workType, dateIso, shiftKey, otCaps) {
   const last = planLastTaskOnDay(workType, dateIso, shiftKey);
   if (!last || !last.endTime || last.endTime === '—') return null;
   const caps = mergeOtCaps(otCaps, last.otCapMinutesByShift, workType);
-  if (!caps.morning && !caps.night) return null; // ไม่มี OT ก็ไม่มีเวลาว่างให้เติม
   const anchor = nextValidPlanContinuePoint(shiftKey, last.endDate || dateIso, last.endTime);
   // จุดต่อเวลายังอยู่ใน "วันทำงาน" เดียวกันไหม (งานกะดึกที่เลยเที่ยงคืนยังนับเป็นวันเดิม)
   if (taskDisplayDate({ date: anchor.date, startTime: anchor.time, shift: shiftKey }) !== dateIso) return null;
@@ -6874,7 +6891,7 @@ function planDayOtFreeTail(workType, dateIso, shiftKey, otCaps) {
 // งานที่ย้ายมาแล้วยาวเกินเวลาที่เหลือ ไม่ต้องตัด ปล่อยให้ computePlanEnd ลากข้ามไปวันถัดไปเองตามกลไกเดิม
 // (วันนี้จึงถูกเติมจนเต็มถึงเวลาเลิกงานรวม OT พอดี แล้วส่วนที่เหลือไปต่อเช้าวันถัดไป)
 function planPullForwardPlan(workType, dateIso, shiftKey, otCaps) {
-  const tail = planDayOtFreeTail(workType, dateIso, shiftKey, otCaps);
+  const tail = planDayFreeTail(workType, dateIso, shiftKey, otCaps);
   if (!tail) return { tail: null, moves: [] };
   const later = planTasks
     .filter(t => t.workType === workType && t.endTime && t.endTime !== '—'
@@ -6944,15 +6961,16 @@ function applyPlanPullForward(workType, shiftKey, moves) {
 }
 
 // ถามผู้ใช้ก่อนย้าย — เรียกตอนบันทึกงานที่มีเวลา OT
-function maybePullWorkIntoOtTail(workType, dateIso, shiftKey, otCaps) {
+function maybePullWorkIntoFreeTail(workType, dateIso, shiftKey, otCaps) {
   if (!canEditPlan()) return false;
   const { tail, moves } = planPullForwardPlan(workType, dateIso, shiftKey, otCaps);
-  if (!tail || !moves.length) return false;
+  // ช่องว่างท้ายวันน้อยกว่า 1 ชม. ไม่ต้องกวนถาม (เศษเวลาจากการปัดเวลาแต่ละงาน)
+  if (!tail || tail.freeMinutes < 60 || !moves.length) return false;
   const shown = moves.slice(0, 4).map(mv => '• ' + mv.label
     + ' (' + fmtDateThai(parseISODate(mv.fromDate)) + ' → ' + mv.startTime + '–' + mv.endTime
     + (mv.endDate !== mv.date ? ' วันถัดไป' : '') + ')').join('\n');
   const more = moves.length > 4 ? '\n• และอีก ' + (moves.length - 4) + ' งาน' : '';
-  const msg = 'วันที่ ' + fmtDateThai(parseISODate(dateIso)) + ' ยังว่างตั้งแต่ ' + tail.time + ' ถึง ' + tail.untilTime
+  const msg = 'วันที่ ' + fmtDateThai(parseISODate(dateIso)) + ' ยังมีเวลาทำงานเหลือตั้งแต่ ' + tail.time + ' ถึง ' + tail.untilTime
     + ' (' + formatMinutesAsHm(tail.freeMinutes).replace('≈ ', '') + ')\n\n'
     + 'ดึงงานวันถัดไปมาวางต่อให้เต็มเวลาไหม?\n\n' + shown + more;
   if (!confirm(msg)) return false;
