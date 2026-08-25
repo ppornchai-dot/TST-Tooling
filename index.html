@@ -4172,8 +4172,8 @@ let currentEditingPlanTaskId = null; // taskId ของงานที่กำ
 // กะเช้ามีพักเที่ยง 12:00–13:00 ส่วนกะดึกมีพักเที่ยงคืน 00:00–01:00 (ทั้งคู่ไม่นับเป็นเวลาทำงาน)
 // "2 กะ" (ทำงานต่อเนื่องทั้งเช้า+ดึก) รวม window และพักของทั้งสองกะไว้ด้วยกัน — ช่วงคาบเกี่ยว (17:00–20:00 และ 05:00–08:00) ยังนับเป็น OT เหมือนเดิม
 // windows/breaks = "เวลาทำงานปกติ" เท่านั้น ยังไม่รวม OT — ส่วน OT ต่อท้ายหน้าต่างสูงสุด 3 ชม. (ดู OT_CAP_MAX_MIN)
-// รวม OT แล้วช่วงกะที่หน้างานใช้จริงคือ กะเช้า 08:01–20:00 (ปกติ 08:00–17:00 + OT ถึง 20:00)
-//                                    กะดึก  20:01–08:00 (ปกติ 20:00–05:00 + OT ถึง 08:00)
+// รวม OT แล้วช่วงกะที่หน้างานใช้จริงคือ กะเช้า 08:01–20:00 (ปกติ 08:00–17:00 + พัก 20 นาที + OT 3 ชม. → เลิก 20:20)
+//                                    กะดึก  20:01–08:00 (ปกติ 20:00–05:00 + พัก 20 นาที + OT 3 ชม. → เลิก 08:20)
 const SHIFTS = {
   morning: { key: 'morning', label: 'กะเช้า', start: '08:00', end: '17:00', windows: [{ startMin: 8 * 60, endMin: 17 * 60, shiftKey: 'morning' }], breaks: [{ startMin: 12 * 60, endMin: 13 * 60, shiftKey: 'morning', type: 'lunch' }] },
   night:   { key: 'night',   label: 'กะดึก',  start: '20:00', end: '05:00', windows: [{ startMin: 20 * 60, endMin: 5 * 60, shiftKey: 'night' }], breaks: [{ startMin: 0, endMin: 60, shiftKey: 'night', type: 'lunch_night' }] },
@@ -5639,7 +5639,7 @@ function advancePlanCursor(state, minutes) {
     }
     // ออกนอกช่วงกะแล้ว — พัก OT_BREAK_MIN นาทีก่อน (แค่ครั้งเดียวต่อการออกนอกกะหนึ่งครั้ง แม้จะถูกแบ่งคำนวณเป็นหลายชิ้นก็ตาม) แล้วทำ OT ได้ไม่เกินโควตาของกะที่เพิ่งออกมา (lastExitedKey)
     const cap = state.lastExitedKey ? otCapFor(state.lastExitedKey) : 0;
-    const otAvailable = Math.max(0, cap - OT_BREAK_MIN - (state.otUsedThisExit || 0)); // เวลาพัก 20 นาทีหักออกจากโควตา OT ที่กรอกเลย ไม่ใช่เวลาที่เพิ่มขึ้นมาต่างหาก
+    const otAvailable = Math.max(0, cap - (state.otUsedThisExit || 0)); // โควตา OT = นาทีทำงานจริง เวลาพัก 20 นาทีเป็นเวลาเพิ่มบนหน้าปัด ไม่ตัดจากโควตา
     if (cap > 0 && otAvailable > 0) {
       if (!state.breakPaidThisExit) {
         const breakStart = state.cursor;
@@ -6018,7 +6018,7 @@ function updatePlanEndTime() {
     const hintEl = document.getElementById('pf-ot-hint-' + key);
     if (!hintEl) return;
     const used = otByShift[key];
-    const capNote = ' — สูงสุด 3 ชม. (กะเช้าถึง 20:00 / กะดึกถึง 08:00)';
+    const capNote = ' — สูงสุด 3 ชม. (กะเช้าทำถึง 20:20 / กะดึกถึง 08:20)';
     hintEl.textContent = 'พัก 20 นาทีก่อนเริ่ม OT' + capNote + (used ? ` — ใช้จริง ${formatMinutesAsHm(used).replace('≈ ', '')}` : '');
   });
 }
@@ -6083,7 +6083,9 @@ function shiftAllowsMinute(shiftKey, min, otCaps) {
     if (!cap) return false;
     let diff = min - w.endMin;
     if (diff < 0) diff += 1440; // OT ที่ลามข้ามเที่ยงคืน
-    return diff < cap;
+    // + OT_BREAK_MIN เพราะโควตา OT นับเป็นนาทีทำงานจริง เวลาพักมาก่อน OT จึงเลื่อนปลายทางออกไปอีก 20 นาที
+    // (กะเช้า OT 3 ชม. = พัก 17:00–17:20 แล้วทำงาน 17:20–20:20 / กะดึก พัก 05:00–05:20 ทำงาน 05:20–08:20)
+    return diff < cap + OT_BREAK_MIN;
   });
 }
 
