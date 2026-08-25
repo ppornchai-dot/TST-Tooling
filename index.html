@@ -4156,8 +4156,9 @@ function syncRollStatusWithProdBlock() {
 
 // shifts = กะที่ประเภทงานนั้นทำได้จริง — งานขัด Roll ทำเฉพาะกะเช้า ส่วน CNC ทำได้ทุกกะ
 const PLAN_WORKTYPE_META = {
-  cnc:    { label: 'แผนงาน CNC', field: 'grindTime', metricLabel: 'เวลาแต่ง Roll (นาที)', shifts: ['morning', 'night', 'both'] },
-  polish: { label: 'แผนงานขัด Roll', field: 'polishTime', metricLabel: 'เวลาขัด Roll (นาที)', shifts: ['morning'] },
+  // otMaxMin = โควตา OT สูงสุด (นาทีทำงานจริง ไม่รวมพัก 20 นาทีก่อนเริ่ม OT)
+  cnc:    { label: 'แผนงาน CNC', field: 'grindTime', metricLabel: 'เวลาแต่ง Roll (นาที)', shifts: ['morning', 'night', 'both'], otMaxMin: 3 * 60, otNote: 'สูงสุด 3 ชม. (กะเช้าทำถึง 20:20 / กะดึกถึง 08:20)' },
+  polish: { label: 'แผนงานขัด Roll', field: 'polishTime', metricLabel: 'เวลาขัด Roll (นาที)', shifts: ['morning'], otMaxMin: 6 * 60, otNote: 'สูงสุด 6 ชม. (ทำถึง 23:20)' },
 };
 function planWorkTypeShifts(workType) {
   return (PLAN_WORKTYPE_META[workType] || {}).shifts || ['morning', 'night', 'both'];
@@ -4165,15 +4166,33 @@ function planWorkTypeShifts(workType) {
 function planWorkTypeAllowsShift(workType, shiftKey) {
   return planWorkTypeShifts(workType).includes(shiftKey);
 }
+// โควตา OT สูงสุดของประเภทงานนั้น (นาทีทำงานจริง) — งานขัด Roll ทำ OT ได้ยาวกว่างานแต่ง Roll
+function otCapMaxMinFor(workType) {
+  const m = PLAN_WORKTYPE_META[workType] || PLAN_WORKTYPE_META.cnc;
+  return Math.max(0, m.otMaxMin || 0);
+}
+function otCapNoteFor(workType) {
+  const m = PLAN_WORKTYPE_META[workType] || PLAN_WORKTYPE_META.cnc;
+  return m.otNote || "";
+}
+// ประเภทงานที่ฟอร์มวางแผนกำลังแก้อยู่ — งานที่แก้ไขยึดของงานนั้น ไม่ใช่ของแท็บที่เปิดอยู่
+function planFormWorkType() {
+  if (currentEditingPlanTaskId) {
+    const t = planTasks.find(x => x.id === currentEditingPlanTaskId);
+    if (t && t.workType) return t.workType;
+  }
+  return currentPlanWorkType;
+}
 let currentPlanWorkType = 'cnc';
 let currentEditingPlanTaskId = null; // taskId ของงานที่กำลังแก้ไขอยู่ในฟอร์มวางแผน (null ถ้าเป็นการเพิ่มงานใหม่) — ใช้กันไม่ให้ตัวเองถูกนับเป็น "งานอื่น" ตอนหา Roll ที่ยังไม่ถูกวางแผน
 
 // ─── กะทำงาน (เช้า/ดึก/2 กะ) — แต่ละกะมี "windows" ของช่วงเวลาปกติ (นาทีของวัน) เวลาที่ทำงานนอกทุก window นับเป็น OT ───
 // กะเช้ามีพักเที่ยง 12:00–13:00 ส่วนกะดึกมีพักเที่ยงคืน 00:00–01:00 (ทั้งคู่ไม่นับเป็นเวลาทำงาน)
 // "2 กะ" (ทำงานต่อเนื่องทั้งเช้า+ดึก) รวม window และพักของทั้งสองกะไว้ด้วยกัน — ช่วงคาบเกี่ยว (17:00–20:00 และ 05:00–08:00) ยังนับเป็น OT เหมือนเดิม
-// windows/breaks = "เวลาทำงานปกติ" เท่านั้น ยังไม่รวม OT — ส่วน OT ต่อท้ายหน้าต่างสูงสุด 3 ชม. (ดู OT_CAP_MAX_MIN)
-// รวม OT แล้วช่วงกะที่หน้างานใช้จริงคือ กะเช้า 08:01–20:00 (ปกติ 08:00–17:00 + พัก 20 นาที + OT 3 ชม. → เลิก 20:20)
-//                                    กะดึก  20:01–08:00 (ปกติ 20:00–05:00 + พัก 20 นาที + OT 3 ชม. → เลิก 08:20)
+// windows/breaks = "เวลาทำงานปกติ" เท่านั้น ยังไม่รวม OT — โควตา OT ต่อท้ายหน้าต่างแยกตามประเภทงาน (ดู PLAN_WORKTYPE_META.otMaxMin)
+// งานแต่ง Roll (CNC) 2 กะ — กะเช้า 08:01–20:00 (ปกติ 08:00–17:00 + พัก 20 นาที + OT 3 ชม. → เลิก 20:20)
+//                          กะดึก  20:01–08:00 (ปกติ 20:00–05:00 + พัก 20 นาที + OT 3 ชม. → เลิก 08:20)
+// งานขัด Roll กะเดียว     — ปกติ 08:00–17:00 + พัก 20 นาที + OT 6 ชม. → เลิก 23:20
 const SHIFTS = {
   morning: { key: 'morning', label: 'กะเช้า', start: '08:00', end: '17:00', windows: [{ startMin: 8 * 60, endMin: 17 * 60, shiftKey: 'morning' }], breaks: [{ startMin: 12 * 60, endMin: 13 * 60, shiftKey: 'morning', type: 'lunch' }] },
   night:   { key: 'night',   label: 'กะดึก',  start: '20:00', end: '05:00', windows: [{ startMin: 20 * 60, endMin: 5 * 60, shiftKey: 'night' }], breaks: [{ startMin: 0, endMin: 60, shiftKey: 'night', type: 'lunch_night' }] },
@@ -5863,9 +5882,7 @@ function bothModeStartValue() {
 function setPlanShiftButtons(key, bothStartKey) {
   document.getElementById('pf-shift').value = key;
   // ซ่อนปุ่มกะที่ประเภทงานนี้ไม่ได้ทำ (งานขัด Roll เหลือแต่กะเช้า)
-  const wt = currentEditingPlanTaskId
-    ? ((planTasks.find(t => t.id === currentEditingPlanTaskId) || {}).workType || currentPlanWorkType)
-    : currentPlanWorkType;
+  const wt = planFormWorkType();
   const allowed = planWorkTypeShifts(wt);
   document.querySelectorAll('.pf-shift-btn').forEach(b => {
     const bk = b.getAttribute('data-shift');
@@ -5901,9 +5918,7 @@ function setPlanShiftButtons(key, bothStartKey) {
 // ไม่ทับค่าที่ผู้ใช้พิมพ์เองไว้แล้วในช่องนั้น
 function selectPlanShift(key) {
   // กันตั้งกะที่ประเภทงานนี้ไม่ได้ทำ (เผื่อกดจากปุ่มที่ยังค้างอยู่/เรียกจากโค้ดอื่น)
-  const wt = currentEditingPlanTaskId
-    ? ((planTasks.find(t => t.id === currentEditingPlanTaskId) || {}).workType || currentPlanWorkType)
-    : currentPlanWorkType;
+  const wt = planFormWorkType();
   if (!planWorkTypeAllowsShift(wt, key)) {
     alert(PLAN_WORKTYPE_META[wt].label + ' ทำเฉพาะ' + planWorkTypeShifts(wt).map(k => SHIFTS[k].label).join(' / ') + 'เท่านั้น');
     return;
@@ -5932,11 +5947,11 @@ function selectPlanShift(key) {
   updatePlanEndTime();
 }
 
-// กรอก OT เกิน 3 ชม. ไม่ได้ทุกกะ — เกินกว่านั้น OT จะลามไปทับเวลาเริ่มกะถัดไป (ดู OT_CAP_MAX_MIN)
+// กรอก OT เกินเพดานของประเภทงานนั้นไม่ได้ทุกกะ — เกินกว่านั้น OT จะลามไปทับเวลาเริ่มกะถัดไป (ดู otCapMaxMinFor)
 function clampOtCapInput(el) {
   if (!el) return;
   const hours = parseFloat(el.value);
-  const maxHours = OT_CAP_MAX_MIN / 60;
+  const maxHours = otCapMaxMinFor(planFormWorkType()) / 60;
   if (!Number.isNaN(hours) && hours > maxHours) el.value = maxHours;
 }
 
@@ -5989,14 +6004,15 @@ function renderShiftSegmentFields(key, seg) {
 
 // OT ต่อได้ถึงเวลาเริ่มกะถัดไปเท่านั้น — กะเช้า 17:00→20:00 และกะดึก 05:00→08:00 ได้ 3 ชม. เท่ากัน
 // ใช้กับทุกกะ (เดิมจำกัดแค่งาน "2 กะ" กะเดี่ยวกรอกเท่าไรก็ได้ จน OT ลามไปทับกะถัดไป)
-const OT_CAP_MAX_MIN = 180;
+// ค่าจริงแยกตามประเภทงาน ดู PLAN_WORKTYPE_META.otMaxMin / otCapMaxMinFor()
 function getOtCapMinutes() {
   const shiftKey = (document.getElementById('pf-shift') || {}).value || 'morning';
   const morningHours = parseFloat((document.getElementById('pf-otcap-morning') || {}).value) || 0;
   const nightHours = parseFloat((document.getElementById('pf-otcap-night') || {}).value) || 0;
-  // จำกัดทุกกะ ไม่ใช่แค่ "2 กะ" — OT ต่อได้ไม่เกินเวลาเริ่มกะถัดไป
-  const morning = Math.min(morningHours * 60, OT_CAP_MAX_MIN);
-  const night = Math.min(nightHours * 60, OT_CAP_MAX_MIN);
+  // จำกัดทุกกะ ไม่ใช่แค่ "2 กะ" — OT ต่อได้ไม่เกินเวลาเริ่มกะถัดไป ตามเพดานของประเภทงานนั้น
+  const otMax = otCapMaxMinFor(planFormWorkType());
+  const morning = Math.min(morningHours * 60, otMax);
+  const night = Math.min(nightHours * 60, otMax);
   return { morning, night };
 }
 
@@ -6014,11 +6030,15 @@ function updatePlanEndTime() {
   renderShiftSegmentFields('morning', seg.morning);
   renderShiftSegmentFields('night', seg.night);
   const otByShift = result.otMinutesByShift || {};
+  // เพดานช่องกรอกเปลี่ยนตามประเภทงาน (CNC 3 ชม. / ขัด Roll 6 ชม.)
+  const otMaxHours = otCapMaxMinFor(planFormWorkType()) / 60;
   ['morning', 'night'].forEach(key => {
+    const capEl = document.getElementById('pf-otcap-' + key);
+    if (capEl) capEl.setAttribute('max', String(otMaxHours));
     const hintEl = document.getElementById('pf-ot-hint-' + key);
     if (!hintEl) return;
     const used = otByShift[key];
-    const capNote = ' — สูงสุด 3 ชม. (กะเช้าทำถึง 20:20 / กะดึกถึง 08:20)';
+    const capNote = ' — ' + otCapNoteFor(planFormWorkType());
     hintEl.textContent = 'พัก 20 นาทีก่อนเริ่ม OT' + capNote + (used ? ` — ใช้จริง ${formatMinutesAsHm(used).replace('≈ ', '')}` : '');
   });
 }
@@ -6074,12 +6094,13 @@ function shiftDailyCapacityMin(shiftKey) {
   return Math.max(0, win - brk);
 }
 
-function shiftAllowsMinute(shiftKey, min, otCaps) {
+function shiftAllowsMinute(shiftKey, min, otCaps, workType) {
   const shift = SHIFTS[shiftKey] || SHIFTS.morning;
   const caps = otCaps || {};
+  const otMax = otCapMaxMinFor(workType || 'cnc');
   return (shift.windows || []).some(w => {
     if (isMinuteInWindow(min, w)) return true;
-    const cap = Math.min(Math.max(0, parseFloat(caps[w.shiftKey]) || 0), OT_CAP_MAX_MIN);
+    const cap = Math.min(Math.max(0, parseFloat(caps[w.shiftKey]) || 0), otMax);
     if (!cap) return false;
     let diff = min - w.endMin;
     if (diff < 0) diff += 1440; // OT ที่ลามข้ามเที่ยงคืน
@@ -6089,13 +6110,13 @@ function shiftAllowsMinute(shiftKey, min, otCaps) {
   });
 }
 
-function advanceToShiftWindow(shiftKey, date, time, otCaps) {
+function advanceToShiftWindow(shiftKey, date, time, otCaps, workType) {
   const shift = SHIFTS[shiftKey] || SHIFTS.morning;
   const m = /^(\d{1,2}):(\d{2})/.exec(String(time || ''));
   if (!m) return { date, time: shift.start };
   const min = (+m[1]) * 60 + (+m[2]);
   const windows = shift.windows || [];
-  if (shiftAllowsMinute(shiftKey, min, otCaps)) return { date, time };
+  if (shiftAllowsMinute(shiftKey, min, otCaps, workType)) return { date, time };
   // หาจุดเริ่มหน้าต่างถัดไปของวันเดียวกันก่อน (เช่น 17:00 ของงาน 2 กะ → 20:00 วันเดียวกัน)
   const nextStart = windows.map(w => w.startMin).sort((a, b) => a - b).find(s => s > min);
   if (nextStart != null) return { date, time: planMinToHHMM(nextStart) };
@@ -6125,7 +6146,7 @@ function planAppendStartFor(workType, dateIso, shiftKey) {
   if (!last || !last.endTime) return { date: dateIso, time: shift.start };
   // ใช้ endDate จริงของงานนั้น งานที่จบข้ามเที่ยงคืนจะได้วันถูก ไม่ค้างอยู่วันเดิม
   // ยึดโควตา OT ของงานก่อนหน้า เพราะเป็นตัวที่ทำให้งานนั้นจบเลยหน้าต่างกะมาได้
-  return advanceToShiftWindow(shiftKey, last.endDate || dateIso, last.endTime, last.otCapMinutesByShift);
+  return advanceToShiftWindow(shiftKey, last.endDate || dateIso, last.endTime, last.otCapMinutesByShift, workType);
 }
 
 // ท้ายคิวจริงของประเภทงานนี้ = { date, time } ที่งานใหม่ควรไปเริ่ม
@@ -6155,7 +6176,7 @@ function planQueueEndFor(workType, dateIso, shiftKey) {
   // ตรวจหน้าต่างกะอีกครั้งหลัง nextValidPlanContinuePoint แต่ต้องส่งโควตา OT ของงานสุดท้ายไปด้วย
   // ถ้าลืมส่ง จุดที่อยู่ในช่วง OT จะถูกตีว่าเลยเวลาทำงานแล้วเด้งไปวันถัดไป (เคยพลาดมาแล้ว)
   const lastCaps = (planLastTaskOnDay(workType, dateIso, shiftKey) || {}).otCapMinutesByShift;
-  return advanceToShiftWindow(shiftKey, fixed.date, fixed.time, lastCaps);
+  return advanceToShiftWindow(shiftKey, fixed.date, fixed.time, lastCaps, workType);
 }
 
 // งานที่วางแผนไว้ก่อนหน้า "ในวันเดียวกัน" กับที่ฟอร์มเลือกอยู่ — ตัวที่จบช้าสุด
@@ -6197,7 +6218,7 @@ function applyPlanFormContinueFromPrev() {
     morning: Math.max(formCaps.morning || 0, prevCaps.morning || 0),
     night: Math.max(formCaps.night || 0, prevCaps.night || 0),
   };
-  const adv = advanceToShiftWindow(shiftKey, prev.endDate || date, prev.endTime, caps);
+  const adv = advanceToShiftWindow(shiftKey, prev.endDate || date, prev.endTime, caps, planFormWorkType());
   if (adv.date !== date) {
     const otNote = (caps.morning || caps.night)
       ? ' (นับ OT ที่กรอกไว้แล้ว: กะเช้า ' + Math.round((caps.morning || 0) / 6) / 10 + ' ชม. · กะดึก ' + Math.round((caps.night || 0) / 6) / 10 + ' ชม.)'
