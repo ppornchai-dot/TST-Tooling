@@ -1022,6 +1022,8 @@ canvas{display:block;}
 
       <!-- แถบเตือนเมื่อ Production Block เปลี่ยน Size ของเครื่องใด แต่ยังไม่ได้เลือกชุด Roll ที่ใช้งานใหม่
            ค้างอยู่ข้ามวันจนกว่าจะเลือกครบ (ดู renderDashboardSizeChangeAlert) -->
+      <!-- งานค้างจากวันก่อน — เตือน Admin/หัวหน้าให้ยกไปวางวันถัดไป (ดู renderDashboardLeftoverAlert) -->
+      <div id="dash-leftover-alert" style="display:none;"></div>
       <div id="dash-size-change-alert" style="display:none;"></div>
 
       <!-- KPI ROW -->
@@ -2019,6 +2021,7 @@ function initDashboard() {
   setTimeout(renderDashboardKpi, 0);
   // เฝ้าดูการเปลี่ยน Size ของ Production Block วันนี้ — เลื่อนออกไปเช่นกันเพราะอ่านตัวแปรของตัวดึงน้ำหนักผลิต
   setTimeout(refreshSizeChangeWatch, 0);
+  setTimeout(refreshLeftoverWatch, 0);
   // เอาการ์ดปฏิทินงาน / แผนงานสัปดาห์นี้ / กิจกรรมล่าสุด ออกจากหน้า Dashboard แล้ว
   // ฟังก์ชัน renderCal()/renderCalDetail() ยังอยู่และเช็ก element ก่อนทำงาน จึงไม่ต้องเรียกที่นี่อีก
 }
@@ -6711,6 +6714,245 @@ function deletePlanTask(taskId) {
   persistState();
   renderCurrentPlanView();
   return true;
+}
+
+// ─── งานที่ทำค้างไว้จากวันก่อน → เตือน Admin/หัวหน้า แล้วยกไปวันถัดไป ─────────────
+// "ค้าง" = งานของวันที่ผ่านไปแล้วซึ่งยังมีชิ้นที่ไม่ได้กด "จบงาน"
+// ชิ้นที่ทำเสร็จแล้วต้องอยู่กับวันเดิม (เป็นประวัติว่าทำวันนั้นจริง) ยกไปเฉพาะส่วนที่เหลือ
+function pieceMinutesOfTask(task, idx, scoped) {
+  const ov = task.rollMinutesOverride && task.rollMinutesOverride[idx];
+  if (ov != null && isFinite(parseFloat(ov))) return parseFloat(ov);
+  const field = (PLAN_WORKTYPE_META[task.workType] || {}).field;
+  return parseFloat((scoped[idx] || {})[field]) || 0;
+}
+
+function leftoverWorkTasks() {
+  const today = dailyTodayIso();
+  const out = [];
+  planTasks.forEach(t => {
+    const d = taskDisplayDate(t);
+    if (d >= today) return;                       // ยังไม่ถึงกำหนด/เป็นของวันนี้ ไม่ถือว่าค้าง
+    const ids = t.rollIds || [];
+    if (!ids.length) return;
+    if ((dailyStatusByDate[d] || {})[t.id] === 'done') return;
+    const remaining = ids.filter(i => pieceEntryFor(d, t.id, i).status !== 'done');
+    if (!remaining.length) return;
+    const done = ids.filter(i => pieceEntryFor(d, t.id, i).status === 'done');
+    const scoped = t.otherWork ? [] : getMatchingRollsForPlan(t.rollSet, t.rollColor);
+    out.push({ task: t, date: d, done, remaining,
+      minutes: remaining.reduce((s, i) => s + pieceMinutesOfTask(t, i, scoped), 0) });
+  });
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// วันทำงานถัดไปนับจากวันนี้ (ข้ามวันหยุด) — ยกงานค้างไปวางที่วันนี้ก่อนถ้ายังทำได้
+function nextWorkingDayForCarry() {
+  let d = dailyTodayIso(), guard = 0;
+  while (isPlanDayOff(d) && ++guard < 60) d = addDaysIso(d, 1);
+  return d;
+}
+
+// ยกงานที่เหลือของงานหนึ่งไปวันถัดไป แล้ว "แทรกไว้ก่อน" งานเดิมของวันนั้น
+function carryOverLeftoverTask(taskId, targetDay) {
+  if (!canEditPlan()) return null;
+  const info = leftoverWorkTasks().find(x => x.task.id === taskId);
+  if (!info) return null;
+  const t = info.task;
+  const day = targetDay || nextWorkingDayForCarry();
+  const shiftKey = t.shift || 'morning';
+  const scoped = t.otherWork ? [] : getMatchingRollsForPlan(t.rollSet, t.rollColor);
+  const anchor = (SHIFTS[shiftKey] || SHIFTS.morning).start;
+
+  // งานเดิมของวันปลายทาง (กะเดียวกัน ประเภทเดียวกัน) — เอาไว้ต่อท้ายงานที่ยกมา
+  const existingIds = planTasks
+    .filter(x => x.workType === t.workType && x.shift === shiftKey && taskDisplayDate(x) === day)
+    .sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime))
+    .map(x => x.id);
+
+  let carriedId;
+  if (!info.done.length) {
+    // ยังไม่ได้เริ่มสักชิ้น — ย้ายทั้งงานไปเลย ไม่ต้องแตกงานใหม่
+    t.date = day;
+    carriedId = t.id;
+  } else {
+    // ทำไปบางส่วนแล้ว — งานเดิมเก็บเฉพาะชิ้นที่เสร็จ (เป็นประวัติของวันนั้น) ที่เหลือแตกเป็นงานใหม่
+    const doneMinutes = info.done.reduce((s, i) => s + pieceMinutesOfTask(t, i, scoped), 0);
+    const keepOverride = {};
+    info.done.forEach(i => { keepOverride[i] = pieceMinutesOfTask(t, i, scoped); });
+    const newOverride = {};
+    info.remaining.forEach(i => { newOverride[i] = pieceMinutesOfTask(t, i, scoped); });
+
+    planTaskSeq++;
+    carriedId = 'PT-' + String(planTaskSeq).padStart(4, '0');
+    planTasks.push({
+      ...t, id: carriedId, date: day, startTime: anchor,
+      rollIds: info.remaining.slice(),
+      rollId: t.otherWork ? (info.remaining.length + ' รายการ') : (info.remaining.length + ' Roll'),
+      rollName: t.otherWork ? t.rollName : info.remaining.map(i => (scoped[i] || {}).name).filter(Boolean).join(', '),
+      totalTime: info.minutes,
+      rollMinutesOverride: newOverride,
+      splitGroupId: null,
+      carriedFrom: { taskId: t.id, date: info.date },   // บอกที่มา ใช้แสดงในแถบเตือน/ตรวจย้อนหลัง
+    });
+
+    t.rollIds = info.done.slice();
+    t.rollId = t.otherWork ? (info.done.length + ' รายการ') : (info.done.length + ' Roll');
+    t.rollName = t.otherWork ? t.rollName : info.done.map(i => (scoped[i] || {}).name).filter(Boolean).join(', ');
+    t.totalTime = doneMinutes;
+    t.rollMinutesOverride = keepOverride;
+    const endOld = computePlanEnd(t.date, t.startTime, t.totalTime, t.shift, t.otCapMinutesByShift || {});
+    t.endTime = endOld.time;
+    t.endDate = endOld.date || t.date;
+    t.otMinutes = endOld.otMinutes || 0;
+    t.otMinutesByShift = endOld.otMinutesByShift || {};
+  }
+
+  // แทรกไว้ "ก่อน" งานเดิมของวันนั้น แล้วไล่เวลางานเดิมต่อท้ายให้ใหม่
+  resequencePlanDayShift(day, shiftKey, [carriedId, ...existingIds.filter(id => id !== carriedId)], anchor);
+  return carriedId;
+}
+
+function carryOverAllLeftover() {
+  if (!canEditPlan()) return 0;
+  const list = leftoverWorkTasks();
+  if (!list.length) return 0;
+  const day = nextWorkingDayForCarry();
+  const before = new Map(planTasks.map(x => [x.id, taskDisplayDate(x)]));
+  let n = 0;
+  list.forEach(x => { if (carryOverLeftoverTask(x.task.id, day)) n++; });
+  autoFixPlanSequencing();
+  syncPlanProgressAfterMove(before);
+  persistState();
+  renderCurrentPlanView();
+  renderDailyTasks();
+  renderDashboardLeftoverAlert();
+  closeLeftoverPrompt();
+  alert('ยกงานค้าง ' + n + ' รายการไปวันที่ ' + fmtDateThai(parseISODate(day)) + ' แล้ว\nวางไว้ก่อนงานเดิมของวันนั้น');
+  return n;
+}
+
+function carryOverOneLeftover(taskId) {
+  const before = new Map(planTasks.map(x => [x.id, taskDisplayDate(x)]));
+  const id = carryOverLeftoverTask(taskId);
+  if (!id) return;
+  autoFixPlanSequencing();
+  syncPlanProgressAfterMove(before);
+  persistState();
+  renderCurrentPlanView();
+  renderDailyTasks();
+  renderDashboardLeftoverAlert();
+  renderLeftoverPrompt();
+}
+
+// ── แถบเตือนบน Dashboard + หน้าต่างเด้ง (เฉพาะ Admin/หัวหน้า) ──
+function renderDashboardLeftoverAlert() {
+  const el = document.getElementById('dash-leftover-alert');
+  if (!el) return;
+  const list = canEditPlan() ? leftoverWorkTasks() : [];
+  if (!list.length) { el.innerHTML = ''; el.style.display = 'none'; return; }
+  el.style.display = '';
+  const pieces = list.reduce((s, x) => s + x.remaining.length, 0);
+  const mins = list.reduce((s, x) => s + x.minutes, 0);
+  el.innerHTML = `<div style="background:var(--red-dim);border-left:4px solid var(--red);border-radius:8px;padding:11px 14px;margin-bottom:18px;">
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+      <div style="flex:1;min-width:260px;">
+        <div style="font-size:14px;font-weight:800;color:var(--red);margin-bottom:4px;">
+          ⚠ มีงานค้างจากวันก่อน ${list.length} รายการ · ${pieces} ชิ้น${mins ? ' · ' + formatMinutesAsHm(mins).replace('≈ ', '') : ''}
+        </div>
+        <div class="muted" style="font-size:11.5px;line-height:1.5;">ยกไปวางวันที่ ${escapeHtmlAttr(fmtDateThai(parseISODate(nextWorkingDayForCarry())))} โดยแทรกไว้ก่อนงานเดิมของวันนั้น</div>
+      </div>
+      <button class="btn btn-primary btn-sm" style="background:var(--red);border-color:var(--red);font-weight:800;flex:0 0 auto;"
+        onclick="openLeftoverPrompt()">ดูและยกไปวันถัดไป</button>
+    </div>
+  </div>`;
+}
+
+let leftoverPromptShownFor = null; // วันที่เด้งไปแล้วในเครื่องนี้ กันเด้งซ้ำทุกครั้งที่เข้าหน้า
+
+function openLeftoverPrompt() {
+  if (!canEditPlan()) return;
+  let ov = document.getElementById('leftover-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'leftover-overlay';
+    ov.className = 'modal-overlay';
+    ov.onclick = e => { if (e.target === ov) closeLeftoverPrompt(); };
+    ov.innerHTML = `<div class="modal" style="max-width:720px;display:flex;flex-direction:column;max-height:90vh;overflow:hidden;">
+      <div class="modal-head" style="flex:0 0 auto;">
+        <h3>งานค้างจากวันก่อน</h3>
+        <button class="modal-close" onclick="closeLeftoverPrompt()">✕</button>
+      </div>
+      <div style="flex:0 0 auto;padding:14px 22px 0;">
+        <div id="leftover-note" style="font-size:12px;color:var(--text-3);line-height:1.6;"></div>
+      </div>
+      <div class="modal-body" id="leftover-body" style="flex:1 1 auto;min-height:0;overflow-y:auto;padding-top:12px;"></div>
+      <div class="modal-footer" style="flex:0 0 auto;display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-ghost" onclick="closeLeftoverPrompt()">ไว้ทีหลัง</button>
+        <button class="btn btn-primary" id="leftover-carry-all" style="background:var(--red);border-color:var(--red);font-weight:800;"
+          onclick="carryOverAllLeftover()">ยกทั้งหมดไปวันถัดไป</button>
+      </div>
+    </div>`;
+    document.body.appendChild(ov);
+  }
+  renderLeftoverPrompt();
+  ov.classList.add('open');
+}
+
+function closeLeftoverPrompt() {
+  const ov = document.getElementById('leftover-overlay');
+  if (ov) ov.classList.remove('open');
+}
+
+function renderLeftoverPrompt() {
+  const body = document.getElementById('leftover-body');
+  if (!body) return;
+  const list = leftoverWorkTasks();
+  const day = nextWorkingDayForCarry();
+  const note = document.getElementById('leftover-note');
+  if (note) note.innerHTML = `งานของวันก่อนที่ยังมีชิ้นทำไม่เสร็จ — ยกเฉพาะ<b style="color:var(--text-1);">ส่วนที่เหลือ</b>ไปวันที่
+    <b style="color:var(--text-1);">${escapeHtmlAttr(fmtDateThai(parseISODate(day)))}</b>
+    และ<b style="color:var(--text-1);">แทรกไว้ก่อนงานเดิม</b>ของวันนั้น<br>
+    ชิ้นที่ทำเสร็จแล้วยังอยู่กับวันเดิมตามประวัติ ไม่ถูกย้ายตามไป`;
+  const btn = document.getElementById('leftover-carry-all');
+  if (btn) { btn.disabled = !list.length; btn.textContent = list.length ? 'ยกทั้งหมดไปวันถัดไป (' + list.length + ')' : 'ไม่มีงานค้าง'; }
+  if (!list.length) {
+    body.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text-3);font-size:13px;">ไม่มีงานค้างจากวันก่อนแล้ว</div>`;
+    return;
+  }
+  body.innerHTML = list.map(x => `<div style="display:flex;align-items:center;gap:10px;padding:9px 11px;margin-bottom:6px;
+      border:1px solid var(--border-light);border-radius:8px;background:var(--red-dim);">
+    <span style="flex:0 0 auto;font-size:11px;font-weight:800;color:#fff;background:var(--red);padding:2px 9px;border-radius:6px;">${
+      escapeHtmlAttr(fmtDateThaiShort(parseISODate(x.date)))}</span>
+    <span style="flex:1;min-width:0;">
+      <span style="display:block;font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(x.task.rollSet || '—')}</span>
+      <span style="display:block;font-size:11px;color:var(--text-3);">${escapeHtmlAttr(x.task.id)} ·
+        ${x.task.workType === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)'} ·
+        เหลือ ${x.remaining.length}/${(x.task.rollIds || []).length} ชิ้น${
+        x.done.length ? ' (ทำแล้ว ' + x.done.length + ')' : ''}${
+        x.minutes ? ' · ' + formatMinutesAsHm(x.minutes).replace('≈ ', '') : ''}</span>
+    </span>
+    <button class="btn btn-ghost btn-sm" style="flex:0 0 auto;font-weight:700;"
+      onclick="${jsCallAttr('carryOverOneLeftover', x.task.id)}">ยกไปวันถัดไป</button>
+  </div>`).join('');
+}
+
+// เด้งครั้งเดียวต่อวันต่อเครื่อง — แถบบน Dashboard ยังอยู่ตลอดจนกว่าจะเคลียร์หมด
+function maybeOpenLeftoverPrompt() {
+  if (!canEditPlan()) return;
+  const today = dailyTodayIso();
+  if (leftoverPromptShownFor === today) return;
+  try {
+    if (localStorage.getItem('tst_leftover_prompt_seen') === today) { leftoverPromptShownFor = today; return; }
+  } catch (e) { /* localStorage ใช้ไม่ได้ — ยอมให้เด้งซ้ำ ดีกว่าไม่เตือนเลย */ }
+  if (!leftoverWorkTasks().length) return;
+  leftoverPromptShownFor = today;
+  try { localStorage.setItem('tst_leftover_prompt_seen', today); } catch (e) {}
+  openLeftoverPrompt();
+}
+
+function refreshLeftoverWatch() {
+  renderDashboardLeftoverAlert();
+  maybeOpenLeftoverPrompt();
 }
 
 // ─── ลบแผนงาน: เลือกงานจากปฏิทินได้เลย ไม่ต้องเปิดกล่องซ้อน ─────────────────────
