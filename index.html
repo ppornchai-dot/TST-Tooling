@@ -1413,18 +1413,18 @@ canvas{display:block;}
       <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-top:14px;margin-bottom:6px;">
         <div class="form-group" style="margin-bottom:0;">
           <label class="form-label">จากวันที่</label>
-          <input class="form-input" type="date" id="prodweight-date-from" style="width:160px;">
+          <input class="form-input" type="date" id="prodweight-date-from" style="width:160px;" onchange="refreshProdWeightRangeButtons()">
         </div>
         <div class="form-group" style="margin-bottom:0;">
           <label class="form-label">ถึงวันที่</label>
-          <input class="form-input" type="date" id="prodweight-date-to" style="width:160px;">
+          <input class="form-input" type="date" id="prodweight-date-to" style="width:160px;" onchange="refreshProdWeightRangeButtons()">
         </div>
         <button class="btn btn-primary btn-sm" onclick="renderProdWeight()">ค้นหา</button>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          <button class="btn btn-ghost btn-sm" onclick="setProdWeightRange('today')">วันนี้</button>
-          <button class="btn btn-ghost btn-sm" onclick="setProdWeightRange('7d')">7 วันล่าสุด</button>
-          <button class="btn btn-ghost btn-sm" onclick="setProdWeightRange('month')">เดือนนี้</button>
-          <button class="btn btn-ghost btn-sm" onclick="setProdWeightRange('all')">ทั้งหมด</button>
+          <button class="btn btn-ghost btn-sm pw-range-btn" data-range="today" aria-pressed="false" onclick="setProdWeightRange('today')">วันนี้</button>
+          <button class="btn btn-ghost btn-sm pw-range-btn" data-range="7d" aria-pressed="false" onclick="setProdWeightRange('7d')">7 วันล่าสุด</button>
+          <button class="btn btn-ghost btn-sm pw-range-btn" data-range="month" aria-pressed="false" onclick="setProdWeightRange('month')">เดือนนี้</button>
+          <button class="btn btn-ghost btn-sm pw-range-btn" data-range="all" aria-pressed="false" onclick="setProdWeightRange('all')">ทั้งหมด</button>
         </div>
         <!-- ปิดใช้งานไว้จนกว่าตารางจะมีข้อมูลจริง (ดู prodWeightExport ท้าย renderProdWeight) -->
         <button class="btn btn-sm" id="prodweight-export-btn" onclick="exportProdWeightXlsx()" disabled
@@ -8528,6 +8528,32 @@ function setProdWeightRange(kind) {
   renderProdWeight();
 }
 
+// ปุ่มช่วงวันที่ที่ตรงกับค่าในช่อง "จากวันที่/ถึงวันที่" ตอนนี้ — null ถ้าผู้ใช้กรอกวันเองไม่ตรงปุ่มไหน
+// ต้องคิดจากค่าในช่องวันที่จริง ไม่ใช่จำว่ากดปุ่มไหนไว้ ไม่งั้นกรอกวันเองทับแล้วไฮไลต์จะค้างผิด
+function prodWeightRangeKindFor(fromValue, toValue) {
+  const todayIso = toISODate(new Date());
+  if (toValue !== todayIso) return null; // ทุกปุ่มยึด "ถึงวันนี้" เสมอ
+  // วันที่ 1 ของเดือน "วันนี้" กับ "เดือนนี้" เป็นช่วงเดียวกันจริง ๆ — ลำดับตรวจด้านล่างเลือกอันแรกให้
+  if (fromValue === todayIso) return 'today';
+  if (fromValue === addDaysIso(todayIso, -6)) return '7d';
+  if (fromValue === todayIso.slice(0, 8) + '01') return 'month';
+  if (fromValue === '2020-01-01') return 'all';
+  return null;
+}
+function refreshProdWeightRangeButtons() {
+  const from = document.getElementById('prodweight-date-from');
+  const to = document.getElementById('prodweight-date-to');
+  const kind = prodWeightRangeKindFor(from ? from.value : '', to ? to.value : '');
+  document.querySelectorAll('.pw-range-btn').forEach(b => {
+    const active = b.getAttribute('data-range') === kind;
+    b.style.color = active ? 'var(--accent)' : '';
+    b.style.borderColor = active ? 'var(--accent)' : '';
+    b.style.background = active ? 'var(--accent-glow)' : '';
+    b.style.fontWeight = active ? '800' : '';
+    b.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+}
+
 function renderProdWeightRangeNote(fromDate, toDate) {
   const el = document.getElementById('prodweight-range-note');
   if (!el) return;
@@ -8638,6 +8664,7 @@ async function renderProdWeight() {
   grid.innerHTML = `<div style="text-align:center;color:var(--text-3);font-size:13px;padding:24px 0;grid-column:1/-1;">กำลังโหลดน้ำหนักผลิตจากระบบ Production...</div>`;
   // แสดงช่วงที่กำลังจะดึงทันที ไม่ให้แถบค้างช่วงเดิมไว้ระหว่างรอ (ดูแล้วเข้าใจผิดว่ากดแล้วไม่เปลี่ยน)
   fgWeightMeta = null;
+  refreshProdWeightRangeButtons();
   renderProdWeightRangeNote(fromDate, toDate);
   const fgByKey = await fetchFgWeightByKey(fromDate, toDate);
   renderProdWeightRangeNote(fromDate, toDate);
