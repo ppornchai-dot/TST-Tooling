@@ -6143,7 +6143,11 @@ function planLastTaskOnDay(workType, dateIso, shiftKey) {
     // กะเดียวกัน หรือฝ่ายใดฝ่ายหนึ่งเป็น "2 กะ" ซึ่งกินเวลาทั้งวันทำงาน
     && (t.shift === shiftKey || t.shift === 'both' || shiftKey === 'both'));
   if (!sameDay.length) return null;
-  return sameDay.reduce((a, b) => historyDayOrderMin(b.endTime) > historyDayOrderMin(a.endTime) ? b : a);
+  // เทียบ "วันที่จบ + เวลาจบ" เป็นค่าเดียว ไม่ใช่ลำดับเวลาในวัน — งานที่ลากข้ามวันไปจบสาย ๆ ของวันถัดไป
+  // (เช่น 15:00 ของวันนี้ → 10:00 ของวันพรุ่งนี้) มีเวลาจบตามนาฬิกาน้อยกว่างานที่จบ 15:00 ของวันนี้
+  // ถ้าเรียงด้วยเวลานาฬิกาในวันเดียว จะเลือกงานผิดตัวเป็น "งานสุดท้ายของวัน" แล้วต่อเวลาทับกัน
+  const keyOf = t => (t.endDate || t.date) + ' ' + t.endTime;
+  return sameDay.reduce((a, b) => keyOf(b) > keyOf(a) ? b : a);
 }
 
 function planAppendStartFor(workType, dateIso, shiftKey) {
@@ -6752,6 +6756,8 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     // ตอนนี้วางแผนเท่าที่เลือกเท่านั้น ส่วนที่เหลือค่อยกด + เพิ่มงาน เองเมื่อต้องการ
     autoFixPlanSequencing();
     mergeAdjacentPlanTasks();
+    // ใส่เวลา OT เพิ่มแล้ววันนั้นยังว่างอยู่ → ถามว่าจะดึงงานวันถัดไปมาเติมให้เต็มเวลาไหม
+    maybePullWorkIntoOtTail(workType, date, shiftKey, otCapMinutesByShift);
     persistState();
     renderCurrentPlanView();
     // ย้ายวันให้เอง ต้องบอกด้วย ไม่ให้ผู้ใช้ไปเจอเองว่างานไม่ได้อยู่วันที่กด
@@ -6780,6 +6786,141 @@ function deletePlanTask(taskId) {
   mergeAdjacentPlanTasks();
   persistState();
   renderCurrentPlanView();
+  return true;
+}
+
+// ─── ใส่เวลา OT เพิ่ม → ดึงงานวันถัดไปมาเติมให้เต็มเวลา ─────────────────────
+// autoFixPlanSequencing ดันงานให้ช้าลงเท่านั้น ไม่ดึงงานให้เร็วขึ้น (ตั้งใจไว้แต่เดิมว่า
+// ช่องว่างที่เว้นไว้คือความตั้งใจของผู้ใช้ ดูเงื่อนไข curKey >= targetKey) เพิ่ม OT เข้าไป
+// วันนั้นจึงมีเวลาว่างต่อท้ายงานสุดท้ายค้างอยู่ ต้องมีตัวดึงงานมาเติมแยกออกมาต่างหาก
+
+// รวมโควตา OT สองชุดโดยเอาค่าที่มากกว่าของแต่ละกะ แล้วตัดตามเพดานของประเภทงาน
+function mergeOtCaps(a, b, workType) {
+  const A = a || {}, B = b || {};
+  const max = otCapMaxMinFor(workType);
+  const pick = k => Math.min(Math.max(parseFloat(A[k]) || 0, parseFloat(B[k]) || 0), max);
+  return { morning: pick('morning'), night: pick('night') };
+}
+
+// เวลาเลิกงานจริงของกะนั้นเมื่อรวม OT ตามโควตาที่กรอก (นาทีนับจาก 00:00 ของวันเริ่มกะ อาจเกิน 1440 ถ้าข้ามเที่ยงคืน)
+// กะเช้า OT 6 ชม. = 1020 + 20 (พัก) + 360 = 1400 → 23:20
+function shiftEndWithOtMin(shiftKey, otCaps, workType) {
+  const shift = SHIFTS[shiftKey] || SHIFTS.morning;
+  let best = null;
+  (shift.windows || []).forEach(w => {
+    const cap = Math.min(Math.max(0, parseFloat((otCaps || {})[w.shiftKey]) || 0), otCapMaxMinFor(workType));
+    let end = w.endMin + (cap ? OT_BREAK_MIN + cap : 0);
+    if (w.endMin <= w.startMin) end += 1440; // หน้าต่างที่ข้ามเที่ยงคืน (กะดึก)
+    if (best == null || end > best) best = end;
+  });
+  return best;
+}
+
+// จุดที่ยังว่างต่อท้ายงานสุดท้ายของวันนั้น — คืน null ถ้าเต็มแล้วหรือไม่มีงานในวันนั้นเลย
+function planDayOtFreeTail(workType, dateIso, shiftKey, otCaps) {
+  const last = planLastTaskOnDay(workType, dateIso, shiftKey);
+  if (!last || !last.endTime || last.endTime === '—') return null;
+  const caps = mergeOtCaps(otCaps, last.otCapMinutesByShift, workType);
+  if (!caps.morning && !caps.night) return null; // ไม่มี OT ก็ไม่มีเวลาว่างให้เติม
+  const anchor = nextValidPlanContinuePoint(shiftKey, last.endDate || dateIso, last.endTime);
+  // จุดต่อเวลายังอยู่ใน "วันทำงาน" เดียวกันไหม (งานกะดึกที่เลยเที่ยงคืนยังนับเป็นวันเดิม)
+  if (taskDisplayDate({ date: anchor.date, startTime: anchor.time, shift: shiftKey }) !== dateIso) return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(anchor.time);
+  if (!m) return null;
+  const min = (+m[1]) * 60 + (+m[2]);
+  if (!shiftAllowsMinute(shiftKey, min, caps, workType)) return null; // เลยเวลาเลิกงานรวม OT ไปแล้ว
+  const endMin = shiftEndWithOtMin(shiftKey, caps, workType);
+  const normMin = min < (SHIFTS[shiftKey] || SHIFTS.morning).windows[0].startMin ? min + 1440 : min;
+  return { date: anchor.date, time: anchor.time, caps, freeMinutes: Math.max(0, endMin - normMin), untilTime: planMinToHHMM(endMin) };
+}
+
+// วางแผนว่าจะดึงงานไหนมาเติมบ้าง โดยยังไม่แก้ข้อมูล — ไล่ตามคิวของประเภทงานนั้น
+// งานที่ย้ายมาแล้วยาวเกินเวลาที่เหลือ ไม่ต้องตัด ปล่อยให้ computePlanEnd ลากข้ามไปวันถัดไปเองตามกลไกเดิม
+// (วันนี้จึงถูกเติมจนเต็มถึงเวลาเลิกงานรวม OT พอดี แล้วส่วนที่เหลือไปต่อเช้าวันถัดไป)
+function planPullForwardPlan(workType, dateIso, shiftKey, otCaps) {
+  const tail = planDayOtFreeTail(workType, dateIso, shiftKey, otCaps);
+  if (!tail) return { tail: null, moves: [] };
+  const later = planTasks
+    .filter(t => t.workType === workType && t.endTime && t.endTime !== '—'
+      && taskDisplayDate(t) > dateIso && !planTaskIsSettled(t))
+    .sort((a, b) => {
+      const ak = a.date + ' ' + (a.startTime || ''), bk = b.date + ' ' + (b.startTime || '');
+      return ak !== bk ? ak.localeCompare(bk) : (a.id < b.id ? -1 : 1);
+    });
+  const moves = [];
+  let curDate = tail.date, curTime = tail.time;
+  for (let i = 0; i < later.length; i++) {
+    const cand = later[i];
+    if (taskDisplayDate({ date: curDate, startTime: curTime, shift: shiftKey }) !== dateIso) break;
+    const mm = /^(\d{1,2}):(\d{2})$/.exec(curTime);
+    if (!mm) break;
+    const candCaps = mergeOtCaps(tail.caps, cand.otCapMinutesByShift, workType);
+    if (!shiftAllowsMinute(shiftKey, (+mm[1]) * 60 + (+mm[2]), candCaps, workType)) break;
+    const computed = computePlanEnd(curDate, curTime, cand.totalTime, shiftKey, candCaps);
+    if (!computed.time) break;
+    moves.push({
+      id: cand.id, fromDate: cand.date, fromTime: cand.startTime,
+      date: curDate, startTime: curTime, shift: shiftKey, caps: candCaps,
+      endTime: computed.time, endDate: computed.date || curDate,
+      otMinutes: computed.otMinutes || 0, otMinutesByShift: computed.otMinutesByShift || {},
+      label: (cand.rollSet || cand.rollName || cand.rollId || '')
+        + (cand.rollColor ? ' · ' + rollColorLabelFor(cand.rollSet, cand.rollColor) : ''),
+    });
+    curDate = computed.date || curDate;
+    curTime = computed.time;
+    if (curDate !== dateIso) break; // งานนี้ลากข้ามวันไปแล้ว = วันนี้เต็ม
+  }
+  return { tail, moves };
+}
+
+// ลงมือย้ายจริง แล้วปิดช่องว่างที่เกิดขึ้นในวันต้นทางด้วย (งานที่เหลือของวันนั้นเลื่อนขึ้นมาเริ่มต้นกะ)
+function applyPlanPullForward(workType, shiftKey, moves) {
+  if (!moves.length) return 0;
+  const beforeDays = new Map(planTasks.map(t => [t.id, taskDisplayDate(t)]));
+  const sourceDays = new Set();
+  moves.forEach(mv => {
+    const t = planTasks.find(x => x.id === mv.id);
+    if (!t) return;
+    sourceDays.add(mv.fromDate);
+    t.date = mv.date;
+    t.startTime = mv.startTime;
+    t.shift = mv.shift;
+    t.otCapMinutesByShift = mv.caps;
+    t.endTime = mv.endTime;
+    t.endDate = mv.endDate;
+    t.otMinutes = mv.otMinutes;
+    t.otMinutesByShift = mv.otMinutesByShift;
+  });
+  // วันต้นทางที่ถูกดึงงานออกไป งานที่เหลือต้องเลื่อนขึ้นมาเริ่มต้นกะ ไม่ทิ้งช่องว่างไว้หัววัน
+  sourceDays.forEach(day => {
+    const rest = planTasks
+      .filter(t => t.workType === workType && t.date === day && t.shift === shiftKey && !planTaskIsSettled(t))
+      .sort((a, b) => {
+        const ak = a.startTime || '', bk = b.startTime || '';
+        return ak !== bk ? ak.localeCompare(bk) : (a.id < b.id ? -1 : 1);
+      });
+    if (rest.length) resequencePlanDayShift(day, shiftKey, rest.map(t => t.id), (SHIFTS[shiftKey] || SHIFTS.morning).start);
+  });
+  autoFixPlanSequencing();
+  mergeAdjacentPlanTasks();
+  syncPlanProgressAfterMove(beforeDays);
+  return moves.length;
+}
+
+// ถามผู้ใช้ก่อนย้าย — เรียกตอนบันทึกงานที่มีเวลา OT
+function maybePullWorkIntoOtTail(workType, dateIso, shiftKey, otCaps) {
+  if (!canEditPlan()) return false;
+  const { tail, moves } = planPullForwardPlan(workType, dateIso, shiftKey, otCaps);
+  if (!tail || !moves.length) return false;
+  const shown = moves.slice(0, 4).map(mv => '• ' + mv.label
+    + ' (' + fmtDateThai(parseISODate(mv.fromDate)) + ' → ' + mv.startTime + '–' + mv.endTime
+    + (mv.endDate !== mv.date ? ' วันถัดไป' : '') + ')').join('\n');
+  const more = moves.length > 4 ? '\n• และอีก ' + (moves.length - 4) + ' งาน' : '';
+  const msg = 'วันที่ ' + fmtDateThai(parseISODate(dateIso)) + ' ยังว่างตั้งแต่ ' + tail.time + ' ถึง ' + tail.untilTime
+    + ' (' + formatMinutesAsHm(tail.freeMinutes).replace('≈ ', '') + ')\n\n'
+    + 'ดึงงานวันถัดไปมาวางต่อให้เต็มเวลาไหม?\n\n' + shown + more;
+  if (!confirm(msg)) return false;
+  applyPlanPullForward(workType, shiftKey, moves);
   return true;
 }
 
