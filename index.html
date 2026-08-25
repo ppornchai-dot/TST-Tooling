@@ -3994,7 +3994,11 @@ const DAILY_STATUS_META = {
 // ของช่างกะดึก (ที่ล็อกให้ดูได้เฉพาะวันปัจจุบัน) จะสลับไปวันใหม่ แล้วงานที่กำลังทำอยู่หายไปทั้งกะ
 // ใช้เกณฑ์เดียวกับ sessionOwningDate() ที่ตัดสินว่างานกะดึกเป็นของวันไหน
 // 5*60 ต้องตรงกับ SHIFTS.night.end ('05:00') — อ้าง SHIFTS ตรงนี้ไม่ได้เพราะประกาศทีหลังไฟล์นี้
-const NIGHT_SHIFT_END_MIN = 5 * 60;
+// ขอบเขตกะตามที่หน้างานใช้จริง (รวม OT แล้ว):
+//   กะเช้า 08:01–20:00 — ทำงานปกติ 08:00–17:00 แล้วต่อ OT ได้ถึง 20:00
+//   กะดึก  20:01–08:00 — ทำงานปกติ 20:00–05:00 แล้วต่อ OT ได้ถึง 08:00
+// ค่านี้คือจุดที่ "วันทำงาน" พลิกเป็นวันใหม่ = เวลาจบกะดึกรวม OT (08:00) ไม่ใช่ 05:00
+const NIGHT_SHIFT_END_MIN = 8 * 60;
 function dailyTodayIso(now) {
   const d = now || new Date();
   const iso = toISODate(d);
@@ -4167,6 +4171,9 @@ let currentEditingPlanTaskId = null; // taskId ของงานที่กำ
 // ─── กะทำงาน (เช้า/ดึก/2 กะ) — แต่ละกะมี "windows" ของช่วงเวลาปกติ (นาทีของวัน) เวลาที่ทำงานนอกทุก window นับเป็น OT ───
 // กะเช้ามีพักเที่ยง 12:00–13:00 ส่วนกะดึกมีพักเที่ยงคืน 00:00–01:00 (ทั้งคู่ไม่นับเป็นเวลาทำงาน)
 // "2 กะ" (ทำงานต่อเนื่องทั้งเช้า+ดึก) รวม window และพักของทั้งสองกะไว้ด้วยกัน — ช่วงคาบเกี่ยว (17:00–20:00 และ 05:00–08:00) ยังนับเป็น OT เหมือนเดิม
+// windows/breaks = "เวลาทำงานปกติ" เท่านั้น ยังไม่รวม OT — ส่วน OT ต่อท้ายหน้าต่างสูงสุด 3 ชม. (ดู OT_CAP_MAX_MIN)
+// รวม OT แล้วช่วงกะที่หน้างานใช้จริงคือ กะเช้า 08:01–20:00 (ปกติ 08:00–17:00 + OT ถึง 20:00)
+//                                    กะดึก  20:01–08:00 (ปกติ 20:00–05:00 + OT ถึง 08:00)
 const SHIFTS = {
   morning: { key: 'morning', label: 'กะเช้า', start: '08:00', end: '17:00', windows: [{ startMin: 8 * 60, endMin: 17 * 60, shiftKey: 'morning' }], breaks: [{ startMin: 12 * 60, endMin: 13 * 60, shiftKey: 'morning', type: 'lunch' }] },
   night:   { key: 'night',   label: 'กะดึก',  start: '20:00', end: '05:00', windows: [{ startMin: 20 * 60, endMin: 5 * 60, shiftKey: 'night' }], breaks: [{ startMin: 0, endMin: 60, shiftKey: 'night', type: 'lunch_night' }] },
@@ -5164,14 +5171,14 @@ function planTaskFormFields() {
     <div class="modal-row three">
       <div class="form-group"><label class="form-label">🌤 เริ่มงานกะเช้า</label><input class="form-input" id="pf-start-morning" type="text" inputmode="numeric" placeholder="เช่น 08:00" maxlength="5" onchange="normalizeTimeInput(this);updatePlanEndTime()"></div>
       <div class="form-group"><label class="form-label">จบงานกะเช้า — คำนวณให้อัตโนมัติ</label><input class="form-input" id="pf-end-morning" type="text" disabled></div>
-      <div class="form-group"><label class="form-label">เวลา OT กะเช้า (ชม.)</label><input class="form-input" id="pf-otcap-morning" type="number" min="0" step="0.5" value="0" onchange="clampOtCapInput(this);updatePlanEndTime()">
+      <div class="form-group"><label class="form-label">เวลา OT กะเช้า (ชม.)</label><input class="form-input" id="pf-otcap-morning" type="number" min="0" max="3" step="0.5" value="0" onchange="clampOtCapInput(this);updatePlanEndTime()">
         <span id="pf-ot-hint-morning" style="font-size:11px;color:var(--text-3);">พัก 20 นาทีก่อนเริ่ม OT</span>
       </div>
     </div>
     <div class="modal-row three" id="pf-night-row">
       <div class="form-group"><label class="form-label">🌙 เริ่มงานกะดึก</label><input class="form-input" id="pf-start-night" type="text" inputmode="numeric" placeholder="เช่น 20:00" maxlength="5" onchange="normalizeTimeInput(this);updatePlanEndTime()"></div>
       <div class="form-group"><label class="form-label">จบงานกะดึก — คำนวณให้อัตโนมัติ</label><input class="form-input" id="pf-end-night" type="text" disabled></div>
-      <div class="form-group"><label class="form-label">เวลา OT กะดึก (ชม.)</label><input class="form-input" id="pf-otcap-night" type="number" min="0" step="0.5" value="0" onchange="clampOtCapInput(this);updatePlanEndTime()">
+      <div class="form-group"><label class="form-label">เวลา OT กะดึก (ชม.)</label><input class="form-input" id="pf-otcap-night" type="number" min="0" max="3" step="0.5" value="0" onchange="clampOtCapInput(this);updatePlanEndTime()">
         <span id="pf-ot-hint-night" style="font-size:11px;color:var(--text-3);">พัก 20 นาทีก่อนเริ่ม OT</span>
       </div>
     </div>
@@ -5925,13 +5932,11 @@ function selectPlanShift(key) {
   updatePlanEndTime();
 }
 
-// งาน "2 กะ" ต่อเนื่อง กรอก OT เกิน 3 ชม. ไม่ได้ (ดู OT_CAP_BOTH_MAX_MIN) — กะเดี่ยวไม่จำกัด ปล่อยผ่านตามที่กรอก
+// กรอก OT เกิน 3 ชม. ไม่ได้ทุกกะ — เกินกว่านั้น OT จะลามไปทับเวลาเริ่มกะถัดไป (ดู OT_CAP_MAX_MIN)
 function clampOtCapInput(el) {
   if (!el) return;
-  const shiftKey = (document.getElementById('pf-shift') || {}).value || 'morning';
-  if (shiftKey !== 'both') return;
   const hours = parseFloat(el.value);
-  const maxHours = OT_CAP_BOTH_MAX_MIN / 60;
+  const maxHours = OT_CAP_MAX_MIN / 60;
   if (!Number.isNaN(hours) && hours > maxHours) el.value = maxHours;
 }
 
@@ -5982,16 +5987,16 @@ function renderShiftSegmentFields(key, seg) {
   if (startEl && startEl.disabled) startEl.value = absMinuteToClock(seg.start);
 }
 
-const OT_CAP_BOTH_MAX_MIN = 180; // งาน "2 กะ" ต่อเนื่อง OT คาบเกี่ยวไปชนเวลาเริ่มกะถัดไปพอดี (17:00–20:00 / 05:00–08:00) จึงห้ามกรอกเกิน 3 ชม. — กะเดี่ยวไม่ต่อกะอื่น จึงไม่จำกัด
+// OT ต่อได้ถึงเวลาเริ่มกะถัดไปเท่านั้น — กะเช้า 17:00→20:00 และกะดึก 05:00→08:00 ได้ 3 ชม. เท่ากัน
+// ใช้กับทุกกะ (เดิมจำกัดแค่งาน "2 กะ" กะเดี่ยวกรอกเท่าไรก็ได้ จน OT ลามไปทับกะถัดไป)
+const OT_CAP_MAX_MIN = 180;
 function getOtCapMinutes() {
   const shiftKey = (document.getElementById('pf-shift') || {}).value || 'morning';
   const morningHours = parseFloat((document.getElementById('pf-otcap-morning') || {}).value) || 0;
   const nightHours = parseFloat((document.getElementById('pf-otcap-night') || {}).value) || 0;
-  let morning = morningHours * 60, night = nightHours * 60;
-  if (shiftKey === 'both') {
-    morning = Math.min(morning, OT_CAP_BOTH_MAX_MIN);
-    night = Math.min(night, OT_CAP_BOTH_MAX_MIN);
-  }
+  // จำกัดทุกกะ ไม่ใช่แค่ "2 กะ" — OT ต่อได้ไม่เกินเวลาเริ่มกะถัดไป
+  const morning = Math.min(morningHours * 60, OT_CAP_MAX_MIN);
+  const night = Math.min(nightHours * 60, OT_CAP_MAX_MIN);
   return { morning, night };
 }
 
@@ -6013,7 +6018,7 @@ function updatePlanEndTime() {
     const hintEl = document.getElementById('pf-ot-hint-' + key);
     if (!hintEl) return;
     const used = otByShift[key];
-    const capNote = shiftKey === 'both' ? ' — 2 กะ สูงสุด 3 ชม.' : '';
+    const capNote = ' — สูงสุด 3 ชม. (กะเช้าถึง 20:00 / กะดึกถึง 08:00)';
     hintEl.textContent = 'พัก 20 นาทีก่อนเริ่ม OT' + capNote + (used ? ` — ใช้จริง ${formatMinutesAsHm(used).replace('≈ ', '')}` : '');
   });
 }
@@ -6060,7 +6065,6 @@ function planMinToHHMM(min) {
 // นาทีนี้ยังนับเป็น "เวลาทำงาน" ของกะนี้ไหม — รวมช่วง OT ที่กรอกไว้ด้วย
 // เวลา OT ต่อท้ายหน้าต่างกะปกติ (พัก OT_BREAK_MIN นาทีแรกโดยหักจากโควตา ดู advancePlanCursor)
 // ถ้าไม่นับ OT ด้วย งานที่จบ 17:00 พร้อม OT 6 ชม. จะถูกมองว่า "เลยเวลาทำงานของวันนี้แล้ว" ทั้งที่ยังทำต่อได้
-const OT_WINDOW_MAX_MIN = 720; // กันค่า OT ที่กรอกเกินจริงจนลามไปทับกะถัดไป
 // เวลาทำงานปกติของกะหนึ่งต่อวัน (นาที) หักเวลาพักแล้ว — ใช้ตัดสินว่างานหนึ่ง "ทำจบได้ในวันเดียว" ไหม
 function shiftDailyCapacityMin(shiftKey) {
   const s = SHIFTS[shiftKey] || SHIFTS.morning;
@@ -6075,7 +6079,7 @@ function shiftAllowsMinute(shiftKey, min, otCaps) {
   const caps = otCaps || {};
   return (shift.windows || []).some(w => {
     if (isMinuteInWindow(min, w)) return true;
-    const cap = Math.min(Math.max(0, parseFloat(caps[w.shiftKey]) || 0), OT_WINDOW_MAX_MIN);
+    const cap = Math.min(Math.max(0, parseFloat(caps[w.shiftKey]) || 0), OT_CAP_MAX_MIN);
     if (!cap) return false;
     let diff = min - w.endMin;
     if (diff < 0) diff += 1440; // OT ที่ลามข้ามเที่ยงคืน
