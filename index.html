@@ -10331,12 +10331,20 @@ function changePage(tab, page) {
 }
 
 // ─── DAILY TASKS (งานประจำวัน) — เลือกดูเช็คลิสต์แต่ละวันได้ (ดูข้อมูลที่ประกาศไว้ก่อน restoreState() ด้านบน) ──
+// วันที่ที่ "ความคืบหน้าของงานนั้น" ถูกเก็บไว้ — ต้องเป็นวันของงานก้อนจริงวันเดียว ไม่ใช่วันที่ผู้ใช้เปิดดู
+// งานที่ทำข้ามเที่ยงคืนจะถูกแสดงในหน้างานประจำวันทั้งสองวัน ถ้าเขียนตามวันที่ดูอยู่
+// ความคืบหน้าจะกระจายไปสองวันแล้วนับไม่ครบทั้งงาน — งานที่ไม่ข้ามวันค่านี้เท่ากับ dailyViewDate เดิม
+function dailyStatusDateFor(taskId) {
+  const t = planTasks.find(x => x.id === taskId);
+  return t ? taskDisplayDate(t) : dailyViewDate;
+}
+
 function getDailyStatus(idx) {
-  return (dailyStatusByDate[dailyViewDate] || {})[idx] || 'pending';
+  return (dailyStatusByDate[dailyStatusDateFor(idx)] || {})[idx] || 'pending';
 }
 
 function toggleDailyTask(idx) {
-  const dayMap = dailyStatusByDate[dailyViewDate] || (dailyStatusByDate[dailyViewDate] = {});
+  const dayMap = dailyStatusByDate[dailyStatusDateFor(idx)] || (dailyStatusByDate[dailyStatusDateFor(idx)] = {});
   dayMap[idx] = getDailyStatus(idx) === 'done' ? 'pending' : 'done';
   maybeAutoContinueDailyPlan(dailyViewDate);
   persistState();
@@ -10344,7 +10352,7 @@ function toggleDailyTask(idx) {
 }
 
 function getDailyActualTimes(idx) {
-  return (dailyActualTimes[dailyViewDate] || {})[idx] || {};
+  return (dailyActualTimes[dailyStatusDateFor(idx)] || {})[idx] || {};
 }
 // เวลาจริงตอนนี้ (HH:MM ตามนาฬิกาเครื่อง) — ใช้บันทึกเวลาเริ่ม/จบงานจริงตอนกดปุ่ม ไม่ใช่เวลาตามแผนที่คำนวณไว้ล่วงหน้า
 function nowHHMM() {
@@ -10399,18 +10407,18 @@ function canActOnDailyItem(workerId) {
 }
 function startDailyTask(idx, workerId) {
   if (!canActOnDailyItem(workerId)) return;
-  const dayMap = dailyStatusByDate[dailyViewDate] || (dailyStatusByDate[dailyViewDate] = {});
+  const dayMap = dailyStatusByDate[dailyStatusDateFor(idx)] || (dailyStatusByDate[dailyStatusDateFor(idx)] = {});
   dayMap[idx] = 'in_progress';
-  const timesMap = dailyActualTimes[dailyViewDate] || (dailyActualTimes[dailyViewDate] = {});
+  const timesMap = dailyActualTimes[dailyStatusDateFor(idx)] || (dailyActualTimes[dailyStatusDateFor(idx)] = {});
   timesMap[idx] = { ...(timesMap[idx] || {}), startTime: nowHHMM() };
   persistState();
   renderDailyTasks();
 }
 function finishDailyTask(idx, workerId) {
   if (!canActOnDailyItem(workerId)) return;
-  const dayMap = dailyStatusByDate[dailyViewDate] || (dailyStatusByDate[dailyViewDate] = {});
+  const dayMap = dailyStatusByDate[dailyStatusDateFor(idx)] || (dailyStatusByDate[dailyStatusDateFor(idx)] = {});
   dayMap[idx] = 'done';
-  const timesMap = dailyActualTimes[dailyViewDate] || (dailyActualTimes[dailyViewDate] = {});
+  const timesMap = dailyActualTimes[dailyStatusDateFor(idx)] || (dailyActualTimes[dailyStatusDateFor(idx)] = {});
   timesMap[idx] = { ...(timesMap[idx] || {}), endTime: nowHHMM() };
   maybeAutoContinueDailyPlan(dailyViewDate);
   persistState();
@@ -10451,14 +10459,14 @@ function pieceEntryFor(dateIso, taskId, rollIdx) {
   return raw;
 }
 function getDailyPieceEntry(taskId, rollIdx) {
-  return pieceEntryFor(dailyViewDate, taskId, rollIdx);
+  return pieceEntryFor(dailyStatusDateFor(taskId), taskId, rollIdx);
 }
 function startDailyPiece(taskId, rollIdx, workerId) {
   if (!canActOnDailyItem(workerId)) return;
-  const dateMap = dailyPieceStatus[dailyViewDate] || (dailyPieceStatus[dailyViewDate] = {});
+  const dateMap = dailyPieceStatus[dailyStatusDateFor(taskId)] || (dailyPieceStatus[dailyStatusDateFor(taskId)] = {});
   const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
   taskMap[rollIdx] = { status: 'in_progress', startTime: nowHHMM() };
-  const dayMap = dailyStatusByDate[dailyViewDate] || (dailyStatusByDate[dailyViewDate] = {});
+  const dayMap = dailyStatusByDate[dailyStatusDateFor(taskId)] || (dailyStatusByDate[dailyStatusDateFor(taskId)] = {});
   if ((dayMap[taskId] || 'pending') === 'pending') dayMap[taskId] = 'in_progress';
   persistState();
   renderDailyTasks();
@@ -10630,7 +10638,7 @@ async function finishDailyPiece(taskId, rollIdx, workerId) {
                     + 'จบงานโดยไม่บันทึกขนาดหรือไม่?\n'
                     + '(กด "ยกเลิก" เพื่อกลับไปกรอกขนาด — ขนาดนี้ใช้คิดอายุ Roll)')) return;
   }
-  const dateMap = dailyPieceStatus[dailyViewDate] || (dailyPieceStatus[dailyViewDate] = {});
+  const dateMap = dailyPieceStatus[dailyStatusDateFor(taskId)] || (dailyPieceStatus[dailyStatusDateFor(taskId)] = {});
   const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
   const prevEntry = getDailyPieceEntry(taskId, rollIdx);
   taskMap[rollIdx] = needsMeasuredSize
@@ -10647,7 +10655,7 @@ async function finishDailyPiece(taskId, rollIdx, workerId) {
     applyMeasuredSizeToRegistry(roll, size, dailyViewDate, true);
   }
   const allDone = (task.rollIds || []).every(idx => getDailyPieceEntry(taskId, idx).status === 'done');
-  const dayMap = dailyStatusByDate[dailyViewDate] || (dailyStatusByDate[dailyViewDate] = {});
+  const dayMap = dailyStatusByDate[dailyStatusDateFor(taskId)] || (dailyStatusByDate[dailyStatusDateFor(taskId)] = {});
   if (allDone) {
     dayMap[taskId] = 'done';
     maybeAutoContinueDailyPlan(dailyViewDate);
@@ -10677,7 +10685,7 @@ async function editDailyPieceSize(taskId, rollIdx, workerId) {
   const oldSize = prevEntry.measuredSize;
   if (String(size).trim() === String(oldSize || '').trim()) return; // ค่าเดิม ไม่ต้องบันทึกซ้ำ
 
-  const dateMap = dailyPieceStatus[dailyViewDate] || (dailyPieceStatus[dailyViewDate] = {});
+  const dateMap = dailyPieceStatus[dailyStatusDateFor(taskId)] || (dailyPieceStatus[dailyStatusDateFor(taskId)] = {});
   const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
   taskMap[rollIdx] = { ...prevEntry, measuredSize: String(size).trim() };
   rollSizeLogSeq++;
@@ -10699,7 +10707,7 @@ async function pauseDailyPiece(taskId, rollIdx, workerId) {
   const reason = await voicePrompt('เหตุผลที่พักงานชิ้นนี้ (จำเป็นต้องระบุ):', 'พิมพ์ หรือกด 🎤 แล้วพูด');
   if (reason === null) return; // กดยกเลิก — ไม่พักงาน
   if (!reason.trim()) { alert('กรุณาระบุเหตุผลที่พักงาน'); return; }
-  const dateMap = dailyPieceStatus[dailyViewDate] || (dailyPieceStatus[dailyViewDate] = {});
+  const dateMap = dailyPieceStatus[dailyStatusDateFor(taskId)] || (dailyPieceStatus[dailyStatusDateFor(taskId)] = {});
   const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
   const prevEntry = getDailyPieceEntry(taskId, rollIdx);
   const pausedAt = nowHHMM();
@@ -10715,7 +10723,7 @@ async function pauseDailyPiece(taskId, rollIdx, workerId) {
 // กดทำต่อหลังพักงาน — กลับไปสถานะ "กำลังทำ" ตามเดิม เหตุผลที่พักครั้งนั้นยังอยู่ใน dailyPauseLog เป็นประวัติ
 function resumeDailyPiece(taskId, rollIdx, workerId) {
   if (!canActOnDailyItem(workerId)) return;
-  const dateMap = dailyPieceStatus[dailyViewDate] || (dailyPieceStatus[dailyViewDate] = {});
+  const dateMap = dailyPieceStatus[dailyStatusDateFor(taskId)] || (dailyPieceStatus[dailyStatusDateFor(taskId)] = {});
   const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
   const prevEntry = getDailyPieceEntry(taskId, rollIdx);
   taskMap[rollIdx] = { ...prevEntry, status: 'in_progress', pauseReason: null, pausedAt: null };
@@ -10885,14 +10893,18 @@ function renderDailyTasks() {
       section: 'checklist',
     }));
   const forcedType = forcedWorkTypeForRole();
-  const plannedItems = planTasks
-    .filter(t => taskDisplayDate(t) === dailyViewDate)
+  // ใช้ "ส่วนของแต่ละวัน" ชุดเดียวกับหน้าวางแผน (planDayPartsByDate) ไม่ใช่กรองงานก้อนจริงด้วยวันเริ่ม
+  // งานที่ทำข้ามเที่ยงคืน (เช่นขัด Roll เริ่ม 24 ส.ค. 22:00 จบ 25 ส.ค. 11:00) เดิมโผล่แค่วันที่เริ่ม
+  // ช่างที่มาทำงานวันที่ 25 จึงไม่เห็นงานที่ต้องทำวันนั้น ทั้งที่หน้าวางแผนแสดงอยู่
+  // แต่ละส่วนมี rollIds เฉพาะชิ้นของวันนั้น ตารางย่อยจึงโชว์แค่ชิ้นที่ต้องทำในวันที่กำลังดู
+  const plannedItems = (planDayPartsByDate().get(dailyViewDate) || [])
     .filter(t => !forcedType || t.workType === forcedType)
     .filter(t => shiftMatchesFilter(t.shift, currentDailyShiftFilter))
     .map(t => ({
       key: t.id,
       section: t.workType === 'polish' ? 'polish' : 'cnc',
       date: t.date,
+      partLabel: t.__partCount > 1 ? `ส่วนที่ ${t.__partIndex + 1}/${t.__partCount}` : '',
       startTime: t.startTime || '—',
       endTimeHtml: `${escapeHtmlAttr(t.endTime || '—')}${t.endDate && t.endDate !== t.date ? ` <span style="color:var(--accent);font-weight:700;">(+${Math.round((parseISODate(t.endDate)-parseISODate(t.date))/86400000)} วัน)</span>` : ''}${t.otMinutes ? ` <span class="chip chip-red" title="เวลาทำงานนอกช่วงกะ">OT ${formatMinutesAsHm(t.otMinutes).replace('≈ ', '')}</span>` : ''}`,
       duration: t.totalTime != null ? String(t.totalTime) : planMetricTime(t.rollId),
@@ -10936,9 +10948,13 @@ function renderDailyTasks() {
     const rowOpacity = isMine ? '' : 'opacity:.55;';
     // งานหลายชิ้นไม่ดัมป์ชื่อ Roll ทั้งหมดลงแถวสรุป (21 ชื่อทำให้แถวเดียวสูงเต็มจอบนมือถือ) — โชว์ 2 ชื่อแรกแล้วบอกจำนวนที่เหลือ รายชิ้นครบดูได้จากการกดขยายแถว
     const rollNames = item.expandable ? String(item.task).split(',').map(s => s.trim()).filter(Boolean) : [];
-    const taskLabel = rollNames.length > 2
+    // งานที่ทำข้ามวันถูกตัดเป็นส่วนของแต่ละวัน — บอกว่ากำลังดูส่วนที่เท่าไร ไม่งั้นดูเหมือนงานซ้ำสองวัน
+    const partBadge = item.partLabel
+      ? ` <span class="chip chip-blue" title="งานก้อนนี้ทำข้ามวัน — แสดงเฉพาะชิ้นที่ต้องทำในวันที่กำลังดู">${escapeHtmlAttr(item.partLabel)}</span>`
+      : '';
+    const taskLabel = (rollNames.length > 2
       ? escapeHtmlAttr(rollNames.slice(0, 2).join(', ')) + ` <span class="muted" style="font-weight:400;">…อีก ${rollNames.length - 2} ชิ้น</span>`
-      : escapeHtmlAttr(item.task);
+      : escapeHtmlAttr(item.task)) + partBadge;
     const row = `<tr${rowClickable ? ` style="cursor:pointer;${rowOpacity}" onclick="toggleDailyTaskDetail('${item.key}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : (rowOpacity ? ` style="${rowOpacity}"` : '')}>
       <!-- ช่องติ๊กที่กดได้จริงเท่านั้นที่กัน event ไว้ — ช่องที่ปิดใช้งาน (งานตามแผน) ปล่อยให้คลิกกางรายละเอียดได้ -->
       <td${item.editable ? ' onclick="event.stopPropagation();"' : ''}>${item.editable ? `<input type="checkbox" ${status==='done'?'checked':''} onchange="toggleDailyTask('${item.key}')" style="width:16px;height:16px;cursor:pointer;">` : `<input type="checkbox" ${status==='done'?'checked':''} disabled style="width:16px;height:16px;">`}</td>
