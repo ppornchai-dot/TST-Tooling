@@ -4166,6 +4166,12 @@ function planWorkTypeShifts(workType) {
 function planWorkTypeAllowsShift(workType, shiftKey) {
   return planWorkTypeShifts(workType).includes(shiftKey);
 }
+// กะที่ใช้กับงานต่อเนื่องที่ระบบสร้างให้เอง — ประเภทงานที่มีกะเดียวต้องใช้กะนั้น ไม่ใช่ "2 กะ"
+// ไม่งั้นงานขัด Roll (กะเช้าเดียว) จะถูกวางลงช่วงกะดึก 20:00–05:00 ที่ไม่มีคนทำ
+function planContinueShiftFor(workType) {
+  const allowed = planWorkTypeShifts(workType);
+  return allowed.includes('both') ? 'both' : (allowed[0] || 'morning');
+}
 // โควตา OT สูงสุดของประเภทงานนั้น (นาทีทำงานจริง) — งานขัด Roll ทำ OT ได้ยาวกว่างานแต่ง Roll
 function otCapMaxMinFor(workType) {
   const m = PLAN_WORKTYPE_META[workType] || PLAN_WORKTYPE_META.cnc;
@@ -6431,6 +6437,11 @@ function mergeAdjacentPlanTasks() {
 // คืนค่าจำนวนงานที่สร้างเพิ่ม (0 ถ้าไม่มีอะไรต้องต่อ)
 function autoContinueRemainingRollTime(workType, setName, colorKey, otCapMinutesByShift, workerId, anchorDate, anchorTime) {
   const field = PLAN_WORKTYPE_META[workType].field;
+  const contShift = planContinueShiftFor(workType);
+  // จุด "เริ่มกะ/หมดกะ" ที่ต้องหางานต่อ — เอาจากหน้าต่างของกะที่ประเภทงานนี้ใช้จริง
+  // งานขัด Roll มีแค่ 08:00/17:00 ไม่มี 20:00/05:00 เพราะไม่มีกะดึก
+  const boundaryTimes = (SHIFTS[contShift] || SHIFTS.both).windows
+    .reduce((acc, w) => acc.concat([planMinToHHMM(w.startMin), planMinToHHMM(w.endMin)]), []);
   // เวลาที่ถูกวางแผนไปแล้วจริงของ Roll ตำแหน่ง idx หนึ่งๆ (รวมทุกงานของ Size Roll/สี/ประเภทงานเดียวกัน) — งานที่ตัดเวลาไว้บางส่วน (rollMinutesOverride) นับตามที่ตัดจริง ไม่ใช่เต็มเวลาทะเบียน
   const usedMinutesForIdx = (idx, fullMinutes) => planTasks.reduce((sum, t) => {
     if (t.workType !== workType || t.rollSet !== setName || t.rollColor !== (colorKey || null)) return sum;
@@ -6441,11 +6452,11 @@ function autoContinueRemainingRollTime(workType, setName, colorKey, otCapMinutes
   let lastEndDate = anchorDate, lastEndTime = anchorTime;
   let createdCount = 0;
   let guard = 0;
-  while (['08:00', '17:00', '20:00', '05:00'].includes(lastEndTime) && ++guard <= 366) {
+  while (boundaryTimes.includes(lastEndTime) && ++guard <= 366) {
     // ถ้าจบพอดีตรงจุด "หมดกะ" (17:00 จบกะเช้า / 05:00 จบกะดึก) ให้ขยับไปเริ่มงานต่อที่ "เริ่มกะถัดไป" ตรงๆ (20:00/08:00 วันเดียวกัน) แทนที่จะให้งานใหม่มีเวลาเริ่มตรงจุดที่ยังไม่มีใครทำงานอยู่
     // (ถ้าปล่อยให้ startTime เป็น 17:00/05:00 เป๊ะ ตารางกะของงานนั้นจะเริ่มด้วยช่วง "รอกะถัดไป" ล้วนๆ ก่อนมีงานจริงเลยสักนาที ทำให้ splitPlanDataAcrossDays สร้างกลุ่มแรกที่ไม่มี Roll ไม่มีเวลาว่างเปล่าติดมาด้วย)
     // และถ้าจุดที่ได้ไปตกวันหยุด (อาทิตย์/วันหยุดบริษัท) เลื่อนไปเริ่มกะเช้าของวันทำงานถัดไปแทน (ดู nextValidPlanContinuePoint)
-    const boundaryFix = nextValidPlanContinuePoint('both', lastEndDate, lastEndTime);
+    const boundaryFix = nextValidPlanContinuePoint(contShift, lastEndDate, lastEndTime);
     lastEndDate = boundaryFix.date;
     lastEndTime = boundaryFix.time;
     const matchedRolls = getMatchingRollsForPlan(setName, colorKey || null);
@@ -6459,7 +6470,7 @@ function autoContinueRemainingRollTime(workType, setName, colorKey, otCapMinutes
     const remainingMinutesList = remainingList.map(p => p.remaining);
     const nextTotalTime = remainingMinutesList.reduce((a, b) => a + b, 0);
     if (!nextTotalTime) break;
-    const nextSplit = splitPlanDataAcrossDays({ date: lastEndDate, shift: 'both', startTime: lastEndTime, otCapMinutesByShift, rollIds: remainingIdx }, remainingRolls, workType, remainingMinutesList);
+    const nextSplit = splitPlanDataAcrossDays({ date: lastEndDate, shift: contShift, startTime: lastEndTime, otCapMinutesByShift, rollIds: remainingIdx }, remainingRolls, workType, remainingMinutesList);
     if (nextSplit) {
       const grpId = 'SG-' + String(planTaskSeq + 1).padStart(4, '0');
       nextSplit.forEach(grp => {
@@ -6469,7 +6480,7 @@ function autoContinueRemainingRollTime(workType, setName, colorKey, otCapMinutes
           date: grp.date, rollSet: setName, rollColor: colorKey || null,
           rollIds: grp.rollIds, rollId: grp.rollId, rollName: grp.rollName, totalTime: grp.totalTime,
           startTime: grp.startTime, endTime: grp.endTime, endDate: grp.endDate,
-          shift: 'both', otCapMinutesByShift,
+          shift: contShift, otCapMinutesByShift,
           otMinutes: grp.otMinutes, otMinutesByShift: grp.otMinutesByShift,
           rollMinutesOverride: grp.rollMinutesOverride,
           workerId,
@@ -6481,7 +6492,7 @@ function autoContinueRemainingRollTime(workType, setName, colorKey, otCapMinutes
       lastEndDate = lastNextGrp.endDate;
       lastEndTime = lastNextGrp.endTime;
     } else {
-      const nextComputed = computePlanEnd(lastEndDate, lastEndTime, nextTotalTime, 'both', otCapMinutesByShift);
+      const nextComputed = computePlanEnd(lastEndDate, lastEndTime, nextTotalTime, contShift, otCapMinutesByShift);
       // งานนี้ทำ Roll แต่ละชิ้นในรายการจบครบในคราวเดียว (ไม่ถูกตัดข้ามวันอีก) แต่บางชิ้นอาจยังเป็น "ส่วนที่เหลือ" จากงานก่อนหน้าอยู่ (remaining < full) ต้องบันทึก override ไว้เพื่อให้ยังนับเป็นงานต่อเนื่อง/แสดงผลถูกต้อง
       const rollMinutesOverride = {};
       remainingList.forEach(p => { if (p.remaining !== p.full) rollMinutesOverride[p.idx] = p.remaining; });
@@ -6492,7 +6503,7 @@ function autoContinueRemainingRollTime(workType, setName, colorKey, otCapMinutes
         rollIds: remainingIdx, rollId: remainingRolls.length + ' Roll', rollName: remainingRolls.map(r => r.name).join(', '),
         totalTime: nextTotalTime,
         startTime: lastEndTime, endTime: nextComputed.time || '—', endDate: nextComputed.date || lastEndDate,
-        shift: 'both', otCapMinutesByShift,
+        shift: contShift, otCapMinutesByShift,
         otMinutes: nextComputed.otMinutes || 0, otMinutesByShift: nextComputed.otMinutesByShift || {},
         rollMinutesOverride: Object.keys(rollMinutesOverride).length ? rollMinutesOverride : undefined,
         workerId,
@@ -7849,7 +7860,7 @@ function reconcileLastPieceBoundary(workType, rollSet, rollColor) {
         continuation.startTime = anchor.time;
         continuation.totalTime = newRemaining;
         continuation.rollMinutesOverride = { [lastIdx]: newRemaining };
-        const cComputed = computePlanEnd(anchor.date, anchor.time, newRemaining, 'both', continuation.otCapMinutesByShift || {});
+        const cComputed = computePlanEnd(anchor.date, anchor.time, newRemaining, continuation.shift || t.shift, continuation.otCapMinutesByShift || {});
         continuation.endTime = cComputed.time; continuation.endDate = cComputed.date || anchor.date;
         continuation.otMinutes = cComputed.otMinutes || 0; continuation.otMinutesByShift = cComputed.otMinutesByShift || {};
       }
