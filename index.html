@@ -3998,11 +3998,39 @@ const NIGHT_SHIFT_END_MIN = 5 * 60;
 function dailyTodayIso(now) {
   const d = now || new Date();
   const iso = toISODate(d);
-  return (d.getHours() * 60 + d.getMinutes()) < NIGHT_SHIFT_END_MIN ? addDaysIso(iso, -1) : iso;
+  const min = d.getHours() * 60 + d.getMinutes();
+  if (min < NIGHT_SHIFT_END_MIN) return addDaysIso(iso, -1);
+  // เลยเวลาจบกะดึก (05:00) แล้ว แต่ถ้ากะดึกของเมื่อวานยังต่อ OT ค้างอยู่ ยังนับเป็นวันทำงานของเมื่อวาน
+  // ไม่งั้นวันทำงานพลิกเป็นวันใหม่ตอน 05:00 ตรงๆ งานกะดึกที่ทำ OT ถึง 06:00–07:00 จะหลุดหายจาก
+  // หน้างานประจำวันทันที และช่างถูกตรึงให้ดูได้แค่วันปัจจุบัน จึงย้อนไปดูงานที่กำลังทำอยู่ไม่ได้
+  if (min < NIGHT_OT_LATEST_MIN && nightSessionStillRunning(d)) return addDaysIso(iso, -1);
+  return iso;
 }
-let dailyViewDate = dailyTodayIso();
+
+// เพดานเวลาที่ยังยอมนับว่าเป็น "กะดึกของเมื่อวาน" — กันงานที่ลืมกดจบไว้ตรึงวันทำงานค้างทั้งวัน
+const NIGHT_OT_LATEST_MIN = 12 * 60; // เที่ยงวัน
+
+// กะดึกของเมื่อวานยังทำ OT ค้างอยู่ไหม — ยึดเวลาจบตามแผนของงานนั้น (รวม OT แล้ว)
+// งานที่กดจบครบแล้วไม่นับ และเมื่อเลยเวลาจบตามแผนไปก็ไม่นับ วันทำงานจึงพลิกเองเสมอ
+function nightSessionStillRunning(d) {
+  const nowMin = d.getHours() * 60 + d.getMinutes();
+  const todayCal = toISODate(d);
+  const prevSession = addDaysIso(todayCal, -1);
+  return planTasks.some(t => {
+    if (taskSessionShiftKey(t) !== 'night') return false;
+    if (taskDisplayDate(t) !== prevSession) return false;
+    if ((dailyStatusByDate[prevSession] || {})[t.id] === 'done') return false;
+    if ((t.endDate || t.date) !== todayCal) return false; // ต้องเป็นงานที่ลากมาจบในวันปฏิทินวันนี้
+    const m = /^(\d{1,2}):(\d{2})$/.exec(t.endTime || '');
+    if (!m) return false;
+    return Number(m[1]) * 60 + Number(m[2]) > nowMin;      // ยังไม่ถึงเวลาจบตามแผน
+  });
+}
 // สถานะเช็คลิสต์แยกตามวันที่ที่ดู — { 'YYYY-MM-DD': { [taskKey]: 'done'|'in_progress'|'pending'|'overdue' } } ค่าที่ไม่มีถือว่า 'pending'
 let dailyStatusByDate = {};
+// ประกาศ dailyStatusByDate ไว้ก่อนบรรทัดนี้ — dailyTodayIso() เรียก nightSessionStillRunning() ซึ่งอ่านค่านั้น
+// ถ้าเรียกก่อนประกาศจะชน TDZ แล้วสคริปต์ตายกลางทาง (อาการเดียวกับที่เคยเจอหลายรอบ)
+let dailyViewDate = dailyTodayIso();
 // เวลาเริ่ม/จบงานจริงที่บันทึกจากปุ่ม "เริ่มงาน"/"จบงาน" ของงานตามแผน (CNC/ขัด Roll) แยกตามวันที่ที่ดู — { 'YYYY-MM-DD': { [planTaskId]: {startTime, endTime} } }
 let dailyActualTimes = {};
 // ไม่มีตัวกรองประเภทงานในหน้างานประจำวันแล้ว — ตารางแบ่งหัวข้อเป็น CNC / ขัด Roll เสมอ (ดู DAILY_SECTIONS)
