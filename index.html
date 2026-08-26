@@ -6414,6 +6414,8 @@ function mergeAdjacentPlanTasks() {
       for (let i = 1; i < sorted.length; i++) {
         const prev = sorted[i - 1], cur = sorted[i];
         if (cur.date !== prev.endDate || cur.startTime !== prev.endTime) continue;
+        // งานที่มีการกดเริ่ม/จบไปแล้ว ห้ามรวม — id ของงานหลังจะหายไปพร้อมบันทึกความคืบหน้าที่ผูกกับ id นั้น
+        if (planTaskIsSettled(prev) || planTaskIsSettled(cur)) continue;
         // Roll ตัวเดียวกันอาจอยู่ทั้งสองงาน (เช่น งานเดิมที่ได้เวลาไปบางส่วน มาเจอกับงานต่อของตัวมันเองที่เพิ่งแทรกเข้ามาติดกันพอดี) —
         // ห้าม concat ตรงๆ เพราะจะเห็น Roll ตัวนั้นซ้ำสองชิ้นในงานเดียว ต้องรวมนาทีของมันเข้าด้วยกันเป็นชิ้นเดียวแทน
         const prevIds = prev.rollIds || [];
@@ -6722,8 +6724,12 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     // ยกไปวันทำงานถัดไปทั้งก้อน เมื่อตัดแบ่งวันไม่ได้ และ
     //   1) วันนั้นไม่มีเวลาทำงานเหลือให้เริ่มเลย — ยกทั้งงานใหม่และงานที่แก้ไข (เดิมงานที่แก้ไขไม่เคยถูกยก จึงค้างอยู่เวลาเดิม)
     //   2) หรือเป็นงานใหม่ที่ทำจบได้ในวันเดียวอยู่แล้ว แต่เวลาที่เหลือไม่พอจนต้องข้ามวัน (พฤติกรรมเดิม)
+    // งานที่เริ่มทำ/ทำเสร็จไปแล้ว ห้ามยกวันให้เอง — เวลาที่กดจริงผูกกับวันทำงานที่ทำจริงไปแล้ว
+    // ยกทีหลังเท่ากับย้ายงานที่ทำคืนก่อนไปเป็นของวันใหม่ หน้าประวัติจะรายงานผิดวัน
+    // (ผู้ใช้ยังตั้งวันเองในฟอร์มได้ตามปกติ — ห้ามแค่การยกอัตโนมัติ)
+    const alreadyWorked = mode === 'edit' && task && planTaskIsSettled(task);
     let movedToNextDay = null;
-    if (!splitProbe) {
+    if (!splitProbe && !alreadyWorked) {
       const cap = shiftDailyCapacityMin(shiftKey) + Math.max(0, (otCapMinutesByShift[shiftKey === 'night' ? 'night' : 'morning'] || 0));
       const oneDayJobOverflows = mode !== 'edit' && totalTime > 0 && totalTime <= cap
         && (() => { const p = computePlanEnd(date, startTime, totalTime, shiftKey, otCapMinutesByShift); return p.date && p.date !== date; })();
