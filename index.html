@@ -2219,14 +2219,30 @@ function plannedRollKeySet(workType) {
 // เสร็จแล้ว → ใช้ "วันที่ทำเสร็จจริง" (วันที่บันทึกความคืบหน้าไว้ ซึ่งอาจเสร็จก่อนแผน)
 // ยังไม่เสร็จ → ใช้วันจบตามแผนของงานสุดท้าย
 // นับงานที่ทำเสร็จแล้วด้วย เพราะ "วันที่แต่งเสร็จ" ที่ต้องการแสดงก็คือวันของงานนั้น
+// วันล่าสุดที่ชุดสีนี้ถูกบันทึกว่า "เดินงาน" (ใช้งานจริง) — จากบันทึกชุดสีที่เดินรายวัน (rollRunColor)
+// ชุดที่ถูกใช้งานแล้วกลับมารอแต่ง/รอขัดอีกครั้ง ถือเป็นรอบใหม่ งานแต่ง/ขัดของรอบก่อนจึงไม่ใช่ของรอบนี้
+function lastRunDateForRollColor(setName, colorKey) {
+  if (!colorKey) return null;
+  let latest = null;
+  Object.keys(rollRunColor || {}).forEach(d => {
+    if ((rollRunColor[d] || {})[setName] !== colorKey) return;
+    if (!latest || d > latest) latest = d;
+  });
+  return latest;
+}
+
 function plannedFinishForRollColor(setName, colorKey, workType) {
   const want = colorKey || NO_COLOR_KEY;
+  // ตัดรอบ: งานที่จบไปก่อนวันที่ชุดนี้ถูกใช้งานล่าสุด เป็นของรอบก่อน ไม่นับเป็นสถานะของรอบปัจจุบัน
+  // (ไม่งั้นชุดที่ขัดเสร็จ 20 ส.ค. แล้วเอาไปเดินงาน 25 ส.ค. จะยังขึ้น "✓ ขัดเสร็จ 20 ส.ค." ทั้งที่รอขัดรอบใหม่อยู่)
+  const sinceRun = lastRunDateForRollColor(setName, colorKey);
   let planned = null, actual = null, allDone = true, found = false;
   planTasks.forEach(t => {
     if (t.workType !== workType || t.rollSet !== setName) return;
     if ((t.rollColor || NO_COLOR_KEY) !== want) return;
-    found = true;
     const endDate = t.endDate || t.date;
+    if (sinceRun && endDate < sinceRun) return;
+    found = true;
     const key = endDate + ' ' + (t.endTime || '');
     if (!planned || key > planned.key) planned = { key, date: endDate };
     if (planTaskProgressState(t) === 'done') {
