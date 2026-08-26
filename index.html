@@ -2084,11 +2084,11 @@ function renderDashboardKpi() {
 
   // 4) งานตกแผน — เลยเวลาจบตามแผนแล้วยังไม่เสร็จ (เกณฑ์เดียวกับหน้างานค้าง) เฉพาะของเดือนนี้
   const overdue = collectOverdueRecords().filter(r => String(r.dateIso || '').slice(0, 7) === thisYm);
-  const worst = overdue.reduce((m, r) => Math.max(m, r.overdueDays || 0), 0);
+  const worst = overdue.reduce((m, r) => (r.overdueMin || 0) > (m.overdueMin || 0) ? r : m, { overdueMin: 0, overdueLabel: '' });
   set('dash-kpi-overdue', overdue.length.toLocaleString(),
     'เลยเวลาจบตามแผนแล้วยังไม่เสร็จ — เกณฑ์เดียวกับหน้างานค้าง');
   set('dash-kpi-overdue-sub', overdue.length
-    ? 'เกินกำหนด — ช้าสุด ' + worst.toLocaleString() + ' วัน'
+    ? 'เกินกำหนด — ช้าสุด ' + (worst.overdueLabel || '—')
     : 'ไม่มีงานเกินกำหนด');
   const odSub = el('dash-kpi-overdue-sub');
   if (odSub) odSub.style.color = overdue.length ? 'var(--red)' : 'var(--green)';
@@ -11623,11 +11623,19 @@ function collectOverdueRecords() {
   const records = [];
   planTasks.forEach(t => {
     const dateIso = taskDisplayDate(t);
+    // ยึดสถานะรายชิ้นเป็นตัวจริง ไม่ใช่แค่ธงสถานะระดับวัน — งานที่กดจบครบทุกชิ้นแล้วแต่ธงระดับวัน
+    // ยังค้างเป็น "กำลังทำ" (เช่นงานที่ถูกแก้/ย้ายวันทีหลัง) จะขึ้นเป็นงานค้างตลอดไปทั้งที่เสร็จแล้ว
+    if (planTaskProgressState(t) === 'done') return;
     const status = (dailyStatusByDate[dateIso] || {})[t.id] || 'pending';
-    if (status === 'done') return;
     const endDt = planTaskEndDateTime(t);
     if (!endDt || endDt >= now) return; // ยังไม่ถึงกำหนดจบ — ยังไม่นับว่าค้าง
-    const overdueDays = Math.max(1, Math.ceil((now - endDt) / 86400000));
+    // เลยกำหนดมาเท่าไรจริง — ปัดขึ้นเป็น "1 วัน" ตั้งแต่เลยมาไม่กี่นาที ทำให้เข้าใจผิดว่าค้างข้ามวัน
+    const overdueMin = Math.max(0, Math.round((now - endDt) / 60000));
+    const overdueDays = Math.floor(overdueMin / 1440);
+    const overdueLabel = overdueDays >= 1
+      ? overdueDays + ' วัน' + (Math.floor((overdueMin % 1440) / 60) ? ' ' + Math.floor((overdueMin % 1440) / 60) + ' ชม.' : '')
+      : (overdueMin >= 60 ? Math.floor(overdueMin / 60) + ' ชม.' + (overdueMin % 60 ? ' ' + (overdueMin % 60) + ' นาที' : '')
+                          : overdueMin + ' นาที');
     const pauseReasons = (t.rollIds || [])
       .map(rollIdx => pieceEntryFor(dateIso, t.id, rollIdx))
       .filter(e => e.status === 'paused' && e.pauseReason)
@@ -11641,12 +11649,12 @@ function collectOverdueRecords() {
       dateIso, // ใช้กรองเฉพาะเดือนนี้ในการ์ด KPI หน้า Dashboard
       tooling: `${t.rollSet || '—'}${t.rollColor ? ' — ' + planRollColorLabel(t) : ''}`,
       reason, who: workerName(t.workerId),
-      dueLabel: `${fmtDateThaiShort(parseISODate(dateIso))} ${t.endTime || ''}`,
-      overdueDays,
+      dueLabel: `${fmtDateThaiShort(parseISODate(t.endDate || t.date))} ${t.endTime || ''}`,
+      overdueDays, overdueMin, overdueLabel,
       priority: overdueDays >= 7 ? 'สูง' : overdueDays >= 2 ? 'กลาง' : 'ต่ำ',
     });
   });
-  records.sort((a, b) => b.overdueDays - a.overdueDays);
+  records.sort((a, b) => b.overdueMin - a.overdueMin);
   return records;
 }
 
@@ -11677,7 +11685,7 @@ function renderPending() {
       <td>${escapeHtmlAttr(r.reason)}</td>
       <td class="muted">${escapeHtmlAttr(r.who)}</td>
       <td class="muted">${escapeHtmlAttr(r.dueLabel)}</td>
-      <td><span style="color:var(--red);font-weight:700;">${r.overdueDays} วัน</span></td>
+      <td><span style="color:var(--red);font-weight:700;">${escapeHtmlAttr(r.overdueLabel)}</span></td>
       <td><span class="prio prio-${r.priority === 'สูง' ? 'high' : r.priority === 'กลาง' ? 'med' : 'low'}">● ${escapeHtmlAttr(r.priority)}</span></td>
       <td><span class="chip chip-red">เกินกำหนด</span></td>
     </tr>`).join('') || `<tr><td colspan="10" style="padding:32px;text-align:center;color:var(--text-3);">ไม่มีงานค้าง</td></tr>`;
