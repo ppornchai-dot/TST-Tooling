@@ -4406,24 +4406,31 @@ const HISTORY_SHIFT_META = {
   unknown: { label: 'ไม่มีเวลาเริ่มงาน', range: '',    color: 'var(--text-3)', bg: 'var(--bg-panel)' },
 };
 
-// ช่วง OT ที่ "วางแผนไว้" ของกะนั้นในวันทำงานนั้น — ใช้เติมท้ายหัวข้อกะในหน้าประวัติ
-// ยึดโควตา OT ตามแผน ไม่ใช่เวลาที่ทำจริง เพราะหัวข้อนี้บอกช่วงเวลาทำงานของกะ ไม่ใช่ผลงาน
-// เอาค่ามากสุดของงานในวัน/กะเดียวกัน และจำกัดตามประเภทงานที่มีอยู่ในกลุ่มนั้น
-// (ไม่งั้น OT ของช่างขัด Roll ที่ยาวถึง 23:00 จะไปโชว์ในกลุ่มที่มีแต่งาน CNC ซึ่ง OT ถึงแค่ 20:00)
+// ช่วง OT ของกะนั้นในวันทำงานนั้น — ใช้เติมท้ายหัวข้อกะในหน้าประวัติ
+// ยึด "นาที OT ที่แผนใช้จริง" (otMinutesByShift) ไม่ใช่โควตาที่กรอกไว้ — วันที่กรอกโควตา OT ไว้
+// แต่งานจบภายในเวลาปกติ ถือว่าวันนั้นไม่มีแผนทำ OT จึงไม่ต้องขึ้นช่วง OT ให้เข้าใจผิด
+// รวมนาทีแยกตามประเภทงาน เพราะแต่ละประเภทเป็นคิวของตัวเองและทำขนานกัน (รวมข้ามประเภทจะได้เวลาเลิกเกินจริง)
+// แล้วเอาประเภทที่ทำ OT ยาวสุดเป็นตัวกำหนดเวลาเลิกของกะนั้น
+// เวลาพัก 20 นาทีอยู่หัวช่วง OT (17:00–17:20) จึงบวกเข้าไปด้วยกว่าจะได้เวลาเลิกบนหน้าปัด
 function plannedOtRangeText(windowKey, dateIso, typeKeys) {
   const win = ((SHIFTS[windowKey] || {}).windows || [])[0];
   if (!win || !dateIso) return '';
-  let cap = 0;
+  const usedByType = new Map();
   planTasks.forEach(t => {
     if (taskDisplayDate(t) !== dateIso) return;
     if (typeKeys && typeKeys.size && !typeKeys.has(t.workType)) return;
-    const shift = SHIFTS[t.shift];
-    if (!shift || !(shift.windows || []).some(w => w.shiftKey === windowKey)) return;
-    const c = Math.min(Math.max(0, parseFloat((t.otCapMinutesByShift || {})[windowKey]) || 0), otCapMaxMinFor(t.workType));
-    if (c > cap) cap = c;
+    const used = Math.max(0, parseFloat((t.otMinutesByShift || {})[windowKey]) || 0);
+    if (!used) return;
+    usedByType.set(t.workType, (usedByType.get(t.workType) || 0) + used);
   });
-  if (!cap) return '';
-  return 'OT ' + planMinToHHMM(win.endMin) + ' – ' + planMinToHHMM(win.endMin + cap);
+  let latest = 0;
+  usedByType.forEach((mins, wt) => {
+    const maxWork = Math.max(0, otCapMaxMinFor(wt) - OT_BREAK_MIN); // โควตา OT เป็นช่วงบนหน้าปัด หักพักแล้วเหลือเวลาทำงานเท่านี้
+    const end = win.endMin + OT_BREAK_MIN + Math.min(mins, maxWork);
+    if (end > latest) latest = end;
+  });
+  if (!latest) return '';
+  return 'OT ' + planMinToHHMM(win.endMin) + ' – ' + planMinToHHMM(latest);
 }
 function renderPlanDatePopup() {
   const el = document.getElementById('plan-date-popup');
