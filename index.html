@@ -4149,8 +4149,8 @@ function syncRollStatusWithProdBlock() {
 // shifts = กะที่ประเภทงานนั้นทำได้จริง — งานขัด Roll ทำเฉพาะกะเช้า ส่วน CNC ทำได้ทุกกะ
 const PLAN_WORKTYPE_META = {
   // otMaxMin = โควตา OT สูงสุด (นาทีทำงานจริง ไม่รวมพัก 20 นาทีก่อนเริ่ม OT)
-  cnc:    { label: 'แผนงาน CNC', field: 'grindTime', metricLabel: 'เวลาแต่ง Roll (นาที)', shifts: ['morning', 'night', 'both'], otMaxMin: 3 * 60, otNote: 'สูงสุด 3 ชม. (กะเช้าทำถึง 20:20 / กะดึกถึง 08:20)' },
-  polish: { label: 'แผนงานขัด Roll', field: 'polishTime', metricLabel: 'เวลาขัด Roll (นาที)', shifts: ['morning'], otMaxMin: 6 * 60, otNote: 'สูงสุด 6 ชม. (ทำถึง 23:20)' },
+  cnc:    { label: 'แผนงาน CNC', field: 'grindTime', metricLabel: 'เวลาแต่ง Roll (นาที)', shifts: ['morning', 'night', 'both'], otMaxMin: 3 * 60, otNote: 'สูงสุด 3 ชม. — กะเช้า OT 17:00–20:00 / กะดึก 05:00–08:00 (หักพัก 20 นาที เหลือทำงาน 2 ชม. 40 นาที)' },
+  polish: { label: 'แผนงานขัด Roll', field: 'polishTime', metricLabel: 'เวลาขัด Roll (นาที)', shifts: ['morning'], otMaxMin: 6 * 60, otNote: 'สูงสุด 6 ชม. — OT 17:00–23:00 (หักพัก 20 นาที เหลือทำงาน 5 ชม. 40 นาที)' },
 };
 function planWorkTypeShifts(workType) {
   return (PLAN_WORKTYPE_META[workType] || {}).shifts || ['morning', 'night', 'both'];
@@ -4187,10 +4187,11 @@ let currentEditingPlanTaskId = null; // taskId ของงานที่กำ
 // ─── กะทำงาน (เช้า/ดึก/2 กะ) — แต่ละกะมี "windows" ของช่วงเวลาปกติ (นาทีของวัน) เวลาที่ทำงานนอกทุก window นับเป็น OT ───
 // กะเช้ามีพักเที่ยง 12:00–13:00 ส่วนกะดึกมีพักเที่ยงคืน 00:00–01:00 (ทั้งคู่ไม่นับเป็นเวลาทำงาน)
 // "2 กะ" (ทำงานต่อเนื่องทั้งเช้า+ดึก) รวม window และพักของทั้งสองกะไว้ด้วยกัน — ช่วงคาบเกี่ยว (17:00–20:00 และ 05:00–08:00) ยังนับเป็น OT เหมือนเดิม
-// windows/breaks = "เวลาทำงานปกติ" เท่านั้น ยังไม่รวม OT — โควตา OT ต่อท้ายหน้าต่างแยกตามประเภทงาน (ดู PLAN_WORKTYPE_META.otMaxMin)
-// งานแต่ง Roll (CNC) 2 กะ — กะเช้า 08:01–20:00 (ปกติ 08:00–17:00 + พัก 20 นาที + OT 3 ชม. → เลิก 20:20)
-//                          กะดึก  20:01–08:00 (ปกติ 20:00–05:00 + พัก 20 นาที + OT 3 ชม. → เลิก 08:20)
-// งานขัด Roll กะเดียว     — ปกติ 08:00–17:00 + พัก 20 นาที + OT 6 ชม. → เลิก 23:20
+// windows/breaks = "เวลาทำงานปกติ" เท่านั้น ยังไม่รวม OT — ช่วง OT ต่อท้ายหน้าต่างแยกตามประเภทงาน (ดู PLAN_WORKTYPE_META.otMaxMin)
+// เวลาพัก 20 นาทีก่อนเริ่ม OT อยู่ "ใน" ช่วง OT นั้น งานจึงต้องเลิกภายในเวลาเริ่มกะถัดไปพอดี ไม่ล้นไปทับ
+// งานแต่ง Roll (CNC) 2 กะ — กะเช้า 08:00–17:00 แล้ว OT 17:00–20:00 (ทำงานจริงใน OT 17:20–20:00)
+//                          กะดึก  20:00–05:00 แล้ว OT 05:00–08:00 (ทำงานจริงใน OT 05:20–08:00)
+// งานขัด Roll กะเดียว     — 08:00–17:00 แล้ว OT 17:00–23:00 (ทำงานจริงใน OT 17:20–23:00)
 const SHIFTS = {
   morning: { key: 'morning', label: 'กะเช้า', start: '08:00', end: '17:00', windows: [{ startMin: 8 * 60, endMin: 17 * 60, shiftKey: 'morning' }], breaks: [{ startMin: 12 * 60, endMin: 13 * 60, shiftKey: 'morning', type: 'lunch' }] },
   night:   { key: 'night',   label: 'กะดึก',  start: '20:00', end: '05:00', windows: [{ startMin: 20 * 60, endMin: 5 * 60, shiftKey: 'night' }], breaks: [{ startMin: 0, endMin: 60, shiftKey: 'night', type: 'lunch_night' }] },
@@ -5656,7 +5657,7 @@ function advancePlanCursor(state, minutes) {
     }
     // ออกนอกช่วงกะแล้ว — พัก OT_BREAK_MIN นาทีก่อน (แค่ครั้งเดียวต่อการออกนอกกะหนึ่งครั้ง แม้จะถูกแบ่งคำนวณเป็นหลายชิ้นก็ตาม) แล้วทำ OT ได้ไม่เกินโควตาของกะที่เพิ่งออกมา (lastExitedKey)
     const cap = state.lastExitedKey ? otCapFor(state.lastExitedKey) : 0;
-    const otAvailable = Math.max(0, cap - (state.otUsedThisExit || 0)); // โควตา OT = นาทีทำงานจริง เวลาพัก 20 นาทีเป็นเวลาเพิ่มบนหน้าปัด ไม่ตัดจากโควตา
+    const otAvailable = Math.max(0, cap - OT_BREAK_MIN - (state.otUsedThisExit || 0)); // โควตา OT = ช่วงเวลาบนหน้าปัด เวลาพัก 20 นาทีหักออกจากโควตานี้
     if (cap > 0 && otAvailable > 0) {
       if (!state.breakPaidThisExit) {
         const breakStart = state.cursor;
@@ -6022,7 +6023,7 @@ function renderShiftSegmentFields(key, seg, startDate) {
   if (startEl && startEl.disabled) startEl.value = absMinuteToClock(seg.start);
 }
 
-// OT ต่อได้ถึงเวลาเริ่มกะถัดไปเท่านั้น — กะเช้า 17:00→20:00 และกะดึก 05:00→08:00 ได้ 3 ชม. เท่ากัน
+// OT ต่อได้ถึงเวลาเริ่มกะถัดไปเท่านั้น — กะเช้า OT 17:00–20:00 และกะดึก OT 05:00–08:00 ได้ 3 ชม. เท่ากัน
 // ใช้กับทุกกะ (เดิมจำกัดแค่งาน "2 กะ" กะเดี่ยวกรอกเท่าไรก็ได้ จน OT ลามไปทับกะถัดไป)
 // ค่าจริงแยกตามประเภทงาน ดู PLAN_WORKTYPE_META.otMaxMin / otCapMaxMinFor()
 function getOtCapMinutes() {
@@ -6124,9 +6125,9 @@ function shiftAllowsMinute(shiftKey, min, otCaps, workType) {
     if (!cap) return false;
     let diff = min - w.endMin;
     if (diff < 0) diff += 1440; // OT ที่ลามข้ามเที่ยงคืน
-    // + OT_BREAK_MIN เพราะโควตา OT นับเป็นนาทีทำงานจริง เวลาพักมาก่อน OT จึงเลื่อนปลายทางออกไปอีก 20 นาที
-    // (กะเช้า OT 3 ชม. = พัก 17:00–17:20 แล้วทำงาน 17:20–20:20 / กะดึก พัก 05:00–05:20 ทำงาน 05:20–08:20)
-    return diff < cap + OT_BREAK_MIN;
+    // โควตา OT คือช่วงเวลาบนหน้าปัดต่อท้ายกะ — งานต้องเลิกภายในช่วงนั้น ห้ามล้นไปทับเวลาเริ่มกะถัดไป
+    // (กะเช้า OT 3 ชม. = 17:00–20:00 โดยพัก 17:00–17:20 เหลือทำงาน 17:20–20:00 / กะดึก 05:00–08:00 พัก 05:00–05:20)
+    return diff < cap;
   });
 }
 
@@ -6861,7 +6862,7 @@ function shiftEndWithOtMin(shiftKey, otCaps, workType) {
   let best = null;
   (shift.windows || []).forEach(w => {
     const cap = Math.min(Math.max(0, parseFloat((otCaps || {})[w.shiftKey]) || 0), otCapMaxMinFor(workType));
-    let end = w.endMin + (cap ? OT_BREAK_MIN + cap : 0);
+    let end = w.endMin + cap;
     if (w.endMin <= w.startMin) end += 1440; // หน้าต่างที่ข้ามเที่ยงคืน (กะดึก)
     if (best == null || end > best) best = end;
   });
