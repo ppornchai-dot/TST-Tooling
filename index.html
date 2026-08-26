@@ -1710,7 +1710,12 @@ canvas{display:block;}
       <div class="section-title">ประวัติการทำงาน</div>
       <div class="section-sub">บันทึกการดำเนินงานและบำรุงรักษา Tooling ทั้งหมด</div>
 
-      <!-- เลิกใช้ปุ่มแท็บเลือกประเภทงาน — แยกเป็นหัวข้อ "แต่ง Roll (CNC)" / "ขัด Roll" ในแต่ละวันของตารางเลย (เกณฑ์เดียวกับหน้างานประจำวัน/วางแผน) -->
+      <!-- แยกดูตามประเภทงาน — ใช้ปุ่มแท็บแบบเดียวกับหน้างานประจำวัน/วางแผน แทน dropdown เดิม เพื่อให้เห็นและสลับได้ทันที -->
+      <div class="mobile-wrap" style="display:flex;gap:8px;margin-bottom:12px;">
+        <button class="btn btn-ghost btn-sm history-type-btn" data-histtype="" onclick="switchHistoryType('')" style="color:var(--accent);border-color:var(--accent);">ทั้งหมด <span class="history-type-count" data-count-for=""></span></button>
+        <button class="btn btn-ghost btn-sm history-type-btn" data-histtype="cnc" onclick="switchHistoryType('cnc')">⚙ แต่ง Roll (CNC) <span class="history-type-count" data-count-for="cnc"></span></button>
+        <button class="btn btn-ghost btn-sm history-type-btn" data-histtype="polish" onclick="switchHistoryType('polish')">✦ ขัด Roll <span class="history-type-count" data-count-for="polish"></span></button>
+      </div>
 
       <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;">
         <div class="search-bar" style="flex:1;margin-bottom:0;">
@@ -11455,6 +11460,7 @@ function collectHistoryRecords() {
 }
 
 // แท็บแยกประเภทงานในหน้าประวัติ — '' = ทั้งหมด
+let currentHistoryType = '';
 function historyTypeMatches(r, filter) {
   if (!filter) return true;
   return r.typeKey === filter;
@@ -11467,17 +11473,43 @@ function forcedHistoryTypeForRole() {
   return null;
 }
 
+function switchHistoryType(key) {
+  if (forcedHistoryTypeForRole()) return; // ถูกล็อกตามบทบาทอยู่ กดสลับไม่ได้
+  currentHistoryType = key || '';
+  document.querySelectorAll('.history-type-btn').forEach(b => {
+    const active = (b.getAttribute('data-histtype') || '') === currentHistoryType;
+    b.style.color = active ? 'var(--accent)' : '';
+    b.style.borderColor = active ? 'var(--accent)' : '';
+  });
+  renderHistory();
+}
+
 function renderHistory() {
   const tbody = document.getElementById('tbody-history');
   if (!tbody) return;
   const search = (document.getElementById('history-search').value || '').trim().toLowerCase();
   const fromIso = document.getElementById('history-date-from').value || null;
   const toIso = document.getElementById('history-date-to').value || null;
-  // ช่าง CNC/ช่างขัด Roll เห็นเฉพาะประเภทงานของตัวเอง — หมวดของอีกฝ่ายจะไม่มีรายการ จึงไม่ถูกวาดเลย
+  // ช่าง CNC/ช่างขัด Roll ถูกล็อกให้เห็นเฉพาะประเภทงานของตัวเอง — ซ่อนแท็บไปเลยเพราะไม่มีอะไรให้เลือก
   const forcedType = forcedHistoryTypeForRole();
-  const typeFilter = forcedType;
+  const typeFilter = forcedType || currentHistoryType;
+  const tabBar = document.querySelector('.history-type-btn') ? document.querySelector('.history-type-btn').parentElement : null;
+  if (tabBar) tabBar.style.display = forcedType ? 'none' : '';
 
   const all = collectHistoryRecords();
+  // จำนวนบนแท็บนับตามช่วงวันที่/คำค้นที่กรองอยู่ (ไม่นับตัวกรองประเภท) เพื่อให้เห็นว่าประเภทไหนมีกี่รายการในเงื่อนไขเดียวกัน
+  const inScope = all.filter(r => {
+    if (fromIso && r.date < fromIso) return false;
+    if (toIso && r.date > toIso) return false;
+    if (search && !`${r.wo} ${r.tooling} ${r.detail} ${r.who}`.toLowerCase().includes(search)) return false;
+    return true;
+  });
+  document.querySelectorAll('.history-type-count').forEach(el => {
+    const key = el.getAttribute('data-count-for') || '';
+    el.textContent = inScope.filter(r => historyTypeMatches(r, key)).length;
+    el.style.cssText = 'font-weight:800;opacity:.65;margin-left:2px;';
+  });
+
   const records = all.filter(r => {
     if (fromIso && r.date < fromIso) return false;
     if (toIso && r.date > toIso) return false;
@@ -11527,39 +11559,19 @@ function renderHistory() {
     </td></tr>`;
   };
 
-  // หัวข้อประเภทงานในแต่ละวัน — ใช้ไอคอน/สีชุดเดียวกับหน้างานประจำวันและหน้าวางแผน (PLAN_DAY_SECTIONS)
-  const typeHeader = (sec, list) => {
-    const hrs = list.reduce((s, x) => s + (x.hours || 0), 0);
-    return `<tr><td colspan="8" style="background:${sec.bg};padding:8px 12px;border-left:4px solid ${sec.color};border-top:1px solid var(--border);">
-      <span style="display:inline-flex;align-items:center;gap:7px;font-size:14px;font-weight:800;color:${sec.color};">${sec.icon} ${escapeHtmlAttr(sec.label)}</span>
-      <span style="float:right;font-size:11.5px;font-weight:700;color:${sec.color};opacity:.85;">${list.length.toLocaleString()} รายการ${
-        hrs ? ' · ' + (Math.round(hrs * 10) / 10).toLocaleString() + ' ชม.' : ''}</span>
-    </td></tr>`;
-  };
-  const shiftOf = x => HISTORY_SHIFT_META[x.shiftKey] ? x.shiftKey : 'unknown';
-  // records เรียงมาแล้วตาม (วัน desc, ลำดับเวลาในวันทำงาน desc) — ไล่วันตามลำดับนั้น แล้วในแต่ละวันแยกตามประเภทงาน
-  let html = '';
-  const days = [];
-  records.forEach(r => { if (days[days.length - 1] !== r.date) days.push(r.date); });
-  days.forEach(dateIso => {
-    const dayRecs = records.filter(x => x.date === dateIso);
-    html += dayHeader(dateIso, dayRecs);
-    // ประเภทงานที่ไม่อยู่ในสองหมวดหลัก (เผื่อข้อมูลเก่า) รวมไว้ท้ายวันโดยไม่มีหัวข้อประเภท ไม่ให้รายการหาย
-    const groups = PLAN_DAY_SECTIONS.map(sec => ({ sec, list: dayRecs.filter(x => x.typeKey === sec.key) }))
-      .concat([{ sec: null, list: dayRecs.filter(x => !PLAN_DAY_SECTIONS.some(s => s.key === x.typeKey)) }]);
-    groups.forEach(({ sec, list }) => {
-      if (!list.length) return;
-      if (sec) html += typeHeader(sec, list);
-      let curShift = null;
-      list.forEach(r => {
-        const shiftKey = shiftOf(r);
-        if (shiftKey !== curShift) {
-          curShift = shiftKey;
-          html += shiftHeader(shiftKey, list.filter(x => shiftOf(x) === shiftKey));
-        }
-        html += rowHtml(r);
-      });
-    });
+  let html = '', curDay = null, curShift = null;
+  records.forEach((r, i) => {
+    const shiftKey = HISTORY_SHIFT_META[r.shiftKey] ? r.shiftKey : 'unknown';
+    if (r.date !== curDay) {
+      curDay = r.date; curShift = null;
+      html += dayHeader(r.date, records.filter(x => x.date === r.date));
+    }
+    if (shiftKey !== curShift) {
+      curShift = shiftKey;
+      html += shiftHeader(shiftKey, records.filter(x => x.date === r.date
+        && (HISTORY_SHIFT_META[x.shiftKey] ? x.shiftKey : 'unknown') === shiftKey));
+    }
+    html += rowHtml(r);
   });
   tbody.innerHTML = html || `<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--text-3);">ไม่พบประวัติการทำงานตามเงื่อนไขที่เลือก</td></tr>`;
 
