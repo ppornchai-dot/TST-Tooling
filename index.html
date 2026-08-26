@@ -4405,6 +4405,26 @@ const HISTORY_SHIFT_META = {
   other:   { label: 'นอกเวลากะ', range: '',           color: 'var(--text-2)', bg: 'var(--bg-panel)' },
   unknown: { label: 'ไม่มีเวลาเริ่มงาน', range: '',    color: 'var(--text-3)', bg: 'var(--bg-panel)' },
 };
+
+// ช่วง OT ที่ "วางแผนไว้" ของกะนั้นในวันทำงานนั้น — ใช้เติมท้ายหัวข้อกะในหน้าประวัติ
+// ยึดโควตา OT ตามแผน ไม่ใช่เวลาที่ทำจริง เพราะหัวข้อนี้บอกช่วงเวลาทำงานของกะ ไม่ใช่ผลงาน
+// เอาค่ามากสุดของงานในวัน/กะเดียวกัน และจำกัดตามประเภทงานที่มีอยู่ในกลุ่มนั้น
+// (ไม่งั้น OT ของช่างขัด Roll ที่ยาวถึง 23:00 จะไปโชว์ในกลุ่มที่มีแต่งาน CNC ซึ่ง OT ถึงแค่ 20:00)
+function plannedOtRangeText(windowKey, dateIso, typeKeys) {
+  const win = ((SHIFTS[windowKey] || {}).windows || [])[0];
+  if (!win || !dateIso) return '';
+  let cap = 0;
+  planTasks.forEach(t => {
+    if (taskDisplayDate(t) !== dateIso) return;
+    if (typeKeys && typeKeys.size && !typeKeys.has(t.workType)) return;
+    const shift = SHIFTS[t.shift];
+    if (!shift || !(shift.windows || []).some(w => w.shiftKey === windowKey)) return;
+    const c = Math.min(Math.max(0, parseFloat((t.otCapMinutesByShift || {})[windowKey]) || 0), otCapMaxMinFor(t.workType));
+    if (c > cap) cap = c;
+  });
+  if (!cap) return '';
+  return 'OT ' + planMinToHHMM(win.endMin) + ' – ' + planMinToHHMM(win.endMin + cap);
+}
 function renderPlanDatePopup() {
   const el = document.getElementById('plan-date-popup');
   if (!el) return;
@@ -11520,10 +11540,12 @@ function renderHistory() {
   const shiftHeader = (shiftKey, list) => {
     const m = HISTORY_SHIFT_META[shiftKey] || HISTORY_SHIFT_META.unknown;
     const hrs = list.reduce((s, x) => s + (x.hours || 0), 0);
+    const otText = plannedOtRangeText(shiftKey, (list[0] || {}).date, new Set(list.map(x => x.typeKey)));
     return `<tr><td colspan="8" style="background:${m.bg};padding:6px 12px;border-left:4px solid ${m.color};">
       <span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:800;color:${m.color};">
         <span style="width:8px;height:8px;border-radius:50%;background:${m.color};"></span>${escapeHtmlAttr(m.label)}
         ${m.range ? `<span style="font-weight:600;opacity:.8;">${m.range}</span>` : ''}
+        ${otText ? `<span style="font-weight:700;font-size:11.5px;padding:1px 7px;border-radius:99px;background:${m.color};color:#fff;">${escapeHtmlAttr(otText)}</span>` : ''}
       </span>
       <span style="float:right;font-size:11px;font-weight:700;color:${m.color};opacity:.85;">${list.length.toLocaleString()} รายการ${
         hrs ? ' · ' + (Math.round(hrs * 10) / 10).toLocaleString() + ' ชม.' : ''}</span>
