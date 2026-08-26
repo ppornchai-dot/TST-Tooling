@@ -3193,15 +3193,15 @@ function dashRollWorkingChipHtml(e, accentVar, bgVar) {
     wait:  { border: `1px dashed ${accentVar}`,   bg: 'transparent',     badge: `รอทำ ${remain} ชิ้น`,   badgeColor: 'var(--text-3)' },
   }[e.cat];
   const detail = e.cat === 'wait' ? `ตามแผน ${e.total} ชิ้น` : `เสร็จ ${e.done}/${e.total} ชิ้น`;
-  // กดแล้วเด้งไปหางานตามแผนนั้นเลย (ของเดิมไปหน้าทะเบียน Tooling ซึ่งไม่ใช่สิ่งที่อยากดูตอนกดจากการ์ดงาน)
+  // กดแล้วเด้งไปหน้างานประจำวันของวันนั้นเลย จะกดเริ่ม/จบงานต่อได้ทันที
   const jump = e.taskId
-    ? jsCallAttr('goToPlanTask', e.taskId, e.taskDate || '', e.workType || '')
+    ? jsCallAttr('goToDailyTask', e.taskId, e.taskDate || '', e.workType || '')
     : jsCallAttr('goToRollSetColor', e.set, e.colorKey);
   return `<div onclick="${jump}"
     style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:8px;cursor:pointer;
            border:${style.border};background:${style.bg};margin-bottom:6px;transition:filter .12s;"
     onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
-    title="${escapeHtmlAttr(e.taskId ? 'ไปที่แผนงานนี้ (' + (e.firstDate ? fmtDateThai(parseISODate(e.firstDate)) : '') + ')'
+    title="${escapeHtmlAttr(e.taskId ? 'ไปที่งานประจำวัน' + (e.firstDate ? ' วันที่ ' + fmtDateThai(parseISODate(e.firstDate)) : '')
       : 'ดูรายละเอียดในทะเบียน Tooling')}">
     <span style="width:9px;height:9px;border-radius:50%;background:${e.dot};flex-shrink:0;"></span>
     <span style="flex:1;min-width:0;">
@@ -3222,6 +3222,27 @@ const ROLL_WORK_CAT_META = [
 
 // กดการ์ดงานใน Dashboard แล้วเด้งไปหางานตามแผนนั้น — สลับหน้า/ประเภทงาน/วันให้ตรง แล้วไฮไลต์การ์ดงาน
 // ยึด taskId เป็นหลัก ถ้าหา task ไม่เจอ (ถูกลบไปแล้ว) จะไม่ย้ายหน้าไปเฉยๆ แต่บอกผู้ใช้
+// กดจากการ์ด "ชุด Roll กำลังแต่ง / กำลังขัด" บน Dashboard → ไปที่หน้างานประจำวันของวันนั้นเลย
+// (ของเดิมไปหน้าวางแผน ซึ่งดูแผนได้แต่กดเริ่ม/จบงานไม่ได้ ไม่ใช่สิ่งที่อยากทำต่อตอนกดจากการ์ด "กำลังทำ")
+function goToDailyTask(taskId, dateIso, workType) {
+  const t = planTasks.find(x => x.id === taskId);
+  if (!t) { alert('งานตามแผนนี้ถูกลบหรือย้ายไปแล้ว'); renderDashboardWorkingRoll(); return; }
+  const day = dateIso || taskDisplayDate(t);
+  showPage('daily');
+  // ช่างถูกล็อกให้ดูได้เฉพาะวันทำงานปัจจุบัน — ถ้างานอยู่วันอื่น บอกไปตรง ๆ ไม่ฝืนเปลี่ยนวันให้
+  if (isDailyTechRole() && day !== dailyTodayIso()) {
+    dailyViewDate = dailyTodayIso();
+    renderDailyTasks();
+    alert('งานนี้เป็นของวันที่ ' + fmtDateThai(parseISODate(day)) + ' ซึ่งเปิดดูย้อนหลังไม่ได้');
+    return;
+  }
+  dailyViewDate = day;
+  // กางรายละเอียดรายชิ้นของงานนั้นไว้เลย จะเห็นปุ่มเริ่ม/พัก/จบของแต่ละชิ้นทันทีไม่ต้องกดอีกที
+  expandedDailyTaskId = taskId;
+  renderDailyTasks();
+  highlightPlanTask(taskId); // ตัวไฮไลต์ตัวเดียวกัน — หาจาก [data-taskid] ซึ่งแถวงานประจำวันมีแล้ว
+}
+
 function goToPlanTask(taskId, dateIso, workType) {
   const t = planTasks.find(x => x.id === taskId);
   if (!t) { alert('งานตามแผนนี้ถูกลบหรือย้ายไปแล้ว'); renderDashboardWorkingRoll(); return; }
@@ -11291,7 +11312,7 @@ function renderDailyTasks() {
     const taskLabel = (rollNames.length > 2
       ? escapeHtmlAttr(rollNames.slice(0, 2).join(', ')) + ` <span class="muted" style="font-weight:400;">…อีก ${rollNames.length - 2} ชิ้น</span>`
       : escapeHtmlAttr(item.task)) + partBadge;
-    const row = `<tr${rowClickable ? ` style="cursor:pointer;${rowOpacity}" onclick="toggleDailyTaskDetail('${item.key}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : (rowOpacity ? ` style="${rowOpacity}"` : '')}>
+    const row = `<tr data-taskid="${escapeHtmlAttr(item.key)}"${rowClickable ? ` style="cursor:pointer;${rowOpacity}" onclick="toggleDailyTaskDetail('${item.key}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : (rowOpacity ? ` style="${rowOpacity}"` : '')}>
       <!-- ช่องติ๊กที่กดได้จริงเท่านั้นที่กัน event ไว้ — ช่องที่ปิดใช้งาน (งานตามแผน) ปล่อยให้คลิกกางรายละเอียดได้ -->
       <td${item.editable ? ' onclick="event.stopPropagation();"' : ''}>${item.editable ? `<input type="checkbox" ${status==='done'?'checked':''} onchange="toggleDailyTask('${item.key}')" style="width:16px;height:16px;cursor:pointer;">` : `<input type="checkbox" ${status==='done'?'checked':''} disabled style="width:16px;height:16px;">`}</td>
       <td class="muted">${rowClickable ? `<span aria-hidden="true" style="display:inline-block;width:12px;transition:transform .15s;transform:rotate(${expanded ? 90 : 0}deg);">▸</span> ` : ''}${i + 1}</td>
