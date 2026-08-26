@@ -1394,13 +1394,7 @@ canvas{display:block;}
          PAGE: PRODUCTION BLOCK
     ══════════════════════════════════════════ -->
     <div class="page" id="page-standard">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-        <span style="font-size:11px;color:var(--text-3);line-height:1.6;flex:1;min-width:200px;">
-          ลิงก์แชร์แบบดูอย่างเดียว เข้าได้เลยไม่ต้องล็อกอิน — เวลาที่แสดงคิดที่ 80% ของสปีดเต็ม
-        </span>
-        <a id="pbview-newtab" href="#" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="text-decoration:none;">↗ เปิดในแท็บใหม่</a>
-      </div>
-      <iframe id="prodblock-external-iframe" title="Production Block" style="width:100%;height:calc(100vh - 168px);border:none;border-radius:8px;background:var(--bg-panel);display:block;"></iframe>
+      <iframe id="prodblock-external-iframe" title="Production Block" style="width:100%;height:calc(100vh - 125px);border:none;border-radius:8px;background:var(--bg-panel);display:block;"></iframe>
     </div>
 
 
@@ -1994,7 +1988,7 @@ function showPage(id) {
 // หน้า Block ดึงจากระบบ TST Production ด้วยลิงก์แชร์แบบดูอย่างเดียว เข้าได้เลยไม่ต้องล็อกอิน
 // เวลาที่แสดงคิดที่ 80% ของสปีดเต็ม — ค่านี้กำหนดที่เซิร์ฟเวอร์ของ TST Production ส่งพารามิเตอร์ไปเปลี่ยนไม่ได้
 // เคยลองฝังหน้า /production/plan/block (100%) แต่ต้องมี session ของระบบนั้น ในกรอบ iframe จะเด้งหน้า login
-// ซึ่งไม่ควรกรอกรหัสในกรอบเว็บอื่น จึงกลับมาใช้ลิงก์แชร์เป็นค่าเดียว และเปิดหน้า 100% ในแท็บใหม่ถ้าจำเป็น
+// ซึ่งไม่ควรกรอกรหัสในกรอบเว็บอื่น จึงใช้ลิงก์แชร์เป็นค่าเดียว
 const PROD_BLOCK_URL = 'https://tstproduction.vercel.app/plan-view/block?k=wms-block-k7n3x9p2q5';
 
 // เครื่องที่เคยเลือก "ฝ่ายผลิต (100%)" ไว้ จะมีค่าเก่าค้างใน localStorage — ลบทิ้งกันสับสน
@@ -2005,8 +1999,6 @@ function loadProdBlockIframe() {
   const frame = document.getElementById('prodblock-external-iframe');
   if (!frame) return;
   frame.src = PROD_BLOCK_URL + '&_r=' + Date.now();
-  const link = document.getElementById('pbview-newtab');
-  if (link) { link.href = PROD_BLOCK_URL; link.title = 'เปิดหน้า Block ในแท็บใหม่'; }
 }
 
 function initDashboard() {
