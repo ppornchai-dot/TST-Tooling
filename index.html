@@ -328,6 +328,12 @@ table.daily-tech-view > tbody > tr > td:nth-child(10):not([colspan]){display:non
 /* ปุ่มเริ่ม/พัก/จบงานรายชิ้น — ในมุมมองช่างทำให้ใหญ่ มีสีพื้น กดด้วยนิ้วง่ายและเห็นชัดจากระยะไกล
    ใช้คลาสเจาะจงแทนการไล่ตาม onclick และจำกัดใต้ .daily-tech-view เท่านั้น หน้าวางแผนจึงไม่เปลี่ยน */
 /* nowrap ด้วย — ช่องแคบทำให้ "▶ เริ่มงาน" ตัดเป็น 2 บรรทัด ปุ่มสูงไม่เท่ากัน (39px กับ 56px) */
+/* ปุ่มเลือกประเภทงานหน้าประวัติ — ใหญ่กว่าปุ่มทั่วไป และตัวที่กำลังดูเป็นปุ่มทึบสีเน้น ไม่ใช่แค่เปลี่ยนสีตัวอักษร */
+.history-type-btn{padding:11px 18px;font-size:14.5px;font-weight:800;border-radius:10px;line-height:1.2;white-space:nowrap;}
+.history-type-btn .history-type-count{display:inline-block;min-width:22px;padding:1px 7px;margin-left:6px;border-radius:99px;
+  background:var(--bg-hover);color:var(--text-2);font-size:12.5px;font-weight:800;text-align:center;}
+.history-type-btn[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff;}
+.history-type-btn[aria-pressed="true"] .history-type-count{background:rgba(255,255,255,.25);color:#fff;}
 table.daily-tech-view .daily-act{padding:10px 16px;font-size:14.5px;font-weight:800;border-radius:9px;line-height:1.2;white-space:nowrap;}
 /* ปุ่ม "จบงาน"/"ทำต่อ" มี style="color:var(--accent)" ติดมาในแท็ก ซึ่งชนะคลาสเสมอ
    ถ้าไม่ทับด้วย !important ตัวอักษรจะเป็นสีเดียวกับพื้นที่เพิ่งใส่ให้ = อ่านไม่เห็นเลย */
@@ -1712,9 +1718,9 @@ canvas{display:block;}
 
       <!-- แยกดูตามประเภทงาน — ใช้ปุ่มแท็บแบบเดียวกับหน้างานประจำวัน/วางแผน แทน dropdown เดิม เพื่อให้เห็นและสลับได้ทันที -->
       <div class="mobile-wrap" style="display:flex;gap:8px;margin-bottom:12px;">
-        <button class="btn btn-ghost btn-sm history-type-btn" data-histtype="" onclick="switchHistoryType('')" style="color:var(--accent);border-color:var(--accent);">ทั้งหมด <span class="history-type-count" data-count-for=""></span></button>
-        <button class="btn btn-ghost btn-sm history-type-btn" data-histtype="cnc" onclick="switchHistoryType('cnc')">⚙ แต่ง Roll (CNC) <span class="history-type-count" data-count-for="cnc"></span></button>
-        <button class="btn btn-ghost btn-sm history-type-btn" data-histtype="polish" onclick="switchHistoryType('polish')">✦ ขัด Roll <span class="history-type-count" data-count-for="polish"></span></button>
+        <button class="btn btn-ghost history-type-btn" data-histtype="" aria-pressed="true" onclick="switchHistoryType('')">ทั้งหมด <span class="history-type-count" data-count-for=""></span></button>
+        <button class="btn btn-ghost history-type-btn" data-histtype="cnc" aria-pressed="false" onclick="switchHistoryType('cnc')">⚙ แต่ง Roll (CNC) <span class="history-type-count" data-count-for="cnc"></span></button>
+        <button class="btn btn-ghost history-type-btn" data-histtype="polish" aria-pressed="false" onclick="switchHistoryType('polish')">✦ ขัด Roll <span class="history-type-count" data-count-for="polish"></span></button>
       </div>
 
       <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;">
@@ -11473,14 +11479,18 @@ function forcedHistoryTypeForRole() {
   return null;
 }
 
+// ไฮไลต์ปุ่มที่กำลังดูอยู่ — ใช้ aria-pressed ให้ CSS จัดรูป (ปุ่มทึบสีเน้น) ไม่ใช่ inline style
+// เรียกทุกครั้งที่เรนเดอร์ด้วย ไม่ใช่แค่ตอนกด เพื่อให้สถานะถูกตั้งแต่เปิดหน้าครั้งแรก
+function refreshHistoryTypeButtons() {
+  document.querySelectorAll('.history-type-btn').forEach(b => {
+    const active = (b.getAttribute('data-histtype') || '') === currentHistoryType;
+    b.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+}
 function switchHistoryType(key) {
   if (forcedHistoryTypeForRole()) return; // ถูกล็อกตามบทบาทอยู่ กดสลับไม่ได้
   currentHistoryType = key || '';
-  document.querySelectorAll('.history-type-btn').forEach(b => {
-    const active = (b.getAttribute('data-histtype') || '') === currentHistoryType;
-    b.style.color = active ? 'var(--accent)' : '';
-    b.style.borderColor = active ? 'var(--accent)' : '';
-  });
+  refreshHistoryTypeButtons();
   renderHistory();
 }
 
@@ -11506,9 +11516,9 @@ function renderHistory() {
   });
   document.querySelectorAll('.history-type-count').forEach(el => {
     const key = el.getAttribute('data-count-for') || '';
-    el.textContent = inScope.filter(r => historyTypeMatches(r, key)).length;
-    el.style.cssText = 'font-weight:800;opacity:.65;margin-left:2px;';
+    el.textContent = inScope.filter(r => historyTypeMatches(r, key)).length.toLocaleString();
   });
+  refreshHistoryTypeButtons();
 
   const records = all.filter(r => {
     if (fromIso && r.date < fromIso) return false;
