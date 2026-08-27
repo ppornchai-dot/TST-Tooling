@@ -5027,15 +5027,14 @@ function renderPlanMonth() {
       const offLabel = holidayName || '';
       const tasks = (partsByDate.get(iso) || []).filter(t => planTaskSectionKey(t) === s.key);
       const chips = tasks.map(t => planDragWrap(t, iso, planCalendarChip(t, editable, 'flex:1;min-width:0;'), editable)).join('');
-      html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;${dayOffBg}" title="${offLabel ? escapeHtmlAttr('วันหยุด: ' + offLabel) : ''}">
+      html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;${dayOffBg}${offLabel ? 'display:flex;flex-direction:column;' : ''}" title="${offLabel ? escapeHtmlAttr('วันหยุด: ' + offLabel) : ''}">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">
           <strong style="font-size:12px;flex-shrink:0;">${day}</strong>
-          ${offLabel ? `<span style="flex:1;min-width:0;font-size:10px;font-weight:800;color:var(--amber);
-              overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;"
-              title="${escapeHtmlAttr('วันหยุด: ' + offLabel)}">${escapeHtmlAttr(offLabel)}</span>` : ''}
           ${editable ? `<button title="${escapeHtmlAttr('เพิ่มงาน' + s.label)}" onclick="${jsCallAttr('addPlanTaskOnDate', iso, s.key)}" style="border:none;background:none;color:${s.color};cursor:pointer;font-size:13px;line-height:1;padding:0;font-weight:800;flex-shrink:0;">+</button>` : ''}
         </div>
-        <div class="plan-drop-zone" data-day="${iso}" style="margin-top:6px;display:flex;flex-direction:column;gap:4px;min-height:30px;">${chips}</div>
+        ${offLabel ? `<div style="flex:1;display:flex;align-items:center;justify-content:center;min-height:42px;padding:2px 4px;
+            font-size:15px;font-weight:800;color:var(--amber);text-align:center;line-height:1.3;overflow-wrap:anywhere;">${escapeHtmlAttr(offLabel)}</div>` : ''}
+        <div class="plan-drop-zone" data-day="${iso}" style="margin-top:6px;display:flex;flex-direction:column;gap:4px;min-height:${offLabel ? 0 : 30}px;">${chips}</div>
       </div>`;
     }
     return html;
