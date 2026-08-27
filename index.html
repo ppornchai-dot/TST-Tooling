@@ -311,19 +311,21 @@ tbody tr.roll-row-selected{background:var(--accent-glow);box-shadow:inset 3px 0 
 tbody tr.roll-row-selected:hover{background:var(--accent-glow);}
 
 /* ─── มุมมองช่างในตารางงานประจำวัน ─────────────────
-   ซ่อนคอลัมน์ 1 (ช่องติ๊ก), 5 (จำนวนชิ้น), 8 (ผู้รับผิดชอบ), 9 (เวลาแต่ง) เหลือ ลำดับ/SIZE ROLL/ชุดสี ROLL/ชื่อ ROLL/กะ/เริ่ม-จบงาน/สถานะ/จัดการ
+   ซ่อนคอลัมน์ 1 (ช่องติ๊ก), 6 (จำนวนชิ้น), 8 (ผู้รับผิดชอบ), 9 (เวลาแต่ง) เหลือ ลำดับ/จัดการ/SIZE ROLL/ชุดสี ROLL/ชื่อ ROLL/เริ่ม-จบงาน/สถานะ
+   เลขคอลัมน์อ้างตามลำดับปัจจุบัน: 1 ช่องติ๊ก · 2 ลำดับ · 3 จัดการ · 4 SIZE ROLL · 5 ชุดสี · 6 จำนวนชิ้น · 7 ชื่อ ROLL · 8 ผู้รับผิดชอบ · 9 เวลาแต่ง · 10-11 เริ่ม-จบงาน · 12 สถานะ
+   (เอาคอลัมน์ "กะ" ออกแล้ว เลขที่อยู่หลังจากนั้นจึงเลื่อนขึ้น 1 — แก้ตรงนี้ทุกครั้งที่เพิ่ม/ลดคอลัมน์)
    ไม่ซ่อนคอลัมน์ 6 (ชื่อ ROLL) เพราะ "งานแทรก" ที่ไม่มีข้อมูล Roll ใช้คอลัมน์นี้แสดงชื่องาน ถ้าซ่อนช่างจะเห็นแถวเปล่าไม่รู้ว่างานอะไร
    (ตัวที่ทำให้แถวสูงเต็มจอคือการดัมป์ชื่อ Roll ทั้งหมด ซึ่งแก้แล้วด้วยการย่อเหลือ 2 ชื่อ + จำนวนที่เหลือ)
    ไม่ซ่อนคอลัมน์ 3 (จัดการ) เพราะเป็นที่อยู่ของปุ่มเริ่ม/จบงานของงานชิ้นเดียว — ย้ายมาต้นแถวแล้ว เลขคอลัมน์ที่ซ่อนจึงเลื่อนไป 1
    ใช้ > เจาะจงลูกตรงเท่านั้น กันกฎรั่วไปโดนตารางย่อยรายชิ้นที่ซ้อนอยู่ข้างใน และ :not([colspan]) กันไปซ่อนแถวรายละเอียด/แถว "ยังไม่มีงาน" ที่ใช้ colspan */
 table.daily-tech-view > thead > tr > th:nth-child(1),
 table.daily-tech-view > thead > tr > th:nth-child(6),
+table.daily-tech-view > thead > tr > th:nth-child(8),
 table.daily-tech-view > thead > tr > th:nth-child(9),
-table.daily-tech-view > thead > tr > th:nth-child(10),
 table.daily-tech-view > tbody > tr > td:nth-child(1):not([colspan]),
 table.daily-tech-view > tbody > tr > td:nth-child(6):not([colspan]),
-table.daily-tech-view > tbody > tr > td:nth-child(9):not([colspan]),
-table.daily-tech-view > tbody > tr > td:nth-child(10):not([colspan]){display:none;}
+table.daily-tech-view > tbody > tr > td:nth-child(8):not([colspan]),
+table.daily-tech-view > tbody > tr > td:nth-child(9):not([colspan]){display:none;}
 
 /* ปุ่มเริ่ม/พัก/จบงานรายชิ้น — ในมุมมองช่างทำให้ใหญ่ มีสีพื้น กดด้วยนิ้วง่ายและเห็นชัดจากระยะไกล
    ใช้คลาสเจาะจงแทนการไล่ตาม onclick และจำกัดใต้ .daily-tech-view เท่านั้น หน้าวางแผนจึงไม่เปลี่ยน */
@@ -1576,7 +1578,7 @@ canvas{display:block;}
           <table id="tbl-daily">
             <thead>
               <!-- คอลัมน์ "จัดการ" (ปุ่มเริ่ม/จบงาน) ย้ายมาไว้ต้นแถวให้อยู่แนวเดียวกับปุ่มของตารางย่อยรายชิ้น -->
-              <tr><th></th><th>ลำดับ</th><th>จัดการ</th><th>SIZE ROLL</th><th>ชุดสี ROLL</th><th>จำนวนชิ้น</th><th>ชื่อ ROLL</th><th>กะ</th><th>ผู้รับผิดชอบ</th><th>เวลาแต่ง ROLL (นาที)</th><th>เริ่มงาน</th><th>จบงาน</th><th>สถานะ</th></tr>
+              <tr><th></th><th>ลำดับ</th><th>จัดการ</th><th>SIZE ROLL</th><th>ชุดสี ROLL</th><th>จำนวนชิ้น</th><th>ชื่อ ROLL</th><th>ผู้รับผิดชอบ</th><th>เวลาแต่ง ROLL (นาที)</th><th>เริ่มงาน</th><th>จบงาน</th><th>สถานะ</th></tr>
             </thead>
             <tbody id="tbody-daily"></tbody>
           </table>
@@ -1654,7 +1656,6 @@ canvas{display:block;}
                   <th rowspan="3">ชุดสี Roll</th>
                   <th rowspan="3">จำนวนชิ้น</th>
                   <th rowspan="3">ชื่อ Roll</th>
-                  <th rowspan="3">กะ</th>
                   <th colspan="3" style="text-align:center;">Plan</th>
                   <th rowspan="3">จัดการ</th>
                 </tr>
@@ -4412,10 +4413,6 @@ function matchesCurrentPlanFilter(t) {
 function shiftChipClass(shiftKey) {
   return shiftKey === 'night' ? 'chip-purple' : shiftKey === 'both' ? 'chip-cyan' : 'chip-amber';
 }
-function shiftChipHtml(shiftKey) {
-  const shift = SHIFTS[shiftKey] || SHIFTS.morning;
-  return `<span class="chip ${shiftChipClass(shift.key)}">${shift.label}</span>`;
-}
 
 // กะที่ "เวลาเริ่มจริง" ตกอยู่ — งานกะ both ต้องดูจากเวลาที่กดเริ่ม ไม่ใช่จาก t.shift ที่คลุมทั้งสองกะ
 // คืน 'other' ถ้าอยู่นอกหน้าต่างกะทั้งสอง (17:00–20:00) เช่นกดเริ่มงานคาบช่วงส่งกะ
@@ -4664,7 +4661,7 @@ const PLAN_BREAK_TYPES = ['lunch', 'lunch_night', 'otbreak', 'shiftgap'];
 // แต่ละชิ้นอาจใช้เวลาคาบเกี่ยวมากกว่า 1 กะ/1 ประเภทเวลา (เช่น ทำต่อจากปกติเข้า OT หรือข้ามจากกะเช้าไปกะดึก) — แตกเป็นแถวย่อยตามช่วงเวลาจริงของชิ้นนั้น
 // รวมถึงช่วงพักเที่ยง/พักก่อน OT ที่แทรกอยู่ระหว่างกลาง ให้เห็นเป็นแถวของตัวเองชัดเจน แยกจากแถวเวลาทำงานจริง
 function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
-  colspan = colspan || 10;
+  colspan = colspan || 9;
   const pieces = planTaskPieceBreakdown(t);
   const body = pieces.map((p, i) => {
     const rollIdx = t.rollIds[i];
@@ -4907,7 +4904,6 @@ function renderPlanDay() {
       <td>${escapeHtmlAttr(planRollColorLabel(t))}</td>
       <td class="muted">${escapeHtmlAttr(t.rollId)}</td>
       <td><strong>${escapeHtmlAttr(t.rollName)}</strong>${t.__partCount > 1 ? ` <span class="chip chip-blue" title="งานก้อนนี้ทำข้ามวัน — แสดงแยกเฉพาะส่วนที่ทำในวันนี้">ส่วนที่ ${t.__partIndex + 1}/${t.__partCount}</span>` : ''}</td>
-      <td>${shiftChipHtml(t.shift)}</td>
       <td class="muted" style="text-align:right;">${escapeHtmlAttr(t.totalTime != null ? String(t.totalTime) : planMetricTime(t.rollId, t.workType))}</td>
       <td class="muted">${escapeHtmlAttr(t.startTime || '—')}</td>
       <td class="muted">${escapeHtmlAttr(t.endTime || '—')}${taskEndDayBadge(t)}${t.otMinutes ? ` <span class="chip chip-red" title="เวลาทำงานนอกช่วงกะ">OT ${formatMinutesAsHm(t.otMinutes).replace('≈ ', '')}</span>` : ''}</td>
@@ -4931,7 +4927,7 @@ function renderPlanDay() {
   // (เลขลำดับใช้แสดงเท่านั้น ตัวระบุงานคือ data-taskid)
   const partsByDate = planDayPartsByDate();
   // แถวปุ่มเพิ่มงานใต้รายการของแต่ละหมวด — ชิดซ้าย ตัวใหญ่ เห็นชัดกว่าปุ่มเล็กที่เคยอยู่มุมขวาของหัวข้อ
-  const addRowFor = s => !canEditPlan() ? '' : `<tr><td colspan="10" style="padding:10px 12px;border-bottom:2px solid ${s.color};">
+  const addRowFor = s => !canEditPlan() ? '' : `<tr><td colspan="9" style="padding:10px 12px;border-bottom:2px solid ${s.color};">
       <button class="btn" onclick="${jsCallAttr('addPlanTaskOnDate', iso, s.key, s.shiftKey || '')}"
         title="${escapeHtmlAttr('เพิ่มงาน' + s.label + ' ของวันนี้')}"
         style="font-size:15px;font-weight:800;padding:11px 22px;border-radius:10px;
@@ -4950,9 +4946,9 @@ function renderPlanDay() {
   document.getElementById('plan-day-tbody').innerHTML = daySections.map(s => {
     const items = tasks.filter(t => planTaskSectionKey(t) === s.key
       && (!s.shiftKey || taskSessionShiftKey(t) === s.shiftKey));
-    return planSectionHeaderRow(s, 10, planSectionCount(partsByDate, s.key, [iso], s.shiftKey), iso)
+    return planSectionHeaderRow(s, 9, planSectionCount(partsByDate, s.key, [iso], s.shiftKey), iso)
       + (items.length ? items.map(rowHtmlFor).join('')
-        : `<tr><td colspan="10" style="padding:14px;text-align:center;color:var(--text-3);font-size:12.5px;">${escapeHtmlAttr(s.empty)}</td></tr>`)
+        : `<tr><td colspan="9" style="padding:14px;text-align:center;color:var(--text-3);font-size:12.5px;">${escapeHtmlAttr(s.empty)}</td></tr>`)
       + addRowFor(s);
   }).join('');
 }
@@ -11366,7 +11362,7 @@ function renderDailyTasks() {
     .map(t => ({
       key: t.id, date: t.date || dailyViewDate, startTime: t.time || '—', endTimeHtml: '—', duration: '—',
       rollSet: '—', rollColor: '—', rollId: t.ref || '—', task: t.task,
-      shiftHtml: '—', who: t.who, workerId: null, editable: true, expandable: false,
+      who: t.who, workerId: null, editable: true, expandable: false,
       section: 'checklist',
     }));
   const forcedType = forcedWorkTypeForRole();
@@ -11386,7 +11382,7 @@ function renderDailyTasks() {
       endTimeHtml: `${escapeHtmlAttr(t.endTime || '—')}${taskEndDayBadge(t)}${t.otMinutes ? ` <span class="chip chip-red" title="เวลาทำงานนอกช่วงกะ">OT ${formatMinutesAsHm(t.otMinutes).replace('≈ ', '')}</span>` : ''}`,
       duration: t.totalTime != null ? String(t.totalTime) : planMetricTime(t.rollId),
       rollSet: t.rollSet, rollColor: planRollColorLabel(t), rollId: t.rollId, task: t.rollName,
-      shiftHtml: shiftChipHtml(t.shift), who: workerName(t.workerId), workerId: t.workerId,
+      who: workerName(t.workerId), workerId: t.workerId,
       editable: false, expandable: (t.rollIds || []).length > 1, raw: t,
     }));
   // เรียงตามวันที่จริง+เวลาเริ่ม ไม่ใช่แค่ตัวอักษรเวลา (ดูเหตุผลเดียวกับ renderPlanDay/renderPlanWeek) — งานกะดึกที่ข้ามเที่ยงคืนมาแสดงในวันเดียวกัน (taskDisplayDate) แต่จริงๆ เป็นงานล่าสุดของรอบ ต้องอยู่ท้ายสุด ไม่ใช่ต้นสุด
@@ -11443,14 +11439,13 @@ function renderDailyTasks() {
       <td>${escapeHtmlAttr(item.rollColor)}</td>
       <td class="muted">${escapeHtmlAttr(item.rollId)}</td>
       <td><strong>${taskLabel}</strong></td>
-      <td>${item.shiftHtml}</td>
       <td class="muted">${escapeHtmlAttr(item.who)}</td>
       <td class="muted" style="text-align:right;">${escapeHtmlAttr(item.duration)}</td>
       <td class="muted">${startTimeDisplay}</td>
       <td class="muted">${endTimeDisplay}</td>
       <td><span class="chip ${meta.chip}">${meta.label}</span></td>
     </tr>`;
-    return row + (expanded ? renderPlanDayTaskDetailRow(item.raw, 13, true, blockReason) : '');
+    return row + (expanded ? renderPlanDayTaskDetailRow(item.raw, 12, true, blockReason) : '');
   };
 
   // แบ่งตารางเป็นหัวข้อตามประเภทงานเลย ไม่ต้องมีปุ่มกรองให้เลือกดูทีละอย่าง
@@ -11462,7 +11457,7 @@ function renderDailyTasks() {
       if (!ids.length) return s + (getDailyStatus(it.key) === 'done' ? 1 : 0);
       return s + ids.filter(idx => getDailyPieceEntry(it.key, idx).status === 'done').length;
     }, 0);
-    return `<tr><td colspan="13" style="background:${meta.bg};padding:9px 12px;border-left:4px solid ${meta.color};border-top:2px solid ${meta.color};">
+    return `<tr><td colspan="12" style="background:${meta.bg};padding:9px 12px;border-left:4px solid ${meta.color};border-top:2px solid ${meta.color};">
       <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:${meta.color};">
         <span aria-hidden="true">${meta.icon}</span>${escapeHtmlAttr(meta.label)}
       </span>
@@ -11470,7 +11465,7 @@ function renderDailyTasks() {
         items.length ? items.length + ' รายการ · ' + donePieces + '/' + pieces + ' ชิ้น' : 'ไม่มีงาน'}</span>
     </td></tr>`;
   };
-  const emptyRow = text => `<tr><td colspan="13" style="padding:14px;text-align:center;color:var(--text-3);font-size:12.5px;">${escapeHtmlAttr(text)}</td></tr>`;
+  const emptyRow = text => `<tr><td colspan="12" style="padding:14px;text-align:center;color:var(--text-3);font-size:12.5px;">${escapeHtmlAttr(text)}</td></tr>`;
 
   const DAILY_SECTIONS = [
     { key: 'cnc',       icon: '⚙', label: 'แต่ง Roll (CNC)', color: 'var(--accent)', bg: 'var(--accent-glow)', empty: 'ไม่มีงานแต่ง Roll ในวันนี้', always: true },
