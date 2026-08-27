@@ -5993,12 +5993,13 @@ function setPlanShiftButtons(key, bothStartKey) {
   // ซ่อนปุ่มกะที่ประเภทงานนี้ไม่ได้ทำ (งานขัด Roll เหลือแต่กะเช้า)
   const wt = planFormWorkType();
   const allowed = planWorkTypeShifts(wt);
-  const shownAs = key === 'both' ? (bothStartKey === 'night' ? 'night' : 'morning') : key;
+  // เลือก 2 กะ = ปุ่มสว่างทั้งคู่
+  const onKeys = key === 'both' ? ['morning', 'night'] : [key];
   document.querySelectorAll('.pf-shift-btn').forEach(b => {
     const bk = b.getAttribute('data-shift');
     // งานเก่าที่บันทึกกะนั้นไว้แล้ว ยังต้องเห็นปุ่มของกะตัวเอง ไม่งั้นจะดูเหมือนไม่มีกะ
     b.style.display = (allowed.includes(bk) || bk === key) ? '' : 'none';
-    const active = bk === shownAs;
+    const active = onKeys.includes(bk);
     b.style.color = active ? 'var(--accent)' : '';
     b.style.borderColor = active ? 'var(--accent)' : '';
     b.style.background = active ? 'var(--accent-glow)' : '';
@@ -6019,6 +6020,14 @@ function setPlanShiftButtons(key, bothStartKey) {
 }
 // ผู้ใช้กดเลือกกะเอง — เติมเวลาเริ่มมาตรฐานของกะนั้นให้ ไม่ต่อเวลาจากงานก่อนหน้า (วางแผนของวันที่กดเพิ่มตรงๆ)
 // ไม่ทับค่าที่ผู้ใช้พิมพ์เองไว้แล้วในช่องนั้น
+// กะที่เลือกอยู่ตอนนี้เป็นเซ็ต — 'both' คือเลือกทั้งกะเช้าและกะดึก
+function planFormSelectedShifts() {
+  const cur = (document.getElementById('pf-shift') || {}).value || 'morning';
+  return new Set(cur === 'both' ? ['morning', 'night'] : [cur]);
+}
+
+// กดปุ่มกะ = สลับเลือก/ไม่เลือกปุ่มนั้น เลือกทั้งสองปุ่ม = งานทำต่อเนื่อง 2 กะ
+// กดปุ่มเดิมซ้ำเพื่อยกเลิก แต่ต้องเหลือไว้อย่างน้อยหนึ่งกะ — งานที่ไม่มีกะเลยจัดตารางไม่ได้
 function selectPlanShift(key) {
   // กันตั้งกะที่ประเภทงานนี้ไม่ได้ทำ (เผื่อกดจากปุ่มที่ยังค้างอยู่/เรียกจากโค้ดอื่น)
   const wt = planFormWorkType();
@@ -6026,6 +6035,23 @@ function selectPlanShift(key) {
     alert(PLAN_WORKTYPE_META[wt].label + ' ทำเฉพาะ' + planWorkTypeShifts(wt).map(k => SHIFTS[k].label).join(' / ') + 'เท่านั้น');
     return;
   }
+  const on = planFormSelectedShifts();
+  if (on.has(key)) {
+    if (on.size === 1) return;   // เหลือกะเดียวแล้ว กดซ้ำไม่ปิด
+    on.delete(key);
+  } else {
+    on.add(key);
+  }
+  const next = on.size > 1 ? 'both' : [...on][0];
+  if (next === 'both' && !planWorkTypeAllowsShift(wt, 'both')) {
+    alert(PLAN_WORKTYPE_META[wt].label + ' ทำได้กะเดียวเท่านั้น เลือกทั้งสองกะไม่ได้');
+    return;
+  }
+  applyPlanFormShift(next);
+}
+
+// ตั้งกะที่เลือกไว้ให้ฟอร์ม + เติมเวลาเริ่มของกะนั้นให้ (แยกออกมาเพื่อให้ตัวสลับเรียกใช้ได้)
+function applyPlanFormShift(key) {
   const startMorningEl = document.getElementById('pf-start-morning');
   const startNightEl = document.getElementById('pf-start-night');
   if (key === 'both') {
