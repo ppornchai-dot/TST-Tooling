@@ -5304,8 +5304,6 @@ function planTaskFormFields() {
       <div class="form-group"><label class="form-label">🌙 เริ่มงานกะดึก</label><input class="form-input" id="pf-start-night" type="text" inputmode="numeric" placeholder="เช่น 20:00" maxlength="5" onchange="normalizeTimeInput(this);updatePlanEndTime()"></div>
       <div class="form-group"><label class="form-label">จบงานกะดึก — คำนวณให้อัตโนมัติ</label><input class="form-input" id="pf-end-night" type="text" disabled></div>
     </div>
-    <!-- เวลา OT ไม่ได้กรอกในฟอร์มอีกแล้ว — มาจาก "เวลาเลิกงาน" ของวันนั้น (ปุ่ม ⏱ ในหัวข้อหมวดหน้าวางแผน) -->
-    <div id="pf-ot-note" style="font-size:11.5px;color:var(--text-3);line-height:1.6;margin:-4px 0 10px;"></div>
     <!-- สลับเป็น "งานอื่นๆ" ที่ไม่เกี่ยวกับ Roll — กรอกชื่องานกับเวลาเองแทนการเลือก Size Roll -->
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
       <button type="button" class="btn btn-ghost btn-sm" id="pf-other-toggle" onclick="togglePlanOtherWork()"
@@ -6135,23 +6133,6 @@ function updatePlanEndTime() {
   const seg = result.segments || {};
   renderShiftSegmentFields('morning', seg.morning, startDate);
   renderShiftSegmentFields('night', seg.night, startDate);
-  // บอกที่มาของเวลา OT ให้ชัด เพราะไม่มีช่องกรอกในฟอร์มแล้ว
-  const noteEl = document.getElementById('pf-ot-note');
-  if (noteEl) {
-    const wt = planFormWorkType();
-    const caps = getOtCapMinutes();
-    const otByShift = result.otMinutesByShift || {};
-    const per = planDayEndShiftsFor(wt).map(k => {
-      const end = planDayEndFor(startDate, wt, k);
-      const used = otByShift[k];
-      // ตั้งเวลาเลิกไว้แต่ไม่ถึงช่วง OT (เช่นเลิก 17:00) ต้องอ่านว่า 'ไม่มี OT' ไม่ใช่ 'OT' ค้างว่างไว้
-      return SHIFTS[k].label + ': ' + (end ? 'เลิก ' + end + (caps[k] ? ' → OT ' + formatMinutesAsHm(caps[k]).replace('≈ ', '') : ' → ไม่มี OT')
-        : (caps[k] ? 'OT ' + formatMinutesAsHm(caps[k]).replace('≈ ', '') + ' (ตามที่งานนี้เคยตั้งไว้)' : 'ไม่มี OT'))
-        + (used ? ' · ใช้จริง ' + formatMinutesAsHm(used).replace('≈ ', '') : '');
-    }).join(' · ');
-    noteEl.innerHTML = '⏱ เวลา OT มาจาก <b>เวลาเลิกงานของวันนั้น</b> (ตั้งที่ปุ่ม ⏱ ในหัวข้อหมวด หน้าวางแผนรายวัน)'
-      + '<br>' + escapeHtmlAttr(per) + ' — พัก 20 นาทีก่อนเริ่ม OT คิดให้อยู่แล้ว';
-  }
 }
 
 // ล้างกรอบแดงที่ขึ้นตอนเตือนว่ายังไม่ได้เลือก ทันทีที่ผู้ใช้เลือกค่าแล้ว
