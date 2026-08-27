@@ -4853,8 +4853,6 @@ function planSectionHeaderRow(s, colSpan, stat, addForIso) {
               style="font-size:12px;font-weight:800;padding:3px 11px;color:${s.color};border-color:${s.color};${set.length ? `background:${s.bg};` : 'border-style:dashed;'}">⏱ ${escapeHtmlAttr(label)}</button>`
           : (set.length ? `<span style="font-size:12px;font-weight:700;color:${s.color};opacity:.9;">⏱ ${escapeHtmlAttr(label)}</span>` : '');
       })() : ''}
-      ${addForIso && canEditPlan() ? `<button class="btn btn-ghost btn-sm" onclick="${jsCallAttr('addPlanTaskOnDate', addForIso, s.key)}"
-        style="font-size:12px;font-weight:800;padding:3px 11px;color:${s.color};border-color:${s.color};">+ เพิ่มงาน${escapeHtmlAttr(s.key === 'polish' ? 'ขัด' : 'แต่ง')}</button>` : ''}
     </span>
   </td></tr>`;
 }
@@ -4902,11 +4900,20 @@ function renderPlanDay() {
   // แบ่งเป็นหัวข้อ CNC / ขัด Roll เหมือนหน้างานประจำวัน — ลำดับเริ่มนับใหม่จาก 1 ในแต่ละหัวข้อ
   // (เลขลำดับใช้แสดงเท่านั้น ตัวระบุงานคือ data-taskid)
   const partsByDate = planDayPartsByDate();
+  // แถวปุ่มเพิ่มงานใต้รายการของแต่ละหมวด — ชิดซ้าย ตัวใหญ่ เห็นชัดกว่าปุ่มเล็กที่เคยอยู่มุมขวาของหัวข้อ
+  const addRowFor = s => !canEditPlan() ? '' : `<tr><td colspan="10" style="padding:10px 12px;border-bottom:2px solid ${s.color};">
+      <button class="btn" onclick="${jsCallAttr('addPlanTaskOnDate', iso, s.key)}"
+        title="${escapeHtmlAttr('เพิ่มงาน' + s.label + ' ของวันนี้')}"
+        style="font-size:15px;font-weight:800;padding:11px 22px;border-radius:10px;
+               background:${s.color};color:#fff;border:1px solid ${s.color};box-shadow:0 1px 3px rgba(0,0,0,.18);">
+        + เพิ่มงาน${escapeHtmlAttr(s.key === 'polish' ? 'ขัด Roll' : 'แต่ง Roll')}</button>
+    </td></tr>`;
   document.getElementById('plan-day-tbody').innerHTML = planSectionsForRole().map(s => {
     const items = tasks.filter(t => planTaskSectionKey(t) === s.key);
     return planSectionHeaderRow(s, 10, planSectionCount(partsByDate, s.key, [iso]), iso)
       + (items.length ? items.map(rowHtmlFor).join('')
-        : `<tr><td colspan="10" style="padding:14px;text-align:center;color:var(--text-3);font-size:12.5px;">${escapeHtmlAttr(s.empty)}</td></tr>`);
+        : `<tr><td colspan="10" style="padding:14px;text-align:center;color:var(--text-3);font-size:12.5px;">${escapeHtmlAttr(s.empty)}</td></tr>`)
+      + addRowFor(s);
   }).join('');
 }
 
