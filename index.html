@@ -1469,7 +1469,7 @@ canvas{display:block;}
           </span>
         </div>
         <div style="padding:12px 14px;">
-          <div class="muted" style="font-size:11.5px;margin-bottom:8px;">แต่ละบรรทัด: <b>เครื่อง</b> · ขนาด Roll · ป้าย <b>F</b>=Forming <b>S</b>=Sizing <b>T</b>=TH โดยพื้นป้ายเป็นสีชุด Roll ที่เดินของหมวดนั้น — ชี้ค้างเพื่อดูชื่อสีเต็ม<br>ป้ายเครื่องพื้นทึบ = ยืนยันจากยอดผลิตหรือแผนเปลี่ยน Roll ของวันนั้น · ป้ายโครง = อนุมานให้ เพราะวันนั้นยังไม่มียอดผลิตของขนาดนั้น (ชี้ค้างเพื่อดูว่าอนุมานจากอะไร)</div>
+          <div class="muted" style="font-size:11.5px;margin-bottom:8px;">แต่ละบรรทัด: <b>เครื่อง</b> · ขนาด Roll · ป้าย <b>F</b>=Forming <b>S</b>=Sizing <b>T</b>=TH โดยพื้นป้ายเป็นสีชุด Roll ที่เดินของหมวดนั้น — ชี้ค้างเพื่อดูชื่อสีเต็ม<br>ป้ายเครื่องพื้นทึบ = ยืนยันจากยอดผลิตหรือแผนเปลี่ยน Roll ของวันนั้น · ป้ายโครง = อนุมานให้ เพราะวันนั้นยังไม่มียอดผลิตของขนาดนั้น · <b>*</b> ท้ายชื่อขนาด = วันนั้นยังไม่ได้บันทึกชุดสี ระบบอนุมานจากยอดผลิตจริง (ชี้ค้างเพื่อดูที่มา)</div>
           <div id="inuse-cal-body"></div>
         </div>
       </div>
@@ -2209,17 +2209,33 @@ function inUseCalToday() {
   renderInUseCalendar();
 }
 
-// สรุปของวันหนึ่ง: [[ชื่อ Size, [{set, cat, colorKey}...]], ...] เรียงตามชื่อ Size
+// สรุปของวันหนึ่ง: [[ชื่อ Size, [{set, cat, colorKey, inferred}...]], ...] เรียงตามชื่อ Size
+// สองแหล่ง: 1) ชุดสีที่บันทึกไว้ว่าเดินวันนั้น  2) ขนาดที่มียอดผลิตจริง/มีแผนเปลี่ยน Roll ของวันนั้น
+// ต้องมีแหล่งที่ 2 ด้วย ไม่งั้นวันที่เดินงานจริงแต่ยังไม่ได้บันทึกชุดสี ปฏิทินจะบอกว่าวันนั้นไม่ได้เดิน
+// (เจอกับวันที่ 26 ส.ค. 69: GI 3"x3" เดินจริง 43.99 ตัน และ GI 4"x2" เดิน Forming ร่วม แต่ไม่ขึ้นเลย)
 function inUseDayRunGroups(iso) {
   const byDate = rollRunColor[iso] || {};
   const groups = new Map();
-  Object.keys(byDate).forEach(set => {
-    const colorKey = byDate[set];
+  const add = (set, colorKey, inferred) => {
     if (!colorKey) return;
     const label = rollSetSizeGroupLabel(set);
     if (!groups.has(label)) groups.set(label, []);
-    groups.get(label).push({ set, cat: parseSizeRollName(set).category || '—', colorKey });
-  });
+    const list = groups.get(label);
+    if (list.some(x => x.set === set)) return;   // ที่บันทึกไว้ชนะค่าที่อนุมาน
+    list.push({ set, cat: parseSizeRollName(set).category || '—', colorKey, inferred });
+  };
+  Object.keys(byDate).forEach(set => add(set, byDate[set], false));
+  try {
+    runningRollSetsOn(iso).forEach((info, set) => {
+      if (byDate[set]) return;
+      const used = [...new Set(toolingData.roll.filter(r => r.set === set).map(r => r.color || NO_COLOR_KEY))];
+      if (!used.length) return;
+      const res = resolveRunColorForWeight(iso, set, used);
+      if (res.key) add(set, res.key, true);
+    });
+  } catch (e) {
+    // ตอนบูตยังอ่านแคชยอดผลิตไม่ได้ (ประกาศไว้ท้ายไฟล์) — เรนเดอร์รอบหลังดึงยอดผลิตเสร็จจะได้ครบ
+  }
   return [...groups.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'th'));
 }
 
@@ -2277,18 +2293,27 @@ function inUseDayMachineInfo(iso, setName, colorKey, machineMap) {
     note: 'อ้างจากเครื่องที่ผูกกับขนาดนี้ในทะเบียน' };
 }
 
-// ดึงยอดผลิตของวันในเดือนที่กำลังดูมาแคช เพื่อรู้ว่าแต่ละขนาดเดินอยู่เครื่องไหน แล้วเรนเดอร์ซ้ำครั้งเดียว
-// ดึงเฉพาะวันที่มีบันทึกชุดสีไว้แล้ว วันที่ว่างไม่ต้องยิง API ให้เสียเที่ยว
+// ดึงยอดผลิตของทุกวันในเดือนที่กำลังดู (ถึงวันนี้) มาแคช แล้วเรนเดอร์ซ้ำครั้งเดียว
+// ยอดผลิตเป็นแหล่งของทั้ง "วันนั้นเดินขนาดไหน" และ "อยู่เครื่องไหน" จึงต้องดึงทุกวัน ไม่ใช่แค่วันที่บันทึกชุดสีไว้
+// ยิงทีละ 8 วัน ไม่ยิงทั้งเดือนพร้อมกัน — เดือนหนึ่งมีถึง 31 วัน ยิงพร้อมกันหมดหนักทั้ง API และคอนเนกชันของเบราว์เซอร์
+// เรนเดอร์ซ้ำหลังจบแต่ละชุด ให้ปฏิทินค่อยๆ เติมข้อมูลให้เห็น ไม่ใช่รอเงียบจนครบทั้งเดือน
+// (ดึงวันต่อวันตาม loadFgRunningOn เดิม ไม่รวบเป็นช่วงเดียว เพราะ API ส่งวันข้างเคียงติดมาด้วยเป็นบางครั้ง)
+const INUSE_CAL_FETCH_CHUNK = 8;
 let inUseCalFetching = false;
-function inUseCalPrefetchMachines(isoList) {
+async function inUseCalPrefetchMachines(isoList) {
   if (inUseCalFetching) return;
   let pending;
   try { pending = isoList.filter(d => !fgRunningCache[d]); } catch (e) { return; }
   if (!pending.length) return;
   inUseCalFetching = true;
-  Promise.all(pending.map(d => loadFgRunningOn(d)))
-    .then(() => { inUseCalFetching = false; renderInUseCalendar(); })
-    .catch(() => { inUseCalFetching = false; });
+  try {
+    for (let i = 0; i < pending.length; i += INUSE_CAL_FETCH_CHUNK) {
+      await Promise.all(pending.slice(i, i + INUSE_CAL_FETCH_CHUNK).map(d => loadFgRunningOn(d)));
+      renderInUseCalendar();
+    }
+  } catch (e) { /* loadFgRunningOn เก็บ error ลงแคชเองแล้ว ที่นี่แค่ไม่ให้ค้างสถานะกำลังดึง */ }
+  inUseCalFetching = false;
+  renderInUseCalendar();
 }
 
 // ตัวอักษรบนป้ายสี — ปกติใช้ตัวขาวให้เหมือนที่อื่นทั้งแอป เปลี่ยนเป็นตัวเข้ม
@@ -2325,7 +2350,7 @@ function renderInUseCalendar() {
   const dayNames = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
 
   const machineMap = inUseMachineMap();
-  const needMachine = [];   // วันที่มีบันทึกชุดสี แต่ยังไม่รู้เครื่องจากยอดผลิต
+  const needMachine = [];   // วันที่ต้องดึงยอดผลิตมาดู (ทุกวันถึงวันนี้ของเดือนที่ดู)
   let cells = '';
   for (let i = 0; i < leading; i++) cells += '<div style="min-height:78px;"></div>';
   for (let d = 1; d <= daysInMonth; d++) {
@@ -2334,7 +2359,7 @@ function renderInUseCalendar() {
     const holidayName = companyHolidays.find(x => x.date === iso)?.name || null;
     const isOff = new Date(year, month, d).getDay() === 0 || holidayName;
     const isToday = iso === today;
-    if (groups.length && iso <= today) needMachine.push(iso);
+    if (iso <= today) needMachine.push(iso);
     const rows = groups.map(([sizeLabel, list]) => {
       // เรียงหมวดให้คงที่ Forming → Sizing → TH
       const ordered = list.slice().sort((a, b) =>
@@ -2353,19 +2378,23 @@ function renderInUseCalendar() {
         });
       });
       const machine = machines.sort().join('/') || null;
-      const detail = ordered.map(x => x.cat + ' ' + rollColorLabelFor(x.set, x.colorKey)).join(' · ');
+      const detail = ordered.map(x => x.cat + ' ' + rollColorLabelFor(x.set, x.colorKey) + (x.inferred ? '*' : '')).join(' · ');
+      // * = ยังไม่ได้บันทึกชุดสีของวันนั้น ระบบอนุมานให้จากยอดผลิต — เครื่องหมายเดียวกับตารางน้ำหนัก
+      const anyInferred = ordered.some(x => x.inferred);
       // ป้ายหมวด F/S/T พื้นเป็นสีชุด Roll ที่เดินของหมวดนั้น — เห็นทั้งหมวดและสีในบรรทัดเดียว
       const catTags = ordered.map(x => `<span title="${escapeHtmlAttr(x.cat + ' ' + rollColorLabelFor(x.set, x.colorKey))}"
           style="background:${inUseColorDot(x.set, x.colorKey)};color:${rollColorTextOn(inUseColorDot(x.set, x.colorKey))};font-size:9px;font-weight:800;
                  padding:0 3px;border-radius:3px;line-height:1.5;flex-shrink:0;">${ROLL_CAT_ABBR[x.cat] || '?'}</span>`).join('');
       const machineNote = !machine ? ''
         : ' · เครื่อง ' + machine + (machineSure || !machineNotes.length ? '' : ' (' + machineNotes.join(' · ') + ')');
-      return `<div title="${escapeHtmlAttr(sizeLabel + machineNote + ' — ' + detail)}"
+      return `<div title="${escapeHtmlAttr(sizeLabel + machineNote + ' — ' + detail +
+          (anyInferred ? ' · * ยังไม่ได้บันทึกชุดสีของวันนั้น — อนุมานจากยอดผลิตจริง' : ''))}"
           style="display:flex;align-items:center;gap:3px;font-size:10.5px;line-height:1.4;margin-top:2px;">
         ${machine ? `<span style="font-size:9px;font-weight:800;padding:0 4px;border-radius:3px;line-height:1.5;flex-shrink:0;
                ${machineSure ? 'background:var(--inuse);color:#fff;'
                              : 'background:transparent;color:var(--text-3);border:1px solid var(--border);'}">${escapeHtmlAttr(machine)}</span>` : ''}
-        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2);font-weight:600;">${escapeHtmlAttr(inUseCalSizeShort(sizeLabel))}</span>
+        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2);font-weight:600;">${escapeHtmlAttr(inUseCalSizeShort(sizeLabel))}${
+          anyInferred ? '<span style="color:var(--text-3);font-weight:400;">*</span>' : ''}</span>
         <span style="display:inline-flex;gap:2px;margin-left:auto;flex-shrink:0;">${catTags}</span>
       </div>`;
     }).join('');
