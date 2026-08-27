@@ -2213,7 +2213,13 @@ function inUseCalToday() {
 // สองแหล่ง: 1) ชุดสีที่บันทึกไว้ว่าเดินวันนั้น  2) ขนาดที่มียอดผลิตจริง/มีแผนเปลี่ยน Roll ของวันนั้น
 // ต้องมีแหล่งที่ 2 ด้วย ไม่งั้นวันที่เดินงานจริงแต่ยังไม่ได้บันทึกชุดสี ปฏิทินจะบอกว่าวันนั้นไม่ได้เดิน
 // (เจอกับวันที่ 26 ส.ค. 69: GI 3"x3" เดินจริง 43.99 ตัน และ GI 4"x2" เดิน Forming ร่วม แต่ไม่ขึ้นเลย)
-function inUseDayRunGroups(iso) {
+// Map(ชื่อชุด → { machines, kg, fromBlock, sharedFrom }) ของวันนั้น — กันตอนบูตที่ยังเรียกไม่ได้
+// (runningRollSetsOn อ่านแคชยอดผลิตที่ประกาศไว้ท้ายไฟล์ ตอน initDashboard ยังชน TDZ)
+function inUseRunningSetsSafe(iso) {
+  try { return runningRollSetsOn(iso); } catch (e) { return new Map(); }
+}
+
+function inUseDayRunGroups(iso, running) {
   const byDate = rollRunColor[iso] || {};
   const groups = new Map();
   const add = (set, colorKey, inferred) => {
@@ -2225,17 +2231,13 @@ function inUseDayRunGroups(iso) {
     list.push({ set, cat: parseSizeRollName(set).category || '—', colorKey, inferred });
   };
   Object.keys(byDate).forEach(set => add(set, byDate[set], false));
-  try {
-    runningRollSetsOn(iso).forEach((info, set) => {
-      if (byDate[set]) return;
-      const used = [...new Set(toolingData.roll.filter(r => r.set === set).map(r => r.color || NO_COLOR_KEY))];
-      if (!used.length) return;
-      const res = resolveRunColorForWeight(iso, set, used);
-      if (res.key) add(set, res.key, true);
-    });
-  } catch (e) {
-    // ตอนบูตยังอ่านแคชยอดผลิตไม่ได้ (ประกาศไว้ท้ายไฟล์) — เรนเดอร์รอบหลังดึงยอดผลิตเสร็จจะได้ครบ
-  }
+  (running || inUseRunningSetsSafe(iso)).forEach((info, set) => {
+    if (byDate[set]) return;
+    const used = [...new Set(toolingData.roll.filter(r => r.set === set).map(r => r.color || NO_COLOR_KEY))];
+    if (!used.length) return;
+    const res = resolveRunColorForWeight(iso, set, used);
+    if (res.key) add(set, res.key, true);
+  });
   return [...groups.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'th'));
 }
 
@@ -2260,25 +2262,22 @@ const ROLL_CAT_ABBR = { Forming: 'F', Sizing: 'S', TH: 'T' };
 const ROLL_CAT_SORT = { Forming: 0, Sizing: 1, TH: 2 };
 
 // เครื่องที่เดินชุดนั้นในวันนั้น เรียงตามความน่าเชื่อถือ
-//   1) ยอดผลิตจริงของวันนั้น (machine_id จาก API ยอดผลิต) — ยืนยันแล้ว
-//   2) รายการเปลี่ยน Roll ในแอป (แผนของวันนั้นโดยตรง) — ยืนยันแล้ว
-//   3) วันล่าสุดก่อนหน้าที่มียอดผลิตของขนาดนี้ — วันที่ยังไม่คีย์ยอดผลิต (เช่นวันนี้) ใช้ตัวนี้
+//   1) ชุดที่เดินงานจริงในวันนั้น (runningRollSetsOn) — ยืนยันแล้ว
+//      ครอบทั้งยอดผลิตของขนาดตัวเอง, ขนาดที่มาใช้ Forming ร่วม (เครื่องของขนาดที่มายืม)
+//      และรายการเปลี่ยน Roll ของวันนั้น
+//   2) รายการเปลี่ยน Roll ในแอป (เผื่อตอนบูตที่ยังเรียกข้อ 1 ไม่ได้) — ยืนยันแล้ว
+//   3) วันล่าสุดก่อนหน้าที่มียอดผลิตของขนาดนี้ — วันที่ยังไม่คีย์ยอดผลิตใช้ตัวนี้
 //   4) เครื่องที่ผูกกับชุดสีนั้นอยู่ตอนนี้ (ว่างถ้าชุดถูกปลดออกจากเครื่องไปแล้ว)
 //   5) เครื่องที่ผูกกับ Size Roll นั้นในทะเบียน — ตัวเดียวกับที่การ์ด "ชุด Roll กำลังใช้งาน" ใช้
 // 3-5 เป็นการอนุมาน ไม่ใช่หลักฐานของวันนั้น จึงคืน sure:false ให้ปฏิทินแสดงเป็นป้ายโครง
 // ไม่ให้อ่านปนกับค่าที่ยืนยันแล้ว และคืน note ไว้บอกในทูลทิปว่าอนุมานมาจากอะไร
-function inUseDayMachineInfo(iso, setName, colorKey, machineMap) {
-  let fgKey = null;
-  try {
-    fgKey = rollSetFgKey(setName);
-    const cached = fgRunningCache[iso];
-    const list = cached && fgKey ? (cached.machinesByKey[fgKey] || []) : [];
-    if (list.length) return { machines: list.slice(), sure: true, note: '' };
-  } catch (e) {
-    // ตอนบูตยังอ่าน fgRunningCache ไม่ได้ (ประกาศไว้ท้ายไฟล์) — ข้ามไปใช้แหล่งอื่น
-  }
+function inUseDayMachineInfo(iso, setName, colorKey, machineMap, running) {
+  const hit = (running || inUseRunningSetsSafe(iso)).get(setName);
+  if (hit && hit.machines && hit.machines.length) return { machines: hit.machines.slice(), sure: true, note: '' };
   const planned = (machineMap[iso] || {})[setName];
   if (planned) return { machines: [planned], sure: true, note: '' };
+  let fgKey = null;
+  try { fgKey = rollSetFgKey(setName); } catch (e) { /* ตอนบูตยังเรียกไม่ได้ */ }
   try {
     const prev = Object.keys(fgRunningCache).filter(d => d < iso).sort().reverse();
     for (let i = 0; i < prev.length; i++) {
@@ -2355,7 +2354,8 @@ function renderInUseCalendar() {
   for (let i = 0; i < leading; i++) cells += '<div style="min-height:78px;"></div>';
   for (let d = 1; d <= daysInMonth; d++) {
     const iso = toISODate(new Date(year, month, d));
-    const groups = inUseDayRunGroups(iso);
+    const running = inUseRunningSetsSafe(iso);
+    const groups = inUseDayRunGroups(iso, running);
     const holidayName = companyHolidays.find(x => x.date === iso)?.name || null;
     const isOff = new Date(year, month, d).getDay() === 0 || holidayName;
     const isToday = iso === today;
@@ -2368,7 +2368,7 @@ function renderInUseCalendar() {
       const machines = [];
       let machineSure = false, machineNotes = [];
       ordered.forEach(x => {
-        const info = inUseDayMachineInfo(iso, x.set, x.colorKey, machineMap);
+        const info = inUseDayMachineInfo(iso, x.set, x.colorKey, machineMap, running);
         if (!info.machines.length) return;
         if (info.sure) machineSure = true;
         else if (info.note && !machineNotes.includes(info.note)) machineNotes.push(info.note);
