@@ -5280,9 +5280,6 @@ function planTaskFormFields() {
         </div>
         <input type="hidden" id="pf-shift" value="morning">
       </div>
-      <div class="form-group"><label class="form-label">ผู้ปฏิบัติงาน</label>
-        <select class="form-select" id="pf-worker"></select>
-      </div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
       <button type="button" class="btn btn-ghost btn-sm" id="pf-continue-btn" onclick="applyPlanFormContinueFromPrev()"
@@ -5365,20 +5362,10 @@ function planTaskFormFields() {
 }
 
 // งาน CNC เลือกผู้ปฏิบัติงานได้เฉพาะช่าง CNC เท่านั้น — งานขัด Roll ยังเลือกได้ทั้งช่างขัด Roll/ช่างเครื่อง/หัวหน้างานเหมือนเดิม
-const WORKER_ROLES_BY_WORKTYPE = { cnc: ['cnc'], polish: ['polish', 'operator', 'lead'] };
 function workerName(workerId) {
   const m = teamMembers.find(x => x.id === workerId);
   return m ? m.name : '—';
 }
-function populatePlanWorkerSelect(workType, selectedId) {
-  const sel = document.getElementById('pf-worker');
-  if (!sel) return;
-  const roles = WORKER_ROLES_BY_WORKTYPE[workType] || [];
-  const options = teamMembers.filter(m => roles.includes(m.role));
-  sel.innerHTML = '<option value="">— ยังไม่ระบุ —</option>' +
-    options.map(m => `<option value="${m.id}"${m.id === selectedId ? ' selected' : ''}>${escapeHtmlAttr(m.name)} (${escapeHtmlAttr(m.roleLabel)})</option>`).join('');
-}
-
 function populatePlanRollSetSelect(selectedSet) {
   const sel = document.getElementById('pf-rollset');
   if (!sel) return;
@@ -6716,7 +6703,6 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   }
   document.getElementById('pf-otcap-morning').value = task ? ((task.otCapMinutesByShift || {}).morning || 0) / 60 : 0;
   document.getElementById('pf-otcap-night').value = task ? ((task.otCapMinutesByShift || {}).night || 0) / 60 : 0;
-  populatePlanWorkerSelect(workType, task ? task.workerId : (chainFrom ? chainFrom.workerId : null));
   populatePlanRollSetSelect(task ? task.rollSet : null);
   populatePlanRollColorSelect(task ? task.rollSet : null, task ? task.rollColor : null);
   fillPlanRollReadonly(task ? task.rollSet : null, task ? task.rollColor : null, task ? task.rollIds : null, currentEditingPlanTaskId); // คำนวณเวลาเริ่ม/จบของแต่ละกะให้อัตโนมัติในตัว — คงรายการ Roll ที่เลือกไว้เดิมถ้าเป็นการแก้ไข
@@ -6868,7 +6854,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
       otCapMinutesByShift,
       otMinutes: computedEnd.otMinutes || 0,
       otMinutesByShift: computedEnd.otMinutesByShift || {},
-      workerId: g('pf-worker') || null,
+      workerId: (mode === 'edit' && task) ? (task.workerId || null) : null,
       // totalTime ด้านบนคำนวณจากเวลาเต็มของแต่ละ Roll เสมอ (ไม่ใช่เวลาที่ถูกตัดบางส่วนไว้เดิม) — ถ้าไม่ต้องตัดวัน (splitGroups เป็น null ด้านล่าง)
       // แปลว่าทุก Roll ได้เวลาเต็มจริง ต้องล้างค่า rollMinutesOverride เดิมทิ้งด้วย ไม่งั้นจะค้างเป็นค่าที่ไม่ตรงกับ totalTime ใหม่
       rollMinutesOverride: hasPieceOverride ? pieceOverride : undefined,
