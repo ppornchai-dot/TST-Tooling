@@ -2335,6 +2335,14 @@ function inUseColorDot(setName, colorKey) {
   return c ? c.dot : '#9CA3AF';
 }
 
+// วันแรกที่มีบันทึกชุดสีที่เดิน — ก่อนวันนั้นถือว่ายังไม่ได้เริ่มบันทึก
+// ช่วงนั้นเหลือแต่ค่าที่อนุมานจากแผนเปลี่ยน Roll/ยอดผลิต ซึ่งเป็นการเดาล้วนๆ จึงไม่แสดงในปฏิทิน
+// (ข้อมูลไม่ได้ถูกลบ รายการเปลี่ยน Roll ของช่วงนั้นยังอยู่ในหน้า Production Block ตามเดิม)
+function inUseCalStartIso() {
+  const days = Object.keys(rollRunColor || {}).filter(d => Object.keys(rollRunColor[d] || {}).length).sort();
+  return days.length ? days[0] : null;
+}
+
 function renderInUseCalendar() {
   const el = document.getElementById('inuse-cal-body');
   if (!el) return;
@@ -2349,17 +2357,20 @@ function renderInUseCalendar() {
   const dayNames = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
 
   const machineMap = inUseMachineMap();
+  const startIso = inUseCalStartIso();
   const needMachine = [];   // วันที่ต้องดึงยอดผลิตมาดู (ทุกวันถึงวันนี้ของเดือนที่ดู)
   let cells = '';
   for (let i = 0; i < leading; i++) cells += '<div style="min-height:78px;"></div>';
   for (let d = 1; d <= daysInMonth; d++) {
     const iso = toISODate(new Date(year, month, d));
-    const running = inUseRunningSetsSafe(iso);
-    const groups = inUseDayRunGroups(iso, running);
+    // ก่อนวันแรกที่เริ่มบันทึกชุดสี ไม่แสดงและไม่ต้องดึงยอดผลิตมาให้เสียเที่ยว
+    const beforeStart = !!startIso && iso < startIso;
+    const running = beforeStart ? new Map() : inUseRunningSetsSafe(iso);
+    const groups = beforeStart ? [] : inUseDayRunGroups(iso, running);
     const holidayName = companyHolidays.find(x => x.date === iso)?.name || null;
     const isOff = new Date(year, month, d).getDay() === 0 || holidayName;
     const isToday = iso === today;
-    if (iso <= today) needMachine.push(iso);
+    if (iso <= today && !beforeStart) needMachine.push(iso);
     const rows = groups.map(([sizeLabel, list]) => {
       // เรียงหมวดให้คงที่ Forming → Sizing → TH
       const ordered = list.slice().sort((a, b) =>
@@ -2414,7 +2425,10 @@ function renderInUseCalendar() {
         ${dayNames.map(n => `<div style="text-align:center;font-size:11px;font-weight:800;color:var(--text-3);">${n}</div>`).join('')}
       </div>
       <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;">${cells}</div>
-    </div></div>`;
+    </div></div>${startIso && toISODate(new Date(year, month, 1)) < startIso
+      ? `<div class="muted" style="font-size:11.5px;margin-top:8px;">เริ่มบันทึกชุดสีที่เดินรายวันตั้งแต่ ${
+          escapeHtmlAttr(fmtDateThai(parseISODate(startIso)))} — วันก่อนหน้านั้นไม่แสดงในปฏิทิน (ข้อมูลรายการเปลี่ยน Roll ยังอยู่ในหน้า Production Block)</div>`
+      : ''}`;
 
   // เลื่อนออกไปหลังสคริปต์ทั้งไฟล์ทำงานจบ ไม่งั้นตอนบูตจะชน TDZ ของ fgRunningCache/loadFgRunningOn
   setTimeout(() => inUseCalPrefetchMachines(needMachine), 0);
