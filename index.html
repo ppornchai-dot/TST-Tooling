@@ -163,6 +163,7 @@ body{
   font-size:16px;font-weight:700;color:var(--text-1);
 }
 .topbar-sub{font-size:12px;color:var(--text-3);margin-top:1px;}
+.topbar-sub:empty{display:none;}   /* หน้าที่ไม่มีคำอธิบาย ไม่ต้องเว้นที่ว่างไว้ */
 .topbar-actions{display:flex;align-items:center;gap:10px;}
 .btn{
   display:inline-flex;align-items:center;gap:6px;
@@ -1591,9 +1592,7 @@ canvas{display:block;}
          PAGE: PLAN
     ══════════════════════════════════════════ -->
     <div class="page" id="page-plan">
-      <div class="section-title" id="plan-section-title">วางแผน</div>
-      <div class="section-sub">ตารางแผนการบำรุงรักษาและงาน Tooling ประจำปี 2569</div>
-
+      <!-- ไม่มีหัวข้อในหน้าแล้ว — ใช้หัวข้อบนแถบด้านบน (page-title) ที่ showPage ตั้งให้ตัวเดียว ไม่ซ้ำกัน -->
       <!-- เอาปุ่มเลือกดู ⚙ CNC / ✦ ขัด Roll ออกแล้ว — ทุกมุมมองแสดงทั้งสองประเภทพร้อมกัน
            รายวันแบ่งเป็นหัวข้อเหมือนหน้างานประจำวัน ส่วนรายสัปดาห์/รายเดือนติดไอคอนประเภทไว้ที่ป้ายงาน -->
       <!-- เอาปุ่มกรองกะ (ทั้งหมด/กะเช้า/กะดึก/2 กะ) ออกแล้ว — ทุกมุมมองแสดงงานทุกกะเสมอ
@@ -1950,7 +1949,7 @@ const PAGE_META = {
   prodWeight: { title: 'น้ำหนักผลิต', sub: 'เทียบน้ำหนักผลิตจริงกับยอดใช้งานสะสมของแต่ละชุด Roll' },
   rollLife:   { title: 'อายุ Roll', sub: 'อายุคงเหลือของแต่ละชุด Roll (Size Roll + ชุดสี) ยึดลูกที่เหลือน้อยที่สุดในชุด' },
   daily:     { title: 'งานประจำวัน', sub: 'เช็คลิสต์งานประจำวันของทีม Tooling — วันที่ 2 ก.ค. 2569' },
-  plan:      { title: 'วางแผน', sub: 'ตารางแผนการบำรุงรักษาและงาน Tooling ประจำปี 2569' },
+  plan:      { title: 'วางแผน', sub: '' },   // ไม่มีคำอธิบาย — แถบด้านบนซ่อนบรรทัดนี้เองเมื่อว่าง (.topbar-sub:empty)
   history:   { title: 'ประวัติการทำงาน', sub: 'บันทึกการดำเนินงานและบำรุงรักษา Tooling ทั้งหมด' },
   pending:   { title: 'งานค้าง', sub: 'รายการงานที่ยังไม่ได้ดำเนินการหรือเกินกำหนด' },
   team:      { title: 'ทีมงาน', sub: 'บุคลากรฝ่าย Tooling 5 คน' },
@@ -12913,8 +12912,6 @@ function applyRoleUI() {
   const planLabel = isDailyTechRole() ? 'แผนงาน' : 'วางแผน';
   const navPlanLabel = document.getElementById('nav-plan-label');
   if (navPlanLabel) navPlanLabel.textContent = planLabel;
-  const planSectionTitle = document.getElementById('plan-section-title');
-  if (planSectionTitle) planSectionTitle.textContent = planLabel;
   if (PAGE_META.plan) PAGE_META.plan.title = planLabel;
   if (currentPage === 'plan') {
     const topTitle = document.getElementById('page-title');
