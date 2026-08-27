@@ -1597,7 +1597,7 @@ canvas{display:block;}
       <!-- เอาปุ่มกรองกะ (ทั้งหมด/กะเช้า/กะดึก/2 กะ) ออกแล้ว — ทุกมุมมองแสดงงานทุกกะเสมอ
            กะของแต่ละงานดูได้จากคอลัมน์ "กะ" ในมุมมองรายวัน และจากทูลทิปของป้ายงานในรายสัปดาห์/รายเดือน -->
       <div class="mobile-wrap" id="plan-shift-row" style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
-        <button class="btn btn-ghost btn-sm plan-edit-only" onclick="openCompanyHolidaysModal()">📅 วันหยุดบริษัท</button>
+        <button class="btn btn-ghost btn-sm plan-edit-only" onclick="openCompanyHolidaysModal()">📅 เพิ่มวันหยุดในปฏิทิน</button>
         <button class="btn btn-ghost btn-sm plan-edit-only" style="color:var(--red);border-color:var(--red);" onclick="togglePlanDeleteMode()">🗑 ลบแผนงาน</button>
       </div>
 
@@ -3996,7 +3996,7 @@ function deleteCompanyHoliday(id) {
 }
 
 function openCompanyHolidaysModal() {
-  document.getElementById('modal-title').textContent = 'วันหยุดบริษัท';
+  document.getElementById('modal-title').textContent = 'เพิ่มวันหยุดในปฏิทิน';
   document.getElementById('modal-body').innerHTML = `
     <div class="modal-row full" style="font-size:12px;color:var(--text-3);">
       วันที่กำหนดไว้ที่นี่จะถูกข้ามในระบบวางแผนงานอัตโนมัติ (CNC/ขัด Roll) เหมือนวันอาทิตย์ — ระบบจะไม่วางแผนงานในวันนั้น และเลื่อนไปเริ่มวันทำงานถัดไปแทน
@@ -12847,7 +12847,7 @@ function applyRoleUI() {
   const allowEditPlan = canEditPlan();
   document.querySelectorAll('.plan-edit-only').forEach(el => { el.style.display = allowEditPlan ? '' : 'none'; });
 
-  // แถวนี้เหลือแค่ปุ่ม วันหยุดบริษัท / ลบแผนงาน ซึ่งเป็น plan-edit-only ทั้งคู่ — ซ่อนทั้งแถวสำหรับช่าง
+  // แถวนี้เหลือแค่ปุ่ม เพิ่มวันหยุดในปฏิทิน / ลบแผนงาน ซึ่งเป็น plan-edit-only ทั้งคู่ — ซ่อนทั้งแถวสำหรับช่าง
   // ไม่ให้เหลือแถวว่างค้างไว้ (ปุ่มกรองกะถูกเอาออกจากแถวนี้ไปแล้ว)
   const planShiftRow = document.getElementById('plan-shift-row');
   if (planShiftRow) planShiftRow.style.display = allowEditPlan ? '' : 'none';
