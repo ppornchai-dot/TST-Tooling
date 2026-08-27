@@ -4547,7 +4547,7 @@ function pfDatePopupNav(dir) {
   renderPfDatePopup();
 }
 function pickPfDate(iso) {
-  document.getElementById('pf-date').value = iso;
+  setPlanFormDate('pf-date', iso);
   closePfDatePicker();
   // เปลี่ยนวันแล้วจุดต่อคิวของวันใหม่ก็เปลี่ยน ต้องคิดใหม่ ไม่ค้างค่าของวันเดิม
   refreshPlanFormAppendStart();
@@ -4607,7 +4607,7 @@ function renderPfDatePopup() {
 }
 document.addEventListener('click', function(ev) {
   const popup = document.getElementById('pf-date-popup');
-  const input = document.getElementById('pf-date');
+  const input = document.getElementById('pf-date-shown');
   if (!popup || popup.style.display === 'none') return;
   if (popup.contains(ev.target) || (input && input.contains(ev.target))) return;
   closePfDatePicker();
@@ -5289,19 +5289,32 @@ function addPlanTaskForCurrentDay(workType) {
   addPlanTaskOnDate(toISODate(planViewDate), workType);
 }
 
+// ตั้งวันที่ในฟอร์ม — เก็บค่าเป็น YYYY-MM-DD ในช่องซ่อน และแสดงเป็น "วัน เดือน ปี" ในช่องที่เห็น
+// เขียนคู่กันที่นี่ที่เดียว ค่าที่แสดงกับค่าจริงจึงไม่หลุดจากกัน
+function setPlanFormDate(id, iso) {
+  const el = document.getElementById(id);
+  if (el) el.value = iso || '';
+  const shown = document.getElementById(id + '-shown');
+  if (shown) shown.value = iso ? fmtDateThai(parseISODate(iso)) : '';
+}
+
 function planTaskFormFields() {
   return `
+    <!-- ช่องที่เห็นแสดงวันที่แบบ "วัน เดือน ปี" (เช่น 28 ส.ค. 2569) ให้ตรงกับที่ใช้ทั่วทั้งระบบ
+         ส่วนค่าจริงเก็บเป็น YYYY-MM-DD ไว้ใน input ที่ซ่อนไว้ (pf-date / pf-enddate) เพื่อให้ทุกที่ที่อ่านค่า
+         (ตัวคำนวณเวลา/ตอนบันทึก) ยังได้รูปแบบเดิม ไม่ต้องแก้ตามทั้งไฟล์ — ตั้งค่าคู่กันที่ setPlanFormDate -->
     <div class="modal-row">
       <div class="form-group"><label class="form-label">วันที่เริ่มงาน</label>
         <div style="position:relative;">
-          <input class="form-input" id="pf-date" type="text" readonly style="cursor:pointer;" onclick="openPfDatePicker(event)">
+          <input class="form-input" id="pf-date-shown" type="text" readonly style="cursor:pointer;" onclick="openPfDatePicker(event)">
+          <input type="hidden" id="pf-date">
           <div id="pf-date-popup" class="plan-date-popup" style="display:none;"></div>
         </div>
       </div>
-      <!-- ใช้ช่อง text แบบเดียวกับ "วันที่เริ่มงาน" ไม่ใช่ input[type=date] เพราะตัวหลังแสดงผลตามภาษา/เครื่อง
-           ของผู้ใช้ (บางเครื่องขึ้น 28-Aug-2026) ทำให้รูปแบบวันที่สองช่องนี้ไม่ตรงกัน — เหตุผลเดียวกับช่องเวลา (ดู normalizeTimeInput)
-           ค่าที่เก็บยังเป็น YYYY-MM-DD เหมือนเดิม ตอนบันทึกจึงอ่านได้ตามปกติ -->
-      <div class="form-group"><label class="form-label">วันที่จบงาน — คำนวณให้อัตโนมัติ</label><input class="form-input" id="pf-enddate" type="text" readonly></div>
+      <div class="form-group"><label class="form-label">วันที่จบงาน — คำนวณให้อัตโนมัติ</label>
+        <input class="form-input" id="pf-enddate-shown" type="text" readonly>
+        <input type="hidden" id="pf-enddate">
+      </div>
     </div>
     <div id="pf-queue-moved" style="font-size:11.5px;color:var(--amber);background:var(--amber-dim);border:1px solid var(--amber);
       border-radius:7px;padding:7px 10px;margin-bottom:10px;line-height:1.55;"></div>
@@ -6127,8 +6140,7 @@ function updatePlanEndTime() {
     : (document.getElementById('pf-start-morning') || {}).value;
   const total = parseFloat((document.getElementById('pf-plantime') || {}).value) || 0;
   const result = computePlanEnd(startDate, start, total, shiftKey, getOtCapMinutes());
-  const endDateEl = document.getElementById('pf-enddate');
-  if (endDateEl) endDateEl.value = result.date || startDate;
+  setPlanFormDate('pf-enddate', result.date || startDate);
   const seg = result.segments || {};
   renderShiftSegmentFields('morning', seg.morning, startDate);
   renderShiftSegmentFields('night', seg.night, startDate);
@@ -6582,7 +6594,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   // งานใหม่ไปต่อ "ท้ายคิว" จริงของประเภทงานนี้ ซึ่งอาจเลยวันที่กดเพิ่มไปแล้ว
   const queueEnd = task ? null : planQueueEndFor(workType, pickedDate, defaultShift);
   const formDate = task ? task.date : queueEnd.date;
-  document.getElementById('pf-date').value = formDate;
+  setPlanFormDate('pf-date', formDate);
   const startValue = task ? task.startTime : queueEnd.time;
   // ถ้าท้ายคิวเลยวันที่กดมาแล้ว บอกให้รู้ว่าทำไมวันที่ในฟอร์มไม่ใช่วันที่กด (กันคิดว่าระบบเลือกวันผิด)
   const movedNote = document.getElementById('pf-queue-moved');
@@ -6610,7 +6622,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   populatePlanRollColorSelect(task ? task.rollSet : null, task ? task.rollColor : null);
   fillPlanRollReadonly(task ? task.rollSet : null, task ? task.rollColor : null, task ? task.rollIds : null, currentEditingPlanTaskId); // คำนวณเวลาเริ่ม/จบของแต่ละกะให้อัตโนมัติในตัว — คงรายการ Roll ที่เลือกไว้เดิมถ้าเป็นการแก้ไข
   // แก้ไขงานเดิม — คงวันที่จบที่บันทึกไว้ถ้ามีค่าจริง ไม่ทับด้วยค่าคำนวณใหม่ แต่ถ้าเดิมว่าง/เป็น "—" ให้ใช้ค่าที่คำนวณอัตโนมัติแทน
-  if (task && task.endDate) document.getElementById('pf-enddate').value = task.endDate;
+  if (task && task.endDate) setPlanFormDate('pf-enddate', task.endDate);
   // โหมด "งานอื่นๆ" — แก้ไขงานเดิมที่เป็นงานอื่น ให้กลับมาอยู่โหมดนั้นพร้อมค่าที่บันทึกไว้
   if (task && task.otherWork) {
     const qty = (task.rollIds || []).length || 1;
