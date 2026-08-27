@@ -5311,7 +5311,7 @@ function planTaskFormFields() {
         <input type="hidden" id="pf-shift" value="morning">
       </div>
     </div>
-    <div class="modal-row">
+    <div class="modal-row" id="pf-morning-row">
       <div class="form-group"><label class="form-label">🌤 เริ่มงานกะเช้า</label><input class="form-input" id="pf-start-morning" type="text" inputmode="numeric" placeholder="เช่น 08:00" maxlength="5" onchange="normalizeTimeInput(this);updatePlanEndTime()"></div>
       <div class="form-group"><label class="form-label">จบงานกะเช้า — คำนวณให้อัตโนมัติ</label><input class="form-input" id="pf-end-morning" type="text" disabled></div>
     </div>
@@ -6020,10 +6020,15 @@ function setPlanShiftButtons(key, bothStartKey) {
     b.style.borderColor = active ? 'var(--accent)' : '';
     b.style.background = active ? 'var(--accent-glow)' : '';
   });
-  // ช่องของกะดึกไม่ต้องแสดงเลยถ้าประเภทงานนี้ไม่มีกะดึก/2 กะ
-  const showNight = allowed.includes('night') || allowed.includes('both') || key === 'night' || key === 'both';
+  // แถวของกะดึกโชว์เฉพาะตอนที่งานนี้ "ทำกะดึกจริง" (เลือกกะดึก หรือเลือกทั้งสองกะ)
+  // งานกะเช้าไม่ต้องเห็นช่องเริ่ม/จบกะดึกเลย — เดิมโชว์ค้างไว้เพราะเช็คว่าประเภทงานนี้ "ทำกะดึกได้ไหม"
+  // ซึ่งงาน CNC ทำได้อยู่แล้ว จึงโชว์ทุกครั้งทั้งที่งานนั้นเป็นกะเช้าล้วน
+  const showNight = key === 'night' || key === 'both';
   const nightRow = document.getElementById('pf-night-row');
   if (nightRow) nightRow.style.display = showNight ? '' : 'none';
+  // ในทางกลับกัน งานกะดึกล้วนก็ไม่ต้องเห็นช่องเริ่ม/จบกะเช้า
+  const morningRow = document.getElementById('pf-morning-row');
+  if (morningRow) morningRow.style.display = (key === 'morning' || key === 'both') ? '' : 'none';
   // ช่องเริ่มงานกรอกเองได้เฉพาะช่องเดียวเสมอ: กะเช้า/กะดึกก็ตามกะที่เลือกตรงตัว ส่วน "2 กะ" ใช้ช่องไหนขึ้นกับว่าเวลาที่ต่อมา/กรอกไว้ตกอยู่ในช่วงกะเช้าหรือกะดึกจริงตามนาฬิกา (bothStartKey)
   // อีกช่องที่เหลือเป็นแค่ผลคำนวณโชว์ผล (ดู renderShiftSegmentFields) ไม่ให้ผู้ใช้กำหนดเอง
   const startMorningEl = document.getElementById('pf-start-morning');
