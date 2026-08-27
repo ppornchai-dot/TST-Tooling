@@ -159,6 +159,7 @@ body{
   padding:0 24px;
   position:sticky;top:0;z-index:50;
 }
+.topbar-title{font-size:17px;font-weight:800;color:var(--text-1);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .topbar-actions{display:flex;align-items:center;gap:10px;}
 .btn{
   display:inline-flex;align-items:center;gap:6px;
@@ -993,7 +994,7 @@ canvas{display:block;}
       <button class="hamburger-btn" id="hamburger-btn" onclick="toggleMobileSidebar()" aria-label="เปิดเมนู" title="เปิดเมนู">
         <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
-      <!-- ไม่มีหัวข้อ/คำอธิบายบนแถบด้านบนแล้ว — ดูจากเมนูด้านข้างที่ไฮไลต์อยู่ว่าอยู่หน้าไหน -->
+      <div class="topbar-title" id="page-title">Dashboard</div>
     </div>
     <div class="topbar-actions">
       <div id="admin-view-select-wrap" style="display:none;align-items:center;">
@@ -1916,17 +1917,18 @@ function rollStatusBar(items) {
 // ─── NAVIGATION ───────────────────────────────────────────────────────────────
 let currentPage = 'dashboard';
 const CURRENT_PAGE_STORAGE_KEY = 'tst-tooling-current-page'; // จำหน้าล่าสุดไว้ใน localStorage เพื่อกลับมาหน้าเดิมได้เมื่อรีเฟรช (ไม่ใช่กลับไป Dashboard ทุกครั้ง)
+// ชื่อหน้าที่แสดงบนหัวกระดาษ (แถบด้านบน) — ไม่มีคำอธิบายแล้ว เก็บไว้แต่ชื่อ
 const PAGE_META = {
-  dashboard: { title: 'Dashboard', sub: 'ภาพรวมระบบ Tooling — อัปเดต 30 มิ.ย. 2569' },
-  registry:  { title: 'ทะเบียน Tooling', sub: 'รายการเครื่องมือและอุปกรณ์ทั้งหมด 248 รายการ' },
-  standard:  { title: 'Production Block', sub: 'ตารางวางแผนการผลิตตามการใช้ Roll — ฝ่าย Production ใช้วางแผนงาน' },
-  prodWeight: { title: 'น้ำหนักผลิต', sub: 'เทียบน้ำหนักผลิตจริงกับยอดใช้งานสะสมของแต่ละชุด Roll' },
-  rollLife:   { title: 'อายุ Roll', sub: 'อายุคงเหลือของแต่ละชุด Roll (Size Roll + ชุดสี) ยึดลูกที่เหลือน้อยที่สุดในชุด' },
-  daily:     { title: 'งานประจำวัน', sub: 'เช็คลิสต์งานประจำวันของทีม Tooling — วันที่ 2 ก.ค. 2569' },
-  plan:      { title: 'วางแผน' },
-  history:   { title: 'ประวัติการทำงาน', sub: 'บันทึกการดำเนินงานและบำรุงรักษา Tooling ทั้งหมด' },
-  pending:   { title: 'งานค้าง', sub: 'รายการงานที่ยังไม่ได้ดำเนินการหรือเกินกำหนด' },
-  team:      { title: 'ทีมงาน', sub: 'บุคลากรฝ่าย Tooling 5 คน' },
+  dashboard:  { title: 'Dashboard' },
+  registry:   { title: 'ทะเบียน Tooling' },
+  standard:   { title: 'Production Block' },
+  prodWeight: { title: 'น้ำหนักผลิต' },
+  rollLife:   { title: 'อายุ Roll' },
+  daily:      { title: 'งานประจำวัน' },
+  plan:       { title: 'วางแผน' },
+  history:    { title: 'ประวัติการทำงาน' },
+  pending:    { title: 'งานค้าง' },
+  team:       { title: 'ทีมงาน' },
 };
 
 function toggleMobileSidebar() {
@@ -1948,6 +1950,8 @@ function showPage(id) {
     if (n.getAttribute('onclick') && n.getAttribute('onclick').includes("'" + id + "'"))
       n.classList.add('active');
   });
+  const titleEl = document.getElementById('page-title');
+  if (titleEl && PAGE_META[id]) titleEl.textContent = PAGE_META[id].title;
   currentPage = id;
   try { localStorage.setItem(CURRENT_PAGE_STORAGE_KEY, id); } catch (e) { /* localStorage unavailable — แค่จำหน้าไม่ได้ตอนรีเฟรช ไม่กระทบการใช้งานอื่น */ }
   // ออกจากหน้าวางแผนแล้วเลิกโหมดลบด้วย กันสถานะค้างไว้จนกลับมาเจอแถบแดงโดยไม่รู้ว่ามาจากไหน
@@ -12872,6 +12876,10 @@ function applyRoleUI() {
   const navPlanLabel = document.getElementById('nav-plan-label');
   if (navPlanLabel) navPlanLabel.textContent = planLabel;
   if (PAGE_META.plan) PAGE_META.plan.title = planLabel;
+  if (currentPage === 'plan') {
+    const topTitle = document.getElementById('page-title');
+    if (topTitle) topTitle.textContent = planLabel;
+  }
   // หน้าประวัติกรองตามบทบาท (ช่าง CNC/ขัด Roll เห็นเฉพาะงานตัวเอง) — สลับมุมมองระหว่างเปิดหน้านี้อยู่ต้อง render ใหม่ ไม่งั้นค้างของบทบาทเดิม
   if (currentPage === 'history' && document.getElementById('tbody-history')) renderHistory();
 
