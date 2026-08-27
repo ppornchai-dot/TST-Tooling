@@ -6860,31 +6860,25 @@ function openPlanDayWorkerModal(dateIso, workType, onlyShift) {
     const sh = SHIFTS[k];
     return `<div class="form-group">
       <label class="form-label">${escapeHtmlAttr(sh.label)} — เวลาปกติ ${sh.start}–${sh.end}</label>
-      <input class="form-input" id="dw-${k}" type="text" placeholder="เช่น สมชาย, สมหญิง"
+      <input class="form-input" id="dw-${k}" type="text" placeholder="ชื่อผู้ปฏิบัติงาน (1 คน)"
              value="${escapeHtmlAttr(planDayWorkerFor(dateIso, workType, k))}">
       ${suggest.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">${
         suggest.map(m => `<button type="button" class="btn btn-ghost btn-sm" style="font-size:11.5px;"
-          onclick="${jsCallAttr('addPlanDayWorkerName', k, m.name)}">+ ${escapeHtmlAttr(m.name)}</button>`).join('')}</div>` : ''}
+          onclick="${jsCallAttr('setPlanDayWorkerName', k, m.name)}">${escapeHtmlAttr(m.name)}</button>`).join('')}</div>` : ''}
     </div>`;
   }).join('');
-  document.getElementById('modal-body').innerHTML = `
-    <div class="muted" style="font-size:12px;line-height:1.6;margin-bottom:10px;">
-      ใส่ชื่อคนที่ทำกะนั้นของวันนี้ — ใส่หลายคนได้ คั่นด้วยลูกน้ำ<br>
-      กดชื่อจากรายชื่อทีมด้านล่างช่องเพื่อเติมเร็ว ๆ หรือพิมพ์เองก็ได้ · เว้นว่าง = ไม่ระบุ
-    </div>
-    <div class="modal-row full">${rows}</div>`;
+  document.getElementById('modal-body').innerHTML = `<div class="modal-row full">${rows}</div>`;
   document.getElementById('modal-overlay').classList.add('open');
   document.querySelector('.modal-footer .btn-primary').onclick = savePlanDayWorker;
 }
 
 // กดชื่อจากรายชื่อทีม = ต่อท้ายช่องนั้น (ไม่ทับชื่อที่พิมพ์ไว้แล้ว และไม่ใส่ซ้ำ)
-function addPlanDayWorkerName(shiftKey, name) {
+// กดชื่อจากรายชื่อทีม = ตั้งเป็นชื่อนั้น (แทนค่าเดิม) — หนึ่งกะใส่ได้คนเดียว
+// กดชื่อเดิมซ้ำ = ล้างค่า เผื่อกดผิดแล้วอยากเอาออก
+function setPlanDayWorkerName(shiftKey, name) {
   const el = document.getElementById('dw-' + shiftKey);
   if (!el) return;
-  const cur = el.value.split(',').map(s => s.trim()).filter(Boolean);
-  if (cur.includes(name)) return;
-  cur.push(name);
-  el.value = cur.join(', ');
+  el.value = el.value.trim() === name ? '' : name;
 }
 
 function savePlanDayWorker() {
@@ -6894,7 +6888,9 @@ function savePlanDayWorker() {
   const picked = {};
   shifts.forEach(k => {
     const raw = ((document.getElementById('dw-' + k) || {}).value || '').trim();
-    if (raw) picked[k] = raw.split(',').map(s => s.trim()).filter(Boolean).join(', ');
+    // หนึ่งกะใส่ได้คนเดียว — พิมพ์คั่นลูกน้ำมาหลายชื่อ เก็บเฉพาะชื่อแรก
+    const one = raw.split(',').map(s => s.trim()).filter(Boolean)[0] || '';
+    if (one) picked[k] = one;
   });
   // แก้เฉพาะกะที่ฟอร์มนี้ดูแล ค่าของกะอื่นในวันเดียวกันคงไว้
   const keep = {};
