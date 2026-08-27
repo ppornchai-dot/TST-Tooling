@@ -8664,6 +8664,27 @@ function inUseColorFor(setName) {
 function runColorFor(date, setName) {
   return explicitRunColorFor(date, setName) || inUseColorFor(setName);
 }
+
+// ชุดสีที่ใช้เดินของวันนั้น สำหรับ "ตารางน้ำหนักผลิต" — ต้องหาให้ได้สักทาง
+// ไม่งั้นยอดผลิตจริงของวันนั้นจะไม่ลงแถวไหนเลย เห็นเป็น — ทั้งที่มียอดอยู่ในยอดรวมของขนาด
+// (เจอกับ GI 3"x3" วันที่ 26 ส.ค. 69: มียอด 43.99 ตัน แต่วันนั้นไม่ได้ระบุสี และชุดถูกปลด
+//  ออกจากเครื่องไปเป็น "รอขัด" แล้ว จึงไม่เหลือทั้งค่าที่ระบุและค่าที่อนุมานจากสถานะ)
+// คืน { key, kind, from } — kind บอกว่าได้มายังไง เอาไปกำกับในตารางว่าเป็นค่าที่อนุมาน
+function resolveRunColorForWeight(date, setName, usedKeys) {
+  const explicit = explicitRunColorFor(date, setName);
+  if (explicit) return { key: explicit, kind: 'explicit' };
+  const inuse = inUseColorFor(setName);
+  if (inuse) return { key: inuse, kind: 'inuse' };
+  // วันที่ใกล้ที่สุดที่เคยระบุชุดสีของชุดนี้ไว้ — ดูวันก่อนหน้าก่อน ไม่มีจึงดูวันหลัง
+  const marked = Object.keys(rollRunColor).filter(d => (rollRunColor[d] || {})[setName]).sort();
+  const before = marked.filter(d => d < date).pop();
+  if (before) return { key: rollRunColor[before][setName], kind: 'near', from: before };
+  const after = marked.find(d => d > date);
+  if (after) return { key: rollRunColor[after][setName], kind: 'near', from: after };
+  // ขนาดนี้มีชุดสีเดียว ยอดของวันนั้นเป็นของชุดนั้นอยู่แล้ว ไม่มีทางเป็นชุดอื่น
+  if (usedKeys && usedKeys.length === 1) return { key: usedKeys[0], kind: 'only' };
+  return { key: null, kind: 'none' };
+}
 function setRunColor(date, setName, colorKey) {
   if (!rollRunColor[date]) rollRunColor[date] = {};
   // กดสีเดิมซ้ำ = ยกเลิก (วันนั้นไม่ได้ระบุว่าเดินสีไหน)
@@ -9323,15 +9344,16 @@ async function renderProdWeight() {
       // ขนาดอื่นที่มาใช้ Forming ของชุดนี้ร่วม — บวกน้ำหนักของขนาดนั้นเข้ามาด้วย
       const sharedSrc = sharedFormingSources(setName);
       const sharedPerDay = d => sharedSrc.reduce((s, k) => s + ((fgWeightByKeyDate[k] || {})[d] || 0), 0);
+      const usedKeys = palette.map(x => x.key);
       return palette.map(c => {
         const cells = days.map(d => {
-          const explicit = explicitRunColorFor(d, setName);
-          const run = explicit || inUseColorFor(setName);
-          const mine = run === c.key;
+          const res = resolveRunColorForWeight(d, setName, usedKeys);
+          const mine = res.key === c.key;
           const ownKg = mine ? (perDay[d] || 0) : 0;
           const shareKg = mine ? sharedPerDay(d) : 0;
-          // อนุมานจากสถานะ "กำลังใช้งาน" ไม่ได้ระบุเจาะจงวันนั้น — ทำให้ดูต่างกันเล็กน้อย
-          return { d, kg: ownKg + shareKg, shareKg, inferred: mine && !explicit };
+          // ไม่ได้ระบุเจาะจงของวันนั้น = ค่าที่อนุมานให้ — ทำให้ดูต่างกันเล็กน้อยและมี * กำกับ
+          return { d, kg: ownKg + shareKg, shareKg,
+                   inferred: mine && res.kind !== 'explicit', kind: res.kind, from: res.from };
         });
         const rowKg = cells.reduce((s, x) => s + x.kg, 0);
         // ยอดยกมาถูกบวกเข้าคอลัมน์ "รวม" และแถวรวมท้ายตารางด้วย (ตามที่ผู้ใช้กำหนด)
@@ -9359,7 +9381,10 @@ async function renderProdWeight() {
             onchange="${jsCallAttrValue('setRollCarryTon', setName, c.key)}"></td>
         ${cells.map(x => {
           const tips = [];
-          if (x.inferred) tips.push('อ้างจากชุดที่สถานะกำลังใช้งานอยู่ — ยังไม่ได้ระบุเจาะจงของวันนี้');
+          if (x.inferred) tips.push(
+            x.kind === 'near' ? 'ยังไม่ได้ระบุชุดสีของวันนี้ — อ้างจากวันที่ระบุไว้ใกล้ที่สุด (' + fmtDateThaiShort(parseISODate(x.from)) + ')'
+            : x.kind === 'only' ? 'ยังไม่ได้ระบุชุดสีของวันนี้ — ขนาดนี้มีชุดสีเดียว ยอดจึงเป็นของชุดนี้'
+            : 'อ้างจากชุดที่สถานะกำลังใช้งานอยู่ — ยังไม่ได้ระบุเจาะจงของวันนี้');
           if (x.shareKg) tips.push('รวมน้ำหนักที่มาใช้ Forming ร่วมจาก ' + sharedSrc.map(fgKeyLabel).join(', ') + ' อีก ' + ton(x.shareKg).toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' ตัน');
           return `<td style="text-align:right;${x.kg ? 'font-weight:700;' : ''}${x.inferred ? 'color:var(--text-2);' : ''}"
             ${tips.length ? `title="${escapeHtmlAttr(tips.join(' · '))}"` : ''}>${x.kg
