@@ -1630,23 +1630,18 @@ canvas{display:block;}
           <div class="table-wrap">
             <table>
               <thead>
+                <!-- หัวคอลัมน์แถวเดียว — เอาแถวกลุ่ม "Plan" กับ "เวลา" ออก ไม่ได้บอกอะไรเพิ่มจากชื่อคอลัมน์
+                     ตารางนี้รวมทั้ง CNC และขัด Roll หัวคอลัมน์จึงใช้คำกลาง ๆ (ชื่อเฉพาะอยู่ที่หัวข้อแต่ละหมวด) -->
                 <tr>
-                  <th rowspan="3">ลำดับ</th>
-                  <th rowspan="3">Size Roll</th>
-                  <th rowspan="3">ชุดสี Roll</th>
-                  <th rowspan="3">จำนวนชิ้น</th>
-                  <th rowspan="3">ชื่อ Roll</th>
-                  <th colspan="3" style="text-align:center;">Plan</th>
-                  <th rowspan="3">จัดการ</th>
-                </tr>
-                <tr>
-                  <!-- ตารางนี้รวมทั้ง CNC และขัด Roll แล้ว หัวคอลัมน์จึงใช้คำกลางๆ (ชื่อเฉพาะอยู่ที่หัวข้อแต่ละประเภท) -->
-                  <th rowspan="2" id="plan-day-plancol-header">เวลาทำงาน (นาที)</th>
-                  <th colspan="2" style="text-align:center;">เวลา</th>
-                </tr>
-                <tr>
+                  <th>ลำดับ</th>
+                  <th>Size Roll</th>
+                  <th>ชุดสี Roll</th>
+                  <th>จำนวนชิ้น</th>
+                  <th>ชื่อ Roll</th>
+                  <th id="plan-day-plancol-header">เวลาทำงาน (นาที)</th>
                   <th>เริ่มงาน</th>
                   <th>จบงาน</th>
+                  <th>จัดการ</th>
                 </tr>
               </thead>
               <tbody id="plan-day-tbody"></tbody>
