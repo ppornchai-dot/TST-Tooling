@@ -4818,7 +4818,8 @@ function planSectionsForRole() {
   return PLAN_DAY_SECTIONS.filter(s => !forced || s.key === forced);
 }
 // นับงานของหัวข้อนี้ในช่วงวันที่กำลังดู พร้อมเวลารวม — ใช้โชว์ข้างหัวข้อทุกมุมมอง
-function planSectionCount(partsByDate, sectionKey, isoList) {
+// shiftKey (ถ้าส่งมา) = นับเฉพาะงานที่ "เริ่มงาน" ในกะนั้น — ใช้ตอนแยกหมวด CNC เป็นกะเช้า/กะดึก
+function planSectionCount(partsByDate, sectionKey, isoList, shiftKey) {
   let count = 0, mins = 0;
   const span = {};   // { morning: { start:'HH:MM', end:'HH:MM' }, night: {...} }
   // นาทีสัมบูรณ์นับจากต้นวันของงาน (จาก segments ของ computePlanEnd) — เทียบ min/max ได้ตรง ๆ
@@ -4829,6 +4830,7 @@ function planSectionCount(partsByDate, sectionKey, isoList) {
   };
   isoList.forEach(iso => (partsByDate.get(iso) || []).forEach(t => {
     if (planTaskSectionKey(t) !== sectionKey) return;
+    if (shiftKey && taskSessionShiftKey(t) !== shiftKey) return;
     count++;
     mins += t.totalTime != null ? (Number(t.totalTime) || 0) : 0;
     if (!t.startTime || t.startTime === '—' || !t.totalTime) return;
@@ -4869,10 +4871,12 @@ function planSectionHeaderRow(s, colSpan, stat, addForIso) {
       ${addForIso ? (() => {
         // ปุ่มบอกเวลาเลิกงานของวันนั้น กดเพื่อตั้ง/แก้ — ช่างเห็นเป็นข้อความอย่างเดียว กดไม่ได้
         const wt = s.key;
-        const set = planDayEndShiftsFor(wt).map(k => planDayEndFor(addForIso, wt, k)).filter(Boolean);
+        // หมวดที่แยกกะแล้ว (s.shiftKey) ตั้ง/แสดงเวลาเลิกงานของกะนั้นกะเดียว
+        const shifts = s.shiftKey ? [s.shiftKey] : planDayEndShiftsFor(wt);
+        const set = shifts.map(k => planDayEndFor(addForIso, wt, k)).filter(Boolean);
         const label = set.length ? 'เลิก ' + set.join(' / ') : 'ตั้งเวลาเลิกงาน';
         return canEditPlan()
-          ? `<button class="btn btn-ghost btn-sm" onclick="${jsCallAttr('openPlanDayEndModal', addForIso, wt)}"
+          ? `<button class="btn btn-ghost btn-sm" onclick="${jsCallAttr('openPlanDayEndModal', addForIso, wt, s.shiftKey || '')}"
               title="ตั้งว่าวันนี้เลิกงานกี่โมง แล้วระบบคิดเวลา OT ให้ทุกงานของวันนี้เอง"
               style="font-size:12px;font-weight:800;padding:3px 11px;color:${s.color};border-color:${s.color};${set.length ? `background:${s.bg};` : 'border-style:dashed;'}">⏱ ${escapeHtmlAttr(label)}</button>`
           : (set.length ? `<span style="font-size:12px;font-weight:700;color:${s.color};opacity:.9;">⏱ ${escapeHtmlAttr(label)}</span>` : '');
@@ -4881,9 +4885,11 @@ function planSectionHeaderRow(s, colSpan, stat, addForIso) {
   </td></tr>`;
 }
 // เพิ่มงานในวันที่ระบุ ของประเภทที่ระบุ — ใช้จากปุ่มเพิ่มงานทุกมุมมอง
-function addPlanTaskOnDate(dateIso, workType) {
+// shiftKey (ถ้าส่งมา) = ตั้งกะให้ตรงกับหมวดที่กดเพิ่ม (CNC แยกกะเช้า/กะดึก)
+function addPlanTaskOnDate(dateIso, workType, shiftKey) {
   if (workType && workType !== currentPlanWorkType) switchPlanWorkType(workType);
   openPlanTaskModal('add', null, dateIso);
+  if (shiftKey && planWorkTypeAllowsShift(workType || currentPlanWorkType, shiftKey)) applyPlanFormShift(shiftKey);
 }
 
 function renderPlanDay() {
@@ -4926,15 +4932,25 @@ function renderPlanDay() {
   const partsByDate = planDayPartsByDate();
   // แถวปุ่มเพิ่มงานใต้รายการของแต่ละหมวด — ชิดซ้าย ตัวใหญ่ เห็นชัดกว่าปุ่มเล็กที่เคยอยู่มุมขวาของหัวข้อ
   const addRowFor = s => !canEditPlan() ? '' : `<tr><td colspan="10" style="padding:10px 12px;border-bottom:2px solid ${s.color};">
-      <button class="btn" onclick="${jsCallAttr('addPlanTaskOnDate', iso, s.key)}"
+      <button class="btn" onclick="${jsCallAttr('addPlanTaskOnDate', iso, s.key, s.shiftKey || '')}"
         title="${escapeHtmlAttr('เพิ่มงาน' + s.label + ' ของวันนี้')}"
         style="font-size:15px;font-weight:800;padding:11px 22px;border-radius:10px;
                background:${s.color};color:#fff;border:1px solid ${s.color};box-shadow:0 1px 3px rgba(0,0,0,.18);">
-        + เพิ่มงาน${escapeHtmlAttr(s.key === 'polish' ? 'ขัด Roll' : 'แต่ง Roll')}</button>
+        + เพิ่มงาน${escapeHtmlAttr((s.key === 'polish' ? 'ขัด Roll' : 'แต่ง Roll') + (s.shiftKey ? ' ' + SHIFTS[s.shiftKey].label : ''))}</button>
     </td></tr>`;
-  document.getElementById('plan-day-tbody').innerHTML = planSectionsForRole().map(s => {
-    const items = tasks.filter(t => planTaskSectionKey(t) === s.key);
-    return planSectionHeaderRow(s, 10, planSectionCount(partsByDate, s.key, [iso]), iso)
+  // งาน CNC แยกวางแผนเป็นกะเช้า/กะดึก — คนละทีมกัน ตั้งเวลาเลิกงานและเพิ่มงานแยกกัน
+  // ขัด Roll มีกะเดียว ไม่ต้องแยก · งานที่ทำ 2 กะ จัดไว้ในกะที่ "เริ่มงาน" เพื่อไม่ให้นับซ้ำสองหมวด
+  const daySections = planSectionsForRole().flatMap(s => {
+    const shifts = planDayEndShiftsFor(s.key);
+    if (s.key !== 'cnc' || shifts.length < 2) return [{ ...s, shiftKey: null }];
+    return shifts.map(k => ({ ...s, shiftKey: k,
+      label: s.label + ' — ' + SHIFTS[k].label,
+      empty: 'ไม่มีงานแต่ง Roll ' + SHIFTS[k].label + ' ในวันนี้' }));
+  });
+  document.getElementById('plan-day-tbody').innerHTML = daySections.map(s => {
+    const items = tasks.filter(t => planTaskSectionKey(t) === s.key
+      && (!s.shiftKey || taskSessionShiftKey(t) === s.shiftKey));
+    return planSectionHeaderRow(s, 10, planSectionCount(partsByDate, s.key, [iso], s.shiftKey), iso)
       + (items.length ? items.map(rowHtmlFor).join('')
         : `<tr><td colspan="10" style="padding:14px;text-align:center;color:var(--text-3);font-size:12.5px;">${escapeHtmlAttr(s.empty)}</td></tr>`)
       + addRowFor(s);
@@ -6896,15 +6912,22 @@ function planDayEndShiftsFor(workType) {
 }
 
 // ─── ฟอร์มตั้งเวลาเลิกงานของวัน ──────────────────────────────────────────────
-let dayEndTarget = null; // { dateIso, workType }
+let dayEndTarget = null; // { dateIso, workType, onlyShift }
+// กะที่ฟอร์มตั้งเวลาเลิกงานกำลังแก้อยู่
+function dayEndFormShifts() {
+  if (!dayEndTarget) return [];
+  return dayEndTarget.onlyShift ? [dayEndTarget.onlyShift] : planDayEndShiftsFor(dayEndTarget.workType);
+}
 
-function openPlanDayEndModal(dateIso, workType) {
+// onlyShift (ถ้าส่งมา) = ตั้งเวลาเลิกงานของกะนั้นกะเดียว ไม่แตะกะอื่นของวันเดียวกัน
+function openPlanDayEndModal(dateIso, workType, onlyShift) {
   if (!canEditPlan()) { alert('ไม่มีสิทธิ์ตั้งเวลาทำงาน'); return; }
-  dayEndTarget = { dateIso, workType };
+  dayEndTarget = { dateIso, workType, onlyShift: onlyShift || null };
   const meta = PLAN_WORKTYPE_META[workType] || PLAN_WORKTYPE_META.cnc;
   document.getElementById('modal-title').textContent =
-    'เวลาเลิกงาน ' + (workType === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)') + ' — ' + fmtDateThai(parseISODate(dateIso));
-  const rows = planDayEndShiftsFor(workType).map(k => {
+    'เวลาเลิกงาน ' + (workType === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)')
+    + (onlyShift ? ' ' + SHIFTS[onlyShift].label : '') + ' — ' + fmtDateThai(parseISODate(dateIso));
+  const rows = dayEndFormShifts().map(k => {
     const sh = SHIFTS[k];
     const cur = planDayEndFor(dateIso, workType, k);
     return `<div class="form-group">
@@ -6932,7 +6955,7 @@ function openPlanDayEndModal(dateIso, workType) {
 function renderPlanDayEndHint() {
   if (!dayEndTarget) return;
   const { workType } = dayEndTarget;
-  planDayEndShiftsFor(workType).forEach(k => {
+  dayEndFormShifts().forEach(k => {
     const el = document.getElementById('de-hint-' + k);
     const input = document.getElementById('de-' + k);
     if (!el || !input) return;
@@ -6951,7 +6974,7 @@ function renderPlanDayEndHint() {
 function savePlanDayEnd() {
   if (!dayEndTarget || !canEditPlan()) return;
   const { dateIso, workType } = dayEndTarget;
-  const shifts = planDayEndShiftsFor(workType);
+  const shifts = dayEndFormShifts();
   const ends = {}, caps = {};
   let bad = null;
   shifts.forEach(k => {
@@ -6965,9 +6988,14 @@ function savePlanDayEnd() {
   });
   if (bad) { alert('เวลาเลิกงานของ' + SHIFTS[bad].label + 'ไม่ถูกต้อง — กรอกเป็น HH:MM'); return; }
 
-  if (Object.keys(ends).length) {
+  // แก้เฉพาะกะที่ฟอร์มนี้ดูแล ค่าของกะอื่นในวันเดียวกันคงไว้ (ตอนแยกหมวดเป็นกะเช้า/กะดึก)
+  const keep = {};
+  Object.entries(((planDayEndTime[dateIso] || {})[workType]) || {})
+    .forEach(([k, v]) => { if (!shifts.includes(k)) keep[k] = v; });
+  const merged = { ...keep, ...ends };
+  if (Object.keys(merged).length) {
     planDayEndTime[dateIso] = planDayEndTime[dateIso] || {};
-    planDayEndTime[dateIso][workType] = ends;
+    planDayEndTime[dateIso][workType] = merged;
   } else if (planDayEndTime[dateIso]) {
     delete planDayEndTime[dateIso][workType];
     if (!Object.keys(planDayEndTime[dateIso]).length) delete planDayEndTime[dateIso];
@@ -6977,6 +7005,8 @@ function savePlanDayEnd() {
   let applied = 0, skipped = 0;
   planTasks.forEach(t => {
     if (t.workType !== workType || taskDisplayDate(t) !== dateIso) return;
+    // แยกหมวดตามกะแล้ว ให้แตะเฉพาะงานที่เริ่มในกะนั้น
+    if (dayEndTarget.onlyShift && taskSessionShiftKey(t) !== dayEndTarget.onlyShift) return;
     if (planTaskIsSettled(t)) { skipped++; return; }
     const next = { morning: 0, night: 0 };
     ['morning', 'night'].forEach(k => {
