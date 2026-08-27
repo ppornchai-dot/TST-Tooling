@@ -1469,7 +1469,7 @@ canvas{display:block;}
           </span>
         </div>
         <div style="padding:12px 14px;">
-          <div class="muted" style="font-size:11.5px;margin-bottom:8px;">แต่ละบรรทัด: <b>เครื่อง</b> · ขนาด Roll · ป้าย <b>F</b>=Forming <b>S</b>=Sizing <b>T</b>=TH โดยพื้นป้ายเป็นสีชุด Roll ที่เดินของหมวดนั้น — ชี้ค้างเพื่อดูชื่อสีเต็ม</div>
+          <div class="muted" style="font-size:11.5px;margin-bottom:8px;">แต่ละบรรทัด: <b>เครื่อง</b> · ขนาด Roll · ป้าย <b>F</b>=Forming <b>S</b>=Sizing <b>T</b>=TH โดยพื้นป้ายเป็นสีชุด Roll ที่เดินของหมวดนั้น — ชี้ค้างเพื่อดูชื่อสีเต็ม<br>ป้ายเครื่องพื้นทึบ = ยืนยันจากยอดผลิตหรือแผนเปลี่ยน Roll ของวันนั้น · ป้ายโครง = อนุมานให้ เพราะวันนั้นยังไม่มียอดผลิตของขนาดนั้น (ชี้ค้างเพื่อดูว่าอนุมานจากอะไร)</div>
           <div id="inuse-cal-body"></div>
         </div>
       </div>
@@ -2244,21 +2244,37 @@ const ROLL_CAT_ABBR = { Forming: 'F', Sizing: 'S', TH: 'T' };
 const ROLL_CAT_SORT = { Forming: 0, Sizing: 1, TH: 2 };
 
 // เครื่องที่เดินชุดนั้นในวันนั้น เรียงตามความน่าเชื่อถือ
-//   1) ยอดผลิตจริงของวันนั้น (machine_id จาก API ยอดผลิต) — ตรงที่สุด แต่ต้องดึงมาก่อน
-//   2) รายการเปลี่ยน Roll ในแอป (แผนล่วงหน้า รู้ก่อนมียอดผลิต)
-//   3) เครื่องที่ผูกกับชุดสีนั้นอยู่ตอนนี้ — ใช้ได้เฉพาะชุดที่ยังเดินอยู่
-function inUseDayMachine(iso, setName, colorKey, machineMap) {
+//   1) ยอดผลิตจริงของวันนั้น (machine_id จาก API ยอดผลิต) — ยืนยันแล้ว
+//   2) รายการเปลี่ยน Roll ในแอป (แผนของวันนั้นโดยตรง) — ยืนยันแล้ว
+//   3) วันล่าสุดก่อนหน้าที่มียอดผลิตของขนาดนี้ — วันที่ยังไม่คีย์ยอดผลิต (เช่นวันนี้) ใช้ตัวนี้
+//   4) เครื่องที่ผูกกับชุดสีนั้นอยู่ตอนนี้ (ว่างถ้าชุดถูกปลดออกจากเครื่องไปแล้ว)
+//   5) เครื่องที่ผูกกับ Size Roll นั้นในทะเบียน — ตัวเดียวกับที่การ์ด "ชุด Roll กำลังใช้งาน" ใช้
+// 3-5 เป็นการอนุมาน ไม่ใช่หลักฐานของวันนั้น จึงคืน sure:false ให้ปฏิทินแสดงเป็นป้ายโครง
+// ไม่ให้อ่านปนกับค่าที่ยืนยันแล้ว และคืน note ไว้บอกในทูลทิปว่าอนุมานมาจากอะไร
+function inUseDayMachineInfo(iso, setName, colorKey, machineMap) {
+  let fgKey = null;
   try {
+    fgKey = rollSetFgKey(setName);
     const cached = fgRunningCache[iso];
-    const fgKey = rollSetFgKey(setName);
     const list = cached && fgKey ? (cached.machinesByKey[fgKey] || []) : [];
-    if (list.length) return list.join(', ');
+    if (list.length) return { machines: list.slice(), sure: true, note: '' };
   } catch (e) {
     // ตอนบูตยังอ่าน fgRunningCache ไม่ได้ (ประกาศไว้ท้ายไฟล์) — ข้ามไปใช้แหล่งอื่น
   }
   const planned = (machineMap[iso] || {})[setName];
-  if (planned) return planned;
-  return rollColorActiveMachineFor(setName, colorKey) || null;
+  if (planned) return { machines: [planned], sure: true, note: '' };
+  try {
+    const prev = Object.keys(fgRunningCache).filter(d => d < iso).sort().reverse();
+    for (let i = 0; i < prev.length; i++) {
+      const list = ((fgRunningCache[prev[i]] || {}).machinesByKey || {})[fgKey] || [];
+      if (list.length) return { machines: list.slice(), sure: false,
+        note: 'วันนั้นยังไม่มียอดผลิตของขนาดนี้ — อ้างจากวันล่าสุดที่เดินขนาดนี้ (' + fmtDateThaiShort(parseISODate(prev[i])) + ')' };
+    }
+  } catch (e) { /* เหตุผลเดียวกับข้างบน */ }
+  const active = rollColorActiveMachineFor(setName, colorKey);
+  if (active) return { machines: [active], sure: false, note: 'อ้างจากเครื่องที่ผูกกับชุดสีนี้ในทะเบียน' };
+  return { machines: (rollSetMachines[setName] || []).slice(), sure: false,
+    note: 'อ้างจากเครื่องที่ผูกกับขนาดนี้ในทะเบียน' };
 }
 
 // ดึงยอดผลิตของวันในเดือนที่กำลังดูมาแคช เพื่อรู้ว่าแต่ละขนาดเดินอยู่เครื่องไหน แล้วเรนเดอร์ซ้ำครั้งเดียว
@@ -2325,23 +2341,30 @@ function renderInUseCalendar() {
         (ROLL_CAT_SORT[a.cat] ?? 9) - (ROLL_CAT_SORT[b.cat] ?? 9));
       // หมวดในขนาดเดียวกันอาจอยู่ต่างเครื่อง (เช่นยืม Forming ของอีกขนาดไปเดิน) จึงรวมทุกเครื่องที่เจอ
       const machines = [];
+      let machineSure = false, machineNotes = [];
       ordered.forEach(x => {
-        const mc = inUseDayMachine(iso, x.set, x.colorKey, machineMap);
-        (mc ? mc.split(',') : []).forEach(one => {
-          const t = one.trim();
+        const info = inUseDayMachineInfo(iso, x.set, x.colorKey, machineMap);
+        if (!info.machines.length) return;
+        if (info.sure) machineSure = true;
+        else if (info.note && !machineNotes.includes(info.note)) machineNotes.push(info.note);
+        info.machines.forEach(one => {
+          const t = String(one).trim();
           if (t && !machines.includes(t)) machines.push(t);
         });
       });
-      const machine = machines.sort().join(', ') || null;
+      const machine = machines.sort().join('/') || null;
       const detail = ordered.map(x => x.cat + ' ' + rollColorLabelFor(x.set, x.colorKey)).join(' · ');
       // ป้ายหมวด F/S/T พื้นเป็นสีชุด Roll ที่เดินของหมวดนั้น — เห็นทั้งหมวดและสีในบรรทัดเดียว
       const catTags = ordered.map(x => `<span title="${escapeHtmlAttr(x.cat + ' ' + rollColorLabelFor(x.set, x.colorKey))}"
           style="background:${inUseColorDot(x.set, x.colorKey)};color:${rollColorTextOn(inUseColorDot(x.set, x.colorKey))};font-size:9px;font-weight:800;
                  padding:0 3px;border-radius:3px;line-height:1.5;flex-shrink:0;">${ROLL_CAT_ABBR[x.cat] || '?'}</span>`).join('');
-      return `<div title="${escapeHtmlAttr(sizeLabel + (machine ? ' · เครื่อง ' + machine : '') + ' — ' + detail)}"
+      const machineNote = !machine ? ''
+        : ' · เครื่อง ' + machine + (machineSure || !machineNotes.length ? '' : ' (' + machineNotes.join(' · ') + ')');
+      return `<div title="${escapeHtmlAttr(sizeLabel + machineNote + ' — ' + detail)}"
           style="display:flex;align-items:center;gap:3px;font-size:10.5px;line-height:1.4;margin-top:2px;">
-        ${machine ? `<span style="background:var(--inuse);color:#fff;font-size:9px;font-weight:800;padding:0 4px;
-               border-radius:3px;line-height:1.5;flex-shrink:0;">${escapeHtmlAttr(machine)}</span>` : ''}
+        ${machine ? `<span style="font-size:9px;font-weight:800;padding:0 4px;border-radius:3px;line-height:1.5;flex-shrink:0;
+               ${machineSure ? 'background:var(--inuse);color:#fff;'
+                             : 'background:transparent;color:var(--text-3);border:1px solid var(--border);'}">${escapeHtmlAttr(machine)}</span>` : ''}
         <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2);font-weight:600;">${escapeHtmlAttr(inUseCalSizeShort(sizeLabel))}</span>
         <span style="display:inline-flex;gap:2px;margin-left:auto;flex-shrink:0;">${catTags}</span>
       </div>`;
