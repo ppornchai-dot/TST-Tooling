@@ -4213,10 +4213,6 @@ function otCapMaxMinFor(workType) {
   const m = PLAN_WORKTYPE_META[workType] || PLAN_WORKTYPE_META.cnc;
   return Math.max(0, m.otMaxMin || 0);
 }
-function otCapNoteFor(workType) {
-  const m = PLAN_WORKTYPE_META[workType] || PLAN_WORKTYPE_META.cnc;
-  return m.otNote || "";
-}
 // ประเภทงานที่ฟอร์มวางแผนกำลังแก้อยู่ — งานที่แก้ไขยึดของงานนั้น ไม่ใช่ของแท็บที่เปิดอยู่
 function planFormWorkType() {
   if (currentEditingPlanTaskId) {
@@ -5306,20 +5302,16 @@ function planTaskFormFields() {
         title="ตั้งเวลาเริ่มให้ต่อจากงานที่วางแผนไว้ก่อนหน้าใน 'วันเดียวกัน' เท่านั้น">⏭ ต่อเวลาจากงานก่อนหน้าในวันนี้</button>
       <span id="pf-continue-hint" style="font-size:11px;color:var(--text-3);"></span>
     </div>
-    <div class="modal-row three">
+    <div class="modal-row">
       <div class="form-group"><label class="form-label">🌤 เริ่มงานกะเช้า</label><input class="form-input" id="pf-start-morning" type="text" inputmode="numeric" placeholder="เช่น 08:00" maxlength="5" onchange="normalizeTimeInput(this);updatePlanEndTime()"></div>
       <div class="form-group"><label class="form-label">จบงานกะเช้า — คำนวณให้อัตโนมัติ</label><input class="form-input" id="pf-end-morning" type="text" disabled></div>
-      <div class="form-group"><label class="form-label">เวลา OT กะเช้า (ชม.)</label><input class="form-input" id="pf-otcap-morning" type="number" min="0" max="3" step="0.5" value="0" onchange="clampOtCapInput(this);updatePlanEndTime()">
-        <span id="pf-ot-hint-morning" style="font-size:11px;color:var(--text-3);">พัก 20 นาทีก่อนเริ่ม OT</span>
-      </div>
     </div>
-    <div class="modal-row three" id="pf-night-row">
+    <div class="modal-row" id="pf-night-row">
       <div class="form-group"><label class="form-label">🌙 เริ่มงานกะดึก</label><input class="form-input" id="pf-start-night" type="text" inputmode="numeric" placeholder="เช่น 20:00" maxlength="5" onchange="normalizeTimeInput(this);updatePlanEndTime()"></div>
       <div class="form-group"><label class="form-label">จบงานกะดึก — คำนวณให้อัตโนมัติ</label><input class="form-input" id="pf-end-night" type="text" disabled></div>
-      <div class="form-group"><label class="form-label">เวลา OT กะดึก (ชม.)</label><input class="form-input" id="pf-otcap-night" type="number" min="0" max="3" step="0.5" value="0" onchange="clampOtCapInput(this);updatePlanEndTime()">
-        <span id="pf-ot-hint-night" style="font-size:11px;color:var(--text-3);">พัก 20 นาทีก่อนเริ่ม OT</span>
-      </div>
     </div>
+    <!-- เวลา OT ไม่ได้กรอกในฟอร์มอีกแล้ว — มาจาก "เวลาเลิกงาน" ของวันนั้น (ปุ่ม ⏱ ในหัวข้อหมวดหน้าวางแผน) -->
+    <div id="pf-ot-note" style="font-size:11.5px;color:var(--text-3);line-height:1.6;margin:-4px 0 10px;"></div>
     <!-- สลับเป็น "งานอื่นๆ" ที่ไม่เกี่ยวกับ Roll — กรอกชื่องานกับเวลาเองแทนการเลือก Size Roll -->
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
       <button type="button" class="btn btn-ghost btn-sm" id="pf-other-toggle" onclick="togglePlanOtherWork()"
@@ -6032,13 +6024,6 @@ function setPlanShiftButtons(key, bothStartKey) {
   const startNightRelevant = key === 'night' || (key === 'both' && activeBothKey === 'night');
   if (startMorningEl) startMorningEl.disabled = !startMorningRelevant;
   if (startNightEl) startNightEl.disabled = !startNightRelevant;
-  // เวลา OT กรอกเองได้ทั้งสองกะเมื่อเลือก "2 กะ" เพราะ OT อาจเกิดต่อจากกะเช้าหรือกะดึกก็ได้ ไม่ขึ้นกับว่าช่องเริ่มงานไหนเป็นตัวป้อนค่าจริง — กะเดียวก็เปิดเฉพาะ OT ของกะนั้น
-  const otMorningRelevant = key === 'morning' || key === 'both';
-  const otNightRelevant = key === 'night' || key === 'both';
-  const otMorningEl = document.getElementById('pf-otcap-morning');
-  const otNightEl = document.getElementById('pf-otcap-night');
-  if (otMorningEl) { otMorningEl.disabled = !otMorningRelevant; if (!otMorningRelevant) otMorningEl.value = 0; }
-  if (otNightEl) { otNightEl.disabled = !otNightRelevant; if (!otNightRelevant) otNightEl.value = 0; }
 }
 // ผู้ใช้กดเลือกกะเอง — เติมเวลาเริ่มมาตรฐานของกะนั้นให้ ไม่ต่อเวลาจากงานก่อนหน้า (วางแผนของวันที่กดเพิ่มตรงๆ)
 // ไม่ทับค่าที่ผู้ใช้พิมพ์เองไว้แล้วในช่องนั้น
@@ -6059,8 +6044,6 @@ function selectPlanShift(key) {
     setPlanShiftButtons('both', fieldKey);
     if (startMorningEl) startMorningEl.value = fieldKey === 'morning' ? value : '';
     if (startNightEl) startNightEl.value = fieldKey === 'night' ? value : '';
-    clampOtCapInput(document.getElementById('pf-otcap-morning'));
-    clampOtCapInput(document.getElementById('pf-otcap-night'));
   } else {
     setPlanShiftButtons(key);
     // สลับกะแล้วท้ายคิวเป็นของกะใหม่ — งานใหม่ให้คิดใหม่ ไม่ยกเวลาของกะเดิมมาใช้
@@ -6073,13 +6056,6 @@ function selectPlanShift(key) {
   updatePlanEndTime();
 }
 
-// กรอก OT เกินเพดานของประเภทงานนั้นไม่ได้ทุกกะ — เกินกว่านั้น OT จะลามไปทับเวลาเริ่มกะถัดไป (ดู otCapMaxMinFor)
-function clampOtCapInput(el) {
-  if (!el) return;
-  const hours = parseFloat(el.value);
-  const maxHours = otCapMaxMinFor(planFormWorkType()) / 60;
-  if (!Number.isNaN(hours) && hours > maxHours) el.value = maxHours;
-}
 
 // แปลงค่าที่พิมพ์ในช่องเวลา (เช่น "8:0", "800", "20:00") ให้เป็นรูปแบบ 24 ชั่วโมงมาตรฐาน "HH:MM" เสมอ
 // ใช้ช่อง text ธรรมดาแทน input[type=time] เพราะตัวหลังแสดงผลตามภาษา/เครื่องของผู้ใช้ (บางเครื่องขึ้น AM/PM) ทำให้หน่วยเวลาไม่ตรงกันทั้งระบบ
@@ -6136,15 +6112,21 @@ function renderShiftSegmentFields(key, seg, startDate) {
 // OT ต่อได้ถึงเวลาเริ่มกะถัดไปเท่านั้น — กะเช้า OT 17:00–20:00 และกะดึก OT 05:00–08:00 ได้ 3 ชม. เท่ากัน
 // ใช้กับทุกกะ (เดิมจำกัดแค่งาน "2 กะ" กะเดี่ยวกรอกเท่าไรก็ได้ จน OT ลามไปทับกะถัดไป)
 // ค่าจริงแยกตามประเภทงาน ดู PLAN_WORKTYPE_META.otMaxMin / otCapMaxMinFor()
+// โควตา OT ของงานที่กำลังกรอก — มาจาก "เวลาเลิกงาน" ที่ตั้งไว้ของวันนั้น ไม่ใช่ช่องกรอกในฟอร์มอีกแล้ว
+// วันที่ยังไม่ได้ตั้งเวลาเลิกงาน: งานที่แก้ไขคงโควตาเดิมของมันไว้ (ไม่ไปตัดแผนที่วางไว้แล้วโดยไม่ได้สั่ง)
+// ส่วนงานใหม่ = ไม่มี OT — เวลาพัก 20 นาทีก่อนเริ่ม OT ยังถูกคิดในตัวคำนวณตามเดิมทุกกรณี
 function getOtCapMinutes() {
-  const shiftKey = (document.getElementById('pf-shift') || {}).value || 'morning';
-  const morningHours = parseFloat((document.getElementById('pf-otcap-morning') || {}).value) || 0;
-  const nightHours = parseFloat((document.getElementById('pf-otcap-night') || {}).value) || 0;
-  // จำกัดทุกกะ ไม่ใช่แค่ "2 กะ" — OT ต่อได้ไม่เกินเวลาเริ่มกะถัดไป ตามเพดานของประเภทงานนั้น
-  const otMax = otCapMaxMinFor(planFormWorkType());
-  const morning = Math.min(morningHours * 60, otMax);
-  const night = Math.min(nightHours * 60, otMax);
-  return { morning, night };
+  const dateIso = (document.getElementById('pf-date') || {}).value || '';
+  const workType = planFormWorkType();
+  const editing = currentEditingPlanTaskId ? planTasks.find(t => t.id === currentEditingPlanTaskId) : null;
+  const prev = (editing && editing.otCapMinutesByShift) || {};
+  const caps = {};
+  ['morning', 'night'].forEach(k => {
+    const fromDay = otMinutesFromDayEnd(planDayEndFor(dateIso, workType, k), workType, k);
+    caps[k] = fromDay != null ? fromDay
+      : Math.min(Math.max(0, parseFloat(prev[k]) || 0), otCapMaxMinFor(workType));
+  });
+  return caps;
 }
 
 function updatePlanEndTime() {
@@ -6160,18 +6142,23 @@ function updatePlanEndTime() {
   const seg = result.segments || {};
   renderShiftSegmentFields('morning', seg.morning, startDate);
   renderShiftSegmentFields('night', seg.night, startDate);
-  const otByShift = result.otMinutesByShift || {};
-  // เพดานช่องกรอกเปลี่ยนตามประเภทงาน (CNC 3 ชม. / ขัด Roll 6 ชม.)
-  const otMaxHours = otCapMaxMinFor(planFormWorkType()) / 60;
-  ['morning', 'night'].forEach(key => {
-    const capEl = document.getElementById('pf-otcap-' + key);
-    if (capEl) capEl.setAttribute('max', String(otMaxHours));
-    const hintEl = document.getElementById('pf-ot-hint-' + key);
-    if (!hintEl) return;
-    const used = otByShift[key];
-    const capNote = ' — ' + otCapNoteFor(planFormWorkType());
-    hintEl.textContent = 'พัก 20 นาทีก่อนเริ่ม OT' + capNote + (used ? ` — ใช้จริง ${formatMinutesAsHm(used).replace('≈ ', '')}` : '');
-  });
+  // บอกที่มาของเวลา OT ให้ชัด เพราะไม่มีช่องกรอกในฟอร์มแล้ว
+  const noteEl = document.getElementById('pf-ot-note');
+  if (noteEl) {
+    const wt = planFormWorkType();
+    const caps = getOtCapMinutes();
+    const otByShift = result.otMinutesByShift || {};
+    const per = planDayEndShiftsFor(wt).map(k => {
+      const end = planDayEndFor(startDate, wt, k);
+      const used = otByShift[k];
+      // ตั้งเวลาเลิกไว้แต่ไม่ถึงช่วง OT (เช่นเลิก 17:00) ต้องอ่านว่า 'ไม่มี OT' ไม่ใช่ 'OT' ค้างว่างไว้
+      return SHIFTS[k].label + ': ' + (end ? 'เลิก ' + end + (caps[k] ? ' → OT ' + formatMinutesAsHm(caps[k]).replace('≈ ', '') : ' → ไม่มี OT')
+        : (caps[k] ? 'OT ' + formatMinutesAsHm(caps[k]).replace('≈ ', '') + ' (ตามที่งานนี้เคยตั้งไว้)' : 'ไม่มี OT'))
+        + (used ? ' · ใช้จริง ' + formatMinutesAsHm(used).replace('≈ ', '') : '');
+    }).join(' · ');
+    noteEl.innerHTML = '⏱ เวลา OT มาจาก <b>เวลาเลิกงานของวันนั้น</b> (ตั้งที่ปุ่ม ⏱ ในหัวข้อหมวด หน้าวางแผนรายวัน)'
+      + '<br>' + escapeHtmlAttr(per) + ' — พัก 20 นาทีก่อนเริ่ม OT คิดให้อยู่แล้ว';
+  }
 }
 
 // ล้างกรอบแดงที่ขึ้นตอนเตือนว่ายังไม่ได้เลือก ทันทีที่ผู้ใช้เลือกค่าแล้ว
@@ -6721,8 +6708,6 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     const startFieldId = defaultShift === 'night' ? 'pf-start-night' : 'pf-start-morning';
     document.getElementById(startFieldId).value = startValue;
   }
-  document.getElementById('pf-otcap-morning').value = task ? ((task.otCapMinutesByShift || {}).morning || 0) / 60 : 0;
-  document.getElementById('pf-otcap-night').value = task ? ((task.otCapMinutesByShift || {}).night || 0) / 60 : 0;
   populatePlanRollSetSelect(task ? task.rollSet : null);
   populatePlanRollColorSelect(task ? task.rollSet : null, task ? task.rollColor : null);
   fillPlanRollReadonly(task ? task.rollSet : null, task ? task.rollColor : null, task ? task.rollIds : null, currentEditingPlanTaskId); // คำนวณเวลาเริ่ม/จบของแต่ละกะให้อัตโนมัติในตัว — คงรายการ Roll ที่เลือกไว้เดิมถ้าเป็นการแก้ไข
