@@ -10697,7 +10697,15 @@ function dailyStatusDateFor(taskId) {
 }
 
 function getDailyStatus(idx) {
-  return (dailyStatusByDate[dailyStatusDateFor(idx)] || {})[idx] || 'pending';
+  const raw = (dailyStatusByDate[dailyStatusDateFor(idx)] || {})[idx] || 'pending';
+  if (raw === 'done') return 'done';
+  // ธงสถานะระดับวันอาจค้างไม่ตรงกับความจริงได้ เช่นงานที่ถูกแก้จำนวนชิ้นทีหลัง (ตอนกดจบชิ้นสุดท้าย
+  // ยังมีชิ้นอื่นค้างอยู่ ธงจึงไม่ถูกตั้งเป็น 'done' แล้วไม่มีอะไรมาคิดใหม่อีก) — งานจะค้างเป็น "กำลังทำ" ตลอด
+  // สถานะรายชิ้นเป็นตัวจริง: ทุกชิ้นจบแล้วก็คือจบงานแล้ว (งานแทรกไม่มีชิ้นย่อย ใช้ธงตามเดิม)
+  const t = planTasks.find(x => x.id === idx);
+  const ids = (t && t.rollIds) || [];
+  if (ids.length && ids.every(i => getDailyPieceEntry(idx, i).status === 'done')) return 'done';
+  return raw;
 }
 
 function toggleDailyTask(idx) {
