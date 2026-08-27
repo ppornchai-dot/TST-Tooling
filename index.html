@@ -5331,7 +5331,7 @@ function planTaskFormFields() {
     <!-- สลับเป็น "งานอื่นๆ" ที่ไม่เกี่ยวกับ Roll — กรอกชื่องานกับเวลาเองแทนการเลือก Size Roll -->
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
       <button type="button" class="btn btn-ghost btn-sm" id="pf-other-toggle" onclick="togglePlanOtherWork()"
-        style="font-size:12px;">🛠 งานอื่นๆ ที่ไม่ใช่แต่ง/ขัด Roll</button>
+        style="font-size:12px;">🛠 งานอื่นๆ</button>
       <span id="pf-other-hint" style="font-size:11px;color:var(--text-3);"></span>
     </div>
     <div class="modal-row three" id="pf-other-row" style="display:none;">
@@ -5555,7 +5555,12 @@ function planFormSelectedPieces() {
   return order.filter(idx => scoped[idx]).map(idx => ({ idx, roll: scoped[idx] }));
 }
 
-// ─── งานอื่นๆ ที่ไม่ใช่แต่ง/ขัด Roll ────────────────────────────────────────────
+// คำเรียกงานหลักของประเภทที่กำลังวางแผนอยู่ — ใช้ในป้ายปุ่ม/ข้อความเตือน ให้เอ่ยถึงเฉพาะงานนั้น
+function planFormMainWorkLabel() {
+  return planFormWorkType() === 'polish' ? 'ขัด Roll' : 'แต่ง Roll';
+}
+
+// ─── งานอื่นๆ ที่ไม่ใช่งานแต่ง/ขัด Roll ─────────────────────────────────────────
 // เก็บลงโครงเดิมของแผนงาน โดยใช้ "ชื่องาน" แทนช่อง Size Roll เพื่อให้ทุกหน้าที่แสดงอยู่แล้ว
 // (ปฏิทิน, งานประจำวัน, ประวัติ) แสดงชื่องานได้ทันทีโดยไม่ต้องแก้เพิ่ม
 // rollIds ตั้งเป็น 0..n-1 ตามจำนวนชิ้นที่กรอก และเก็บเวลาต่อชิ้นไว้ใน rollMinutesOverride
@@ -5590,7 +5595,8 @@ function setPlanOtherWork(on) {
   if (btn) {
     btn.style.background = planFormOtherWork ? 'var(--accent)' : '';
     btn.style.color = planFormOtherWork ? '#fff' : '';
-    btn.textContent = planFormOtherWork ? '↩ กลับไปงานแต่ง/ขัด Roll' : '🛠 งานอื่นๆ ที่ไม่ใช่แต่ง/ขัด Roll';
+    const main = planFormMainWorkLabel();
+    btn.textContent = planFormOtherWork ? '↩ กลับไปงาน' + main : '🛠 งานอื่นๆ ที่ไม่ใช่' + main;
   }
   const hint = document.getElementById('pf-other-hint');
   if (hint) hint.textContent = planFormOtherWork
@@ -6671,7 +6677,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
       if (!setName) {
         focusField('pf-rollset');
         alert('ยังไม่ได้เลือก Size Roll — เลือก Size Roll และชุดสี Roll ก่อนบันทึก'
-          + '\nถ้างานนี้ไม่ใช่งานแต่ง/ขัด Roll ให้กดปุ่ม "🛠 งานอื่นๆ ที่ไม่ใช่แต่ง/ขัด Roll" ด้านบน แล้วกรอกชื่องานกับเวลาเอง');
+          + '\nถ้างานนี้ไม่ใช่งาน' + planFormMainWorkLabel() + ' ให้กดปุ่ม "🛠 งานอื่นๆ" ด้านบน แล้วกรอกชื่องานกับเวลาเอง');
         return;
       }
       if (!colorKey) {
