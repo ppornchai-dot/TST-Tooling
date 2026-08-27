@@ -32,8 +32,8 @@
   --amber:#B87200;
   /* สีประจำสถานะชุดสี Roll — ตั้งตามที่หน้างานกำหนด ใช้ร่วมกันทั้งดรอปดาวน์ในทะเบียน, KPI,
      การ์ด Dashboard และหน้าอายุ Roll เพื่อให้สีของสถานะเดียวกันตรงกันทุกที่ */
-  --inuse:#D07C00;              /* ใช้งาน — เหลืองออกส้ม */
-  --inuse-dim:rgba(208,124,0,0.14);
+  --inuse:#4F7A00;              /* ใช้งาน — เขียวอมเหลือง (คนละเฉดกับ --green ของ "พร้อมใช้งาน") */
+  --inuse-dim:rgba(79,122,0,0.14);
   --st-waitpolish:#9A8500;      /* รอขัด — เหลือง */
   --st-waitpolish-dim:rgba(226,196,0,0.22);
   --st-incomplete:#9C7A57;      /* ไม่ครบ — น้ำตาลอ่อน */
@@ -353,6 +353,7 @@ table.daily-tech-view .daily-act-wrap{gap:8px;flex-wrap:wrap;}
 .chip::before{content:'';width:5px;height:5px;border-radius:50%;flex-shrink:0;}
 .chip-green{background:var(--green-dim);color:var(--green);}
 .chip-green::before{background:var(--green);}
+/* chip-yellow = ชิปสถานะ "กำลังใช้งาน" (คงชื่อคลาสเดิมไว้) — สีมาจาก --inuse ซึ่งตอนนี้เป็นเขียวอมเหลือง */
 .chip-yellow{background:var(--inuse-dim);color:var(--inuse);}
 .chip-yellow::before{background:var(--inuse);}
 .chip-amber{background:var(--amber-dim);color:var(--amber);}
@@ -1107,7 +1108,7 @@ canvas{display:block;}
               <span style="width:11px;height:11px;border-radius:50%;background:var(--inuse);flex-shrink:0;"></span>ชุด Roll กำลังใช้งาน</span>
             <button id="dash-roll-inuse-edit-btn" class="btn" onclick="openInUseRollPicker()"
               style="display:none;font-size:14px;font-weight:800;padding:8px 16px;border-radius:8px;
-                     background:var(--inuse);color:#fff;border:1px solid var(--inuse);box-shadow:0 1px 3px rgba(208,124,0,.35);">
+                     background:var(--inuse);color:#fff;border:1px solid var(--inuse);box-shadow:0 1px 3px rgba(79,122,0,.35);">
               ✎ เลือกชุดที่ใช้งาน</button>
           </span>
           <span style="font-size:12px;color:var(--text-3);flex-shrink:0;">
@@ -1875,7 +1876,7 @@ const C_GREEN  = '#2BB57A';
 const C_AMBER  = '#E8971E';
 const C_RED    = '#D95B5B';
 const C_BLUE   = '#2272B6';
-const C_YELLOW = '#B58900';
+const C_INUSE  = '#5E9400';
 const C_PURPLE = '#5E44B0';
 const C_CYAN   = '#0E9BB5';
 const C_BROWN  = '#A9752B';
@@ -1886,7 +1887,7 @@ const C_SLATE  = '#475569';
 // ลำดับ/สี ของ 8 สถานะ Roll (เฉพาะหมวด Roll เท่านั้น) — ใช้ทำแถบ+ป้ายสถานะแบบแยกสีในหน้า Dashboard
 // รอใช้งาน/รอแต่ง/รอขัด คือคิวที่เกิดจากการซิงก์กับ Production Block อัตโนมัติ (ดู syncRollStatusWithProdBlock)
 const ROLL_STATUS_STEPS = [
-  { keys: ['กำลังใช้งาน', 'ใช้งานอยู่'], label: 'กำลังใช้งาน', color: C_YELLOW, cls: 'chip-yellow' },
+  { keys: ['กำลังใช้งาน', 'ใช้งานอยู่'], label: 'กำลังใช้งาน', color: C_INUSE,  cls: 'chip-yellow' },
   { keys: ['พร้อมใช้งาน', 'พร้อมใช้'],   label: 'พร้อมใช้งาน', color: C_GREEN,  cls: 'chip-green' },
   { keys: ['รอใช้งาน'],                  label: 'รอใช้งาน',    color: C_CYAN,   cls: 'chip-cyan' },
   { keys: ['แต่ง Roll', 'Regrind'],      label: 'แต่ง Roll',   color: C_AMBER,  cls: 'chip-amber' },
@@ -7421,7 +7422,7 @@ function setRollSetStatus(setName, status) {
 const ROLL_COLOR_STATUS_META = {
   // optBg = สีพื้นแบบทึบสำหรับ <option> ในรายการดรอปดาวน์ ต้องทึบเพราะ bg ปกติเป็น rgba จาง
   // (alpha 0.10–0.22) ซึ่งซ้อนบนพื้นขาวของรายการแล้วแทบมองไม่เห็นสี
-  inuse:      { label: 'กำลังใช้งาน',      short: 'ใช้งาน',   color: 'var(--inuse)',          bg: 'var(--inuse-dim)',          optBg: '#FBE8CC' },
+  inuse:      { label: 'กำลังใช้งาน',      short: 'ใช้งาน',   color: 'var(--inuse)',          bg: 'var(--inuse-dim)',          optBg: '#E4EFC7' },
   ready:      { label: 'พร้อมใช้งาน',      short: 'พร้อมใช้', color: 'var(--green)',          bg: 'var(--green-dim)',          optBg: '#D8EFE4' },
   waitdress:  { label: 'รอแต่ง',           short: 'รอแต่ง',   color: 'var(--red)',            bg: 'var(--red-dim)',            optBg: '#F8DADA' },
   waitpolish: { label: 'รอขัด',            short: 'รอขัด',    color: 'var(--st-waitpolish)',  bg: 'var(--st-waitpolish-dim)',  optBg: '#F6EFBE' },
