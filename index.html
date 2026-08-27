@@ -4820,7 +4820,7 @@ function planSectionHeaderRow(s, colSpan, stat, addForIso) {
     <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:${s.color};">
       <span aria-hidden="true">${s.icon}</span>${escapeHtmlAttr(s.label)}
     </span>
-    <span style="float:right;display:inline-flex;align-items:center;gap:10px;">
+    <span style="float:right;display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
       <span style="font-size:12px;font-weight:700;color:${s.color};opacity:.9;">${
         stat.count ? stat.count + ' รายการ' + (stat.mins ? ' · ' + formatMinutesAsHm(stat.mins).replace('≈ ', '') : '')
           // เวลาเริ่ม–จบของวันนั้นแยกตามกะ ใส่เฉพาะมุมมองรายวัน (addForIso มีค่า = ดูวันเดียว)
@@ -4846,6 +4846,23 @@ function planSectionHeaderRow(s, colSpan, stat, addForIso) {
               style="font-size:14px;font-weight:800;padding:9px 16px;border-radius:9px;line-height:1.2;white-space:nowrap;
                      color:${s.color};border-color:${s.color};${picked.length ? `background:${s.bg};` : 'border-style:dashed;'}">⏱ ${escapeHtmlAttr(label)}</button>`
           : (picked.length ? `<span style="font-size:13px;font-weight:700;color:${s.color};opacity:.9;">⏱ ${escapeHtmlAttr(label)}</span>` : '');
+      })() : ''}
+      ${addForIso ? (() => {
+        // ปุ่มใส่ชื่อผู้ปฏิบัติงานของกะนั้นในวันนั้น — ช่างเห็นเป็นข้อความอย่างเดียว กดไม่ได้
+        const wt = s.key;
+        const shifts = s.shiftKey ? [s.shiftKey] : planDayEndShiftsFor(wt);
+        const named = shifts.map(k => {
+          const who = planDayWorkerFor(addForIso, wt, k);
+          return who ? (shifts.length > 1 ? SHIFTS[k].label + ' ' : '') + who : null;
+        }).filter(Boolean);
+        const label = named.length ? named.join(' · ') : 'ใส่ชื่อผู้ปฏิบัติงาน';
+        return canEditPlan()
+          ? `<button class="btn btn-ghost" onclick="${jsCallAttr('openPlanDayWorkerModal', addForIso, wt, s.shiftKey || '')}"
+              title="ใส่ชื่อคนที่ทำกะนี้ของวันนี้"
+              style="font-size:14px;font-weight:800;padding:9px 16px;border-radius:9px;line-height:1.2;white-space:nowrap;
+                     max-width:260px;overflow:hidden;text-overflow:ellipsis;
+                     color:${s.color};border-color:${s.color};${named.length ? `background:${s.bg};` : 'border-style:dashed;'}">👤 ${escapeHtmlAttr(label)}</button>`
+          : (named.length ? `<span style="font-size:13px;font-weight:700;color:${s.color};opacity:.9;">👤 ${escapeHtmlAttr(label)}</span>` : '');
       })() : ''}
     </span>
   </td></tr>`;
@@ -6817,6 +6834,88 @@ function deletePlanTask(taskId) {
   return true;
 }
 
+// ─── ผู้ปฏิบัติงานของแต่ละกะในแต่ละวัน ────────────────────────────────────────
+// เก็บเป็นชื่อ (พิมพ์เอง ใส่หลายคนได้ เช่น "สมชาย, สมหญิง") แยกตามวัน + ประเภทงาน + กะ
+// เป็นข้อมูลกำกับว่าใครทำกะนั้น ไม่ได้ผูกกับสิทธิ์กดเริ่ม/จบงานรายชิ้น
+// { 'YYYY-MM-DD': { cnc: { morning: 'ชื่อ', night: 'ชื่อ' }, polish: { morning: 'ชื่อ' } } }
+let planDayWorker = {};
+
+function planDayWorkerFor(dateIso, workType, shiftKey) {
+  return (((planDayWorker[dateIso] || {})[workType] || {})[shiftKey]) || '';
+}
+
+let dayWorkerTarget = null; // { dateIso, workType, onlyShift }
+function dayWorkerFormShifts() {
+  if (!dayWorkerTarget) return [];
+  return dayWorkerTarget.onlyShift ? [dayWorkerTarget.onlyShift] : planDayEndShiftsFor(dayWorkerTarget.workType);
+}
+
+function openPlanDayWorkerModal(dateIso, workType, onlyShift) {
+  if (!canEditPlan()) { alert('ไม่มีสิทธิ์กำหนดผู้ปฏิบัติงาน'); return; }
+  dayWorkerTarget = { dateIso, workType, onlyShift: onlyShift || null };
+  document.getElementById('modal-title').textContent =
+    'ผู้ปฏิบัติงาน ' + (workType === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)')
+    + (onlyShift ? ' ' + SHIFTS[onlyShift].label : '') + ' — ' + fmtDateThai(parseISODate(dateIso));
+  // รายชื่อทีมไว้กดเติมเร็ว ๆ (ยังพิมพ์ชื่อเองได้ตามปกติ เผื่อคนที่ไม่ได้อยู่ในทะเบียนทีม)
+  const roles = workType === 'polish' ? ['polish', 'operator', 'lead'] : ['cnc', 'lead'];
+  const suggest = teamMembers.filter(m => roles.includes(m.role));
+  const rows = dayWorkerFormShifts().map(k => {
+    const sh = SHIFTS[k];
+    return `<div class="form-group">
+      <label class="form-label">${escapeHtmlAttr(sh.label)} — เวลาปกติ ${sh.start}–${sh.end}</label>
+      <input class="form-input" id="dw-${k}" type="text" placeholder="เช่น สมชาย, สมหญิง"
+             value="${escapeHtmlAttr(planDayWorkerFor(dateIso, workType, k))}">
+      ${suggest.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">${
+        suggest.map(m => `<button type="button" class="btn btn-ghost btn-sm" style="font-size:11.5px;"
+          onclick="${jsCallAttr('addPlanDayWorkerName', k, m.name)}">+ ${escapeHtmlAttr(m.name)}</button>`).join('')}</div>` : ''}
+    </div>`;
+  }).join('');
+  document.getElementById('modal-body').innerHTML = `
+    <div class="muted" style="font-size:12px;line-height:1.6;margin-bottom:10px;">
+      ใส่ชื่อคนที่ทำกะนั้นของวันนี้ — ใส่หลายคนได้ คั่นด้วยลูกน้ำ<br>
+      กดชื่อจากรายชื่อทีมด้านล่างช่องเพื่อเติมเร็ว ๆ หรือพิมพ์เองก็ได้ · เว้นว่าง = ไม่ระบุ
+    </div>
+    <div class="modal-row full">${rows}</div>`;
+  document.getElementById('modal-overlay').classList.add('open');
+  document.querySelector('.modal-footer .btn-primary').onclick = savePlanDayWorker;
+}
+
+// กดชื่อจากรายชื่อทีม = ต่อท้ายช่องนั้น (ไม่ทับชื่อที่พิมพ์ไว้แล้ว และไม่ใส่ซ้ำ)
+function addPlanDayWorkerName(shiftKey, name) {
+  const el = document.getElementById('dw-' + shiftKey);
+  if (!el) return;
+  const cur = el.value.split(',').map(s => s.trim()).filter(Boolean);
+  if (cur.includes(name)) return;
+  cur.push(name);
+  el.value = cur.join(', ');
+}
+
+function savePlanDayWorker() {
+  if (!dayWorkerTarget || !canEditPlan()) return;
+  const { dateIso, workType } = dayWorkerTarget;
+  const shifts = dayWorkerFormShifts();
+  const picked = {};
+  shifts.forEach(k => {
+    const raw = ((document.getElementById('dw-' + k) || {}).value || '').trim();
+    if (raw) picked[k] = raw.split(',').map(s => s.trim()).filter(Boolean).join(', ');
+  });
+  // แก้เฉพาะกะที่ฟอร์มนี้ดูแล ค่าของกะอื่นในวันเดียวกันคงไว้
+  const keep = {};
+  Object.entries(((planDayWorker[dateIso] || {})[workType]) || {})
+    .forEach(([k, v]) => { if (!shifts.includes(k)) keep[k] = v; });
+  const merged = { ...keep, ...picked };
+  if (Object.keys(merged).length) {
+    planDayWorker[dateIso] = planDayWorker[dateIso] || {};
+    planDayWorker[dateIso][workType] = merged;
+  } else if (planDayWorker[dateIso]) {
+    delete planDayWorker[dateIso][workType];
+    if (!Object.keys(planDayWorker[dateIso]).length) delete planDayWorker[dateIso];
+  }
+  persistState();
+  renderCurrentPlanView();
+  closeModal();
+}
+
 // ─── เวลาเลิกงานต่อวัน (แยกตามประเภทงาน) ─────────────────────────────────────
 // เดิมเวลาทำงานของแต่ละวันมาจาก "โควตา OT" ที่ต้องกรอกซ้ำในทุกงาน ทำให้ตั้งเวลาทั้งวันทีเดียวไม่ได้
 // ตอนนี้กรอก "วันนี้เลิกกี่โมง" ครั้งเดียวต่อวันต่อประเภทงาน แล้วระบบแปลงเป็นโควตา OT ให้ทุกงานของวันนั้น
@@ -7795,7 +7894,7 @@ let rollCarryTon = {};
 function buildStateSnapshot() {
   return {
     toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec,
-    planTasks, planTaskSeq, companyHolidays, companyHolidaySeq, planDayEndTime, teamMembers, teamSeq,
+    planTasks, planTaskSeq, companyHolidays, companyHolidaySeq, planDayEndTime, planDayWorker, teamMembers, teamSeq,
     dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
     dailyPieceStatus, rollSizeLog, rollSizeLogSeq, dailyPauseLog, dailyPauseLogSeq,
     prodBlockProducts, prodBlockSeq, prodBlockCells, prodBlockPM, prodBlockSummary,
@@ -7909,6 +8008,7 @@ function applyState(saved) {
   if (typeof saved.planTaskSeq === 'number') planTaskSeq = saved.planTaskSeq;
   if (Array.isArray(saved.companyHolidays)) companyHolidays = saved.companyHolidays;
   if (saved.planDayEndTime && typeof saved.planDayEndTime === 'object') planDayEndTime = saved.planDayEndTime;
+  if (saved.planDayWorker && typeof saved.planDayWorker === 'object') planDayWorker = saved.planDayWorker;
   if (typeof saved.companyHolidaySeq === 'number') companyHolidaySeq = saved.companyHolidaySeq;
   if (saved.dailyStatusByDate) dailyStatusByDate = saved.dailyStatusByDate;
   if (saved.dailyActualTimes) dailyActualTimes = saved.dailyActualTimes;
