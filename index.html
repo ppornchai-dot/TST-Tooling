@@ -953,6 +953,10 @@ canvas{display:block;}
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>
         อายุ Roll
       </button>
+      <button class="nav-item" data-roles="admin,lead" onclick="showPage('inuse')">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="9"/></svg>
+        ชุด Roll กำลังใช้งาน
+      </button>
     </div>
     <div class="nav-section">
       <div class="nav-label">การปฏิบัติงาน</div>
@@ -1431,6 +1435,29 @@ canvas{display:block;}
     <!-- ══════════════════════════════════════════
          PAGE: ROLL LIFE
     ══════════════════════════════════════════ -->
+    <!-- ══════════════════════════════════════════
+         PAGE: ชุด ROLL กำลังใช้งาน
+         เนื้อหาเดียวกับการ์ดบน Dashboard — ใช้ renderDashboardRollStatusCard ตัวเดียวกัน ส่ง id ของหน้านี้เข้าไป
+    ══════════════════════════════════════════ -->
+    <div class="page" id="page-inuse">
+      <div class="card">
+        <div class="card-header">
+          <span style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-width:0;">
+            <span class="card-title" style="font-size:17px;color:var(--inuse);display:inline-flex;align-items:center;gap:8px;">
+              <span style="width:11px;height:11px;border-radius:50%;background:var(--inuse);flex-shrink:0;"></span>ชุด Roll กำลังใช้งาน</span>
+            <button id="inuse-page-edit-btn" class="btn" onclick="openInUseRollPicker()"
+              style="display:none;font-size:14px;font-weight:800;padding:8px 16px;border-radius:8px;
+                     background:var(--inuse);color:#fff;border:1px solid var(--inuse);box-shadow:0 1px 3px rgba(79,122,0,.35);">
+              ✎ เลือกชุดที่ใช้งาน</button>
+          </span>
+          <span style="font-size:12px;color:var(--text-3);flex-shrink:0;">
+            <span id="inuse-page-count" style="font-weight:700;color:var(--inuse);">0</span> ชุด
+          </span>
+        </div>
+        <div id="inuse-page-list" style="padding:12px 14px;"></div>
+      </div>
+    </div>
+
     <div class="page" id="page-rollLife">
 
       <div class="kpi-grid" style="margin-top:14px;">
@@ -1919,6 +1946,7 @@ const PAGE_META = {
   standard:   { title: 'Production Block' },
   prodWeight: { title: 'น้ำหนักผลิต' },
   rollLife:   { title: 'อายุ Roll' },
+  inuse:      { title: 'ชุด Roll กำลังใช้งาน' },
   daily:      { title: 'งานประจำวัน' },
   plan:       { title: 'วางแผน' },
   history:    { title: 'ประวัติการทำงาน' },
@@ -1945,6 +1973,7 @@ function showPage(id) {
     if (n.getAttribute('onclick') && n.getAttribute('onclick').includes("'" + id + "'"))
       n.classList.add('active');
   });
+  if (id === 'inuse') renderInUsePage();
   const titleEl = document.getElementById('page-title');
   if (titleEl && PAGE_META[id]) titleEl.textContent = PAGE_META[id].title;
   currentPage = id;
@@ -2140,7 +2169,16 @@ function dashRollInUseMachineSortKey(e) {
 
 // เรนเดอร์การ์ด "ชุด Roll กำลังใช้งาน" และ "ชุด Roll พร้อมใช้งาน" ด้วยตัวเดียวกัน
 // ต่างกันแค่สถานะที่กรอง สีป้ายเครื่อง และข้อความตอนไม่มีข้อมูล
+// หน้า "ชุด Roll กำลังใช้งาน" — เนื้อหาเดียวกับการ์ดบน Dashboard
+function renderInUsePage() {
+  const btn = document.getElementById('inuse-page-edit-btn');
+  if (btn) btn.style.display = canEditPlan() ? '' : 'none';
+  renderDashboardRollStatusCard('inuse-page-list', 'inuse-page-count', 'inuse',
+    'ไม่มีชุด Roll ที่กำลังใช้งานอยู่ตอนนี้', 'var(--inuse)', 'var(--inuse-dim)');
+}
+
 function renderDashboardInUseRoll() {
+  renderInUsePage();   // หน้า "ชุด Roll กำลังใช้งาน" ใช้ข้อมูลชุดเดียวกัน อัปเดตพร้อมกันเสมอ
   // ปุ่มเลือกชุดที่ใช้งาน — เฉพาะ Admin/หัวหน้า ช่างไม่ต้องเห็น (เหมือนสิทธิ์แก้แผนงาน)
   const editBtn = document.getElementById('dash-roll-inuse-edit-btn');
   if (editBtn) editBtn.style.display = canEditPlan() ? '' : 'none';
