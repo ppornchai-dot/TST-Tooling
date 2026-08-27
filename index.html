@@ -6852,7 +6852,9 @@ function openPlanDayWorkerModal(dateIso, workType, onlyShift) {
     'ผู้ปฏิบัติงาน ' + (workType === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)')
     + (onlyShift ? ' ' + SHIFTS[onlyShift].label : '') + ' — ' + fmtDateThai(parseISODate(dateIso));
   // รายชื่อทีมไว้กดเติมเร็ว ๆ (ยังพิมพ์ชื่อเองได้ตามปกติ เผื่อคนที่ไม่ได้อยู่ในทะเบียนทีม)
-  const roles = workType === 'polish' ? ['polish', 'operator', 'lead'] : ['cnc', 'lead'];
+  // เลือกได้เฉพาะช่างของงานนั้นจริง ๆ — งาน CNC เลือกได้แต่ช่าง CNC / งานขัด Roll เลือกได้แต่ช่างขัด Roll
+  // (หัวหน้า/พนักงานเดินเครื่องไม่ขึ้นในรายชื่อ แต่ถ้าจำเป็นยังพิมพ์ชื่อเองได้)
+  const roles = workType === 'polish' ? ['polish'] : ['cnc'];
   const suggest = teamMembers.filter(m => roles.includes(m.role));
   const rows = dayWorkerFormShifts().map(k => {
     const sh = SHIFTS[k];
