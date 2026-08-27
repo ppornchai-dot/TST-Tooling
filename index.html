@@ -5022,12 +5022,17 @@ function renderPlanMonth() {
       const holidayName = companyHolidays.find(h => h.date === iso)?.name || null;
       const isSunday = d.getDay() === 0;
       const dayOffBg = (isSunday || holidayName) ? 'background:#FDF3D8;' : '';
+      // ชื่อวันหยุดบริษัทมาก่อน (วันอาทิตย์ที่ตั้งเป็นวันหยุดพิเศษด้วยจะได้เห็นชื่องาน ไม่ใช่แค่ "วันอาทิตย์")
+      const offLabel = holidayName || (isSunday ? 'วันอาทิตย์' : '');
       const tasks = (partsByDate.get(iso) || []).filter(t => planTaskSectionKey(t) === s.key);
       const chips = tasks.map(t => planDragWrap(t, iso, planCalendarChip(t, editable, 'flex:1;min-width:0;'), editable)).join('');
-      html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;${dayOffBg}" title="${holidayName ? escapeHtmlAttr(holidayName) : ''}">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <strong style="font-size:12px;">${day}</strong>
-          ${editable ? `<button title="${escapeHtmlAttr('เพิ่มงาน' + s.label)}" onclick="${jsCallAttr('addPlanTaskOnDate', iso, s.key)}" style="border:none;background:none;color:${s.color};cursor:pointer;font-size:13px;line-height:1;padding:0;font-weight:800;">+</button>` : ''}
+      html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;${dayOffBg}" title="${offLabel ? escapeHtmlAttr('วันหยุด: ' + offLabel) : ''}">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">
+          <strong style="font-size:12px;flex-shrink:0;">${day}</strong>
+          ${offLabel ? `<span style="flex:1;min-width:0;font-size:10px;font-weight:800;color:var(--amber);
+              overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;"
+              title="${escapeHtmlAttr('วันหยุด: ' + offLabel)}">${escapeHtmlAttr(offLabel)}</span>` : ''}
+          ${editable ? `<button title="${escapeHtmlAttr('เพิ่มงาน' + s.label)}" onclick="${jsCallAttr('addPlanTaskOnDate', iso, s.key)}" style="border:none;background:none;color:${s.color};cursor:pointer;font-size:13px;line-height:1;padding:0;font-weight:800;flex-shrink:0;">+</button>` : ''}
         </div>
         <div class="plan-drop-zone" data-day="${iso}" style="margin-top:6px;display:flex;flex-direction:column;gap:4px;min-height:30px;">${chips}</div>
       </div>`;
