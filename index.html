@@ -4865,17 +4865,25 @@ function planSectionHeaderRow(s, colSpan, stat, addForIso) {
           + (addForIso && planSectionSpanText(stat, addForIso) ? ' · ' + escapeHtmlAttr(planSectionSpanText(stat, addForIso)) : '')
           : 'ไม่มีงาน'}</span>
       ${addForIso ? (() => {
-        // ปุ่มบอกเวลาเลิกงานของวันนั้น กดเพื่อตั้ง/แก้ — ช่างเห็นเป็นข้อความอย่างเดียว กดไม่ได้
+        // ปุ่มเลือกเวลา OT ของวันนั้น (กรอกเป็นเวลาเลิกงาน ระบบคิด OT ให้) — ช่างเห็นเป็นข้อความอย่างเดียว กดไม่ได้
         const wt = s.key;
-        // หมวดที่แยกกะแล้ว (s.shiftKey) ตั้ง/แสดงเวลาเลิกงานของกะนั้นกะเดียว
+        // หมวดที่แยกกะแล้ว (s.shiftKey) ตั้ง/แสดงของกะนั้นกะเดียว
         const shifts = s.shiftKey ? [s.shiftKey] : planDayEndShiftsFor(wt);
-        const set = shifts.map(k => planDayEndFor(addForIso, wt, k)).filter(Boolean);
-        const label = set.length ? 'เลิก ' + set.join(' / ') : 'ตั้งเวลาเลิกงาน';
+        // แสดงเวลาที่เลือกไว้ต่อท้ายด้วย พร้อมบอกว่าคิดเป็น OT เท่าไร
+        const picked = shifts.map(k => {
+          const end = planDayEndFor(addForIso, wt, k);
+          if (!end) return null;
+          const ot = otMinutesFromDayEnd(end, wt, k);
+          return (shifts.length > 1 ? SHIFTS[k].label + ' ' : '') + 'เลิก ' + end
+            + (ot ? ' (OT ' + formatMinutesAsHm(ot).replace('≈ ', '') + ')' : ' (ไม่มี OT)');
+        }).filter(Boolean);
+        const label = picked.length ? 'เลือกเวลา OT · ' + picked.join(' · ') : 'เลือกเวลา OT';
         return canEditPlan()
-          ? `<button class="btn btn-ghost btn-sm" onclick="${jsCallAttr('openPlanDayEndModal', addForIso, wt, s.shiftKey || '')}"
-              title="ตั้งว่าวันนี้เลิกงานกี่โมง แล้วระบบคิดเวลา OT ให้ทุกงานของวันนี้เอง"
-              style="font-size:12px;font-weight:800;padding:3px 11px;color:${s.color};border-color:${s.color};${set.length ? `background:${s.bg};` : 'border-style:dashed;'}">⏱ ${escapeHtmlAttr(label)}</button>`
-          : (set.length ? `<span style="font-size:12px;font-weight:700;color:${s.color};opacity:.9;">⏱ ${escapeHtmlAttr(label)}</span>` : '');
+          ? `<button class="btn btn-ghost" onclick="${jsCallAttr('openPlanDayEndModal', addForIso, wt, s.shiftKey || '')}"
+              title="เลือกว่าวันนี้เลิกงานกี่โมง แล้วระบบคิดเวลา OT ให้ทุกงานของวันนี้เอง"
+              style="font-size:14px;font-weight:800;padding:9px 16px;border-radius:9px;line-height:1.2;white-space:nowrap;
+                     color:${s.color};border-color:${s.color};${picked.length ? `background:${s.bg};` : 'border-style:dashed;'}">⏱ ${escapeHtmlAttr(label)}</button>`
+          : (picked.length ? `<span style="font-size:13px;font-weight:700;color:${s.color};opacity:.9;">⏱ ${escapeHtmlAttr(label)}</span>` : '');
       })() : ''}
     </span>
   </td></tr>`;
@@ -5436,7 +5444,8 @@ function formatMinutesAsHm(totalMinutes) {
   if (!mins) return '';
   const h = Math.floor(mins / 60);
   const m = mins % 60;
-  return '≈ ' + (h > 0 ? `${h} ชม. ${m} นาที` : `${m} นาที`);
+  // ลงตัวเป็นชั่วโมงพอดี ไม่ต้องต่อท้าย "0 นาที" (เช่น "3 ชม." ไม่ใช่ "3 ชม. 0 นาที")
+  return '≈ ' + (h > 0 ? (m ? `${h} ชม. ${m} นาที` : `${h} ชม.`) : `${m} นาที`);
 }
 
 // อ่าน Roll ที่ผู้ใช้ติ๊กเลือกไว้จริงในดรอปดาวน์ "รายชื่อ Roll" (ไม่ใช่แค่ Roll ที่พบตามเงื่อนไข Size Roll/สี)
