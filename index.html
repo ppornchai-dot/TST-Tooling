@@ -5022,8 +5022,9 @@ function renderPlanMonth() {
       const holidayName = companyHolidays.find(h => h.date === iso)?.name || null;
       const isSunday = d.getDay() === 0;
       const dayOffBg = (isSunday || holidayName) ? 'background:#FDF3D8;' : '';
-      // ชื่อวันหยุดบริษัทมาก่อน (วันอาทิตย์ที่ตั้งเป็นวันหยุดพิเศษด้วยจะได้เห็นชื่องาน ไม่ใช่แค่ "วันอาทิตย์")
-      const offLabel = holidayName || (isSunday ? 'วันอาทิตย์' : '');
+      // ขึ้นชื่อเฉพาะวันหยุดบริษัทที่เพิ่มไว้เท่านั้น — วันอาทิตย์รู้ได้จากคอลัมน์อยู่แล้ว ไม่ต้องเขียนกำกับ
+      // (วันอาทิตย์ที่ตั้งเป็นวันหยุดพิเศษด้วย ยังขึ้นชื่อวันหยุดนั้นตามปกติ)
+      const offLabel = holidayName || '';
       const tasks = (partsByDate.get(iso) || []).filter(t => planTaskSectionKey(t) === s.key);
       const chips = tasks.map(t => planDragWrap(t, iso, planCalendarChip(t, editable, 'flex:1;min-width:0;'), editable)).join('');
       html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;${dayOffBg}" title="${offLabel ? escapeHtmlAttr('วันหยุด: ' + offLabel) : ''}">
