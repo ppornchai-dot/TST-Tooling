@@ -1189,8 +1189,6 @@ canvas{display:block;}
          PAGE: TOOLING REGISTRY
     ══════════════════════════════════════════ -->
     <div class="page" id="page-registry">
-      <div class="section-title">ทะเบียน Tooling</div>
-      <div class="section-sub">รายการ Tooling แยกตามกลุ่มงาน — อัปเดต 30 มิ.ย. 2569</div>
 
       <!-- GROUP TABS -->
       <div class="reg-tab-bar">
@@ -1412,8 +1410,6 @@ canvas{display:block;}
          PAGE: PRODUCTION WEIGHT
     ══════════════════════════════════════════ -->
     <div class="page" id="page-prodWeight">
-      <div class="section-title">น้ำหนักผลิต</div>
-      <div class="section-sub">เทียบน้ำหนักผลิตจริงกับยอดใช้งานสะสมของแต่ละชุด Roll</div>
       <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-top:14px;margin-bottom:6px;">
         <div class="form-group" style="margin-bottom:0;">
           <label class="form-label">จากวันที่</label>
@@ -1446,8 +1442,6 @@ canvas{display:block;}
          PAGE: ROLL LIFE
     ══════════════════════════════════════════ -->
     <div class="page" id="page-rollLife">
-      <div class="section-title">อายุ Roll</div>
-      <div class="section-sub">อายุคงเหลือของแต่ละชุด Roll (Size Roll + ชุดสี) ยึดลูกที่เหลือน้อยที่สุดในชุด</div>
 
       <div class="kpi-grid" style="margin-top:14px;">
         <div class="kpi-card red">
@@ -1521,8 +1515,6 @@ canvas{display:block;}
          PAGE: DAILY TASKS
     ══════════════════════════════════════════ -->
     <div class="page" id="page-daily">
-      <div class="section-title">งานประจำวัน</div>
-      <div class="section-sub" id="daily-section-sub">เช็คลิสต์งานประจำวันของทีม Tooling — วันที่ 2 ก.ค. 2569</div>
 
       <!-- เอาปุ่มกรอง ทั้งหมด/CNC/ขัด Roll ออกแล้ว — ตารางแบ่งหัวข้อเป็น 2 ประเภทงานให้เห็นทั้งคู่ในหน้าเดียว
            ช่าง CNC / ช่างขัด Roll ยังเห็นเฉพาะประเภทของตัวเอง ผ่าน forcedWorkTypeForRole() -->
@@ -1714,8 +1706,6 @@ canvas{display:block;}
          PAGE: HISTORY
     ══════════════════════════════════════════ -->
     <div class="page" id="page-history">
-      <div class="section-title">ประวัติการทำงาน</div>
-      <div class="section-sub">บันทึกการดำเนินงานและบำรุงรักษา Tooling ทั้งหมด</div>
 
       <!-- แยกดูตามประเภทงาน — ใช้ปุ่มแท็บแบบเดียวกับหน้างานประจำวัน/วางแผน แทน dropdown เดิม เพื่อให้เห็นและสลับได้ทันที -->
       <div class="mobile-wrap" style="display:flex;gap:8px;margin-bottom:12px;">
@@ -1757,8 +1747,6 @@ canvas{display:block;}
          PAGE: PENDING
     ══════════════════════════════════════════ -->
     <div class="page" id="page-pending">
-      <div class="section-title">งานค้าง</div>
-      <div class="section-sub">รายการงานที่ยังไม่ได้ดำเนินการหรือเกินกำหนด</div>
 
       <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);">
         <div class="kpi-card red">
@@ -1814,8 +1802,6 @@ canvas{display:block;}
          PAGE: TEAM
     ══════════════════════════════════════════ -->
     <div class="page" id="page-team">
-      <div class="section-title">ทีมงาน</div>
-      <div class="section-sub">บุคลากรฝ่าย Tooling และการมอบหมายงาน</div>
 
       <!-- GROUP TABS -->
       <div class="reg-tab-bar">
@@ -11354,8 +11340,7 @@ function renderDailyTasks() {
   const dateLabel = document.getElementById('daily-daterange-label');
   if (dateLabel) dateLabel.textContent = fmtDateThai(parseISODate(dailyViewDate));
   const subText = 'เช็คลิสต์งานประจำวันของทีม Tooling — วันที่ ' + fmtDateThai(parseISODate(dailyViewDate));
-  const subEl = document.getElementById('daily-section-sub');
-  if (subEl) subEl.textContent = subText;
+  // คำอธิบายอยู่ที่แถบด้านบนแล้ว (เอาหัวข้อในหน้าออกเพื่อคืนพื้นที่) — อัปเดตผ่าน PAGE_META/page-sub เท่านั้น
   if (PAGE_META.daily) PAGE_META.daily.sub = subText;
   if (currentPage === 'daily') {
     const topSub = document.getElementById('page-sub');
