@@ -4824,13 +4824,19 @@ function planSectionsForRole() {
 }
 // นับงานของหัวข้อนี้ในช่วงวันที่กำลังดู พร้อมเวลารวม — ใช้โชว์ข้างหัวข้อทุกมุมมอง
 function planSectionCount(partsByDate, sectionKey, isoList) {
-  let count = 0, mins = 0;
+  let count = 0, mins = 0, start = null, end = null;
   isoList.forEach(iso => (partsByDate.get(iso) || []).forEach(t => {
     if (planTaskSectionKey(t) !== sectionKey) return;
     count++;
     mins += t.totalTime != null ? (Number(t.totalTime) || 0) : 0;
+    // เวลาเริ่มเร็วสุด–จบช้าสุดของวันนั้น ยึดลำดับเวลาในวันทำงาน (08:00 เป็นต้นวัน ไล่ไปจนจบกะดึก)
+    // ไม่งั้นงานกะดึกที่จบ 04:10 จะถูกนับว่าจบเร็วสุดของวันเพราะเวลานาฬิกาน้อยสุด
+    if (t.startTime && t.startTime !== '—'
+        && (!start || historyDayOrderMin(t.startTime) < historyDayOrderMin(start))) start = t.startTime;
+    if (t.endTime && t.endTime !== '—'
+        && (!end || historyDayOrderMin(t.endTime) > historyDayOrderMin(end))) end = t.endTime;
   }));
-  return { count, mins };
+  return { count, mins, start, end };
 }
 // แถวหัวข้อสำหรับตาราง (รายวัน/รายสัปดาห์) — colSpan ต่างกันตามจำนวนคอลัมน์ของแต่ละมุมมอง
 // addForIso: ใส่ iso ถ้าต้องการปุ่ม "+ เพิ่มงาน" ที่หัวข้อ (มุมมองรายวันใช้), null ถ้าไม่ต้องการ
@@ -4841,7 +4847,10 @@ function planSectionHeaderRow(s, colSpan, stat, addForIso) {
     </span>
     <span style="float:right;display:inline-flex;align-items:center;gap:10px;">
       <span style="font-size:12px;font-weight:700;color:${s.color};opacity:.9;">${
-        stat.count ? stat.count + ' รายการ' + (stat.mins ? ' · ' + formatMinutesAsHm(stat.mins).replace('≈ ', '') : '') : 'ไม่มีงาน'}</span>
+        stat.count ? stat.count + ' รายการ' + (stat.mins ? ' · ' + formatMinutesAsHm(stat.mins).replace('≈ ', '') : '')
+          // เวลาเริ่ม–จบของวันนั้น ใส่เฉพาะมุมมองรายวัน (addForIso มีค่า = ดูวันเดียว)
+          + (addForIso && stat.start && stat.end ? ' · ' + escapeHtmlAttr(stat.start) + '–' + escapeHtmlAttr(stat.end) : '')
+          : 'ไม่มีงาน'}</span>
       ${addForIso ? (() => {
         // ปุ่มบอกเวลาเลิกงานของวันนั้น กดเพื่อตั้ง/แก้ — ช่างเห็นเป็นข้อความอย่างเดียว กดไม่ได้
         const wt = s.key;
