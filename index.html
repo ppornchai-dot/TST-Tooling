@@ -8579,6 +8579,10 @@ function openRunColorPromptFor(dateIso) {
 function openRunColorPromptToday() { return openRunColorPromptFor(toISODate(new Date())); }
 
 function maybeAutoOpenRunColorPrompt() {
+  // เด้งเฉพาะระดับหัวหน้างานและ Admin (เกณฑ์เดียวกับ maybeOpenLeftoverPrompt) — การระบุชุดสีที่เดินงาน
+  // มีผลกับการคิดน้ำหนักผลิตและอายุ Roll เป็นการตัดสินใจของหัวหน้า ไม่ใช่ของช่าง/พนักงานเดินเครื่อง
+  // ช่างยังกดปุ่มบนแถบเตือนเปิดเองได้ถ้าต้องระบุจริง แค่ไม่ถูกหน้าต่างนี้ขัดจังหวะเอง
+  if (!canEditPlan()) return;
   const ov = document.getElementById('runcolor-overlay');
   if (ov && ov.classList.contains('open')) return;  // เปิดอยู่แล้ว ไม่ต้องเด้งซ้อน
   const today = toISODate(new Date());
