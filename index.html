@@ -1456,6 +1456,23 @@ canvas{display:block;}
         </div>
         <div id="inuse-page-list" style="padding:12px 14px;"></div>
       </div>
+
+      <!-- ปฏิทินย้อนหลัง: แต่ละวันเดินชุด Roll ขนาดไหน สีไหน (จากบันทึกชุดสีที่เดินรายวัน) -->
+      <div class="card" style="margin-top:18px;">
+        <div class="card-header">
+          <span class="card-title" style="font-size:17px;">ปฏิทินชุด Roll ที่เดินงาน</span>
+          <span style="margin-left:auto;display:inline-flex;align-items:center;gap:8px;">
+            <button class="btn btn-ghost btn-sm" onclick="inUseCalNav(-1)" title="เดือนก่อนหน้า">‹</button>
+            <span id="inuse-cal-label" style="font-size:14px;font-weight:800;min-width:120px;text-align:center;"></span>
+            <button class="btn btn-ghost btn-sm" onclick="inUseCalNav(1)" title="เดือนถัดไป">›</button>
+            <button class="btn btn-ghost btn-sm" onclick="inUseCalToday()">เดือนนี้</button>
+          </span>
+        </div>
+        <div style="padding:12px 14px;">
+          <div class="muted" style="font-size:11.5px;margin-bottom:8px;">จุดสี = ชุดสีที่เดินของขนาดนั้น · ชี้ค้างที่บรรทัดเพื่อดูแยกตามหมวด Forming/Sizing/TH</div>
+          <div id="inuse-cal-body"></div>
+        </div>
+      </div>
     </div>
 
     <div class="page" id="page-rollLife">
@@ -2169,12 +2186,105 @@ function dashRollInUseMachineSortKey(e) {
 
 // เรนเดอร์การ์ด "ชุด Roll กำลังใช้งาน" และ "ชุด Roll พร้อมใช้งาน" ด้วยตัวเดียวกัน
 // ต่างกันแค่สถานะที่กรอง สีป้ายเครื่อง และข้อความตอนไม่มีข้อมูล
+// ─── ปฏิทินชุด Roll ที่เดินงานแต่ละวัน ────────────────────────────────────────
+// ข้อมูลมาจาก rollRunColor ที่บันทึกไว้รายวัน (ชุดสีที่เดินของแต่ละ Size Roll)
+// รวมหลายหมวด (Forming/Sizing/TH) ของ Size เดียวกันเป็นบรรทัดเดียว ไม่งั้นช่องวันจะยาวเกินอ่านไม่ทัน
+let inUseCalMonth = null; // เดือนที่กำลังดู (วันที่ 1 ของเดือนนั้น)
+
+function inUseCalMonthDate() {
+  if (!inUseCalMonth) {
+    const t = parseISODate(dailyTodayIso());
+    inUseCalMonth = new Date(t.getFullYear(), t.getMonth(), 1);
+  }
+  return inUseCalMonth;
+}
+function inUseCalNav(dir) {
+  const m = inUseCalMonthDate();
+  inUseCalMonth = new Date(m.getFullYear(), m.getMonth() + dir, 1);
+  renderInUseCalendar();
+}
+function inUseCalToday() {
+  const t = parseISODate(dailyTodayIso());
+  inUseCalMonth = new Date(t.getFullYear(), t.getMonth(), 1);
+  renderInUseCalendar();
+}
+
+// สรุปของวันหนึ่ง: [[ชื่อ Size, [{set, cat, colorKey}...]], ...] เรียงตามชื่อ Size
+function inUseDayRunGroups(iso) {
+  const byDate = rollRunColor[iso] || {};
+  const groups = new Map();
+  Object.keys(byDate).forEach(set => {
+    const colorKey = byDate[set];
+    if (!colorKey) return;
+    const label = rollSetSizeGroupLabel(set);
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label).push({ set, cat: parseSizeRollName(set).category || '—', colorKey });
+  });
+  return [...groups.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'th'));
+}
+
+function inUseColorDot(setName, colorKey) {
+  const c = getSetPalette(setName).find(x => x.key === colorKey);
+  return c ? c.dot : '#9CA3AF';
+}
+
+function renderInUseCalendar() {
+  const el = document.getElementById('inuse-cal-body');
+  if (!el) return;
+  const m = inUseCalMonthDate();
+  const year = m.getFullYear(), month = m.getMonth();
+  const label = document.getElementById('inuse-cal-label');
+  if (label) label.textContent = THAI_MONTHS_FULL[month] + ' ' + (year + 543);
+
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const leading = new Date(year, month, 1).getDay();   // 0 = อาทิตย์
+  const today = dailyTodayIso();
+  const dayNames = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+
+  let cells = '';
+  for (let i = 0; i < leading; i++) cells += '<div style="min-height:78px;"></div>';
+  for (let d = 1; d <= daysInMonth; d++) {
+    const iso = toISODate(new Date(year, month, d));
+    const groups = inUseDayRunGroups(iso);
+    const holidayName = companyHolidays.find(x => x.date === iso)?.name || null;
+    const isOff = new Date(year, month, d).getDay() === 0 || holidayName;
+    const isToday = iso === today;
+    const rows = groups.map(([sizeLabel, list]) => {
+      const detail = list.map(x => x.cat + ' ' + rollColorLabelFor(x.set, x.colorKey)).join(' · ');
+      // สีที่ไม่ซ้ำกันของ Size นี้ — ปกติทั้ง 3 หมวดใช้สีเดียวกัน จึงได้จุดเดียว
+      const seen = [];
+      list.forEach(x => { if (!seen.some(s => s.colorKey === x.colorKey)) seen.push(x); });
+      return `<div title="${escapeHtmlAttr(sizeLabel + ' — ' + detail)}"
+          style="display:flex;align-items:center;gap:4px;font-size:10.5px;line-height:1.35;margin-top:2px;">
+        <span style="display:inline-flex;gap:2px;flex-shrink:0;">${seen.map(x =>
+          `<span style="width:8px;height:8px;border-radius:50%;background:${inUseColorDot(x.set, x.colorKey)};display:inline-block;"></span>`).join('')}</span>
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2);font-weight:600;">${escapeHtmlAttr(sizeLabel)}</span>
+      </div>`;
+    }).join('');
+    cells += `<div style="min-height:78px;padding:6px 7px;border:1px solid var(--border-light);border-radius:6px;
+        ${isOff ? 'background:#FDF3D8;' : ''}${isToday ? 'outline:2px solid var(--accent);outline-offset:-2px;' : ''}"
+        title="${escapeHtmlAttr(holidayName ? 'วันหยุด: ' + holidayName : '')}">
+      <div style="display:flex;align-items:center;gap:5px;">
+        <strong style="font-size:12px;${isToday ? 'color:var(--accent);' : ''}">${d}</strong>
+        ${groups.length ? `<span style="font-size:10px;color:var(--text-3);">${groups.length} ขนาด</span>` : ''}
+      </div>
+      ${rows || `<div style="font-size:10.5px;color:var(--text-3);margin-top:3px;">${isOff ? 'วันหยุด' : '—'}</div>`}
+    </div>`;
+  }
+
+  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px;">
+      ${dayNames.map(n => `<div style="text-align:center;font-size:11px;font-weight:800;color:var(--text-3);">${n}</div>`).join('')}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;">${cells}</div>`;
+}
+
 // หน้า "ชุด Roll กำลังใช้งาน" — เนื้อหาเดียวกับการ์ดบน Dashboard
 function renderInUsePage() {
   const btn = document.getElementById('inuse-page-edit-btn');
   if (btn) btn.style.display = canEditPlan() ? '' : 'none';
   renderDashboardRollStatusCard('inuse-page-list', 'inuse-page-count', 'inuse',
     'ไม่มีชุด Roll ที่กำลังใช้งานอยู่ตอนนี้', 'var(--inuse)', 'var(--inuse-dim)');
+  renderInUseCalendar();
 }
 
 function renderDashboardInUseRoll() {
