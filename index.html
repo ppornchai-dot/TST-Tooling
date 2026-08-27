@@ -5291,7 +5291,6 @@ function planTaskFormFields() {
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <button type="button" class="btn btn-ghost btn-sm pf-shift-btn" data-shift="morning" onclick="selectPlanShift('morning')" title="08:00–17:00 (กะเดียว)">🌤 กะเช้า</button>
           <button type="button" class="btn btn-ghost btn-sm pf-shift-btn" data-shift="night" onclick="selectPlanShift('night')" title="20:00–05:00 (กะเดียว)">🌙 กะดึก</button>
-          <button type="button" class="btn btn-ghost btn-sm pf-shift-btn" data-shift="both" onclick="selectPlanShift('both')" title="ทำงานต่อเนื่อง 08:00–17:00 และ 20:00–05:00">🌤🌙 2 กะ</button>
         </div>
         <input type="hidden" id="pf-shift" value="morning">
       </div>
@@ -5994,11 +5993,12 @@ function setPlanShiftButtons(key, bothStartKey) {
   // ซ่อนปุ่มกะที่ประเภทงานนี้ไม่ได้ทำ (งานขัด Roll เหลือแต่กะเช้า)
   const wt = planFormWorkType();
   const allowed = planWorkTypeShifts(wt);
+  const shownAs = key === 'both' ? (bothStartKey === 'night' ? 'night' : 'morning') : key;
   document.querySelectorAll('.pf-shift-btn').forEach(b => {
     const bk = b.getAttribute('data-shift');
     // งานเก่าที่บันทึกกะนั้นไว้แล้ว ยังต้องเห็นปุ่มของกะตัวเอง ไม่งั้นจะดูเหมือนไม่มีกะ
     b.style.display = (allowed.includes(bk) || bk === key) ? '' : 'none';
-    const active = bk === key;
+    const active = bk === shownAs;
     b.style.color = active ? 'var(--accent)' : '';
     b.style.borderColor = active ? 'var(--accent)' : '';
     b.style.background = active ? 'var(--accent-glow)' : '';
