@@ -4824,19 +4824,39 @@ function planSectionsForRole() {
 }
 // นับงานของหัวข้อนี้ในช่วงวันที่กำลังดู พร้อมเวลารวม — ใช้โชว์ข้างหัวข้อทุกมุมมอง
 function planSectionCount(partsByDate, sectionKey, isoList) {
-  let count = 0, mins = 0, start = null, end = null;
+  let count = 0, mins = 0;
+  const span = {};   // { morning: { start:'HH:MM', end:'HH:MM' }, night: {...} }
+  // นาทีสัมบูรณ์นับจากต้นวันของงาน (จาก segments ของ computePlanEnd) — เทียบ min/max ได้ตรง ๆ
+  // ไม่ต้องแปลงเป็นเวลานาฬิกาก่อน ซึ่งจะทำให้ช่วงที่ข้ามเที่ยงคืนเทียบผิด
+  const widen = (k, s, e) => {
+    const cur = span[k];
+    span[k] = cur ? { start: Math.min(cur.start, s), end: Math.max(cur.end, e) } : { start: s, end: e };
+  };
   isoList.forEach(iso => (partsByDate.get(iso) || []).forEach(t => {
     if (planTaskSectionKey(t) !== sectionKey) return;
     count++;
     mins += t.totalTime != null ? (Number(t.totalTime) || 0) : 0;
-    // เวลาเริ่มเร็วสุด–จบช้าสุดของวันนั้น ยึดลำดับเวลาในวันทำงาน (08:00 เป็นต้นวัน ไล่ไปจนจบกะดึก)
-    // ไม่งั้นงานกะดึกที่จบ 04:10 จะถูกนับว่าจบเร็วสุดของวันเพราะเวลานาฬิกาน้อยสุด
-    if (t.startTime && t.startTime !== '—'
-        && (!start || historyDayOrderMin(t.startTime) < historyDayOrderMin(start))) start = t.startTime;
-    if (t.endTime && t.endTime !== '—'
-        && (!end || historyDayOrderMin(t.endTime) > historyDayOrderMin(end))) end = t.endTime;
+    if (!t.startTime || t.startTime === '—' || !t.totalTime) return;
+    const seg = (computePlanEnd(t.date, t.startTime, t.totalTime, t.shift, t.otCapMinutesByShift || {}) || {}).segments || {};
+    Object.keys(seg).forEach(k => {
+      const s = seg[k];
+      if (!s || !(s.end > s.start)) return;   // กะที่งานนี้ไม่ได้แตะเลย
+      widen(k, s.start, s.end);
+    });
   }));
-  return { count, mins, start, end };
+  return { count, mins, span };
+}
+// ข้อความช่วงเวลาแยกกะ ต่อท้ายสถิติของหัวข้อหมวด — โชว์เฉพาะกะที่มีงานจริง
+// ต่อท้าย "(+N วัน)" เมื่อช่วงนั้นลามเลยวันทำงานนั้นไปจริง (เกณฑ์เดียวกับป้ายท้ายเวลาจบ ดู endDayOffset)
+// กะดึกที่ข้ามเที่ยงคืนตามปกติไม่เข้าเงื่อนไขนี้ เพราะยังเป็นรอบกะของวันเดิม
+function planSectionSpanText(stat, dateIso) {
+  return ['morning', 'night'].filter(k => (stat.span || {})[k]).map(k => {
+    const sp = stat.span[k];
+    const sClock = absMinuteToClock(sp.start), eClock = absMinuteToClock(sp.end);
+    const days = dateIso
+      ? endDayOffset(k, dateIso, sClock, addDaysIso(dateIso, Math.floor(sp.end / 1440)), eClock) : 0;
+    return SHIFTS[k].label + ' ' + sClock + '–' + eClock + (days > 0 ? ' (+' + days + ' วัน)' : '');
+  }).join(' · ');
 }
 // แถวหัวข้อสำหรับตาราง (รายวัน/รายสัปดาห์) — colSpan ต่างกันตามจำนวนคอลัมน์ของแต่ละมุมมอง
 // addForIso: ใส่ iso ถ้าต้องการปุ่ม "+ เพิ่มงาน" ที่หัวข้อ (มุมมองรายวันใช้), null ถ้าไม่ต้องการ
@@ -4848,8 +4868,8 @@ function planSectionHeaderRow(s, colSpan, stat, addForIso) {
     <span style="float:right;display:inline-flex;align-items:center;gap:10px;">
       <span style="font-size:12px;font-weight:700;color:${s.color};opacity:.9;">${
         stat.count ? stat.count + ' รายการ' + (stat.mins ? ' · ' + formatMinutesAsHm(stat.mins).replace('≈ ', '') : '')
-          // เวลาเริ่ม–จบของวันนั้น ใส่เฉพาะมุมมองรายวัน (addForIso มีค่า = ดูวันเดียว)
-          + (addForIso && stat.start && stat.end ? ' · ' + escapeHtmlAttr(stat.start) + '–' + escapeHtmlAttr(stat.end) : '')
+          // เวลาเริ่ม–จบของวันนั้นแยกตามกะ ใส่เฉพาะมุมมองรายวัน (addForIso มีค่า = ดูวันเดียว)
+          + (addForIso && planSectionSpanText(stat, addForIso) ? ' · ' + escapeHtmlAttr(planSectionSpanText(stat, addForIso)) : '')
           : 'ไม่มีงาน'}</span>
       ${addForIso ? (() => {
         // ปุ่มบอกเวลาเลิกงานของวันนั้น กดเพื่อตั้ง/แก้ — ช่างเห็นเป็นข้อความอย่างเดียว กดไม่ได้
