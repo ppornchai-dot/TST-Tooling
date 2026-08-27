@@ -2275,6 +2275,17 @@ function inUseCalPrefetchMachines(isoList) {
     .catch(() => { inUseCalFetching = false; });
 }
 
+// ตัวอักษรบนป้ายสี — ปกติใช้ตัวขาวให้เหมือนที่อื่นทั้งแอป เปลี่ยนเป็นตัวเข้ม
+// เฉพาะพื้นที่สว่างจนตัวขาวอ่านไม่ออกจริงๆ (เช่นสีเหลืองสด contrast แค่ 1.5)
+function rollColorTextOn(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+  if (!m) return '#fff';
+  const lin = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+  const [r, g, b] = [0, 2, 4].map(i => lin(parseInt(m[1].slice(i, i + 2), 16)));
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return (1.05 / (lum + 0.05)) >= 2.5 ? '#fff' : '#1F2937';
+}
+
 function inUseCalSizeShort(sizeLabel) {
   return String(sizeLabel).replace(/\s*\([^)]*\)\s*$/, '').trim() || String(sizeLabel);
 }
@@ -2325,7 +2336,7 @@ function renderInUseCalendar() {
       const detail = ordered.map(x => x.cat + ' ' + rollColorLabelFor(x.set, x.colorKey)).join(' · ');
       // ป้ายหมวด F/S/T พื้นเป็นสีชุด Roll ที่เดินของหมวดนั้น — เห็นทั้งหมวดและสีในบรรทัดเดียว
       const catTags = ordered.map(x => `<span title="${escapeHtmlAttr(x.cat + ' ' + rollColorLabelFor(x.set, x.colorKey))}"
-          style="background:${inUseColorDot(x.set, x.colorKey)};color:#fff;font-size:9px;font-weight:800;
+          style="background:${inUseColorDot(x.set, x.colorKey)};color:${rollColorTextOn(inUseColorDot(x.set, x.colorKey))};font-size:9px;font-weight:800;
                  padding:0 3px;border-radius:3px;line-height:1.5;flex-shrink:0;">${ROLL_CAT_ABBR[x.cat] || '?'}</span>`).join('');
       return `<div title="${escapeHtmlAttr(sizeLabel + (machine ? ' · เครื่อง ' + machine : '') + ' — ' + detail)}"
           style="display:flex;align-items:center;gap:3px;font-size:10.5px;line-height:1.4;margin-top:2px;">
@@ -7851,9 +7862,9 @@ function setRollColorActiveMachine(colorKey, machine) {
 
 const DEFAULT_ROLL_COLORS = [
   {key:'blue',   label:'สีฟ้า',   dot:'#3B82F6'},
-  {key:'yellow', label:'สีเหลือง', dot:'#EAB308'},
+  {key:'yellow', label:'สีเหลือง', dot:'#F7D000'},
   {key:'red',    label:'สีแดง',   dot:'#C03030'},
-  {key:'gold',   label:'สีทอง',   dot:'#C9A227'},
+  {key:'gold',   label:'สีทอง',   dot:'#A97806'},
   {key:'purple', label:'สีม่วง',   dot:'#5E44B0'},
 ];
 let rollColorSeq = 0;
@@ -7863,11 +7874,23 @@ const NO_COLOR_KEY = '__none__';
 // ปาเล็ตต์สีของแต่ละ Size Roll แยกกันเป็นอิสระ — เพิ่ม/ลบสีในกลุ่มหนึ่งจะไม่กระทบกลุ่มอื่น
 let rollSetPalettes = {};
 
+// ค่าสีชุดเก่า → ค่าสีใหม่ ใช้เลื่อนโทนสีเหลือง/สีทองที่เก็บไว้ในข้อมูลแล้ว
+// เทียบด้วยค่าสี ไม่ใช่ key เพราะสีที่ใช้งานจริงหลายชุดถูกเพิ่มเป็นสีกำหนดเอง (key custom19 ฯลฯ)
+// แต่ค่าสียังเป็นค่าเริ่มต้นชุดเก่าเป๊ะ — ค่าสีอื่นที่ผู้ใช้เลือกเองจะไม่ถูกแตะ
+const LEGACY_ROLL_COLOR_DOTS = { '#EAB308': '#F7D000', '#C9A227': '#A97806' };
+function normalizeSetPalette(list) {
+  list.forEach(c => {
+    const next = LEGACY_ROLL_COLOR_DOTS[String(c.dot).toUpperCase()];
+    if (next) c.dot = next;
+  });
+  return list;
+}
+
 function getSetPalette(setName) {
   if (!rollSetPalettes[setName]) {
     rollSetPalettes[setName] = DEFAULT_ROLL_COLORS.map(c => ({...c}));
   }
-  return rollSetPalettes[setName];
+  return normalizeSetPalette(rollSetPalettes[setName]);
 }
 
 const SIZE_ROLL_CATEGORIES = ['Forming', 'Sizing', 'TH'];
@@ -8027,8 +8050,8 @@ const THAI_COLOR_NAME_MAP = [
   ['น้ำเงิน', '#2272B6'],
   ['ฟ้า',    '#0EA5E9'],
   ['เขียว',  '#22C55E'],
-  ['เหลือง', '#EAB308'],
-  ['ทอง',    '#C9A227'],
+  ['เหลือง', '#F7D000'],
+  ['ทอง',    '#A97806'],
   ['ส้ม',    '#F97316'],
   ['แดง',    '#C03030'],
   ['ชมพู',   '#EC4899'],
@@ -8211,7 +8234,10 @@ function applyState(saved) {
   }
   if (Array.isArray(saved.extraRollSets)) extraRollSets = saved.extraRollSets;
   if (Array.isArray(saved.rollSetOrder)) rollSetOrder = saved.rollSetOrder;
-  if (saved.rollSetPalettes) rollSetPalettes = saved.rollSetPalettes;
+  if (saved.rollSetPalettes) {
+    rollSetPalettes = saved.rollSetPalettes;
+    Object.values(rollSetPalettes).forEach(list => { if (Array.isArray(list)) normalizeSetPalette(list); });
+  }
   if (saved.rollSetMachines) rollSetMachines = saved.rollSetMachines;
   if (saved.rollSetStatus) rollSetStatus = saved.rollSetStatus;
   if (saved.rollColorStatus) rollColorStatus = saved.rollColorStatus;
