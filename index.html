@@ -4469,6 +4469,14 @@ function planContinueShiftFor(workType) {
   const allowed = planWorkTypeShifts(workType);
   return allowed.includes('both') ? 'both' : (allowed[0] || 'morning');
 }
+// กะที่ใช้ "คำนวณตาราง" ของงานหนึ่ง — ไม่ใช่กะที่เก็บไว้ในงาน
+// งานกะเช้าของประเภทที่ทำกะดึกได้ (CNC) เมื่อเวลากะเช้า+OT ไม่พอ ให้ไหลไปต่อ "กะดึกของวันเดียวกัน"
+// แทนที่จะข้ามไปกะเช้าวันถัดไป — ตัวคำนวณจะตัดเป็นคนละงานตรงรอยต่อกะให้เอง (ดู splitPlanDataAcrossDays)
+// งานขัด Roll มีกะเดียว จึงได้ 'morning' เหมือนเดิม ไม่ถูกวางลงกะดึกที่ไม่มีคนทำ
+function planScheduleShiftFor(workType, shiftKey) {
+  if (shiftKey === 'morning' && planWorkTypeAllowsShift(workType, 'night')) return 'both';
+  return shiftKey;
+}
 // โควตา OT สูงสุดของประเภทงานนั้น (นาทีทำงานจริง) — งานขัด Roll ทำ OT ได้ยาวกว่างานแต่ง Roll
 function otCapMaxMinFor(workType) {
   const m = PLAN_WORKTYPE_META[workType] || PLAN_WORKTYPE_META.cnc;
@@ -6276,6 +6284,9 @@ function splitPlanDataAcrossDays(base, rolls, workType, pieceMinutesListOverride
     g.pieces.forEach(p => { rollMinutesOverride[base.rollIds[p.idx]] = p.minutes; });
     return {
       date: g.startDate, startTime: g.startTime, endTime: g.endTime, endDate: g.endDate,
+      // กะของกลุ่มนี้เอง — กลุ่มถูกตัดตรงรอยต่อกะอยู่แล้ว ส่วนที่ไหลไปกะดึกจึงเก็บเป็นงานกะดึกจริง
+      // ไม่ใช่งานกะเช้าที่เวลาเลยไปถึงกลางคืน (ไม่งั้นจะโผล่ผิดหัวข้อ และคำนวณตารางซ้ำได้ผลไม่ตรง)
+      shiftKey: g.shiftKey,
       rollIds,
       rollId: rollIds.length + ' Roll',
       rollName: g.pieces.map(p => rolls[p.idx].name).join(', '),
@@ -6427,7 +6438,8 @@ function updatePlanEndTime() {
     : shiftKey === 'both' ? bothModeStartValue()
     : (document.getElementById('pf-start-morning') || {}).value;
   const total = parseFloat((document.getElementById('pf-plantime') || {}).value) || 0;
-  const result = computePlanEnd(startDate, start, total, shiftKey, getOtCapMinutes());
+  // ใช้กะคำนวณตัวเดียวกับตอนบันทึก ไม่งั้นเวลาจบที่โชว์ในฟอร์มจะไม่ตรงกับที่บันทึกจริง
+  const result = computePlanEnd(startDate, start, total, planScheduleShiftFor(planFormWorkType(), shiftKey), getOtCapMinutes());
   setPlanFormDate('pf-enddate', result.date || startDate);
   const seg = result.segments || {};
   renderShiftSegmentFields('morning', seg.morning, startDate);
@@ -6991,6 +7003,8 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     const hasPieceOverride = Object.keys(pieceOverride).length > 0;
     const totalTime = pieceMinutesList.reduce((a, b) => a + b, 0);
     const shiftKey = document.getElementById('pf-shift').value || 'morning';
+    // กะที่ใช้คำนวณตาราง (งานกะเช้าของ CNC = 'both' เพื่อให้ส่วนที่ล้นไหลไปกะดึกของวันเดียวกัน)
+    const schedShift = planScheduleShiftFor(workType, shiftKey);
     let startTime = shiftKey === 'night' ? g('pf-start-night') : shiftKey === 'both' ? bothModeStartValue() : g('pf-start-morning');
     const otCapMinutesByShift = getOtCapMinutes();
     // เก็บเป็น "ตำแหน่งลำดับ" ในรายการที่พบ (ไม่ใช่ r.id ตรงๆ) เพราะ Roll หลายตัวอาจมี id/ชื่อซ้ำกันได้
@@ -7004,13 +7018,13 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     // ทำให้เวลา OT ที่เพิ่งใส่ไว้ (เช่นถึง 23:00) ไม่ถูกใช้เลย — ตอนนี้ยกทั้งก้อนเฉพาะตอนที่ตัดไม่ได้จริงๆ
     // (งานอื่นๆ ไม่มี Roll ในทะเบียนให้ตัดตามชิ้น หรือคำนวณตารางชิ้นไม่ได้)
     const splitProbe = other ? null : splitPlanDataAcrossDays(
-      { date, shift: shiftKey, startTime, otCapMinutesByShift, rollIds: selectedIndexes }, rolls, workType,
+      { date, shift: schedShift, startTime, otCapMinutesByShift, rollIds: selectedIndexes }, rolls, workType,
       hasPieceOverride ? pieceMinutesList : undefined);
 
     // เวลาเริ่มที่ตั้งไว้ ไม่มีนาทีทำงานเหลือในวันนั้นเลยหรือไม่ (ตกนอกช่วงกะแล้วโควตา OT ไม่พอ)
     // เช่นต่อเวลาจากงานก่อนหน้าที่จบ 21:24 ในกะเช้าที่ OT = 0 — ไม่มีใครทำงานตั้งแต่ 21:24 จนถึง 08:00 วันถัดไป
     // งานจะค้างเวลาเริ่มไว้ในช่วงที่ไม่มีใครทำงาน แล้วโชว์เวลาจบเป็น "(+1 วัน)" ทั้งที่จริงคืองานของวันถัดไปทั้งก้อน
-    const workStart = advanceToShiftWindow(shiftKey, date, startTime, otCapMinutesByShift, workType);
+    const workStart = advanceToShiftWindow(schedShift, date, startTime, otCapMinutesByShift, workType);
     const noRoomToday = workStart.date !== date;
 
     // ยกไปวันทำงานถัดไปทั้งก้อน เมื่อตัดแบ่งวันไม่ได้ และ
@@ -7024,7 +7038,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     if (!splitProbe && !alreadyWorked) {
       const cap = shiftDailyCapacityMin(shiftKey) + Math.max(0, (otCapMinutesByShift[shiftKey === 'night' ? 'night' : 'morning'] || 0));
       const oneDayJobOverflows = mode !== 'edit' && totalTime > 0 && totalTime <= cap
-        && (() => { const p = computePlanEnd(date, startTime, totalTime, shiftKey, otCapMinutesByShift); return p.date && p.date !== date; })();
+        && (() => { const p = computePlanEnd(date, startTime, totalTime, schedShift, otCapMinutesByShift); return p.date && p.date !== date; })();
       if (noRoomToday || oneDayJobOverflows) {
         let nd = addDaysIso(date, 1), guard = 0;
         while (isPlanDayOff(nd) && ++guard < 60) nd = addDaysIso(nd, 1);
@@ -7038,7 +7052,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
       }
     }
     // คำนวณวันที่/เวลาจบงาน + OT ซ้ำตรงนี้เสมอ กันกรณีช่อง "วันที่จบงาน" บนหน้าจอยังไม่ทันอัปเดตตามค่าล่าสุด
-    const computedEnd = computePlanEnd(date, startTime, totalTime, shiftKey, otCapMinutesByShift);
+    const computedEnd = computePlanEnd(date, startTime, totalTime, schedShift, otCapMinutesByShift);
     const endTime = computedEnd.time;
     // ถ้าย้ายวันเริ่มไปแล้ว ค่า "วันที่จบงาน" บนหน้าจอเป็นของวันเดิม ใช้ค่าที่คำนวณใหม่เท่านั้น
     const endDate = movedToNextDay ? (computedEnd.date || date) : (g('pf-enddate') || computedEnd.date || date);
@@ -7052,7 +7066,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
       startTime: startTime || '—',
       endTime: endTime || '—',
       endDate: endDate || date,
-      shift: shiftKey,
+      shift: schedShift === 'both' && shiftKey === 'morning' ? bothModeStartFieldKey(startTime) : shiftKey,
       otCapMinutesByShift,
       otMinutes: computedEnd.otMinutes || 0,
       otMinutesByShift: computedEnd.otMinutesByShift || {},
@@ -7067,7 +7081,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
     // งานอื่นๆ ไม่มี Roll ในทะเบียนให้ตัดวันตามชิ้น เก็บเป็นงานก้อนเดียว
     // (ถ้าเวลาไม่พอในวันนั้น กฎ "ยกไปวันถัดไปทั้งก้อน" ด้านบนจัดการให้แล้ว)
     const splitGroups = other ? null
-      : splitPlanDataAcrossDays({ date, shift: shiftKey, startTime, otCapMinutesByShift, rollIds: selectedIndexes }, rolls, workType,
+      : splitPlanDataAcrossDays({ date, shift: schedShift, startTime, otCapMinutesByShift, rollIds: selectedIndexes }, rolls, workType,
         hasPieceOverride ? pieceMinutesList : undefined);
     if (splitGroups) {
       if (mode === 'edit') planTasks = planTasks.filter(x => x.id !== task.id);
@@ -7079,7 +7093,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
           date: grp.date, rollSet: setName, rollColor: colorKey || null,
           rollIds: grp.rollIds, rollId: grp.rollId, rollName: grp.rollName, totalTime: grp.totalTime,
           startTime: grp.startTime, endTime: grp.endTime, endDate: grp.endDate,
-          shift: shiftKey, otCapMinutesByShift,
+          shift: grp.shiftKey || shiftKey, otCapMinutesByShift,
           otMinutes: grp.otMinutes, otMinutesByShift: grp.otMinutesByShift,
           rollMinutesOverride: grp.rollMinutesOverride,
           workerId: data.workerId,
