@@ -6974,7 +6974,9 @@ function mergeAdjacentPlanTasks() {
     guard++;
     const byGroup = new Map();
     planTasks.forEach(t => {
-      const key = [t.workType, t.rollSet, t.rollColor, t.shift, JSON.stringify(t.otCapMinutesByShift || {}), t.workerId || ''].join('|');
+      // ไม่รวมโควตา OT ไว้ในคีย์ — ชุด/สี/กะ/ผู้ปฏิบัติงานเดียวกันและต่อเวลากันสนิท ให้รวมเสมอ
+      // (โควตา OT ของงานที่รวมแล้วใช้ค่าของวันนั้นเป็นหลัก ดูตอนรวมด้านล่าง)
+      const key = [t.workType, t.rollSet, t.rollColor, t.shift, t.workerId || ''].join('|');
       if (!byGroup.has(key)) byGroup.set(key, []);
       byGroup.get(key).push(t);
     });
@@ -7008,7 +7010,13 @@ function mergeAdjacentPlanTasks() {
           if (curIds.includes(idx)) minutes += minutesForTaskIdx(cur, idx, full);
           return minutes;
         });
-        const wouldSplit = splitPlanDataAcrossDays({ date: prev.date, shift: planTaskSchedShift(prev), startTime: prev.startTime, otCapMinutesByShift: prev.otCapMinutesByShift || {}, rollIds: combinedRollIds }, rolls, prev.workType, combinedMinutesList);
+        // โควตา OT ของงานที่รวมแล้ว: ถ้าวันนั้นตั้งเวลาเลิกงานไว้ ใช้ค่าของวันนั้น (เป็นแหล่งจริง)
+        // ถ้าไม่ได้ตั้ง ใช้ค่าที่มากกว่าของสองงาน เพื่อไม่ให้งานที่รวมแล้วจบช้ากว่าเดิมโดยไม่มีเหตุ
+        const mergeDay = taskDisplayDate(prev);
+        const hasDaySetting = !!((planDayEndTime[mergeDay] || {})[prev.workType]);
+        const mergedCaps = hasDaySetting ? planDayCapsFor(mergeDay, prev.workType)
+          : mergeOtCaps(prev.otCapMinutesByShift, cur.otCapMinutesByShift, prev.workType);
+        const wouldSplit = splitPlanDataAcrossDays({ date: prev.date, shift: planTaskSchedShift(prev), startTime: prev.startTime, otCapMinutesByShift: mergedCaps, rollIds: combinedRollIds }, rolls, prev.workType, combinedMinutesList);
         if (wouldSplit) continue; // รวมแล้วจะข้ามรอบกะจริง ต้องแยกไว้ตามเดิม
         prev.rollIds = combinedRollIds;
         prev.rollId = combinedRollIds.length + ' Roll';
@@ -7016,7 +7024,8 @@ function mergeAdjacentPlanTasks() {
         prev.totalTime = combinedMinutesList.reduce((a, b) => a + b, 0);
         // คำนวณเวลาจบ/OT ใหม่จากนาทีรวมจริง (combinedMinutesList) แทนที่จะเอาเวลาจบเดิมของ cur มาใช้ตรงๆ —
         // เวลาจบเดิมของ cur อาจเป็นค่าที่เก็บไว้ผิดพลาดค้างมาจากตอนก่อนหน้า (ดูคอมมิตแก้ splitPlanDataAcrossDays/migration ก่อนนี้) ทำให้งานที่รวมแล้วจบผิดเวลาไปด้วย
-        const mergedComputed = computePlanEnd(prev.date, prev.startTime, prev.totalTime, planTaskSchedShift(prev), prev.otCapMinutesByShift || {});
+        prev.otCapMinutesByShift = mergedCaps;
+        const mergedComputed = computePlanEnd(prev.date, prev.startTime, prev.totalTime, planTaskSchedShift(prev), mergedCaps);
         prev.endTime = mergedComputed.time;
         prev.endDate = mergedComputed.date || prev.date;
         prev.otMinutes = mergedComputed.otMinutes || 0;
