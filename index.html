@@ -5318,6 +5318,16 @@ function planFillAllFreeTails(workType) {
     + lines.slice(0, 12).join('\n') + (lines.length > 12 ? '\n• และอีก ' + (lines.length - 12) + ' วัน' : ''));
 }
 
+// กดที่ช่องของวันในปฏิทิน (รายสัปดาห์/รายเดือน) = เปิดแผนของวันนั้นในมุมมองรายวัน
+// กดที่ตัวงาน/ปุ่ม (เพิ่มงาน, เวลา OT, ผู้ปฏิบัติงาน) หรือที่จับลาก ให้ตัวนั้นทำงานของมันไป
+// ไม่ต้องเปิดมุมมองรายวันซ้อน — เช็คจาก event.target ที่กดจริง
+function planOpenDayFromCell(ev, iso) {
+  if (ev && ev.target && ev.target.closest && ev.target.closest('button, a, input, select, .plan-cal-chip, .plan-drag-grip')) return;
+  if (!iso) return;
+  planViewDate = parseISODate(iso);
+  switchPlanView('day');
+}
+
 // เพิ่มงานในวันที่ระบุ ของประเภทที่ระบุ — ใช้จากปุ่มเพิ่มงานทุกมุมมอง
 // shiftKey (ถ้าส่งมา) = ตั้งกะให้ตรงกับหมวดที่กดเพิ่ม (CNC แยกกะเช้า/กะดึก)
 function addPlanTaskOnDate(dateIso, workType, shiftKey) {
@@ -5490,7 +5500,8 @@ function renderPlanWeek() {
         const items = tasks.map(t => planDragWrap(t, iso,
           `${planCalendarChip(t, editable, 'flex:1;min-width:0;')}${editable ? `<button title="ลบ" onclick="deletePlanTask('${t.id}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:11px;padding:0;flex:0 0 auto;">✕</button>` : ''}`,
           editable)).join('');
-        return `<td style="min-width:110px;">
+        return `<td onclick="planOpenDayFromCell(event, '${iso}')" style="min-width:110px;cursor:pointer;"
+          title="${escapeHtmlAttr('กดที่ช่องนี้เพื่อเปิดแผนของวัน ' + fmtDateThaiShort(d))}">
           <div class="plan-drop-zone" data-day="${iso}" style="display:flex;flex-direction:column;gap:4px;min-height:30px;">
             ${items || '<span class="muted">—</span>'}
             <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
@@ -5549,7 +5560,9 @@ function renderPlanMonth() {
       const offLabel = holidayName || '';
       const tasks = (partsByDate.get(iso) || []).filter(t => planTaskSectionKey(t) === s.key);
       const chips = tasks.map(t => planDragWrap(t, iso, planCalendarChip(t, editable, 'flex:1;min-width:0;'), editable)).join('');
-      html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;${dayOffBg}${offLabel ? 'display:flex;flex-direction:column;' : ''}" title="${offLabel ? escapeHtmlAttr('วันหยุด: ' + offLabel) : ''}">
+      html += `<div onclick="planOpenDayFromCell(event, '${iso}')"
+        style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;cursor:pointer;${dayOffBg}${offLabel ? 'display:flex;flex-direction:column;' : ''}"
+        title="${escapeHtmlAttr((offLabel ? 'วันหยุด: ' + offLabel + ' · ' : '') + 'กดที่ช่องนี้เพื่อเปิดแผนของวันนี้')}">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">
           <strong style="font-size:12px;flex-shrink:0;">${day}</strong>
           <span style="display:inline-flex;align-items:center;gap:4px;flex-shrink:0;margin-left:auto;">
