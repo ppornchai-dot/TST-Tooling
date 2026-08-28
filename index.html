@@ -3080,10 +3080,17 @@ function inUsePickerRowHtml(setName, machine) {
 }
 
 // เลือกชุด Roll ให้ "เครื่องหนึ่ง" โดยตรง — เครื่องมาจากแท็บที่กำลังเปิด ไม่ต้องเดาจากที่ผูกไว้
-function setInUseRollForMachine(machine, setName, colorKey) {
+// silent = true คือรอบ "ทำซ้ำ" หลังเขียนไม่ผ่าน — ไม่ต้องเด้งกล่องถามสถานะชุดที่ถูกปลดซ้ำอีก
+function setInUseRollForMachine(machine, setName, colorKey, forceSet, silent) {
   if (!canEditPlan()) return;
   const revert = snapshotRollStatusState(); // เก็บก่อนแก้ เพื่อให้ปุ่ม "ยกเลิก" คืนค่าได้ครบ
-  const already = inUseColorOnMachine(setName, machine) === colorKey;
+  // ตัดสินใจว่าจะ "ตั้ง" หรือ "ปลด" ครั้งเดียว แล้วจำไว้ ถ้าต้องทำซ้ำบนข้อมูลใหม่จะได้ผลเดิม
+  // (ถ้าปล่อยให้คิดจากสถานะปัจจุบันทุกครั้ง การทำซ้ำจะกลายเป็นสลับค่ากลับ)
+  const already = forceSet === undefined ? inUseColorOnMachine(setName, machine) === colorKey : !forceSet;
+  if (forceSet === undefined) {
+    cloudReapply = () => setInUseRollForMachine(machine, setName, colorKey, !already, true);
+    cloudReapplyTries = 0;
+  }
   // Size Roll หนึ่งใช้ได้ทีละสีเท่านั้น (ของจริงใส่เข้าเครื่องได้ชุดเดียว) ล้างสีอื่นของชุดนี้ก่อน
   Object.keys(rollColorStatus).forEach(k => {
     if (k.startsWith(setName + '|') && rollColorStatus[k] === 'inuse') {
@@ -3103,7 +3110,7 @@ function setInUseRollForMachine(machine, setName, colorKey) {
   }
   afterInUseRollChange();
   // ถามสถานะต่อไปของชุดที่ถูกปลด หลัง re-render แล้วเพื่อให้กล่องนี้อยู่บนสุด
-  if (cleared.length) openReleasedStatusDialog(cleared,
+  if (cleared.length && !silent) openReleasedStatusDialog(cleared,
     'เปลี่ยนชุดที่ใช้งานของ ' + (machine === INUSE_UNASSIGNED ? 'ชุดที่ยังไม่ผูกเครื่อง' : 'เครื่อง ' + machine)
     + ' หมวด ' + (parseSizeRollName(setName).category || '') + ' เป็น ' + setName, revert);
 }
@@ -8706,6 +8713,19 @@ function buildStateSnapshot() {
 let cloudUpdatedAt = null;
 let cloudWriteInFlight = false;
 let cloudWritePending = false;
+// รายการล่าสุดที่ผู้ใช้กด ในรูปแบบ "ทำซ้ำได้" — ใช้ตอนเขียนไม่ผ่านเพราะมีเครื่องอื่นเขียนแทรก
+// ระบบจะดึงข้อมูลใหม่ลงมา (ทับสิ่งที่เพิ่งกดไป) แล้วทำรายการนี้ซ้ำบนข้อมูลใหม่ แล้วเขียนอีกครั้ง
+// เดิมทิ้งสิ่งที่กดไปแล้วเตือนให้ทำใหม่เอง — หน้าต่างที่เด้งถามซ้ำ (เลือกชุด Roll/ชุดสีที่เดิน)
+// จึงเด้งขึ้นมาอีกทุกครั้งเพราะค่าที่เพิ่งเลือกไม่เคยถูกบันทึกจริง
+// ต้องเป็นการ "ตั้งค่าให้เป็นค่านี้" (idempotent) ไม่ใช่การสลับค่า ไม่งั้นทำซ้ำแล้วกลับกัน
+let cloudReapply = null;
+let cloudReapplyTries = 0;
+// ครอบการกดหนึ่งครั้งที่ต้องการให้ "ติดแน่นอน" — fn ต้องตั้งค่าเป็นค่าเดิมได้ซ้ำๆ อย่างปลอดภัย
+function withCloudRetry(fn) {
+  cloudReapply = fn;
+  cloudReapplyTries = 0;
+  fn();
+}
 
 // เก็บลง localStorage อย่างเดียว ไม่ส่งขึ้น cloud — ใช้ตอนเพิ่งดึงข้อมูลจาก cloud ลงมา
 // เดิมหลัง applyState() จาก cloud ไม่มีใครเขียน localStorage เลย ทำให้ทุกครั้งที่เปิดหน้าใหม่
@@ -8739,7 +8759,11 @@ async function flushCloudWrite() {
       q = cloudUpdatedAt ? q.eq('updated_at', cloudUpdatedAt) : q.is('updated_at', null);
       const { data, error } = await q.select('updated_at');
       if (error) break; // ออฟไลน์/เชื่อมต่อไม่ได้ — ข้อมูลใน localStorage ปลอดภัย จะลองใหม่ตอนแก้ไขครั้งถัดไป
-      if (data && data.length) { cloudUpdatedAt = data[0].updated_at; continue; }
+      if (data && data.length) {
+        cloudUpdatedAt = data[0].updated_at;
+        cloudReapply = null; cloudReapplyTries = 0;   // เขียนผ่านแล้ว ไม่ต้องทำซ้ำอีก
+        continue;
+      }
 
       // อัปเดตไม่โดนแถวไหนเลย — ต้องแยกว่าเพราะยังไม่มีแถว หรือเพราะมีเครื่องอื่นเขียนแทรกไปแล้ว
       const { data: cur, error: readErr } = await supabaseClient.from('app_state').select('data,updated_at').eq('id', 'main').maybeSingle();
@@ -8749,12 +8773,18 @@ async function flushCloudWrite() {
         if (ins.data && ins.data.length) cloudUpdatedAt = ins.data[0].updated_at;
         continue;
       }
-      // มีเครื่องอื่นเขียนแทรก — ห้ามเอาข้อมูลเก่าของเครื่องนี้ทับ ดึงของใหม่มาใช้แล้วแจ้งผู้ใช้
+      // มีเครื่องอื่นเขียนแทรก — ห้ามเอาข้อมูลเก่าของเครื่องนี้ทับ ดึงของใหม่มาใช้ก่อน
       cloudUpdatedAt = cur.updated_at;
       applyState(cur.data);
       syncRollStatusWithProdBlock();
       cacheStateLocally();
       refreshAfterCloudUpdate();
+      // ถ้ารายการที่เพิ่งกดเป็นแบบ "ทำซ้ำได้" ให้ทำซ้ำบนข้อมูลใหม่แล้วเขียนอีกครั้ง (ไม่ต้องกวนผู้ใช้)
+      if (cloudReapply && cloudReapplyTries < 2) {
+        cloudReapplyTries++;
+        try { cloudReapply(); } catch (e) { cloudReapply = null; }
+        if (cloudWritePending) continue;   // cloudReapply เรียก persistState เอง → มีของรอเขียนแล้ว
+      }
       showCloudConflictNotice();
       break;
     }
@@ -9198,16 +9228,23 @@ function resolveRunColorForWeight(date, setName, usedKeys) {
   if (usedKeys && usedKeys.length === 1) return { key: usedKeys[0], kind: 'only' };
   return { key: null, kind: 'none' };
 }
-function setRunColor(date, setName, colorKey) {
+// ตั้งชุดสีที่เดินของวันนั้นให้เป็นค่าที่ระบุ (target = null คือไม่ระบุ) — ทำซ้ำได้ ผลลัพธ์เหมือนเดิมเสมอ
+function applyRunColor(date, setName, target) {
   if (!rollRunColor[date]) rollRunColor[date] = {};
-  // กดสีเดิมซ้ำ = ยกเลิก (วันนั้นไม่ได้ระบุว่าเดินสีไหน)
-  if (rollRunColor[date][setName] === colorKey) delete rollRunColor[date][setName];
-  else rollRunColor[date][setName] = colorKey;
+  if (target) rollRunColor[date][setName] = target;
+  else delete rollRunColor[date][setName];
   if (!Object.keys(rollRunColor[date]).length) delete rollRunColor[date];
   persistState();
   renderRunColorPicker();
   renderProdWeightRunBanner();
   renderProdWeight();
+}
+
+function setRunColor(date, setName, colorKey) {
+  // กดสีเดิมซ้ำ = ยกเลิก (วันนั้นไม่ได้ระบุว่าเดินสีไหน) — ตัดสินใจครั้งเดียวตรงนี้
+  // แล้วส่งเป็น "ค่าที่ต้องการ" ให้ตัวทำซ้ำ ไม่งั้นถ้าเขียนไม่ผ่านแล้วทำซ้ำ จะกลายเป็นสลับค่ากลับ
+  const target = rollRunColor[date] && rollRunColor[date][setName] === colorKey ? null : colorKey;
+  withCloudRetry(() => applyRunColor(date, setName, target));
 }
 
 async function fetchFgWeightByKey(fromDate, toDate) {
