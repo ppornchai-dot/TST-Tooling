@@ -6731,6 +6731,27 @@ function autoFixPlanSequencing() {
           const ak = a.date + ' ' + (a.startTime || ''), bk = b.date + ' ' + (b.startTime || '');
           return ak !== bk ? ak.localeCompare(bk) : (a.id < b.id ? -1 : 1);
         });
+      // เวลาเริ่มที่ตกอยู่ในช่วงที่ไม่มีใครทำงานจริง (เช่น 05:00 พอดีตอนกะดึกหมดและโควตา OT เป็น 0)
+      // ให้เลื่อนไปเริ่มที่ช่วงทำงานถัดไปของกะนั้น — ถ้าวันนั้นไม่มีเวลาเหลือแล้วก็ไปวันทำงานถัดไป
+      // ไม่งั้นงานจะค้างเวลาเริ่มไว้ตรงจุดที่ยังไม่มีใครทำงาน แล้วโชว์เป็น 05:00–22:00 (+1 วัน)
+      // ทั้งที่จริงๆ ทำ 20:00–22:00 ของวันถัดไป (computePlanEnd ข้ามช่วงว่างให้เองอยู่แล้ว
+      // เวลาจบจึงถูก แต่เวลาเริ่มที่เก็บไว้/ที่แสดงผิด และไปโผล่ผิดวันด้วย)
+      // งานที่กดเริ่ม/จบไปแล้วไม่ขยับ — เวลาที่กดจริงผูกกับวันทำงานที่ทำไปแล้ว
+      tasks.forEach(t => {
+        if (planTaskIsSettled(t)) return;
+        if (!t.startTime || t.startTime === '—' || !t.totalTime) return;
+        const adv = advanceToShiftWindow(t.shift, t.date, t.startTime, t.otCapMinutesByShift || {}, t.workType);
+        if (adv.date === t.date && adv.time === t.startTime) return;
+        t.date = adv.date;
+        t.startTime = adv.time;
+        const c = computePlanEnd(t.date, t.startTime, t.totalTime, t.shift, t.otCapMinutesByShift || {});
+        t.endTime = c.time;
+        t.endDate = c.date || t.date;
+        t.otMinutes = c.otMinutes || 0;
+        t.otMinutesByShift = c.otMinutesByShift || {};
+        changed = true;
+        anyChanged = true;
+      });
       for (let i = 1; i < tasks.length; i++) {
         const prev = tasks[i - 1], cur = tasks[i];
         // งาน "2 กะ" ที่จบพอดีจุดหมดกะ (17:00 จบกะเช้า / 05:00 จบกะดึก) ไม่มีใครทำงานจริงตรงจุดนั้น — เลื่อนจุดต่อเวลาไปเริ่มกะถัดไปตรงๆ (20:00/08:00 วันเดียวกัน) แทน
