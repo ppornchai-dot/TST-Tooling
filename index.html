@@ -5237,16 +5237,31 @@ function planDayCellSettingsHtml(iso, workType, color, bg, inline) {
     return `<button class="btn btn-ghost btn-sm" title="${escapeHtmlAttr(tip)}" onclick="${onclick}"
       style="${style}border-color:${color};${set ? `background:${bg};` : 'border-style:dashed;'}">${inner}</button>`;
   };
+  // เวลาว่างท้ายวันของกะที่มากที่สุด — ใช้ตัดสินว่าจะโชว์ปุ่มเติมเวลาว่างในช่องนี้ไหม
+  let freeMin = 0, freeTip = [];
+  if (editable) shifts.forEach(k => {
+    let tail = null;
+    try { tail = planDayFreeTail(workType, iso, k, planDayCapsFor(iso, workType)); } catch (e) { tail = null; }
+    if (!tail || tail.freeMinutes < 60) return;
+    freeMin = Math.max(freeMin, tail.freeMinutes);
+    freeTip.push(SHIFTS[k].label + ' ว่าง ' + tail.time + '–' + tail.untilTime
+      + ' (' + formatMinutesAsHm(tail.freeMinutes).replace('≈ ', '') + ')');
+  });
+  const fillBtn = freeMin >= 60
+    ? chip('⤵', formatMinutesAsHm(freeMin).replace('≈ ', ''),
+        'ดึงงานถัดไปมาวางต่อให้เต็มเวลาที่เหลือของวันนี้ — ' + freeTip.join(' · '),
+        true, jsCallAttr('planFillDayNow', iso, workType))
+    : '';
   const otBtn = chip('⏱', ends.map(x => x.v).join('/'),
     otTip || 'เลือกว่าวันนี้เลิกงานกี่โมง แล้วระบบคิดเวลา OT ให้ทุกงานของวันนี้เอง',
     ends.length, jsCallAttr('openPlanDayEndModal', iso, workType, ''));
   const whoBtn = chip('👤', names.map(x => x.v).join('/'),
     nameTip || 'ใส่ชื่อคนที่ทำงานของวันนี้', names.length,
     jsCallAttr('openPlanDayWorkerModal', iso, workType, ''));
-  if (!otBtn && !whoBtn) return '';
+  if (!fillBtn && !otBtn && !whoBtn) return '';
   return inline
-    ? `<span style="display:inline-flex;align-items:center;gap:3px;flex-shrink:0;">${otBtn}${whoBtn}</span>`
-    : `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;">${otBtn}${whoBtn}</div>`;
+    ? `<span style="display:inline-flex;align-items:center;gap:3px;flex-shrink:0;">${fillBtn}${otBtn}${whoBtn}</span>`
+    : `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;">${fillBtn}${otBtn}${whoBtn}</div>`;
 }
 
 // โควตา OT ของวันนั้นตามเวลาเลิกงานที่ตั้งไว้ (ทุกกะของประเภทงานนั้น)
@@ -5256,6 +5271,29 @@ function planDayCapsFor(dateIso, workType) {
     caps[k] = otMinutesFromDayEnd(planDayEndFor(dateIso, workType, k), workType, k) || 0;
   });
   return caps;
+}
+
+// เติมเวลาว่างของวันนั้นทุกกะในครั้งเดียว — ใช้จากปุ่ม ⤵ ในช่องของวัน (ปฏิทินรายสัปดาห์/รายเดือน)
+// ช่องของวันไม่ได้แยกกะ จึงไล่เติมทุกกะของประเภทงานนั้นตามลำดับ (เช้าก่อน แล้วดึก)
+function planFillDayNow(dateIso, workType) {
+  if (!canEditPlan()) return;
+  const caps = planDayCapsFor(dateIso, workType);
+  const all = [];
+  planDayEndShiftsFor(workType).forEach(sh => {
+    pullWorkIntoFreeTail(workType, dateIso, sh, caps, true).forEach(mv => all.push(mv));
+  });
+  if (!all.length) {
+    alert('ไม่มีงานที่ดึงมาเติมได้ในเวลาที่เหลือของวันนี้\n(เวลาว่างน้อยกว่า 1 ชม. หรือไม่มีงานที่ยังไม่ได้เริ่มอยู่หลังจากนี้)');
+    return;
+  }
+  persistState();
+  renderCurrentPlanView();
+  renderDailyTasks();
+  alert('เติมเวลาว่างวันที่ ' + fmtDateThai(parseISODate(dateIso)) + ' — ดึงมา ' + all.length + ' รายการ:\n'
+    + all.slice(0, 6).map(mv => '• ' + mv.label
+        + (mv.whole === false ? ' — ดึงมา ' + mv.pieceCount + '/' + mv.ofPieces + ' ชิ้น' : ' — ทั้งงาน')
+        + ' จาก ' + fmtDateThai(parseISODate(mv.fromDate)) + ' → ' + mv.startTime + '–' + mv.endTime).join('\n')
+    + (all.length > 6 ? '\n• และอีก ' + (all.length - 6) + ' รายการ' : ''));
 }
 
 // กดเติมเวลาว่างของวัน+กะนั้นเอง — ดึงงานของวันถัดไปมาวางต่อเท่าที่ทำได้จริงในเวลาที่เหลือ
