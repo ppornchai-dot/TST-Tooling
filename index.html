@@ -7799,11 +7799,14 @@ function planPullPieceFit(cand, startDate, startTime, shiftKey, caps, dateIso) {
 function planPullForwardPlan(workType, dateIso, shiftKey, otCaps) {
   const tail = planDayFreeTail(workType, dateIso, shiftKey, otCaps);
   if (!tail) return { tail: null, moves: [] };
+  // ลำดับในคิวจริง: วันทำงาน + ลำดับเวลาในวันนั้น (08:00 ไล่ไปจนถึง 05:00 ของเช้าวันถัดไป)
+  const queueKey = (iso, time) => iso + ' ' + String(historyDayOrderMin(time)).padStart(5, '0');
+  const tailKey = queueKey(dateIso, tail.time);
   const later = planTasks
-    .filter(t => t.workType === workType && t.endTime && t.endTime !== '—'
-      && taskDisplayDate(t) > dateIso && !planTaskIsSettled(t))
+    .filter(t => t.workType === workType && t.endTime && t.endTime !== '—' && !planTaskIsSettled(t)
+      && queueKey(taskDisplayDate(t), t.startTime) > tailKey)
     .sort((a, b) => {
-      const ak = a.date + ' ' + (a.startTime || ''), bk = b.date + ' ' + (b.startTime || '');
+      const ak = queueKey(taskDisplayDate(a), a.startTime), bk = queueKey(taskDisplayDate(b), b.startTime);
       return ak !== bk ? ak.localeCompare(bk) : (a.id < b.id ? -1 : 1);
     });
   const moves = [];
