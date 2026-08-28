@@ -375,6 +375,7 @@ table.daily-tech-view .daily-act-wrap{gap:8px;flex-wrap:wrap;}
 .chip.plan-cal-chip::before{display:none;}
 .chip.plan-cal-chip .pcc-set{display:block;font-weight:800;}
 .chip.plan-cal-chip .pcc-sub{display:block;font-weight:600;opacity:.85;}
+.chip.plan-cal-chip .pcc-time{display:block;font-weight:800;font-variant-numeric:tabular-nums;}
 /* โหมดลบแผนงาน — งานที่เลือกไว้ตีกรอบแดงให้เห็นชัด ตัวที่ยังไม่เลือกทำจางลงเล็กน้อยเพื่อเทียบกันได้ */
 .chip.plan-cal-chip.pcc-pickable{opacity:.62;box-shadow:inset 0 0 0 1px var(--border);}
 .chip.plan-cal-chip.pcc-pickable:hover{opacity:1;}
@@ -5329,6 +5330,12 @@ function planCalendarChip(t, editable, extraStyle) {
   // งานที่ทำข้ามวันถูกตัดเป็นส่วนของแต่ละวัน — บอกว่าเป็นส่วนที่เท่าไร ไม่งั้นดูเหมือนงานซ้ำสองวัน
   const partTag = t.__partCount > 1 ? ` (${t.__partIndex + 1}/${t.__partCount})` : '';
   const sub = (hasColor ? color + ' · ' : '') + t.rollId + partTag;
+  // เวลาเริ่ม–จบของงานชิ้นนั้น (งานที่ถูกตัดข้ามวัน = เวลาของส่วนที่อยู่ในวันนั้น)
+  // ต่อท้าย (+N วัน) เมื่อเวลาจบเลยรอบกะของวันนั้นไปจริง เกณฑ์เดียวกับป้ายในตารางรายวัน
+  const hasTime = t.startTime && t.startTime !== '—' && t.endTime && t.endTime !== '—';
+  const dayOff = hasTime ? endDayOffset(taskSessionShiftKey(t), t.date, t.startTime, t.endDate || t.date, t.endTime) : 0;
+  const timeText = hasTime ? t.startTime + '–' + t.endTime + (dayOff > 0 ? ' (+' + dayOff + ' วัน)' : '') : '';
+  const timeHtml = timeText ? `<span class="pcc-time">${escapeHtmlAttr(timeText)}</span>` : '';
   // ปฏิทินรวมทั้ง CNC และขัด Roll ไว้ด้วยกันแล้ว ติดไอคอนประเภทงานไว้หน้าชื่อชุดให้แยกออกด้วยตาเปล่า
   const typeIcon = t.workType === 'polish' ? '✦ ' : '⚙ ';
   const typeLabel = (PLAN_WORKTYPE_META[t.workType] || {}).label || '';
@@ -5337,9 +5344,9 @@ function planCalendarChip(t, editable, extraStyle) {
   // โหมดลบ: คลิกที่งานคือติ๊กเลือก/ยกเลิกเลือก (ไม่เปิดฟอร์มแก้ไข) และมีเครื่องหมายบอกว่าเลือกอยู่
   if (planDeleteMode) {
     const picked = planDeleteSelected.has(t.id);
-    return `<span class="chip plan-cal-chip ${prog.chip}${picked ? ' pcc-picked' : ' pcc-pickable'}" data-taskid="${escapeHtmlAttr(t.id)}" style="${extraStyle || ''}cursor:pointer;" onclick="togglePlanDeleteSelect('${t.id}')" title="${escapeHtmlAttr((picked ? 'เลือกอยู่ — คลิกเพื่อยกเลิก' : 'คลิกเพื่อเลือกลบ') + ' · ' + fullTitle)}"><span class="pcc-set">${picked ? '☑ ' : '☐ '}${typeIcon}${escapeHtmlAttr(t.rollSet)}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span></span>`;
+    return `<span class="chip plan-cal-chip ${prog.chip}${picked ? ' pcc-picked' : ' pcc-pickable'}" data-taskid="${escapeHtmlAttr(t.id)}" style="${extraStyle || ''}cursor:pointer;" onclick="togglePlanDeleteSelect('${t.id}')" title="${escapeHtmlAttr((picked ? 'เลือกอยู่ — คลิกเพื่อยกเลิก' : 'คลิกเพื่อเลือกลบ') + ' · ' + fullTitle)}"><span class="pcc-set">${picked ? '☑ ' : '☐ '}${typeIcon}${escapeHtmlAttr(t.rollSet)}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span>${timeHtml}</span>`;
   }
-  return `<span class="chip plan-cal-chip ${prog.chip}" style="${extraStyle || ''}${editable ? 'cursor:pointer;' : ''}" ${editable ? `onclick="openPlanTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(fullTitle)}"><span class="pcc-set">${typeIcon}${escapeHtmlAttr(t.rollSet)}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span></span>`;
+  return `<span class="chip plan-cal-chip ${prog.chip}" style="${extraStyle || ''}${editable ? 'cursor:pointer;' : ''}" ${editable ? `onclick="openPlanTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(fullTitle)}"><span class="pcc-set">${typeIcon}${escapeHtmlAttr(t.rollSet)}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span>${timeHtml}</span>`;
 }
 
 function renderPlanWeek() {
