@@ -5155,6 +5155,10 @@ function planSectionHeaderRow(s, colSpan, stat, addForIso) {
           // เวลาเริ่ม–จบของวันนั้นแยกตามกะ ใส่เฉพาะมุมมองรายวัน (addForIso มีค่า = ดูวันเดียว)
           + (addForIso && planSectionSpanText(stat, addForIso) ? ' · ' + escapeHtmlAttr(planSectionSpanText(stat, addForIso)) : '')
           : 'ไม่มีงาน'}</span>
+      ${!addForIso && canEditPlan() ? `<button class="btn btn-ghost" onclick="${jsCallAttr('planFillAllFreeTails', s.key)}"
+          title="ไล่ดึงงานวันถัดไปมาเติมเวลาว่างของทุกวันตั้งแต่วันนี้ไป จนไม่เหลือช่องว่างกลางวัน"
+          style="font-size:13px;font-weight:800;padding:7px 14px;border-radius:9px;line-height:1.2;white-space:nowrap;
+                 color:${s.color};border-color:${s.color};background:${s.bg};">⤵ เติมเวลาว่างทุกวัน</button>` : ''}
       ${addForIso && canEditPlan() ? (() => {
         // ปุ่มเติมเวลาว่าง — โชว์เฉพาะตอนที่วัน+กะนั้นยังมีเวลาว่างท้ายวันตั้งแต่ 1 ชม. ขึ้นไป
         const wt = s.key;
@@ -5273,6 +5277,45 @@ function planFillFreeTailNow(dateIso, workType, shiftKey) {
         + (mv.whole === false ? ' — ดึงมา ' + mv.pieceCount + '/' + mv.ofPieces + ' ชิ้น' : ' — ทั้งงาน')
         + ' จาก ' + fmtDateThai(parseISODate(mv.fromDate)) + ' → ' + mv.startTime + '–' + mv.endTime).join('\n')
     + (moves.length > 6 ? '\n• และอีก ' + (moves.length - 6) + ' รายการ' : ''));
+}
+
+// ไล่เติมเวลาว่างของทุกวันตั้งแต่วันนี้ไปข้างหน้า — จัดคิวทั้งแผนให้แน่น ไม่เหลือช่องว่างกลางวัน
+// ต้องวนซ้ำ เพราะเติมวันแรกเสร็จแล้ววันถัดไปจะเกิดที่ว่างใหม่ (งานถูกดึงออกไป) ต้องเติมต่ออีก
+// จบเองเพราะตัวดึงงานเติมเฉพาะช่องว่างตั้งแต่ 1 ชม. และไม่ดึงเศษต่ำกว่า 10 นาที (วน 60 รอบเป็นกันชน)
+// งานที่กดเริ่ม/จบไปแล้วถูกข้ามในตัวดึงงานอยู่แล้ว วันที่ผ่านมาแล้วจึงไม่ถูกรื้อ
+function planFillAllFreeTails(workType) {
+  if (!canEditPlan()) return;
+  const start = dailyTodayIso();
+  const shiftKeys = planDayEndShiftsFor(workType);
+  const perDay = new Map();   // วันที่ถูกเติม → จำนวนครั้ง
+  let total = 0, rounds = 0, changed = true;
+  while (changed && rounds < 60) {
+    changed = false; rounds++;
+    const days = [...new Set(planTasks
+      .filter(t => t.workType === workType && t.endTime && t.endTime !== '—' && taskDisplayDate(t) >= start)
+      .map(t => taskDisplayDate(t)))].sort();
+    for (let i = 0; i < days.length; i++) {
+      const caps = planDayCapsFor(days[i], workType);
+      for (let s = 0; s < shiftKeys.length; s++) {
+        const moves = pullWorkIntoFreeTail(workType, days[i], shiftKeys[s], caps, true);
+        if (!moves.length) continue;
+        total += moves.length;
+        perDay.set(days[i], (perDay.get(days[i]) || 0) + moves.length);
+        changed = true;
+      }
+    }
+  }
+  if (!total) {
+    alert('ไม่มีเวลาว่างที่ดึงงานมาเติมได้\n(ทุกวันเต็มเวลาอยู่แล้ว หรือช่องว่างที่เหลือน้อยกว่า 1 ชม.)');
+    return;
+  }
+  persistState();
+  renderCurrentPlanView();
+  renderDailyTasks();
+  const lines = [...perDay.entries()].sort()
+    .map(([d, n]) => '• ' + fmtDateThai(parseISODate(d)) + ' — เติม ' + n + ' รายการ');
+  alert('เติมเวลาว่างให้ ' + perDay.size + ' วัน (รวม ' + total + ' รายการ)\n\n'
+    + lines.slice(0, 12).join('\n') + (lines.length > 12 ? '\n• และอีก ' + (lines.length - 12) + ' วัน' : ''));
 }
 
 // เพิ่มงานในวันที่ระบุ ของประเภทที่ระบุ — ใช้จากปุ่มเพิ่มงานทุกมุมมอง
@@ -5483,8 +5526,14 @@ function renderPlanMonth() {
       <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:${s.color};">
         <span aria-hidden="true">${s.icon}</span>${escapeHtmlAttr(s.label)}
       </span>
-      <span style="margin-left:auto;font-size:12px;font-weight:700;color:${s.color};opacity:.9;">${
-        stat.count ? stat.count + ' รายการ' + (stat.mins ? ' · ' + formatMinutesAsHm(stat.mins).replace('≈ ', '') : '') : 'ไม่มีงานเดือนนี้'}</span>
+      <span style="margin-left:auto;display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
+        ${editable ? `<button class="btn btn-ghost" onclick="${jsCallAttr('planFillAllFreeTails', s.key)}"
+            title="ไล่ดึงงานวันถัดไปมาเติมเวลาว่างของทุกวันตั้งแต่วันนี้ไป จนไม่เหลือช่องว่างกลางวัน"
+            style="font-size:13px;font-weight:800;padding:7px 14px;border-radius:9px;line-height:1.2;white-space:nowrap;
+                   color:${s.color};border-color:${s.color};background:#fff;">⤵ เติมเวลาว่างทุกวัน</button>` : ''}
+        <span style="font-size:12px;font-weight:700;color:${s.color};opacity:.9;">${
+          stat.count ? stat.count + ' รายการ' + (stat.mins ? ' · ' + formatMinutesAsHm(stat.mins).replace('≈ ', '') : '') : 'ไม่มีงานเดือนนี้'}</span>
+      </span>
     </div>`;
     for (let i = 0; i < leadingBlanks; i++) {
       html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"></div>`;
@@ -6678,7 +6727,7 @@ function advanceToShiftWindow(shiftKey, date, time, otCaps, workType) {
 // ไม่ใช่เวลานาฬิกาตรงๆ ไม่งั้นงานกะดึกที่จบหลังเที่ยงคืนจะถูกมองว่าจบเร็วสุดของวัน
 function planLastTaskOnDay(workType, dateIso, shiftKey) {
   if (!dateIso) return null;
-  const sameDay = planTasks.filter(t => t.workType === workType && t.date === dateIso
+  const sameDay = planTasks.filter(t => t.workType === workType && taskDisplayDate(t) === dateIso
     && t.endTime && t.endTime !== '—'
     // กะเดียวกัน หรือฝ่ายใดฝ่ายหนึ่งเป็น "2 กะ" ซึ่งกินเวลาทั้งวันทำงาน
     && (t.shift === shiftKey || t.shift === 'both' || shiftKey === 'both'));
@@ -7664,7 +7713,9 @@ function shiftEndWithOtMin(shiftKey, otCaps, workType) {
 function planDayFreeTail(workType, dateIso, shiftKey, otCaps) {
   const last = planLastTaskOnDay(workType, dateIso, shiftKey);
   if (!last || !last.endTime || last.endTime === '—') return null;
-  const caps = mergeOtCaps(otCaps, last.otCapMinutesByShift, workType);
+  // ใช้โควตา OT ของวันนั้นตามที่ตั้งไว้เท่านั้น (ผู้เรียกส่งมาจาก planDayCapsFor / ฟอร์มเวลาเลิกงาน)
+  const caps = {};
+  ['morning', 'night'].forEach(k => { caps[k] = Math.min(Math.max(0, (otCaps || {})[k] || 0), otCapMaxMinFor(workType)); });
   const anchor = nextValidPlanContinuePoint(shiftKey, last.endDate || dateIso, last.endTime, caps, workType);
   // จุดต่อเวลายังอยู่ใน "วันทำงาน" เดียวกันไหม (งานกะดึกที่เลยเที่ยงคืนยังนับเป็นวันเดิม)
   if (taskDisplayDate({ date: anchor.date, startTime: anchor.time, shift: shiftKey }) !== dateIso) return null;
@@ -7751,7 +7802,8 @@ function planPullForwardPlan(workType, dateIso, shiftKey, otCaps) {
     if (taskDisplayDate({ date: curDate, startTime: curTime, shift: shiftKey }) !== dateIso) break;
     const mm = /^(\d{1,2}):(\d{2})$/.exec(curTime);
     if (!mm) break;
-    const candCaps = mergeOtCaps(tail.caps, cand.otCapMinutesByShift, workType);
+    // งานที่ดึงมาต้องใช้โควตา OT ของวันปลายทาง ไม่ใช่ของวันต้นทาง (กัน OT ข้ามวัน)
+    const candCaps = tail.caps;
     if (!shiftAllowsMinute(shiftKey, (+mm[1]) * 60 + (+mm[2]), candCaps, workType)) break;
     const label = (cand.rollSet || cand.rollName || cand.rollId || '')
       + (cand.rollColor ? ' · ' + rollColorLabelFor(cand.rollSet, cand.rollColor) : '');
