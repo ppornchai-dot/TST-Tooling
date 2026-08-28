@@ -6602,13 +6602,16 @@ function planLastTaskOnDay(workType, dateIso, shiftKey) {
   return sameDay.reduce((a, b) => keyOf(b) > keyOf(a) ? b : a);
 }
 
+// ประเภทงานที่ทำได้ทั้งสองกะ (CNC) ไล่คิวเป็นรอบวันทำงานเต็ม — เต็มกะเช้าแล้วต่อกะดึกของวันเดียวกัน
+// เต็มกะดึกแล้วต่อกะเช้าของวันรุ่งขึ้น ไม่ข้ามไปกะเดิมของวันถัดไปแล้วทิ้งกะถัดไปว่าง
 function planAppendStartFor(workType, dateIso, shiftKey) {
+  const sched = planScheduleShiftFor(workType, shiftKey);
   const shift = SHIFTS[shiftKey] || SHIFTS.morning;
-  const last = planLastTaskOnDay(workType, dateIso, shiftKey);
+  const last = planLastTaskOnDay(workType, dateIso, sched);
   if (!last || !last.endTime) return { date: dateIso, time: shift.start };
   // ใช้ endDate จริงของงานนั้น งานที่จบข้ามเที่ยงคืนจะได้วันถูก ไม่ค้างอยู่วันเดิม
   // ยึดโควตา OT ของงานก่อนหน้า เพราะเป็นตัวที่ทำให้งานนั้นจบเลยหน้าต่างกะมาได้
-  return advanceToShiftWindow(shiftKey, last.endDate || dateIso, last.endTime, last.otCapMinutesByShift, workType);
+  return advanceToShiftWindow(sched, last.endDate || dateIso, last.endTime, last.otCapMinutesByShift, workType);
 }
 
 // ท้ายคิวจริงของประเภทงานนี้ = { date, time } ที่งานใหม่ควรไปเริ่ม
@@ -6632,13 +6635,14 @@ function planQueueEndFor(workType, dateIso, shiftKey) {
   const shift = SHIFTS[shiftKey] || SHIFTS.morning;
   // วันที่เลือกยังไม่มีงานเลย → เริ่มต้นกะของวันนั้นเสมอ (กะเช้า = 08:00)
   if (!planDayHasWork(workType, dateIso)) return { date: dateIso, time: shift.start };
+  const sched = planScheduleShiftFor(workType, shiftKey);
   const day = planAppendStartFor(workType, dateIso, shiftKey);
   // ข้ามวันหยุดบริษัท/วันอาทิตย์ (เกณฑ์เดียวกับที่ autoFixPlanSequencing ใช้)
-  const fixed = nextValidPlanContinuePoint(shiftKey, day.date, day.time);
+  const fixed = nextValidPlanContinuePoint(sched, day.date, day.time);
   // ตรวจหน้าต่างกะอีกครั้งหลัง nextValidPlanContinuePoint แต่ต้องส่งโควตา OT ของงานสุดท้ายไปด้วย
   // ถ้าลืมส่ง จุดที่อยู่ในช่วง OT จะถูกตีว่าเลยเวลาทำงานแล้วเด้งไปวันถัดไป (เคยพลาดมาแล้ว)
-  const lastCaps = (planLastTaskOnDay(workType, dateIso, shiftKey) || {}).otCapMinutesByShift;
-  return advanceToShiftWindow(shiftKey, fixed.date, fixed.time, lastCaps, workType);
+  const lastCaps = (planLastTaskOnDay(workType, dateIso, sched) || {}).otCapMinutesByShift;
+  return advanceToShiftWindow(sched, fixed.date, fixed.time, lastCaps, workType);
 }
 
 
@@ -6687,9 +6691,11 @@ function resequencePlanTask(taskId) {
   const prev = findPrecedingPlanTask(task);
   if (!prev) { alert('ไม่พบงานประเภทเดียวกันงานอื่นที่มาก่อนหน้างานนี้ให้ต่อเวลาด้วย'); return; }
   if (!confirm(`ย้ายงานนี้ให้เริ่มต่อจาก "${prev.rollName}" (จบ ${fmtDateThai(parseISODate(prev.endDate))} ${prev.endTime}) เลยไหม?`)) return;
-  const target = nextValidPlanContinuePoint(prev.shift, prev.endDate, prev.endTime);
+  const schedPrev = planScheduleShiftFor(prev.workType, prev.shift);
+  const target = nextValidPlanContinuePoint(schedPrev, prev.endDate, prev.endTime);
   task.date = target.date;
-  task.shift = prev.shift;
+  // ต่อเวลาไปตกในกะไหนก็เป็นงานของกะนั้น (กะดึกเต็มแล้วต่อกะเช้าของวันรุ่งขึ้น)
+  task.shift = schedPrev === 'both' ? bothModeStartFieldKey(target.time) : prev.shift;
   task.startTime = target.time;
   const computed = computePlanEnd(task.date, task.startTime, task.totalTime, task.shift, task.otCapMinutesByShift || {});
   task.endTime = computed.time;
@@ -6740,10 +6746,13 @@ function autoFixPlanSequencing() {
       tasks.forEach(t => {
         if (planTaskIsSettled(t)) return;
         if (!t.startTime || t.startTime === '—' || !t.totalTime) return;
-        const adv = advanceToShiftWindow(t.shift, t.date, t.startTime, t.otCapMinutesByShift || {}, t.workType);
+        const schedT = planScheduleShiftFor(t.workType, t.shift);
+        const adv = advanceToShiftWindow(schedT, t.date, t.startTime, t.otCapMinutesByShift || {}, t.workType);
         if (adv.date === t.date && adv.time === t.startTime) return;
         t.date = adv.date;
         t.startTime = adv.time;
+        // ไหลไปอยู่ในช่วงของกะไหนก็เป็นงานของกะนั้น (กะดึกล้น 05:00 → ไปกะเช้า 08:00)
+        if (schedT === 'both') t.shift = bothModeStartFieldKey(t.startTime);
         const c = computePlanEnd(t.date, t.startTime, t.totalTime, t.shift, t.otCapMinutesByShift || {});
         t.endTime = c.time;
         t.endDate = c.date || t.date;
@@ -6757,7 +6766,8 @@ function autoFixPlanSequencing() {
         // งาน "2 กะ" ที่จบพอดีจุดหมดกะ (17:00 จบกะเช้า / 05:00 จบกะดึก) ไม่มีใครทำงานจริงตรงจุดนั้น — เลื่อนจุดต่อเวลาไปเริ่มกะถัดไปตรงๆ (20:00/08:00 วันเดียวกัน) แทน
         // กันงานถัดไปมี startTime ค้างอยู่ตรงจุดที่ยังไม่ถึงเวลาเริ่มกะจริง (แม้ endTime ที่คำนวณได้จะถูกต้องอยู่แล้วเพราะ computePlanEnd ข้ามช่วงว่างให้เองก็ตาม แต่ startTime ที่แสดงจะดูสับสน)
         // และถ้าจุดที่ได้ไปตกวันหยุด (อาทิตย์/วันหยุดบริษัท) เลื่อนไปเริ่มกะเช้าของวันทำงานถัดไปแทน (ดู nextValidPlanContinuePoint)
-        const target = nextValidPlanContinuePoint(prev.shift, prev.endDate, prev.endTime);
+        const schedPrev = planScheduleShiftFor(prev.workType, prev.shift);
+        const target = nextValidPlanContinuePoint(schedPrev, prev.endDate, prev.endTime);
         const targetDate = target.date, targetTime = target.time;
         // เทียบเป็น "ทับซ้อนจริงไหม" ไม่ใช่แค่ "ต่างจากจุดต่อเนื่องพอดีไหม" — เริ่มพอดี (เท่ากับ) หรือเริ่มทีหลัง (มีช่องว่างที่ตั้งใจเว้นไว้) ถือว่าไม่ทับซ้อน ปล่อยผ่านไม่แก้ให้
         const curKey = cur.date + ' ' + cur.startTime;
@@ -6765,7 +6775,8 @@ function autoFixPlanSequencing() {
         if (curKey >= targetKey) continue;
         if (planTaskIsSettled(cur)) continue; // อดีต/ทำแล้ว — ไม่ขยับ (prev ยังใช้เป็นจุดต่อเวลาให้งานถัดไปได้ตามเดิม)
         cur.date = targetDate;
-        cur.shift = prev.shift;
+        // ต่อเวลาไปตกในช่วงของกะไหน ก็เป็นงานของกะนั้น (ไล่ต่อกะถัดไป ไม่ใช่ยึดกะเดิมของงานก่อนหน้า)
+        cur.shift = schedPrev === 'both' ? bothModeStartFieldKey(targetTime) : prev.shift;
         cur.startTime = targetTime;
         const computed = computePlanEnd(cur.date, cur.startTime, cur.totalTime, cur.shift, cur.otCapMinutesByShift || {});
         cur.endTime = computed.time;
@@ -6990,6 +7001,11 @@ function openPlanTaskModal(mode, taskId, presetDate, presetShift) {
   const formDate = task ? task.date : queueEnd.date;
   setPlanFormDate('pf-date', formDate);
   const startValue = task ? task.startTime : queueEnd.time;
+  // ท้ายคิวอาจไหลไปกะถัดไปแล้ว (กะดึกเต็ม → ต่อกะเช้าวันรุ่งขึ้น) กะของฟอร์มต้องตามเวลานั้น
+  // ไม่ใช่ค้างเป็นกะของหัวข้อที่กดเพิ่ม ไม่งั้นเวลาเริ่มกับกะจะไม่ตรงกัน
+  if (!task && planWorkTypeAllowsShift(workType, 'both') && defaultShift !== 'both') {
+    defaultShift = bothModeStartFieldKey(startValue);
+  }
   // ถ้าท้ายคิวเลยวันที่กดมาแล้ว บอกให้รู้ว่าทำไมวันที่ในฟอร์มไม่ใช่วันที่กด (กันคิดว่าระบบเลือกวันผิด)
   const movedNote = document.getElementById('pf-queue-moved');
   if (movedNote) {
