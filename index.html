@@ -5102,10 +5102,12 @@ function planSectionCount(partsByDate, sectionKey, isoList, shiftKey) {
     mins += t.totalTime != null ? (Number(t.totalTime) || 0) : 0;
     if (!t.startTime || t.startTime === '—' || !t.totalTime) return;
     const seg = (computePlanEnd(t.date, t.startTime, t.totalTime, t.shift, t.otCapMinutesByShift || {}) || {}).segments || {};
+    // เลื่อนฐานเวลามาที่วันของหัวข้อ — งานกะดึกที่ถูกตัดหลังเที่ยงคืนมี t.date เป็นวันถัดไป
+    const offset = Math.round((parseISODate(t.date) - parseISODate(iso)) / 86400000) * 1440;
     Object.keys(seg).forEach(k => {
       const s = seg[k];
       if (!s || !(s.end > s.start)) return;   // กะที่งานนี้ไม่ได้แตะเลย
-      widen(k, s.start, s.end);
+      widen(k, s.start + offset, s.end + offset);
     });
   }));
   return { count, mins, span };
@@ -5180,8 +5182,9 @@ function planSectionHeaderRow(s, colSpan, stat, addForIso) {
 // shiftKey (ถ้าส่งมา) = ตั้งกะให้ตรงกับหมวดที่กดเพิ่ม (CNC แยกกะเช้า/กะดึก)
 function addPlanTaskOnDate(dateIso, workType, shiftKey) {
   if (workType && workType !== currentPlanWorkType) switchPlanWorkType(workType);
-  openPlanTaskModal('add', null, dateIso);
-  if (shiftKey && planWorkTypeAllowsShift(workType || currentPlanWorkType, shiftKey)) applyPlanFormShift(shiftKey);
+  const wt = workType || currentPlanWorkType;
+  const preset = shiftKey && planWorkTypeAllowsShift(wt, shiftKey) ? shiftKey : null;
+  openPlanTaskModal('add', null, dateIso, preset);
 }
 
 function renderPlanDay() {
@@ -6865,7 +6868,9 @@ function autoContinueRemainingRollTime(workType, setName, colorKey, otCapMinutes
   return createdCount;
 }
 
-function openPlanTaskModal(mode, taskId, presetDate) {
+// presetShift = กะของหัวข้อที่กดปุ่มเพิ่มงานมา — ต้องรู้ตั้งแต่ตอนนี้ เพราะท้ายคิว/วันที่ในฟอร์ม
+// คิดจากกะนั้นโดยตรง (กดเพิ่มงานกะดึกต้องได้ท้ายคิวของกะดึกวันนั้น ไม่ใช่ของกะเช้า)
+function openPlanTaskModal(mode, taskId, presetDate, presetShift) {
   if (!canEditPlan()) return;
   const task = mode === 'edit' ? planTasks.find(t => t.id === taskId) : null;
   currentEditingPlanTaskId = task ? task.id : null;
@@ -6889,8 +6894,8 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   // chainFrom เหลือไว้ใช้เป็นค่าเริ่มต้นของ "ผู้ปฏิบัติงาน" อย่างเดียว เพราะมักเป็นคนเดิมกับงานล่าสุด
   const chainFrom = !task ? findLatestPlanTaskEnd(workType) : null;
   const pickedDate = task ? task.date : (presetDate || toISODate(planViewDate));
-  // งานใหม่เริ่มที่กะเช้าเสมอ (เดิมยึดกะที่กำลังกรองอยู่ ซึ่งไม่มีปุ่มกรองกะแล้ว)
-  let defaultShift = (task ? task.shift : null) || 'morning';
+  // งานใหม่ยึดกะของหัวข้อที่กดเพิ่มมา ไม่มีก็กะเช้า (เดิมยึดกะที่กำลังกรองอยู่ ซึ่งไม่มีปุ่มกรองกะแล้ว)
+  let defaultShift = (task ? task.shift : null) || presetShift || 'morning';
   // งานใหม่ต้องเริ่มด้วยกะที่ประเภทงานนี้ทำได้ (งานขัด Roll = กะเช้าเท่านั้น)
   if (!task && !planWorkTypeAllowsShift(workType, defaultShift)) defaultShift = planWorkTypeShifts(workType)[0] || 'morning';
   // งานใหม่ไปต่อ "ท้ายคิว" จริงของประเภทงานนี้ ซึ่งอาจเลยวันที่กดเพิ่มไปแล้ว
@@ -6901,7 +6906,8 @@ function openPlanTaskModal(mode, taskId, presetDate) {
   // ถ้าท้ายคิวเลยวันที่กดมาแล้ว บอกให้รู้ว่าทำไมวันที่ในฟอร์มไม่ใช่วันที่กด (กันคิดว่าระบบเลือกวันผิด)
   const movedNote = document.getElementById('pf-queue-moved');
   if (movedNote) {
-    const moved = !task && formDate !== pickedDate;
+    const owning = sessionOwningDate(formDate, startValue || '00:00', defaultShift === 'both' ? bothModeStartFieldKey(startValue) : defaultShift);
+    const moved = !task && formDate !== pickedDate && owning !== pickedDate;
     movedNote.style.display = moved ? '' : 'none';
     movedNote.innerHTML = moved
       ? `เลื่อนไปวันที่ <b>${escapeHtmlAttr(fmtDateThai(parseISODate(formDate)))} ${escapeHtmlAttr(startValue)}</b> ให้อัตโนมัติ
