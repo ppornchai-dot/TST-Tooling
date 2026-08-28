@@ -4470,11 +4470,13 @@ function planContinueShiftFor(workType) {
   return allowed.includes('both') ? 'both' : (allowed[0] || 'morning');
 }
 // กะที่ใช้ "คำนวณตาราง" ของงานหนึ่ง — ไม่ใช่กะที่เก็บไว้ในงาน
-// งานกะเช้าของประเภทที่ทำกะดึกได้ (CNC) เมื่อเวลากะเช้า+OT ไม่พอ ให้ไหลไปต่อ "กะดึกของวันเดียวกัน"
-// แทนที่จะข้ามไปกะเช้าวันถัดไป — ตัวคำนวณจะตัดเป็นคนละงานตรงรอยต่อกะให้เอง (ดู splitPlanDataAcrossDays)
+// ประเภทงานที่ทำได้ทั้งสองกะ (CNC) ให้คิดตารางเป็นรอบวันทำงานเต็ม (08:00 → 05:00)
+// งานจึง "เติมกะที่วางอยู่ให้ครบก่อน แล้วส่วนที่เหลือไหลไปกะถัดไป" ทั้งสองทิศ:
+//   กะเช้าล้น → ต่อกะดึกของวันเดียวกัน 20:00 / กะดึกล้น → ต่อกะเช้าวันรุ่งขึ้น 08:00
+// ตัวคำนวณจะตัดเป็นคนละงานตรงรอยต่อกะให้เอง (ดู splitPlanDataAcrossDays)
 // งานขัด Roll มีกะเดียว จึงได้ 'morning' เหมือนเดิม ไม่ถูกวางลงกะดึกที่ไม่มีคนทำ
 function planScheduleShiftFor(workType, shiftKey) {
-  if (shiftKey === 'morning' && planWorkTypeAllowsShift(workType, 'night')) return 'both';
+  if (shiftKey !== 'both' && planWorkTypeAllowsShift(workType, 'both')) return 'both';
   return shiftKey;
 }
 // โควตา OT สูงสุดของประเภทงานนั้น (นาทีทำงานจริง) — งานขัด Roll ทำ OT ได้ยาวกว่างานแต่ง Roll
@@ -7066,7 +7068,7 @@ function openPlanTaskModal(mode, taskId, presetDate) {
       startTime: startTime || '—',
       endTime: endTime || '—',
       endDate: endDate || date,
-      shift: schedShift === 'both' && shiftKey === 'morning' ? bothModeStartFieldKey(startTime) : shiftKey,
+      shift: schedShift === 'both' && shiftKey !== 'both' ? bothModeStartFieldKey(startTime) : shiftKey,
       otCapMinutesByShift,
       otMinutes: computedEnd.otMinutes || 0,
       otMinutesByShift: computedEnd.otMinutesByShift || {},
