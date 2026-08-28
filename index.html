@@ -383,6 +383,9 @@ table.daily-tech-view .daily-act-wrap{gap:8px;flex-wrap:wrap;}
 /* ลากสลับลำดับก่อน–หลังในปฏิทินแผนงาน — จับได้เฉพาะที่ปุ่ม ⋮⋮ (touch-action:none เฉพาะปุ่มนั้น)
    เพื่อให้แตะที่ตัวงานยังเลื่อนหน้าจอด้วยนิ้วและเปิดฟอร์มแก้ไขได้ตามปกติ */
 .plan-drag-item{display:flex;align-items:flex-start;gap:3px;}
+/* มุมมองรายวันเป็นตาราง — แถวที่ลากได้ต้องคง display เป็น table-row ไม่ใช่ flex ของชิปในปฏิทิน */
+tr.plan-drag-item{display:table-row;}
+tr.plan-drag-item .plan-drag-grip{display:inline-block;width:14px;padding:0;vertical-align:middle;margin-right:5px;}
 .plan-drag-grip{flex:0 0 auto;width:15px;padding:4px 0;border-radius:4px;text-align:center;line-height:1;
   font-size:11px;color:var(--text-3);cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;}
 .plan-drag-grip:hover{background:var(--border-light);color:var(--text-1);}
@@ -5229,12 +5232,22 @@ function renderPlanDay() {
   document.getElementById('plan-daterange-label').textContent = fmtDateThai(planViewDate);
   document.getElementById('plan-day-title').textContent = 'แผนงาน — วันที่ ' + fmtDateThai(planViewDate);
   const tasks = planDayPartsByDate().get(iso) || [];
-  const rowHtmlFor = (t, i) => {
+  const rowHtmlFor = (t, i, section) => {
     const expandable = (t.rollIds || []).length > 1;
     const expanded = expandable && expandedPlanDayTaskId === t.id;
+    // ลากสลับลำดับในวันนี้ได้ — เฉพาะงานที่ "เริ่มจริง" ในวันนี้ (ส่วนที่ล้นมาจากวันก่อนหน้าต้องไปสลับที่วันต้นทาง)
+    // เกณฑ์เดียวกับชิปในปฏิทินรายสัปดาห์/รายเดือน (ดู planDragWrap)
+    const dragOk = canEditPlan() && !planDeleteMode && t.date === iso && !(t.__partIndex > 0)
+      && iso >= dailyTodayIso();
+    const dragAttrs = dragOk
+      ? ` class="plan-drag-item" data-draggable="1" data-shift="${escapeHtmlAttr(t.shift || '')}" data-section="${escapeHtmlAttr((section && section.shiftKey ? section.key + ':' + section.shiftKey : (section ? section.key : '')))}"`
+      : '';
+    const grip = dragOk
+      ? `<span class="plan-drag-grip" onclick="event.stopPropagation();" title="ลากขึ้น–ลงเพื่อสลับลำดับก่อน–หลังของงานในวันนี้">⋮⋮</span>`
+      : '';
     const row = `
-    <tr data-taskid="${escapeHtmlAttr(t.id)}"${expandable ? ` style="cursor:pointer;" onclick="togglePlanDayTaskDetail('${t.id}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : ''}>
-      <td class="muted">${expandable ? `<span aria-hidden="true" style="display:inline-block;width:12px;transition:transform .15s;transform:rotate(${expanded ? 90 : 0}deg);">▸</span> ` : ''}${i + 1}</td>
+    <tr data-taskid="${escapeHtmlAttr(t.id)}"${dragAttrs}${expandable ? ` style="cursor:pointer;" onclick="togglePlanDayTaskDetail('${t.id}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : ''}>
+      <td class="muted" style="white-space:nowrap;">${grip}${expandable ? `<span aria-hidden="true" style="display:inline-block;width:12px;transition:transform .15s;transform:rotate(${expanded ? 90 : 0}deg);">▸</span>` : ''}${i + 1}</td>
       <td>${escapeHtmlAttr(t.rollSet)}</td>
       <td>${escapeHtmlAttr(planRollColorLabel(t))}</td>
       <td class="muted">${escapeHtmlAttr(t.rollId)}</td>
@@ -5278,11 +5291,16 @@ function renderPlanDay() {
       label: s.label + ' — ' + SHIFTS[k].label,
       empty: 'ไม่มีงานแต่ง Roll ' + SHIFTS[k].label + ' ในวันนี้' }));
   });
-  document.getElementById('plan-day-tbody').innerHTML = daySections.map(s => {
+  const dayBody = document.getElementById('plan-day-tbody');
+  // ตัว tbody เป็น "ที่วาง" ของการลาก (ตัวจัดการลากตัวเดียวกับปฏิทินรายสัปดาห์/รายเดือน)
+  // การสลับลำดับถูกจำกัดไว้ในหมวดเดียวกันด้วย data-section ของแต่ละแถว
+  dayBody.classList.add('plan-drop-zone');
+  dayBody.dataset.day = iso;
+  dayBody.innerHTML = daySections.map(s => {
     const items = tasks.filter(t => planTaskSectionKey(t) === s.key
       && (!s.shiftKey || taskSessionShiftKey(t) === s.shiftKey));
     return planSectionHeaderRow(s, 9, planSectionCount(partsByDate, s.key, [iso], s.shiftKey), iso)
-      + (items.length ? items.map(rowHtmlFor).join('')
+      + (items.length ? items.map((t, i) => rowHtmlFor(t, i, s)).join('')
         : `<tr><td colspan="9" style="padding:14px;text-align:center;color:var(--text-3);font-size:12.5px;">${escapeHtmlAttr(s.empty)}</td></tr>`)
       + addRowFor(s);
   }).join('');
@@ -5462,6 +5480,8 @@ function onPlanDragDown(ev) {
   if (!zone) return;
   ev.preventDefault();
   planDrag = { item, zone, shift: item.dataset.shift, taskId: item.dataset.taskid,
+    // มุมมองรายวันใส่ data-section มาด้วย (หมวด+กะ) — สลับลำดับได้เฉพาะในหมวดเดียวกัน
+    section: item.dataset.section || null,
     sourceDay: zone.dataset.day, moved: false };
   item.classList.add('plan-drag-active');
   document.body.classList.add('plan-dragging');
@@ -5477,13 +5497,23 @@ function onPlanDragMove(ev) {
   // วันหยุด (อาทิตย์/วันหยุดบริษัท) วางไม่ได้ — ถ้าปล่อยให้วาง computePlanEnd จะเลื่อนไปวันทำงานถัดไปเงียบๆ
   // กลายเป็นว่าลากไปวันหนึ่งแต่งานไปโผล่อีกวัน ไม่ไฮไลต์และไม่รับการวางจะเข้าใจง่ายกว่า
   if (isPlanDayOff(zone.dataset.day)) return;
-  if (planDrag.hotZone !== zone) {
+  // ไฮไลต์ช่องวันเฉพาะการลากข้ามวันในปฏิทิน — มุมมองรายวันมีที่วางเดียว (ทั้งตาราง) ไม่ต้องไฮไลต์
+  if (!planDrag.section && planDrag.hotZone !== zone) {
     if (planDrag.hotZone) planDrag.hotZone.classList.remove('plan-drop-hot');
     zone.classList.add('plan-drop-hot');
     planDrag.hotZone = zone;
   }
   const over = under.closest('.plan-drag-item[data-draggable]');
   if (over === planDrag.item) return;
+  // มุมมองรายวัน: สลับได้เฉพาะกับงานในหมวด/กะเดียวกัน (ชี้ที่อื่นไม่ทำอะไร ไม่ย้ายข้ามหมวด)
+  if (planDrag.section) {
+    if (!over || over.dataset.section !== planDrag.section) return;
+    const r = over.getBoundingClientRect();
+    zone.insertBefore(planDrag.item, ev.clientY > r.top + r.height / 2 ? over.nextSibling : over);
+    planDrag.appended = false;
+    planDrag.moved = true;
+    return;
+  }
   if (over && over.dataset.shift === planDrag.shift) {
     // วางสลับลำดับกับงานที่ชี้อยู่ — ทำได้เมื่อเป็นกะเดียวกัน เวลาเริ่ม/จบจึงคำนวณอยู่ในรอบกะเดียว
     const rect = over.getBoundingClientRect();
@@ -5515,7 +5545,7 @@ function onPlanDragUp() {
   if (!zone || !zone.dataset.day || !task) { renderCurrentPlanView(); return; }
   const targetDay = zone.dataset.day;
   const ids = [...zone.querySelectorAll('.plan-drag-item[data-draggable]')]
-    .filter(n => n.dataset.shift === d.shift)
+    .filter(n => n.dataset.shift === d.shift && (!d.section || n.dataset.section === d.section))
     .map(n => n.dataset.taskid);
 
   // เริ่มไล่เวลาจาก "ต้นกะของวันนั้น" เสมอ ไม่ยกเวลาเดิมของงานอื่นในวันนั้นมาเป็นจุดตั้งต้น
