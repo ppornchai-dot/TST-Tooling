@@ -4469,6 +4469,12 @@ function planWorkTypeAllowsShift(workType, shiftKey) {
 }
 // กะที่ใช้กับงานต่อเนื่องที่ระบบสร้างให้เอง — ประเภทงานที่มีกะเดียวต้องใช้กะนั้น ไม่ใช่ "2 กะ"
 // ไม่งั้นงานขัด Roll (กะเช้าเดียว) จะถูกวางลงช่วงกะดึก 20:00–05:00 ที่ไม่มีคนทำ
+// กะที่ใช้ "คำนวณตาราง" ของงานที่มีอยู่แล้วหนึ่งงาน — ต้องใช้ทุกที่ที่คิดเวลาจบ/ตัดวันของงานนั้น
+// ไม่ใช่ t.shift ตรงๆ ไม่งั้นส่วนที่ล้นกะจะไปโผล่กะเดิมของวันถัดไป แทนที่จะไหลไปกะถัดไป
+// และเวลาที่เก็บกับเวลาที่แสดงจะไม่ตรงกันเอง เพราะตอนบันทึกงานใหม่ใช้กะคำนวณอยู่แล้ว
+function planTaskSchedShift(t) {
+  return planScheduleShiftFor(t.workType, t.shift);
+}
 function planContinueShiftFor(workType) {
   const allowed = planWorkTypeShifts(workType);
   return allowed.includes('both') ? 'both' : (allowed[0] || 'morning');
@@ -5028,7 +5034,7 @@ function planTaskDayParts(t) {
   let groups = null;
   try {
     groups = splitPlanDataAcrossDays(
-      { date: t.date, shift: t.shift, startTime: t.startTime, otCapMinutesByShift: t.otCapMinutesByShift || {}, rollIds: t.rollIds },
+      { date: t.date, shift: planTaskSchedShift(t), startTime: t.startTime, otCapMinutesByShift: t.otCapMinutesByShift || {}, rollIds: t.rollIds },
       rolls, t.workType, pieceMinutes
     );
   } catch (e) { groups = null; } // คำนวณไม่ได้ (ข้อมูลไม่ครบ) — แสดงเป็นงานก้อนเดียวตามเดิม
@@ -5053,7 +5059,8 @@ function planTaskDayParts(t) {
     g.rollName = g.rollIds.map(idx => (scoped[idx] || {}).name).filter(Boolean).join(', ');
   });
 
-  return groups.map((g, i) => ({ ...t, ...g, __origin: t, __partIndex: i, __partCount: groups.length }));
+  return groups.map((g, i) => ({ ...t, ...g, shift: g.shiftKey || t.shift,
+    __origin: t, __partIndex: i, __partCount: groups.length }));
 }
 
 // งานตามแผนของทุกวัน หลังตัดงานที่ทำข้ามวันเป็น "ส่วนของแต่ละวัน" แล้ว → Map<iso, parts[]>
@@ -5105,7 +5112,7 @@ function planSectionCount(partsByDate, sectionKey, isoList, shiftKey) {
     count++;
     mins += t.totalTime != null ? (Number(t.totalTime) || 0) : 0;
     if (!t.startTime || t.startTime === '—' || !t.totalTime) return;
-    const seg = (computePlanEnd(t.date, t.startTime, t.totalTime, t.shift, t.otCapMinutesByShift || {}) || {}).segments || {};
+    const seg = (computePlanEnd(t.date, t.startTime, t.totalTime, planTaskSchedShift(t), t.otCapMinutesByShift || {}) || {}).segments || {};
     // เลื่อนฐานเวลามาที่วันของหัวข้อ — งานกะดึกที่ถูกตัดหลังเที่ยงคืนมี t.date เป็นวันถัดไป
     const offset = Math.round((parseISODate(t.date) - parseISODate(iso)) / 86400000) * 1440;
     Object.keys(seg).forEach(k => {
@@ -5565,7 +5572,7 @@ function onPlanDragUp() {
   if (targetDay < todayIso || d.appended) {
     task.date = targetDay;
     task.startTime = planAppendStartOnDay(task.workType, targetDay, d.shift, task.id);
-    const computed = computePlanEnd(task.date, task.startTime, task.totalTime, task.shift, task.otCapMinutesByShift || {});
+    const computed = computePlanEnd(task.date, task.startTime, task.totalTime, planTaskSchedShift(task), task.otCapMinutesByShift || {});
     task.endTime = computed.time;
     task.endDate = computed.date || task.date;
     task.otMinutes = computed.otMinutes || 0;
@@ -5643,12 +5650,13 @@ function resequencePlanDayShift(day, shift, orderedIds, anchor) {
   tasks.forEach(t => {
     t.date = cursor.date;
     t.startTime = cursor.time;
-    const computed = computePlanEnd(t.date, t.startTime, t.totalTime, t.shift, t.otCapMinutesByShift || {});
+    const sched = planTaskSchedShift(t);
+    const computed = computePlanEnd(t.date, t.startTime, t.totalTime, sched, t.otCapMinutesByShift || {});
     t.endTime = computed.time;
     t.endDate = computed.date || t.date;
     t.otMinutes = computed.otMinutes || 0;
     t.otMinutesByShift = computed.otMinutesByShift || {};
-    cursor = nextValidPlanContinuePoint(t.shift, t.endDate, t.endTime);
+    cursor = nextValidPlanContinuePoint(sched, t.endDate, t.endTime);
   });
 }
 
@@ -6727,7 +6735,7 @@ function resequencePlanTask(taskId) {
   // ต่อเวลาไปตกในกะไหนก็เป็นงานของกะนั้น (กะดึกเต็มแล้วต่อกะเช้าของวันรุ่งขึ้น)
   task.shift = schedPrev === 'both' ? bothModeStartFieldKey(target.time) : prev.shift;
   task.startTime = target.time;
-  const computed = computePlanEnd(task.date, task.startTime, task.totalTime, task.shift, task.otCapMinutesByShift || {});
+  const computed = computePlanEnd(task.date, task.startTime, task.totalTime, planTaskSchedShift(task), task.otCapMinutesByShift || {});
   task.endTime = computed.time;
   task.endDate = computed.date || task.date;
   task.otMinutes = computed.otMinutes || 0;
@@ -6783,7 +6791,7 @@ function autoFixPlanSequencing() {
         t.startTime = adv.time;
         // ไหลไปอยู่ในช่วงของกะไหนก็เป็นงานของกะนั้น (กะดึกล้น 05:00 → ไปกะเช้า 08:00)
         if (schedT === 'both') t.shift = bothModeStartFieldKey(t.startTime);
-        const c = computePlanEnd(t.date, t.startTime, t.totalTime, t.shift, t.otCapMinutesByShift || {});
+        const c = computePlanEnd(t.date, t.startTime, t.totalTime, planTaskSchedShift(t), t.otCapMinutesByShift || {});
         t.endTime = c.time;
         t.endDate = c.date || t.date;
         t.otMinutes = c.otMinutes || 0;
@@ -6808,7 +6816,7 @@ function autoFixPlanSequencing() {
         // ต่อเวลาไปตกในช่วงของกะไหน ก็เป็นงานของกะนั้น (ไล่ต่อกะถัดไป ไม่ใช่ยึดกะเดิมของงานก่อนหน้า)
         cur.shift = schedPrev === 'both' ? bothModeStartFieldKey(targetTime) : prev.shift;
         cur.startTime = targetTime;
-        const computed = computePlanEnd(cur.date, cur.startTime, cur.totalTime, cur.shift, cur.otCapMinutesByShift || {});
+        const computed = computePlanEnd(cur.date, cur.startTime, cur.totalTime, planTaskSchedShift(cur), cur.otCapMinutesByShift || {});
         cur.endTime = computed.time;
         cur.endDate = computed.date || cur.date;
         cur.otMinutes = computed.otMinutes || 0;
@@ -6828,8 +6836,30 @@ function autoFixPlanSequencing() {
 // ที่ต่อเวลากันสนิทในกะเดียวกันให้เป็นงานเดียว
 // ท้ายไฟล์มี migration ชุดนี้อยู่แล้ว แต่ทำงานตอนบูตซึ่งข้อมูลจริงจาก cloud ยังไม่มาถึง
 // ผลคืองานที่ต่อกันสนิทในข้อมูลบน cloud ไม่เคยถูกรวมเลยจนกว่าผู้ใช้จะกดบันทึกงานใหม่
+// คำนวณเวลาจบ/OT ของทุกงานใหม่จาก date/startTime/totalTime/กะคำนวณที่เก็บไว้จริง
+// กันค่าที่เคยคำนวณด้วยกฎเก่าค้างอยู่ (เช่นส่วนที่ล้นกะดึกเคยไปจบตอนกะดึกวันถัดไป)
+// คืน true ถ้ามีงานถูกแก้ — ผู้เรียกเป็นคนสั่งบันทึก
+function refreshPlanTaskEndTimes() {
+  let anyChanged = false;
+  planTasks.forEach(t => {
+    if (!t.date || !t.startTime || t.startTime === '—' || !t.totalTime) return;
+    const computed = computePlanEnd(t.date, t.startTime, t.totalTime, planTaskSchedShift(t), t.otCapMinutesByShift || {});
+    if (!computed.time) return;
+    const newEndDate = computed.date || t.date;
+    if (t.endTime !== computed.time || t.endDate !== newEndDate) {
+      t.endTime = computed.time;
+      t.endDate = newEndDate;
+      t.otMinutes = computed.otMinutes || 0;
+      t.otMinutesByShift = computed.otMinutesByShift || {};
+      anyChanged = true;
+    }
+  });
+  return anyChanged;
+}
+
 function tidyPlanAfterStateLoad() {
   let changed = false;
+  if (refreshPlanTaskEndTimes()) changed = true;
   if (autoFixPlanSequencing()) changed = true;
   if (mergeAdjacentPlanTasks()) changed = true;
   if (changed) persistState();
@@ -6879,7 +6909,7 @@ function mergeAdjacentPlanTasks() {
           if (curIds.includes(idx)) minutes += minutesForTaskIdx(cur, idx, full);
           return minutes;
         });
-        const wouldSplit = splitPlanDataAcrossDays({ date: prev.date, shift: prev.shift, startTime: prev.startTime, otCapMinutesByShift: prev.otCapMinutesByShift || {}, rollIds: combinedRollIds }, rolls, prev.workType, combinedMinutesList);
+        const wouldSplit = splitPlanDataAcrossDays({ date: prev.date, shift: planTaskSchedShift(prev), startTime: prev.startTime, otCapMinutesByShift: prev.otCapMinutesByShift || {}, rollIds: combinedRollIds }, rolls, prev.workType, combinedMinutesList);
         if (wouldSplit) continue; // รวมแล้วจะข้ามรอบกะจริง ต้องแยกไว้ตามเดิม
         prev.rollIds = combinedRollIds;
         prev.rollId = combinedRollIds.length + ' Roll';
@@ -6887,7 +6917,7 @@ function mergeAdjacentPlanTasks() {
         prev.totalTime = combinedMinutesList.reduce((a, b) => a + b, 0);
         // คำนวณเวลาจบ/OT ใหม่จากนาทีรวมจริง (combinedMinutesList) แทนที่จะเอาเวลาจบเดิมของ cur มาใช้ตรงๆ —
         // เวลาจบเดิมของ cur อาจเป็นค่าที่เก็บไว้ผิดพลาดค้างมาจากตอนก่อนหน้า (ดูคอมมิตแก้ splitPlanDataAcrossDays/migration ก่อนนี้) ทำให้งานที่รวมแล้วจบผิดเวลาไปด้วย
-        const mergedComputed = computePlanEnd(prev.date, prev.startTime, prev.totalTime, prev.shift, prev.otCapMinutesByShift || {});
+        const mergedComputed = computePlanEnd(prev.date, prev.startTime, prev.totalTime, planTaskSchedShift(prev), prev.otCapMinutesByShift || {});
         prev.endTime = mergedComputed.time;
         prev.endDate = mergedComputed.date || prev.date;
         prev.otMinutes = mergedComputed.otMinutes || 0;
@@ -7505,7 +7535,7 @@ function savePlanDayEnd() {
       next[k] = caps[k] != null ? caps[k] : Math.max(0, (t.otCapMinutesByShift || {})[k] || 0);
     });
     t.otCapMinutesByShift = next;
-    const c = computePlanEnd(t.date, t.startTime, t.totalTime, t.shift, next);
+    const c = computePlanEnd(t.date, t.startTime, t.totalTime, planTaskSchedShift(t), next);
     t.endTime = c.time; t.endDate = c.date || t.date;
     t.otMinutes = c.otMinutes || 0; t.otMinutesByShift = c.otMinutesByShift || {};
     applied++;
@@ -7755,7 +7785,7 @@ function carryOverLeftoverTask(taskId, targetDay) {
     t.rollName = t.otherWork ? t.rollName : info.done.map(i => (scoped[i] || {}).name).filter(Boolean).join(', ');
     t.totalTime = doneMinutes;
     t.rollMinutesOverride = keepOverride;
-    const endOld = computePlanEnd(t.date, t.startTime, t.totalTime, t.shift, t.otCapMinutesByShift || {});
+    const endOld = computePlanEnd(t.date, t.startTime, t.totalTime, planTaskSchedShift(t), t.otCapMinutesByShift || {});
     t.endTime = endOld.time;
     t.endDate = endOld.date || t.date;
     t.otMinutes = endOld.otMinutes || 0;
@@ -8559,7 +8589,7 @@ syncRollStatusWithProdBlock();
   planTasks.forEach(t => {
     const scopedRolls = getMatchingRollsForPlan(t.rollSet, t.rollColor);
     const rolls = (t.rollIds || []).map(idx => scopedRolls[idx]).filter(Boolean);
-    const splitGroups = rolls.length ? splitPlanDataAcrossDays({ date: t.date, shift: t.shift, startTime: t.startTime, otCapMinutesByShift: t.otCapMinutesByShift || {}, rollIds: t.rollIds }, rolls, t.workType) : null;
+    const splitGroups = rolls.length ? splitPlanDataAcrossDays({ date: t.date, shift: planTaskSchedShift(t), startTime: t.startTime, otCapMinutesByShift: t.otCapMinutesByShift || {}, rollIds: t.rollIds }, rolls, t.workType) : null;
     if (!splitGroups) { result.push(t); return; }
     changed = true;
     const newGroupId = 'SG-' + String(planTaskSeq + 1).padStart(4, '0');
@@ -8682,7 +8712,7 @@ syncRollStatusWithProdBlock();
       const roll = scopedRolls[idx];
       return sum + (override != null ? override : (roll ? parseFloat(roll[field]) || 0 : 0));
     }, 0);
-    const computed = computePlanEnd(t.date, t.startTime, totalTime, t.shift, t.otCapMinutesByShift || {});
+    const computed = computePlanEnd(t.date, t.startTime, totalTime, planTaskSchedShift(t), t.otCapMinutesByShift || {});
     result.push({
       ...t, rollIds: newRollIds, rollId: newRollIds.length + ' Roll',
       rollName: rolls.map(r => r.name).join(', '), totalTime,
@@ -8696,23 +8726,7 @@ syncRollStatusWithProdBlock();
 
 // migration: งานวางแผนเก่าบางงานเคยถูกคำนวณเวลาจบผิดตอนตัดแบ่งข้ามกะ (เผลอรวมช่วง "รอกะถัดไป" เข้าไปในเวลาจบด้วย ก่อนจะแก้ที่ splitPlanDataAcrossDays)
 // รีคำนวณเวลาจบ/OT ของทุกงานใหม่จาก date/startTime/totalTime/shift ที่เก็บไว้จริงเสมอ (computePlanEnd ไม่เคยมีบั๊กนี้) กันค่าที่เคยผิดพลาดค้างอยู่ ทำให้งานถัดไปที่ต่อเวลามาต่อผิดจุดตามไปด้วย
-(function refreshPlanTaskEndTimes() {
-  let anyChanged = false;
-  planTasks.forEach(t => {
-    if (!t.date || !t.startTime || t.startTime === '—' || !t.totalTime) return;
-    const computed = computePlanEnd(t.date, t.startTime, t.totalTime, t.shift, t.otCapMinutesByShift || {});
-    if (!computed.time) return;
-    const newEndDate = computed.date || t.date;
-    if (t.endTime !== computed.time || t.endDate !== newEndDate) {
-      t.endTime = computed.time;
-      t.endDate = newEndDate;
-      t.otMinutes = computed.otMinutes || 0;
-      t.otMinutesByShift = computed.otMinutesByShift || {};
-      anyChanged = true;
-    }
-  });
-  if (anyChanged) persistState();
-})();
+if (refreshPlanTaskEndTimes()) persistState();
 // migration: งานวางแผนเก่าที่เคยทับเวลากัน/ไม่ต่อเนื่องกัน (ก่อนมีระบบต่อเวลาอัตโนมัติ) ให้ต่อเวลาให้เรียบร้อยตั้งแต่ตอนโหลดแอปเลย ไม่ต้องรอให้ผู้ใช้กดปุ่ม "ต่อเวลา" เอง
 if (autoFixPlanSequencing()) persistState();
 // migration: รวมงานเก่าที่ต่อเวลากันสนิทแต่ถูกสร้างแยกไว้คนละแถว (เช่น เพิ่มงานทีละล็อต) ให้เป็นงานเดียวกันตั้งแต่ตอนโหลดแอปเลย
@@ -8749,7 +8763,7 @@ function reconcileLastPieceBoundary(workType, rollSet, rollColor) {
     if (usedBeforeGap === stored) return; // ตรงกับที่มีอยู่แล้ว ไม่ต้องแก้
     if (usedBeforeGap >= full) delete t.rollMinutesOverride[lastIdx]; else t.rollMinutesOverride[lastIdx] = usedBeforeGap;
     t.totalTime = t.rollIds.reduce((sum, idx) => sum + (t.rollMinutesOverride && t.rollMinutesOverride[idx] != null ? t.rollMinutesOverride[idx] : (parseFloat((matchedRolls[idx] || {})[field]) || 0)), 0);
-    const recomputed = computePlanEnd(t.date, t.startTime, t.totalTime, t.shift, t.otCapMinutesByShift || {});
+    const recomputed = computePlanEnd(t.date, t.startTime, t.totalTime, planTaskSchedShift(t), t.otCapMinutesByShift || {});
     t.endTime = recomputed.time; t.endDate = recomputed.date || t.date;
     t.otMinutes = recomputed.otMinutes || 0; t.otMinutesByShift = recomputed.otMinutesByShift || {};
     anyFixed = true;
@@ -8762,7 +8776,7 @@ function reconcileLastPieceBoundary(workType, rollSet, rollColor) {
       if (newRemaining <= 0) {
         planTasks = planTasks.filter(x => x.id !== continuation.id);
       } else {
-        const anchor = nextValidPlanContinuePoint(t.shift, t.endDate, t.endTime);
+        const anchor = nextValidPlanContinuePoint(planTaskSchedShift(t), t.endDate, t.endTime);
         continuation.date = anchor.date;
         continuation.startTime = anchor.time;
         continuation.totalTime = newRemaining;
