@@ -2827,6 +2827,24 @@ function syncRollSizeChangeQueue(dateIso) {
     rollSizeChangeQueue.push({ machine: c.machine, category: c.category, fgKey: c.fgKey,
       firstSeenDate: dateIso, firstSeenAt: stamp });
   });
+  // ตัดรายการที่ "ไม่ใช่ขนาดที่เดินอยู่ตอนนี้แล้ว" ออก — เครื่องเปลี่ยนไปเดินขนาดอื่น
+  // หรือมีคนเลือกชุดของขนาดใหม่ไปแล้ว ถามค้างเรื่องขนาดเดิมต่อไปก็ไม่มีประโยชน์
+  // (อาการเดิม: P4 เคยเดิน GS 4"x2" ตอนเช้า แล้วเปลี่ยนเป็น GI 4"x4" หัวหน้างานเลือกชุด
+  //  ของ GI 4"x4" ครบทุกหมวดแล้ว แต่หน้าต่างยังเด้งถามเรื่อง GS 4"x2" ค้างอยู่)
+  // ทำเฉพาะเมื่อมีข้อมูลยอดผลิตของวันนั้นจริง — ไม่มีข้อมูล = ไม่รู้ว่าตอนนี้เดินอะไร ต้องเก็บคิวไว้ถามต่อ
+  const cachedRun = fgRunningCache[dateIso];
+  if (cachedRun && cachedRun.latestByMachine) {
+    const runNow = new Map();   // 'เครื่อง|หมวด' → fgKey ของขนาดที่เดินอยู่ตอนนี้
+    Object.keys(cachedRun.latestByMachine).forEach(machine => {
+      const runKey = (cachedRun.latestByMachine[machine] || {}).fgKey;
+      if (!runKey) return;
+      SIZE_CHANGE_CATS.forEach(category => {
+        const want = expectedFgKeyForCategory(runKey, category);
+        if (want) runNow.set(machine + '|' + category, want);
+      });
+    });
+    rollSizeChangeQueue = rollSizeChangeQueue.filter(e => runNow.get(e.machine + '|' + e.category) === e.fgKey);
+  }
   rollSizeChangeQueue = rollSizeChangeQueue.filter(e => !sizeChangeEntryResolved(e));
   const changed = JSON.stringify(rollSizeChangeQueue) !== before;
   if (changed) persistState();
