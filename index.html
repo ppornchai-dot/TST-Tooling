@@ -4200,10 +4200,17 @@ function isPlanDayOff(iso) { return parseISODate(iso).getDay() === 0 || isCompan
 // ใช้ตอนดันคิวงานที่ทับซ้อน/แทรกงานต่อกลับเข้าคิว (ดู autoFixPlanSequencing และ backfillMissedPlanContinuations)
 // 1) ถ้าจบพอดีจุดหมดกะ เลื่อนไปเริ่มกะถัดไปตรงๆ (20:00/08:00 วันเดียวกัน) ก่อน
 // 2) ถ้าจุดที่ได้ (หลังข้อ 1 หรือจุดจบเดิมเลยถ้าไม่ตรงขอบเขตกะ) ไปตกวันหยุด (อาทิตย์/วันหยุดบริษัท) ไม่มีใครทำงานอยู่แล้ว เลื่อนไปเริ่มกะเช้าของวันทำงานถัดไปแทน (ข้ามทั้งวันหยุดนั้นไปเลย ทั้งกะเช้า+กะดึก)
-function nextValidPlanContinuePoint(shift, date, time) {
+// otCaps/workType (ถ้าส่งมา) = โควตา OT ของวันนั้น — จุดหมดกะที่ยังมี OT เหลืออยู่เป็นเวลาทำงานจริง
+// ต้องทำต่อที่เดิม ไม่เลื่อนข้ามไปต้นกะถัดไป ไม่งั้นเวลา OT ที่เพิ่งเพิ่มเข้าไปจะไม่ถูกใช้เลย
+// (อาการเดิม: เพิ่ม OT ให้กะเช้าถึง 20:00 แล้วดึงงานวันถัดไปมาเติมที่ 17:00 แต่ autoFix
+//  เห็นว่า 17:00 เป็นจุดหมดกะ เลยเลื่อนงานนั้นไป 20:00 กลายเป็นงานกะดึก ช่อง OT ยังว่างเหมือนเดิม)
+function nextValidPlanContinuePoint(shift, date, time, otCaps, workType) {
   let targetDate = date, targetTime = time;
   if (shift === 'both' && (targetTime === '17:00' || targetTime === '05:00')) {
-    targetTime = targetTime === '17:00' ? '20:00' : '08:00';
+    const boundaryMin = targetTime === '17:00' ? 17 * 60 : 5 * 60;
+    if (!shiftAllowsMinute(shift, boundaryMin, otCaps || {}, workType)) {
+      targetTime = targetTime === '17:00' ? '20:00' : '08:00';
+    }
   }
   while (isPlanDayOff(targetDate)) {
     targetDate = addDaysIso(targetDate, 1);
@@ -5656,7 +5663,7 @@ function resequencePlanDayShift(day, shift, orderedIds, anchor) {
     t.endDate = computed.date || t.date;
     t.otMinutes = computed.otMinutes || 0;
     t.otMinutesByShift = computed.otMinutesByShift || {};
-    cursor = nextValidPlanContinuePoint(sched, t.endDate, t.endTime);
+    cursor = nextValidPlanContinuePoint(sched, t.endDate, t.endTime, t.otCapMinutesByShift, t.workType);
   });
 }
 
@@ -6676,11 +6683,11 @@ function planQueueEndFor(workType, dateIso, shiftKey) {
   const sched = planScheduleShiftFor(workType, shiftKey);
   const day = planAppendStartFor(workType, dateIso, shiftKey);
   // ข้ามวันหยุดบริษัท/วันอาทิตย์ (เกณฑ์เดียวกับที่ autoFixPlanSequencing ใช้)
-  const fixed = nextValidPlanContinuePoint(sched, day.date, day.time);
+  const lastOnDay = planLastTaskOnDay(workType, dateIso, sched) || {};
+  const fixed = nextValidPlanContinuePoint(sched, day.date, day.time, lastOnDay.otCapMinutesByShift, workType);
   // ตรวจหน้าต่างกะอีกครั้งหลัง nextValidPlanContinuePoint แต่ต้องส่งโควตา OT ของงานสุดท้ายไปด้วย
   // ถ้าลืมส่ง จุดที่อยู่ในช่วง OT จะถูกตีว่าเลยเวลาทำงานแล้วเด้งไปวันถัดไป (เคยพลาดมาแล้ว)
-  const lastCaps = (planLastTaskOnDay(workType, dateIso, sched) || {}).otCapMinutesByShift;
-  return advanceToShiftWindow(sched, fixed.date, fixed.time, lastCaps, workType);
+  return advanceToShiftWindow(sched, fixed.date, fixed.time, lastOnDay.otCapMinutesByShift, workType);
 }
 
 
@@ -6730,7 +6737,7 @@ function resequencePlanTask(taskId) {
   if (!prev) { alert('ไม่พบงานประเภทเดียวกันงานอื่นที่มาก่อนหน้างานนี้ให้ต่อเวลาด้วย'); return; }
   if (!confirm(`ย้ายงานนี้ให้เริ่มต่อจาก "${prev.rollName}" (จบ ${fmtDateThai(parseISODate(prev.endDate))} ${prev.endTime}) เลยไหม?`)) return;
   const schedPrev = planScheduleShiftFor(prev.workType, prev.shift);
-  const target = nextValidPlanContinuePoint(schedPrev, prev.endDate, prev.endTime);
+  const target = nextValidPlanContinuePoint(schedPrev, prev.endDate, prev.endTime, prev.otCapMinutesByShift, prev.workType);
   task.date = target.date;
   // ต่อเวลาไปตกในกะไหนก็เป็นงานของกะนั้น (กะดึกเต็มแล้วต่อกะเช้าของวันรุ่งขึ้น)
   task.shift = schedPrev === 'both' ? bothModeStartFieldKey(target.time) : prev.shift;
@@ -6805,7 +6812,7 @@ function autoFixPlanSequencing() {
         // กันงานถัดไปมี startTime ค้างอยู่ตรงจุดที่ยังไม่ถึงเวลาเริ่มกะจริง (แม้ endTime ที่คำนวณได้จะถูกต้องอยู่แล้วเพราะ computePlanEnd ข้ามช่วงว่างให้เองก็ตาม แต่ startTime ที่แสดงจะดูสับสน)
         // และถ้าจุดที่ได้ไปตกวันหยุด (อาทิตย์/วันหยุดบริษัท) เลื่อนไปเริ่มกะเช้าของวันทำงานถัดไปแทน (ดู nextValidPlanContinuePoint)
         const schedPrev = planScheduleShiftFor(prev.workType, prev.shift);
-        const target = nextValidPlanContinuePoint(schedPrev, prev.endDate, prev.endTime);
+        const target = nextValidPlanContinuePoint(schedPrev, prev.endDate, prev.endTime, prev.otCapMinutesByShift, prev.workType);
         const targetDate = target.date, targetTime = target.time;
         // เทียบเป็น "ทับซ้อนจริงไหม" ไม่ใช่แค่ "ต่างจากจุดต่อเนื่องพอดีไหม" — เริ่มพอดี (เท่ากับ) หรือเริ่มทีหลัง (มีช่องว่างที่ตั้งใจเว้นไว้) ถือว่าไม่ทับซ้อน ปล่อยผ่านไม่แก้ให้
         const curKey = cur.date + ' ' + cur.startTime;
@@ -6965,7 +6972,7 @@ function autoContinueRemainingRollTime(workType, setName, colorKey, otCapMinutes
     // ถ้าจบพอดีตรงจุด "หมดกะ" (17:00 จบกะเช้า / 05:00 จบกะดึก) ให้ขยับไปเริ่มงานต่อที่ "เริ่มกะถัดไป" ตรงๆ (20:00/08:00 วันเดียวกัน) แทนที่จะให้งานใหม่มีเวลาเริ่มตรงจุดที่ยังไม่มีใครทำงานอยู่
     // (ถ้าปล่อยให้ startTime เป็น 17:00/05:00 เป๊ะ ตารางกะของงานนั้นจะเริ่มด้วยช่วง "รอกะถัดไป" ล้วนๆ ก่อนมีงานจริงเลยสักนาที ทำให้ splitPlanDataAcrossDays สร้างกลุ่มแรกที่ไม่มี Roll ไม่มีเวลาว่างเปล่าติดมาด้วย)
     // และถ้าจุดที่ได้ไปตกวันหยุด (อาทิตย์/วันหยุดบริษัท) เลื่อนไปเริ่มกะเช้าของวันทำงานถัดไปแทน (ดู nextValidPlanContinuePoint)
-    const boundaryFix = nextValidPlanContinuePoint(contShift, lastEndDate, lastEndTime);
+    const boundaryFix = nextValidPlanContinuePoint(contShift, lastEndDate, lastEndTime, otCapMinutesByShift, workType);
     lastEndDate = boundaryFix.date;
     lastEndTime = boundaryFix.time;
     const matchedRolls = getMatchingRollsForPlan(setName, colorKey || null);
@@ -7497,6 +7504,9 @@ function savePlanDayEnd() {
   if (!dayEndTarget || !canEditPlan()) return;
   const { dateIso, workType } = dayEndTarget;
   const shifts = dayEndFormShifts();
+  // โควตา OT เดิมของวันนั้น (ก่อนบันทึก) — ใช้เทียบว่าครั้งนี้เป็นการ "เพิ่ม" เวลาหรือไม่
+  const prevCaps = {};
+  shifts.forEach(k => { prevCaps[k] = otMinutesFromDayEnd(planDayEndFor(dateIso, workType, k), workType, k) || 0; });
   const ends = {}, caps = {};
   let bad = null;
   shifts.forEach(k => {
@@ -7557,13 +7567,26 @@ function savePlanDayEnd() {
   }
   autoFixPlanSequencing();   // เวลาน้อยลง → งานท้ายวันถูกดันไปวันถัดไปเอง
   mergeAdjacentPlanTasks();
-  // เวลาเหลือ → ถามว่าจะดึงงานวันถัดไปมาเติมให้เต็มไหม
-  maybePullWorkIntoFreeTail(workType, dateIso, mainShiftKey, caps);
+  // เพิ่มเวลา OT = มีเวลาว่างท้ายวันโผล่มา → ดึงงานวันถัดไปมาเติมให้เลย ไม่ต้องถาม
+  // ลดเวลาเลิกงานลง ยังถามก่อนเหมือนเดิม (ไม่ใช่การเพิ่มเวลาให้เติม)
+  const increased = shifts.some(k => (caps[k] != null ? caps[k] : 0) > (prevCaps[k] || 0));
+  const pulled = pullWorkIntoFreeTail(workType, dateIso, mainShiftKey, caps, increased);
   persistState();
   renderCurrentPlanView();
   closeModal();
-  if (skipped) alert('ตั้งเวลาเลิกงานให้ ' + applied + ' งานแล้ว\nข้าม ' + skipped
+  // รายงานผลให้เห็นทุกครั้งที่มีการดึงงานมาเติม (ห้ามย้ายงานแบบเงียบ ๆ)
+  const lines = [];
+  if (pulled.length) {
+    lines.push('ดึงงานวันถัดไปมาเติมเวลาที่เพิ่มขึ้น ' + pulled.length + ' งาน:');
+    pulled.slice(0, 6).forEach(mv => lines.push('• ' + mv.label
+      + (mv.whole === false ? ' — ดึงมา ' + mv.pieceCount + '/' + mv.ofPieces + ' ชิ้น' : ' — ทั้งงาน')
+      + ' จาก ' + fmtDateThai(parseISODate(mv.fromDate))
+      + ' → ' + mv.startTime + '–' + mv.endTime));
+    if (pulled.length > 6) lines.push('• และอีก ' + (pulled.length - 6) + ' งาน');
+  }
+  if (skipped) lines.push((lines.length ? '\n' : '') + 'ตั้งเวลาเลิกงานให้ ' + applied + ' งานแล้ว\nข้าม ' + skipped
     + ' งานที่กดเริ่ม/จบไปแล้ว (เวลาที่ทำจริงผูกกับวันนั้นแล้ว จึงไม่คิดเวลาใหม่ให้)');
+  if (lines.length) alert(lines.join('\n'));
 }
 
 // ─── ใส่เวลา OT เพิ่ม → ดึงงานวันถัดไปมาเติมให้เต็มเวลา ─────────────────────
@@ -7598,7 +7621,7 @@ function planDayFreeTail(workType, dateIso, shiftKey, otCaps) {
   const last = planLastTaskOnDay(workType, dateIso, shiftKey);
   if (!last || !last.endTime || last.endTime === '—') return null;
   const caps = mergeOtCaps(otCaps, last.otCapMinutesByShift, workType);
-  const anchor = nextValidPlanContinuePoint(shiftKey, last.endDate || dateIso, last.endTime);
+  const anchor = nextValidPlanContinuePoint(shiftKey, last.endDate || dateIso, last.endTime, caps, workType);
   // จุดต่อเวลายังอยู่ใน "วันทำงาน" เดียวกันไหม (งานกะดึกที่เลยเที่ยงคืนยังนับเป็นวันเดิม)
   if (taskDisplayDate({ date: anchor.date, startTime: anchor.time, shift: shiftKey }) !== dateIso) return null;
   const m = /^(\d{1,2}):(\d{2})$/.exec(anchor.time);
@@ -7613,6 +7636,60 @@ function planDayFreeTail(workType, dateIso, shiftKey, otCaps) {
 // วางแผนว่าจะดึงงานไหนมาเติมบ้าง โดยยังไม่แก้ข้อมูล — ไล่ตามคิวของประเภทงานนั้น
 // งานที่ย้ายมาแล้วยาวเกินเวลาที่เหลือ ไม่ต้องตัด ปล่อยให้ computePlanEnd ลากข้ามไปวันถัดไปเองตามกลไกเดิม
 // (วันนี้จึงถูกเติมจนเต็มถึงเวลาเลิกงานรวม OT พอดี แล้วส่วนที่เหลือไปต่อเช้าวันถัดไป)
+// ไล่ทีละชิ้น (Roll) ของงานที่จะดึงมา ว่าเอามาได้กี่ชิ้นก่อนจะเลยเวลาเลิกงานของวันนั้น
+// ยกทั้งก้อนมาไม่ได้ เพราะงานหนึ่งก้อนมักยาวกว่าเวลาที่เพิ่งเพิ่มเข้ามา ถ้ายกมาแล้วปล่อยให้ล้น
+// ตัวไล่คิว (autoFixPlanSequencing) จะไปดันงานที่เหลือทั้งแผนต่อกันเป็นพรวน โครงกะเช้า/กะดึกที่วางไว้พังทั้งอาทิตย์
+// นาทีทำงานที่ยัดลงช่วงเวลาที่เหลือของวันนั้นได้มากที่สุด (หักเวลาพัก/ช่วงนอกกะให้แล้ว)
+// ค้นด้วยการลองคำนวณเวลาจบ เพราะ computePlanEnd เป็นตัวเดียวที่รู้เรื่องพักเที่ยง/พักก่อน OT ครบ
+function planPullFitMinutes(startDate, startTime, shiftKey, caps, dateIso, maxMin) {
+  const fits = x => {
+    if (x <= 0) return true;
+    const c = computePlanEnd(startDate, startTime, x, shiftKey, caps);
+    if (!c.time) return false;
+    return taskDisplayDate({ date: c.date || startDate, startTime: c.time, shift: shiftKey }) === dateIso;
+  };
+  let lo = 0, hi = Math.max(0, Math.floor(maxMin));
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (fits(mid)) lo = mid; else hi = mid - 1;
+  }
+  return lo;
+}
+
+// ไล่ทีละชิ้น (Roll) ว่าเอามาได้เท่าไรก่อนจะเลยเวลาเลิกงานของวันนั้น
+// ชิ้นสุดท้ายเอามาได้ "บางส่วน" ได้ (เก็บนาทีที่เหลือไว้กับงานเดิม) แบบเดียวกับตอนตัดงานข้ามวัน
+// ยกทั้งก้อนมาไม่ได้ เพราะงานหนึ่งก้อนมักยาวกว่าเวลาที่เพิ่งเพิ่มเข้ามา ถ้าปล่อยให้ล้น
+// ตัวไล่คิวจะไปดันงานที่เหลือทั้งแผนต่อกันเป็นพรวน โครงกะเช้า/กะดึกที่วางไว้พังทั้งอาทิตย์
+const PLAN_PULL_MIN_SLICE = 10;   // เศษเวลาน้อยกว่านี้ไม่คุ้มดึงมา (สลับงานเสียเวลากว่า)
+function planPullPieceFit(cand, startDate, startTime, shiftKey, caps, dateIso) {
+  const scoped = getMatchingRollsForPlan(cand.rollSet, cand.rollColor);
+  const ids = (cand.rollIds || []).slice();
+  const mins = ids.map(idx => pieceMinutesOfTask(cand, idx, scoped));
+  const taken = [];
+  let cd = startDate, ct = startTime;
+  for (let i = 0; i < ids.length; i++) {
+    if (!(mins[i] > 0)) continue;               // ชิ้นที่ยังไม่กรอกเวลาในทะเบียน ข้ามไป
+    const c = computePlanEnd(cd, ct, mins[i], shiftKey, caps);
+    const endDate = c.time ? (c.date || cd) : null;
+    const wholeFits = !!c.time && taskDisplayDate({ date: endDate, startTime: c.time, shift: shiftKey }) === dateIso;
+    if (wholeFits) {
+      taken.push({ idx: ids[i], minutes: mins[i], whole: true });
+      cd = endDate; ct = c.time;
+      continue;
+    }
+    // ชิ้นนี้ทั้งชิ้นไม่พอ — เอามาเท่าที่ทำได้จริงในเวลาที่เหลือ
+    const slice = planPullFitMinutes(cd, ct, shiftKey, caps, dateIso, mins[i] - 1);
+    if (slice >= PLAN_PULL_MIN_SLICE) {
+      const c2 = computePlanEnd(cd, ct, slice, shiftKey, caps);
+      taken.push({ idx: ids[i], minutes: slice, whole: false });
+      cd = c2.date || cd; ct = c2.time || ct;
+    }
+    break;                                      // วันนี้เต็มแล้ว
+  }
+  const allWhole = taken.length === ids.filter((id, i) => mins[i] > 0).length && taken.every(p => p.whole);
+  return { taken, endDate: cd, endTime: ct, ids, mins, scoped, allWhole };
+}
+
 function planPullForwardPlan(workType, dateIso, shiftKey, otCaps) {
   const tail = planDayFreeTail(workType, dateIso, shiftKey, otCaps);
   if (!tail) return { tail: null, moves: [] };
@@ -7632,18 +7709,24 @@ function planPullForwardPlan(workType, dateIso, shiftKey, otCaps) {
     if (!mm) break;
     const candCaps = mergeOtCaps(tail.caps, cand.otCapMinutesByShift, workType);
     if (!shiftAllowsMinute(shiftKey, (+mm[1]) * 60 + (+mm[2]), candCaps, workType)) break;
-    const computed = computePlanEnd(curDate, curTime, cand.totalTime, shiftKey, candCaps);
-    if (!computed.time) break;
+    const label = (cand.rollSet || cand.rollName || cand.rollId || '')
+      + (cand.rollColor ? ' · ' + rollColorLabelFor(cand.rollSet, cand.rollColor) : '');
+    const fit = planPullPieceFit(cand, curDate, curTime, shiftKey, candCaps, dateIso);
+    if (!fit.taken.length) break;               // เวลาที่เหลือไม่พอแม้ชิ้นเดียว
+    const whole = fit.allWhole;
+    const takenMin = fit.taken.reduce((s, p) => s + p.minutes, 0);
     moves.push({
       id: cand.id, fromDate: cand.date, fromTime: cand.startTime,
       date: curDate, startTime: curTime, shift: shiftKey, caps: candCaps,
-      endTime: computed.time, endDate: computed.date || curDate,
-      otMinutes: computed.otMinutes || 0, otMinutesByShift: computed.otMinutesByShift || {},
-      label: (cand.rollSet || cand.rollName || cand.rollId || '')
-        + (cand.rollColor ? ' · ' + rollColorLabelFor(cand.rollSet, cand.rollColor) : ''),
+      endTime: fit.endTime, endDate: fit.endDate,
+      otMinutes: 0, otMinutesByShift: {},   // คำนวณจริงตอนย้าย (ดู applyPlanPullForward)
+      whole, pieces: fit.taken.map(p => p.idx), pieceMinutes: fit.taken.map(p => p.minutes),
+      totalTime: takenMin, pieceCount: fit.taken.length, ofPieces: fit.ids.length,
+      label,
     });
-    curDate = computed.date || curDate;
-    curTime = computed.time;
+    curDate = fit.endDate;
+    curTime = fit.endTime;
+    if (!whole) break;                          // ดึงมาได้บางส่วน = วันนี้เต็มแล้ว
     if (curDate !== dateIso) break; // งานนี้ลากข้ามวันไปแล้ว = วันนี้เต็ม
   }
   return { tail, moves };
@@ -7658,14 +7741,50 @@ function applyPlanPullForward(workType, shiftKey, moves) {
     const t = planTasks.find(x => x.id === mv.id);
     if (!t) return;
     sourceDays.add(mv.fromDate);
+    const scoped = getMatchingRollsForPlan(t.rollSet, t.rollColor);
+    const setTimes = (task, date, startTime, shift, caps) => {
+      const c = computePlanEnd(date, startTime, task.totalTime, planScheduleShiftFor(task.workType, shift), caps);
+      task.endTime = c.time || '—';
+      task.endDate = c.date || date;
+      task.otMinutes = c.otMinutes || 0;
+      task.otMinutesByShift = c.otMinutesByShift || {};
+    };
+    if (mv.whole === false && mv.pieces && mv.pieces.length) {
+      // ดึงมาเฉพาะบางชิ้น — แยกเป็นงานใหม่ในวันเป้าหมาย ส่วนที่เหลืออยู่วันเดิมตามเดิม
+      const movedMin = {}; mv.pieces.forEach((i, k) => { movedMin[i] = mv.pieceMinutes[k]; });
+      // งานเดิมเหลือ "เวลาเต็มของชิ้นนั้น ลบส่วนที่ดึงมา" — ชิ้นที่ดึงมาแค่บางส่วนจึงยังอยู่ทั้งสองงาน
+      const restMin = {};
+      (t.rollIds || []).forEach(i => {
+        const left = pieceMinutesOfTask(t, i, scoped) - (movedMin[i] || 0);
+        if (left > 0) restMin[i] = left;
+      });
+      const restIds = (t.rollIds || []).filter(i => restMin[i] > 0);
+      planTaskSeq++;
+      const newTask = {
+        ...t, id: 'PT-' + String(planTaskSeq).padStart(4, '0'),
+        date: mv.date, startTime: mv.startTime, shift: mv.shift, otCapMinutesByShift: mv.caps,
+        rollIds: mv.pieces.slice(), rollId: mv.pieces.length + (t.otherWork ? ' รายการ' : ' Roll'),
+        rollName: mv.pieces.map(i => (scoped[i] || {}).name).filter(Boolean).join(', ') || t.rollName,
+        totalTime: mv.totalTime,
+        rollMinutesOverride: movedMin,
+        splitGroupId: null,
+      };
+      setTimes(newTask, mv.date, mv.startTime, mv.shift, mv.caps);
+      planTasks.push(newTask);
+      // งานเดิมเหลือเฉพาะชิ้นที่ไม่ได้ดึงมา
+      t.rollIds = restIds;
+      t.rollId = restIds.length + (t.otherWork ? ' รายการ' : ' Roll');
+      t.rollName = restIds.map(i => (scoped[i] || {}).name).filter(Boolean).join(', ') || t.rollName;
+      t.totalTime = restIds.reduce((s, i) => s + restMin[i], 0);
+      t.rollMinutesOverride = restMin;
+      setTimes(t, t.date, t.startTime, t.shift, t.otCapMinutesByShift || {});
+      return;
+    }
     t.date = mv.date;
     t.startTime = mv.startTime;
     t.shift = mv.shift;
     t.otCapMinutesByShift = mv.caps;
-    t.endTime = mv.endTime;
-    t.endDate = mv.endDate;
-    t.otMinutes = mv.otMinutes;
-    t.otMinutesByShift = mv.otMinutesByShift;
+    setTimes(t, mv.date, mv.startTime, mv.shift, mv.caps);
   });
   // วันต้นทางที่ถูกดึงงานออกไป งานที่เหลือต้องเลื่อนขึ้นมาเริ่มต้นกะ ไม่ทิ้งช่องว่างไว้หัววัน
   sourceDays.forEach(day => {
@@ -7684,11 +7803,16 @@ function applyPlanPullForward(workType, shiftKey, moves) {
 }
 
 // ถามผู้ใช้ก่อนย้าย — เรียกตอนบันทึกงานที่มีเวลา OT
-function maybePullWorkIntoFreeTail(workType, dateIso, shiftKey, otCaps) {
-  if (!canEditPlan()) return false;
+// auto = true → ดึงมาเติมให้เลยไม่ต้องถาม ใช้ตอน "เพิ่ม" เวลา OT ของวันนั้น
+// (ผู้ใช้สั่งไว้ว่าเพิ่ม OT แล้วให้ดึงงานวันถัดไปมาวางต่อให้เต็มเวลา) แล้วรายงานว่าดึงอะไรมา
+// ส่วนกรณีอื่น (ลดเวลาเลิกงาน / บันทึกงานใหม่แล้วมีเวลาเหลือ) ยังถามก่อนเหมือนเดิม
+// คืนรายการงานที่ดึงมาจริง (ว่าง = ไม่มีอะไรถูกย้าย)
+function pullWorkIntoFreeTail(workType, dateIso, shiftKey, otCaps, auto) {
+  if (!canEditPlan()) return [];
   const { tail, moves } = planPullForwardPlan(workType, dateIso, shiftKey, otCaps);
-  // ช่องว่างท้ายวันน้อยกว่า 1 ชม. ไม่ต้องกวนถาม (เศษเวลาจากการปัดเวลาแต่ละงาน)
-  if (!tail || tail.freeMinutes < 60 || !moves.length) return false;
+  // ช่องว่างท้ายวันน้อยกว่า 1 ชม. ไม่ต้องกวน (เศษเวลาจากการปัดเวลาแต่ละงาน)
+  if (!tail || tail.freeMinutes < 60 || !moves.length) return [];
+  if (auto) { applyPlanPullForward(workType, shiftKey, moves); return moves; }
   const shown = moves.slice(0, 4).map(mv => '• ' + mv.label
     + ' (' + fmtDateThai(parseISODate(mv.fromDate)) + ' → ' + mv.startTime + '–' + mv.endTime
     + (mv.endDate !== mv.date ? ' วันถัดไป' : '') + ')').join('\n');
@@ -7696,9 +7820,13 @@ function maybePullWorkIntoFreeTail(workType, dateIso, shiftKey, otCaps) {
   const msg = 'วันที่ ' + fmtDateThai(parseISODate(dateIso)) + ' ยังมีเวลาทำงานเหลือตั้งแต่ ' + tail.time + ' ถึง ' + tail.untilTime
     + ' (' + formatMinutesAsHm(tail.freeMinutes).replace('≈ ', '') + ')\n\n'
     + 'ดึงงานวันถัดไปมาวางต่อให้เต็มเวลาไหม?\n\n' + shown + more;
-  if (!confirm(msg)) return false;
+  if (!confirm(msg)) return [];
   applyPlanPullForward(workType, shiftKey, moves);
-  return true;
+  return moves;
+}
+// ตัวเดิมที่ "ถามก่อน" — ยังใช้ตอนบันทึกงานใหม่แล้วเหลือเวลาท้ายวัน
+function maybePullWorkIntoFreeTail(workType, dateIso, shiftKey, otCaps) {
+  return pullWorkIntoFreeTail(workType, dateIso, shiftKey, otCaps, false).length > 0;
 }
 
 // ─── งานที่ทำค้างไว้จากวันก่อน → เตือน Admin/หัวหน้า แล้วยกไปวันถัดไป ─────────────
@@ -8776,7 +8904,7 @@ function reconcileLastPieceBoundary(workType, rollSet, rollColor) {
       if (newRemaining <= 0) {
         planTasks = planTasks.filter(x => x.id !== continuation.id);
       } else {
-        const anchor = nextValidPlanContinuePoint(planTaskSchedShift(t), t.endDate, t.endTime);
+        const anchor = nextValidPlanContinuePoint(planTaskSchedShift(t), t.endDate, t.endTime, t.otCapMinutesByShift, t.workType);
         continuation.date = anchor.date;
         continuation.startTime = anchor.time;
         continuation.totalTime = newRemaining;
