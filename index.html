@@ -5554,6 +5554,7 @@ function onPlanDragUp() {
   }
   autoFixPlanSequencing(); // ลำดับใหม่อาจกินเวลายาวกว่าเดิม — เลื่อนงานถัดๆ ไปที่ทับซ้อนให้เอง
   syncPlanProgressAfterMove(beforeDays);
+  mergeAdjacentPlanTasks();   // ลากมาต่อกันสนิทกับงานชุดเดียวกันในกะเดียวกัน = รวมเป็นงานเดียว
   persistState();
   renderCurrentPlanView();
   renderDailyTasks();   // งานที่ย้ายวันต้องหลุด/โผล่ในเช็คลิสต์ของวันที่ดูอยู่ให้ตรงกัน (อัปเดต KPI ในตัวอยู่แล้ว)
@@ -6695,6 +6696,10 @@ function resequencePlanTask(taskId) {
   task.endDate = computed.date || task.date;
   task.otMinutes = computed.otMinutes || 0;
   task.otMinutesByShift = computed.otMinutesByShift || {};
+  // ต่อเวลามาชนงานก่อนหน้าพอดี ถ้าเป็นชุด Roll เดียวกันในกะเดียวกันให้รวมเป็นงานเดียว
+  // (รวมแล้วเวลาจบยาวขึ้น จึงต่อเวลางานที่ถูกทับให้เรียบร้อยด้วย)
+  autoFixPlanSequencing();
+  mergeAdjacentPlanTasks();
   persistState();
   renderCurrentPlanView();
 }
@@ -6757,6 +6762,18 @@ function autoFixPlanSequencing() {
 // รวมงานที่ต่อเวลากันสนิท (จบงานก่อนหน้า = เริ่มงานถัดไปเป๊ะ) ของ Size Roll/สี/กะ/ผู้ปฏิบัติงาน/โควตา OT เดียวกัน ให้เป็นงานเดียวกัน
 // แทนที่จะปล่อยเป็นหลายแถวแยกกันทั้งที่จริงๆ ต่อเนื่องเป็นงานเดียวในรอบกะเดียวกัน (เช่น เพิ่มงานทีละล็อตแล้วเผลอสร้างแยกไว้)
 // ตรวจก่อนรวมทุกครั้งว่ารวมกันแล้วยังคงจบภายในรอบกะเดียว (splitPlanDataAcrossDays คืน null) — ถ้ารวมแล้วจะข้ามรอบกะจริง (เช้า/ดึกคนละรอบ) จะไม่รวม เพราะต้องแยกเป็นคนละวันตามฟีเจอร์ตัดวันจริง
+// จัดระเบียบแผนงานหลัง "ได้ข้อมูลชุดใหม่มาทั้งชุด" — ต่อเวลางานที่ทับกัน แล้วรวมงานชุดเดียวกัน
+// ที่ต่อเวลากันสนิทในกะเดียวกันให้เป็นงานเดียว
+// ท้ายไฟล์มี migration ชุดนี้อยู่แล้ว แต่ทำงานตอนบูตซึ่งข้อมูลจริงจาก cloud ยังไม่มาถึง
+// ผลคืองานที่ต่อกันสนิทในข้อมูลบน cloud ไม่เคยถูกรวมเลยจนกว่าผู้ใช้จะกดบันทึกงานใหม่
+function tidyPlanAfterStateLoad() {
+  let changed = false;
+  if (autoFixPlanSequencing()) changed = true;
+  if (mergeAdjacentPlanTasks()) changed = true;
+  if (changed) persistState();
+  return changed;
+}
+
 function mergeAdjacentPlanTasks() {
   let anyChanged = false;
   let changed = true;
@@ -7693,6 +7710,7 @@ function carryOverAllLeftover() {
   list.forEach(x => { if (carryOverLeftoverTask(x.task.id, day)) n++; });
   autoFixPlanSequencing();
   syncPlanProgressAfterMove(before);
+  mergeAdjacentPlanTasks();
   persistState();
   renderCurrentPlanView();
   renderDailyTasks();
@@ -7708,6 +7726,7 @@ function carryOverOneLeftover(taskId) {
   if (!id) return;
   autoFixPlanSequencing();
   syncPlanProgressAfterMove(before);
+  mergeAdjacentPlanTasks();
   persistState();
   renderCurrentPlanView();
   renderDailyTasks();
@@ -13507,6 +13526,7 @@ async function initCloudSync() {
       cloudUpdatedAt = row.updated_at;
       applyState(row.data);
       syncRollStatusWithProdBlock();
+      tidyPlanAfterStateLoad();
       cacheStateLocally();
       refreshAfterCloudUpdate();
     } else {
@@ -13523,6 +13543,7 @@ async function initCloudSync() {
         cloudUpdatedAt = payload.new.updated_at || cloudUpdatedAt;
         applyState(payload.new.data);
         syncRollStatusWithProdBlock();
+        tidyPlanAfterStateLoad();
         cacheStateLocally();
         refreshAfterCloudUpdate();
       })
@@ -13551,6 +13572,7 @@ async function pullCloudState() {
     cloudUpdatedAt = cur.updated_at;
     applyState(cur.data);
     syncRollStatusWithProdBlock();
+    tidyPlanAfterStateLoad();
     cacheStateLocally();
     refreshAfterCloudUpdate();
   } catch (e) { /* ออฟไลน์ — ใช้ข้อมูลในเครื่องต่อไป */ }
