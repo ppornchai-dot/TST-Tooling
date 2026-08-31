@@ -6089,10 +6089,16 @@ function renderRollOptionsPanel(rolls, selectedIndexes) {
     return;
   }
   const selectedSet = new Set(selectedIndexes.map(Number));
+  // หัวรายการติดขอบบน (sticky) — เลื่อนดู Roll ตัวล่างๆ แล้วปุ่ม "ตกลง" ยังกดได้อยู่
+  // top:-4px หัก padding ของ panel ออก ไม่ให้เห็นรายการโผล่ใต้หัวรายการ
   panel.innerHTML =
-    `<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:700;border-bottom:1px solid var(--border-light);margin-bottom:2px;">
-      <input type="checkbox" id="pf-rollids-all" onchange="toggleAllRollOptions(this)" style="width:14px;height:14px;cursor:pointer;">เลือกทั้งหมด (${rolls.length})
-    </label>` +
+    `<div style="display:flex;align-items:center;gap:8px;padding:2px 4px 6px;border-bottom:1px solid var(--border-light);margin-bottom:2px;
+                position:sticky;top:-4px;background:var(--bg-surface);z-index:1;">
+      <label style="display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:700;flex:1;min-width:0;">
+        <input type="checkbox" id="pf-rollids-all" onchange="toggleAllRollOptions(this)" style="width:14px;height:14px;cursor:pointer;">เลือกทั้งหมด (${rolls.length})
+      </label>
+      <button type="button" class="btn btn-primary btn-sm" onclick="closeRollDropdown(event)" style="flex-shrink:0;font-weight:800;">ตกลง</button>
+    </div>` +
     rolls.map((r, idx) => `<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:5px;cursor:pointer;font-size:13px;">
       <input type="checkbox" value="${idx}"${selectedSet.has(idx) ? ' checked' : ''} onchange="toggleRollOption(this)" style="width:14px;height:14px;cursor:pointer;">${escapeHtmlAttr(r.name)}
     </label>`).join('');
@@ -6120,6 +6126,13 @@ function openRollDropdownNow() {
   if (row && row.scrollIntoView) {
     try { row.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { row.scrollIntoView(); }
   }
+}
+
+// กด "ตกลง" = หุบรายการลง (ค่าที่ติ๊กถูกบันทึกไว้ตอนติ๊กอยู่แล้ว ไม่ต้องยืนยันอะไรเพิ่ม)
+function closeRollDropdown(ev) {
+  if (ev) ev.stopPropagation();
+  const panel = document.getElementById('pf-rollids-panel');
+  if (panel) panel.style.display = 'none';
 }
 
 function toggleRollDropdown(ev) {
