@@ -1557,15 +1557,16 @@ canvas{display:block;}
       <!-- เอาปุ่มกรอง ทั้งหมด/CNC/ขัด Roll ออกแล้ว — ตารางแบ่งหัวข้อเป็น 2 ประเภทงานให้เห็นทั้งคู่ในหน้าเดียว
            ช่าง CNC / ช่างขัด Roll ยังเห็นเฉพาะประเภทของตัวเอง ผ่าน forcedWorkTypeForRole() -->
       <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
-        <button class="btn btn-ghost btn-sm daily-datenav-btn" onclick="dailyNav(-1)">‹ ก่อนหน้า</button>
+        <button class="btn btn-ghost btn-sm daily-datenav-btn" data-daynav="-1" onclick="dailyNav(-1)">‹ ก่อนหน้า</button>
         <div style="position:relative;display:inline-flex;">
           <span id="daily-daterange-trigger" onclick="openDailyDatePicker(event)" title="คลิกเพื่อเลือกวันที่" style="padding:0 8px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;">
             <span aria-hidden="true" style="font-size:18px;">📅</span>
             <span id="daily-daterange-label" style="font-size:19px;font-weight:800;color:var(--text-1);">2 ก.ค. 2569</span>
+            <span id="daily-daterange-rel" class="chip chip-blue" style="display:none;"></span>
           </span>
           <div id="daily-date-popup" class="plan-date-popup" style="display:none;"></div>
         </div>
-        <button class="btn btn-ghost btn-sm daily-datenav-btn" onclick="dailyNav(1)">ถัดไป ›</button>
+        <button class="btn btn-ghost btn-sm daily-datenav-btn" data-daynav="1" onclick="dailyNav(1)">ถัดไป ›</button>
         <button class="btn btn-ghost btn-sm daily-datenav-btn" onclick="dailyGoToday()" style="margin-left:auto;">วันนี้</button>
       </div>
 
@@ -3579,11 +3580,11 @@ function goToDailyTask(taskId, dateIso, workType) {
   if (!t) { alert('งานตามแผนนี้ถูกลบหรือย้ายไปแล้ว'); renderDashboardWorkingRoll(); return; }
   const day = dateIso || taskDisplayDate(t);
   showPage('daily');
-  // ช่างถูกล็อกให้ดูได้เฉพาะวันทำงานปัจจุบัน — ถ้างานอยู่วันอื่น บอกไปตรง ๆ ไม่ฝืนเปลี่ยนวันให้
-  if (isDailyTechRole() && day !== dailyTodayIso()) {
+  // ช่างเปิดดูได้ 3 วัน (เมื่อวาน/วันนี้/พรุ่งนี้) — ไกลกว่านั้นบอกไปตรง ๆ ไม่ฝืนเปลี่ยนวันให้
+  if (isDailyTechRole() && !dailyTechDateAllowed(day)) {
     dailyViewDate = dailyTodayIso();
     renderDailyTasks();
-    alert('งานนี้เป็นของวันที่ ' + fmtDateThai(parseISODate(day)) + ' ซึ่งเปิดดูย้อนหลังไม่ได้');
+    alert('งานนี้เป็นของวันที่ ' + fmtDateThai(parseISODate(day)) + '\nเปิดดูได้เฉพาะ เมื่อวาน · วันนี้ · พรุ่งนี้');
     return;
   }
   dailyViewDate = day;
@@ -11992,6 +11993,27 @@ function DL() {
   return effectiveRole() === 'polish' ? DAILY_ACTION_LABELS_EN : DAILY_ACTION_LABELS_TH;
 }
 
+// ช่าง/พนักงานเดินเครื่องเลื่อนดูได้ 3 วัน: เมื่อวาน · วันนี้ · พรุ่งนี้
+// (เมื่อวาน = ตามงานที่ค้างไว้ / พรุ่งนี้ = เตรียมตัวว่าจะทำอะไรต่อ)
+// ส่วนการ "กดเริ่ม/จบงาน" ยังทำได้เฉพาะวันปัจจุบันเหมือนเดิม (ดู canActOnDailyDate)
+function dailyTechDateAllowed(iso) {
+  const today = dailyTodayIso();
+  return iso === today || iso === addDaysIso(today, -1) || iso === addDaysIso(today, 1);
+}
+
+function clampDailyTechDate(iso) {
+  return dailyTechDateAllowed(iso) ? iso : dailyTodayIso();
+}
+
+// ป้ายกำกับวันแบบเทียบกับวันนี้ — คืน '' ถ้าไม่ใช่ 3 วันนี้
+function dailyRelativeDayLabel(iso) {
+  const today = dailyTodayIso();
+  if (iso === today) return 'วันนี้';
+  if (iso === addDaysIso(today, -1)) return 'เมื่อวาน';
+  if (iso === addDaysIso(today, 1)) return 'พรุ่งนี้';
+  return '';
+}
+
 function isDailyTechRole() {
   const r = effectiveRole();
   return r === 'cnc' || r === 'polish' || r === 'operator';
@@ -12002,14 +12024,31 @@ function applyDailyTechView() {
   const t = document.getElementById('tbl-daily');
   if (t) t.classList.toggle('daily-tech-view', tech);
 
-  // ซ่อนปุ่มเลื่อนวัน และปิดการกดปฏิทินเลือกวันที่สำหรับช่าง
-  document.querySelectorAll('.daily-datenav-btn').forEach(b => { b.style.display = tech ? 'none' : ''; });
+  // ช่างเลื่อนวันได้ 3 วัน (เมื่อวาน/วันนี้/พรุ่งนี้) — ปุ่มยังอยู่ แต่ปิดปุ่มที่จะพาออกนอกช่วง
+  // ส่วนปฏิทินเลือกวันที่ยังปิดไว้ เพราะกดเลือกวันไหนก็ได้ = หลุดออกนอก 3 วัน
+  document.querySelectorAll('.daily-datenav-btn').forEach(b => { b.style.display = ''; });
+  syncDailyDateNavButtons();
   const trigger = document.getElementById('daily-daterange-trigger');
   if (trigger) {
     trigger.style.cursor = tech ? 'default' : 'pointer';
-    trigger.title = tech ? 'ดูได้เฉพาะงานของวันนี้' : 'คลิกเพื่อเลือกวันที่';
+    trigger.title = tech ? 'ดูได้ 3 วัน: เมื่อวาน · วันนี้ · พรุ่งนี้ (ใช้ปุ่มก่อนหน้า/ถัดไป)' : 'คลิกเพื่อเลือกวันที่';
   }
   if (tech) closeDailyDatePicker();
+}
+
+// ปุ่ม '‹ ก่อนหน้า' / 'ถัดไป ›' ของช่าง ต้องปิดเมื่อสุดช่วง 3 วันแล้ว
+// (Admin/หัวหน้าเลื่อนได้ไม่จำกัดเหมือนเดิม)
+function syncDailyDateNavButtons() {
+  const tech = isDailyTechRole();
+  document.querySelectorAll('.daily-datenav-btn').forEach(b => {
+    const dir = b.getAttribute('data-daynav');
+    if (!dir) { b.disabled = false; b.title = ''; return; }
+    const target = addDaysIso(dailyViewDate, parseInt(dir, 10));
+    const blocked = tech && !dailyTechDateAllowed(target);
+    b.disabled = blocked;
+    b.style.opacity = blocked ? '.45' : '';
+    b.title = blocked ? 'ดูได้ 3 วันเท่านั้น: เมื่อวาน · วันนี้ · พรุ่งนี้' : '';
+  });
 }
 
 function canActOnDailyDate() {
@@ -12368,8 +12407,10 @@ function setDailyViewDate(iso) {
 }
 
 function dailyNav(dir) {
-  if (isDailyTechRole()) return; // ช่างเลื่อนวันไม่ได้ — กันไว้ที่ตัวฟังก์ชันด้วย ไม่ใช่แค่ซ่อนปุ่ม
-  dailyViewDate = addDaysIso(dailyViewDate, dir);
+  const target = addDaysIso(dailyViewDate, dir);
+  // ช่างเลื่อนได้แค่ในช่วง 3 วัน — กันไว้ที่ตัวฟังก์ชันด้วย ไม่ใช่แค่ปิดปุ่ม
+  if (isDailyTechRole() && !dailyTechDateAllowed(target)) return;
+  dailyViewDate = target;
   renderDailyTasks();
 }
 
@@ -12479,7 +12520,7 @@ setInterval(() => {
   const iso = dailyTodayIso();
   if (iso === lastDailyTodayIso) return;
   lastDailyTodayIso = iso;
-  if (isDailyTechRole()) dailyViewDate = iso;
+  if (isDailyTechRole()) dailyViewDate = clampDailyTechDate(dailyViewDate);
   renderDailyTasks();
 }, 60000);
 
@@ -12487,11 +12528,20 @@ function renderDailyTasks() {
   const tbody = document.getElementById('tbody-daily');
   if (!tbody) return;
 
-  // ช่างเห็นได้เฉพาะวันปัจจุบัน — ดึงกลับมาวันนี้เสมอ กันกรณีค้างวันอื่นไว้ (เช่น Admin เลื่อนวันไว้แล้วสลับมุมมองเป็นช่าง)
-  if (isDailyTechRole() && dailyViewDate !== dailyTodayIso()) dailyViewDate = dailyTodayIso();
+  // ช่างดูได้แค่ เมื่อวาน/วันนี้/พรุ่งนี้ — ค้างอยู่วันนอกช่วงให้ดึงกลับมาวันนี้
+  // (เช่น Admin เลื่อนไปดูวันอื่นไว้แล้วสลับมุมมองเป็นช่าง หรือเปิดหน้าค้างข้ามวัน)
+  if (isDailyTechRole()) dailyViewDate = clampDailyTechDate(dailyViewDate);
 
   const dateLabel = document.getElementById('daily-daterange-label');
   if (dateLabel) dateLabel.textContent = fmtDateThai(parseISODate(dailyViewDate));
+  // ป้าย เมื่อวาน/วันนี้/พรุ่งนี้ — อ่านได้ทันทีว่ากำลังดูวันไหน ไม่ต้องนับวันที่เอง
+  const relLabel = document.getElementById('daily-daterange-rel');
+  if (relLabel) {
+    const rel = dailyRelativeDayLabel(dailyViewDate);
+    relLabel.textContent = rel;
+    relLabel.style.display = rel ? '' : 'none';
+  }
+  syncDailyDateNavButtons();
 
   // เช็คลิสต์ที่ผู้ใช้เพิ่มเอง (ทำซ้ำทุกวัน หรือเฉพาะวันที่เลือก) + งาน CNC/ขัด Roll ที่วางแผนไว้ในหน้า "วางแผน" สำหรับวันนี้โดยเฉพาะ — รวมเป็นรายการเดียวกัน เรียงตามเวลา
   // ตัวกรองประเภทงาน/กะ มีผลเฉพาะงานที่มาจากหน้าวางแผน (มี workType/shift จริง) — เช็คลิสต์ที่เพิ่มเองแสดงเสมอไม่ว่าจะกรองแบบไหน
