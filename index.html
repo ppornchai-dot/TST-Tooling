@@ -5015,12 +5015,31 @@ function planTaskPieceBreakdown(t) {
     return override != null ? override : (parseFloat(p.roll[field]) || 0);
   });
   const schedule = computePlanPieceSchedule(t.date, t.startTime, pieceMinutesList, t.shift, t.otCapMinutesByShift || {});
-  // "continued" เฉพาะชิ้นที่นาทีจริงถูก override ไว้ *น้อยกว่า* เวลาแต่ง/ขัด Roll เต็มจากทะเบียน Tooling — คือชิ้นที่ถูกแบ่งเวลาคาบเกี่ยวจริงๆ ไม่ใช่ทุกชิ้นในงานที่เคยผ่านการตัดวัน
-  return pairs.map((p, i) => ({
-    roll: p.roll, minutes: pieceMinutesList[i], range: schedule[i] || {},
-    continued: pieceMinutesList[i] < (parseFloat(p.roll[field]) || 0),
-    fullMinutes: parseFloat(p.roll[field]) || 0,   // เวลาเต็มของชิ้นนี้ = 1 ชิ้น ใช้คิดสัดส่วนของแต่ละช่วงเวลา
-  }));
+  // "(ต่อ)" = ชิ้นนี้ถูกแบ่งไปทำต่อในงานอื่นจริง — ต้องเป็นงานที่ "ผูกกันจริง" เท่านั้น คือ
+  //   • งานที่ถูกตัดจากงานเดียวกันตอนวางแผน (splitGroupId เดียวกัน) หรือ
+  //   • งานที่ยกส่วนที่ทำไม่ทันมาจากอีกงานหนึ่ง (carriedFrom)
+  // ห้ามนับ "งานชุดเดียวกันคนละรอบ" เป็นการแบ่งเวลา — Roll ถูกขัด/แต่งซ้ำได้เรื่อยๆ ตามรอบบำรุงรักษา
+  // (อาการเดิม 1: ใช้ "นาทีที่วางไว้ < เวลาเต็มตามทะเบียน" → งานขัดที่ตั้งเองชิ้นละ 16 นาที (ทะเบียน 20)
+  //             ขึ้น "(ต่อ)" ทุกชิ้นทั้งที่ไม่ได้แบ่งไปไหน
+  //  อาการเดิม 2: ใช้ "มีชิ้นนี้อยู่ในงานอื่นด้วย" → งานขัดชุดเดียวกันของวันที่ 20/21/31 ส.ค.
+  //             (คนละรอบขัด) ถูกนับรวมกันเป็นชิ้นเดียว)
+  const others = planTasks.filter(x => x.id !== t.id && x.workType === t.workType
+    && x.rollSet === t.rollSet && (x.rollColor || null) === (t.rollColor || null)
+    && ((t.splitGroupId && x.splitGroupId === t.splitGroupId)
+      || (x.carriedFrom && x.carriedFrom.taskId === t.id)
+      || (t.carriedFrom && t.carriedFrom.taskId === x.id)));
+  const otherMinutesFor = idx => others.reduce((s, x) =>
+    s + ((x.rollIds || []).includes(idx) ? (pieceMinutesOfTask(x, idx, scoped) || 0) : 0), 0);
+  return pairs.map((p, i) => {
+    const elsewhere = otherMinutesFor(p.idx);
+    return {
+      roll: p.roll, minutes: pieceMinutesList[i], range: schedule[i] || {},
+      continued: elsewhere > 0,
+      // ตัวหารของ "1 ชิ้น" = เวลาที่วางแผนไว้ทั้งหมดของชิ้นนี้ (งานนี้ + งานอื่นที่แบ่งไป)
+      // สัดส่วนของทุกแถวของชิ้นเดียวกันจึงรวมได้ 1 ชิ้นพอดีเสมอ
+      fullMinutes: pieceMinutesList[i] + elsewhere,
+    };
+  });
 }
 
 // จำนวนชิ้นของช่วงเวลาหนึ่ง — เทียบกับ "เวลาเต็มของ Roll ชิ้นนั้น" (เวลาเต็ม = 1 ชิ้น)
@@ -5032,8 +5051,9 @@ function pieceCountText(minutes, fullMinutes) {
   if (full <= 0 || part <= 0) return '';
   const n = part / full;
   if (n < 0.01) return '< 0.01 ชิ้น';   // เศษเวลาเล็กมาก ปัดเป็น 0.00 แล้วอ่านเหมือนไม่มีงาน
-  const s = n.toFixed(2).replace(/.?0+$/, '');
-  return s + ' ชิ้น';
+  // ปัด 2 ตำแหน่งด้วยเลขคณิต แล้วให้ String() ตัดศูนย์ท้ายเอง (0.8 → "0.8", 1 → "1")
+  // เลี่ยง regex ตัดศูนย์ เพราะพลาดเครื่องหมาย \ ครั้งเดียวกลายเป็น "." ที่แมตช์ตัวอะไรก็ได้
+  return String(Math.round(n * 100) / 100) + ' ชิ้น';
 }
 
 const PLAN_TIME_TYPE_META = {
