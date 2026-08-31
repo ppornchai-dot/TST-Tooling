@@ -8017,18 +8017,20 @@ function planPullForwardPlan(workType, dateIso, shiftKey, otCaps) {
   // ลำดับในคิวจริง: วันทำงาน + ลำดับเวลาในวันนั้น (08:00 ไล่ไปจนถึง 05:00 ของเช้าวันถัดไป)
   const queueKey = (iso, time) => iso + ' ' + String(historyDayOrderMin(time)).padStart(5, '0');
   const tailKey = queueKey(dateIso, tail.time);
-  // งานที่จบตรงจุดว่างพอดี — ใช้ดูว่าตอนนี้เครื่องกำลังทำชุดไหนอยู่
-  const lastHere = planLastTaskOnDay(workType, dateIso, shiftKey);
+  // ชุด Roll ที่ "อยู่บนเครื่องของวันนั้น" — ประเภทงานที่ทำได้ทั้งสองกะ (CNC) ดูทั้งวันทำงาน
+  // ไม่ใช่แค่กะที่กำลังเติม เพราะเป็นเครื่องเดียวกัน กะเช้าเปลี่ยน Roll ไว้แบบไหน กะดึกก็ชุดนั้น
+  const lastHere = planLastTaskOnDay(workType, dateIso, shiftKey)
+    || (planWorkTypeAllowsShift(workType, 'both') ? planLastTaskOnDay(workType, dateIso, 'both') : null);
   const sameSetAsHere = t => !!lastHere && t.rollSet === lastHere.rollSet && t.rollColor === lastHere.rollColor;
   const later = planTasks
     .filter(t => t.workType === workType && t.endTime && t.endTime !== '—' && !planTaskIsSettled(t)
       && queueKey(taskDisplayDate(t), t.startTime) > tailKey)
+    // เติมเวลาว่างด้วย "ชุด Roll เดียวกับที่วันนั้นทำอยู่" เท่านั้น — ไม่มีชุดเดิมเหลือก็ปล่อยว่างไว้
+    // เปลี่ยนชุดกลางวัน = ต้องถอด/ใส่ Roll บนเครื่องจริง ระบบไม่มีสิทธิ์ตัดสินใจแทน
+    // (อาการเดิม: วางแผนไว้ชุด Sizing แต่มีงานชุด TH ถูกดึงมาแทรกในวันเดียวกันเอง)
+    // วันที่ยังไม่มีงานเลย (lastHere = null) = ยังไม่ได้กำหนดว่าใส่ชุดไหน ดึงงานถัดไปในคิวมาได้ตามปกติ
+    .filter(t => !lastHere || sameSetAsHere(t))
     .sort((a, b) => {
-      // ชุด Roll เดียวกับที่กำลังทำอยู่มาก่อน — เติมช่องว่างด้วยงานของชุดเดิมให้ต่อกันจนจบ
-      // ไม่งั้นงานของชุดอื่นจะถูกแทรกเข้ามากลางคิวของชุดเดิม (เห็นเป็นชุดสลับไปมาข้ามวัน
-      //  ทั้งที่ตั้งใจวางทีละชุด) และต้องเปลี่ยน Roll บนเครื่องกลับไปกลับมาโดยไม่จำเป็น
-      const sa = sameSetAsHere(a) ? 0 : 1, sb = sameSetAsHere(b) ? 0 : 1;
-      if (sa !== sb) return sa - sb;
       const ak = queueKey(taskDisplayDate(a), a.startTime), bk = queueKey(taskDisplayDate(b), b.startTime);
       return ak !== bk ? ak.localeCompare(bk) : (a.id < b.id ? -1 : 1);
     });
