@@ -6129,10 +6129,27 @@ function openRollDropdownNow() {
 }
 
 // กด "ตกลง" = หุบรายการลง (ค่าที่ติ๊กถูกบันทึกไว้ตอนติ๊กอยู่แล้ว ไม่ต้องยืนยันอะไรเพิ่ม)
+// แล้วเปิดกล่องแก้เวลาต่อชิ้นต่อ — ขั้นถัดไปของการวางแผนคือตรวจ/แก้เวลาของชิ้นที่เพิ่งเลือก
 function closeRollDropdown(ev) {
   if (ev) ev.stopPropagation();
   const panel = document.getElementById('pf-rollids-panel');
   if (panel) panel.style.display = 'none';
+  openPlanPieceMinutes();
+}
+
+// เปิดกล่องแก้เวลาต่อชิ้น (ไม่สลับปิด) + เลื่อนหน้าจอมาให้เห็น
+// ถ้าเปิดอยู่แล้วก็แค่วาดค่าใหม่ให้ตรงกับ Roll ที่เพิ่งเลือก
+function openPlanPieceMinutes() {
+  const box = document.getElementById('pf-piece-minutes');
+  if (!box) return;
+  if (planFormOtherWork) return;                      // งานอื่นๆ กรอกเวลารวมเองอยู่แล้ว ไม่มีรายชิ้น
+  if (!planFormSelectedPieces().length) return;        // ยังไม่ได้เลือก Roll = ไม่มีอะไรให้แก้
+  if (box.style.display === 'none') togglePlanPieceMinutes();
+  else renderPlanPieceMinutes();
+  const row = document.getElementById('pf-row-plantime');
+  if (row && row.scrollIntoView) {
+    try { row.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { row.scrollIntoView(); }
+  }
 }
 
 function toggleRollDropdown(ev) {
