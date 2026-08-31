@@ -6099,6 +6099,20 @@ function renderRollOptionsPanel(rolls, selectedIndexes) {
   syncRollSelectAllState();
 }
 
+// เปิดดรอปดาวน์รายชื่อ Roll (ไม่สลับปิด) — ใช้ตอนเลือกชุดสีเสร็จ ให้ติ๊กเลือก Roll ต่อได้ทันที
+function openRollDropdown() {
+  const panel = document.getElementById('pf-rollids-panel');
+  if (!panel) return;
+  if (!panel.innerHTML.trim() || /ไม่พบ Roll/.test(panel.innerHTML)) return;   // ไม่มีรายการให้เลือก ไม่ต้องเปิด
+  panel.style.display = 'block';
+  panel.scrollTop = 0;
+  // เลื่อนหน้าจอมาให้เห็นรายการที่เพิ่งเปิด — ช่องนี้อยู่ท้ายฟอร์ม ถ้าไม่เลื่อนจะไม่เห็นว่าเปิดอยู่
+  const row = document.getElementById('pf-row-rollids');
+  if (row && row.scrollIntoView) {
+    try { row.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { row.scrollIntoView(); }
+  }
+}
+
 function toggleRollDropdown(ev) {
   if (ev) ev.stopPropagation();
   const panel = document.getElementById('pf-rollids-panel');
@@ -6805,6 +6819,8 @@ function onPlanRollSetChange() {
       // เบราว์เซอร์ที่ไม่รองรับ/ไม่อนุญาต ก็ยังโฟกัสไว้ให้กดต่อได้ทันที
       try { if (typeof sel.showPicker === 'function') sel.showPicker(); } catch (e) { /* ไม่รองรับ — ข้าม */ }
     }
+  } else if (setName && colorKey) {
+    openRollDropdown();   // มีสีเดียวและเลือกให้แล้ว — ข้ามไปติ๊กรายชื่อ Roll ได้เลย
   }
 }
 
@@ -6813,6 +6829,8 @@ function onPlanRollColorChange() {
   const colorKey = document.getElementById('pf-rollcolor').value;
   clearPlanFieldWarn('pf-rollcolor');
   fillPlanRollReadonly(setName, colorKey, null, currentEditingPlanTaskId);
+  // เลือกชุดสีเสร็จ ขั้นถัดไปคือติ๊กเลือกรายชื่อ Roll — เปิดดรอปดาวน์ให้เลย
+  openRollDropdown();
 }
 
 // หางาน (ประเภทเดียวกัน) ที่จบล่าสุด (เรียงตามวันที่จบ+เวลาจบ) เพื่อให้งานใหม่เริ่มต่อจากตรงนั้นได้เลย ไม่ทับเวลากับงานที่วางแผนไว้ก่อนหน้า
