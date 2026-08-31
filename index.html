@@ -5076,6 +5076,11 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
       const groupBorder = (si === 0 && i > 0) ? 'border-top:2px solid var(--border);' : '';
       const breakStyle = isBreak ? 'background:var(--bg-hover);font-style:italic;' : '';
       const continuedBadge = p.continued ? ' <span class="muted" style="font-weight:400;font-style:italic;">(ต่อ)</span>' : '';
+      // ชิ้นที่ทำต่อกะ/ต่อวัน — ใต้ชื่อ Roll บอกว่า "งานนี้ทำได้กี่ชิ้น" จากทั้งชิ้น
+      // (แถวเวลาด้านขวายังบอกสัดส่วนของแต่ละช่วงเวลาย่อยเหมือนเดิม)
+      const contPieceLine = (p.continued && pieceCountText(p.minutes, p.fullMinutes))
+        ? `<div title="งานนี้ทำ ${escapeHtmlAttr(String(p.minutes))} นาที จากทั้งชิ้น ${escapeHtmlAttr(String(p.fullMinutes))} นาที"
+               style="font-size:11px;font-weight:700;color:var(--accent);">${escapeHtmlAttr(pieceCountText(p.minutes, p.fullMinutes))}</div>` : '';
       // เทียบขนาดที่วัดได้จริงหลังแต่ง/ขัด (บันทึกตอนกด "จบงาน") กับ OD มาตรฐาน — โชว์แค่แถวแรกของชิ้นที่จบแล้ว
       // ใช้ตัวจัดรูปแบบเดียวกับหน้าประวัติการทำงาน (odCompareHtml) ให้อ่านได้เหมือนกันทั้งสองหน้า
       const measuredSizeLine = (interactive && isFirstRow && !isBreak && pieceEntry.measuredSize)
@@ -5085,7 +5090,7 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
         ? `<div class="muted" style="font-size:11px;font-weight:400;color:var(--amber);">⏸ พักงาน: ${escapeHtmlAttr(pieceEntry.pauseReason)}${pieceEntry.pausedAt ? ` (${escapeHtmlAttr(pieceEntry.pausedAt)})` : ''}</div>` : '';
       const rollCell = isBreak
         ? `<td colspan="2" class="muted" style="${breakStyle}">${escapeHtmlAttr(typeMeta.label)}</td>`
-        : `<td class="muted">${isFirstRow ? escapeHtmlAttr(p.roll.id) : ''}</td><td><strong>${isFirstRow ? escapeHtmlAttr(p.roll.name) : ''}</strong>${isFirstRow ? continuedBadge : ''}${measuredSizeLine}${pauseReasonLine}</td>`;
+        : `<td class="muted">${isFirstRow ? escapeHtmlAttr(p.roll.id) : ''}</td><td><strong>${isFirstRow ? escapeHtmlAttr(p.roll.name) : ''}</strong>${isFirstRow ? continuedBadge + contPieceLine : ''}${measuredSizeLine}${pauseReasonLine}</td>`;
       // ปุ่ม "เริ่มงาน/จบงาน/พักงาน" แยกทีละชิ้น Roll (เฉพาะโหมด interactive จากหน้างานประจำวัน) — โชว์แค่แถวแรกของชิ้นนั้น กด "จบงาน" แล้วบันทึกขนาดที่วัดได้เป็นล็อกแยก
       let actionCell = '';
       if (interactive && !isBreak && isFirstRow) {
