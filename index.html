@@ -3584,7 +3584,7 @@ function goToDailyTask(taskId, dateIso, workType) {
   if (isDailyTechRole() && !dailyTechDateAllowed(day)) {
     dailyViewDate = dailyTodayIso();
     renderDailyTasks();
-    alert('งานนี้เป็นของวันที่ ' + fmtDateThai(parseISODate(day)) + '\nเปิดดูได้เฉพาะ เมื่อวาน · วันนี้ · พรุ่งนี้');
+    alert('งานนี้เป็นของวันที่ ' + fmtDateThai(parseISODate(day)) + '\nเปิดดูได้เฉพาะ วันทำงานก่อน · วันนี้ · วันทำงานถัดไป');
     return;
   }
   dailyViewDate = day;
@@ -11993,24 +11993,41 @@ function DL() {
   return effectiveRole() === 'polish' ? DAILY_ACTION_LABELS_EN : DAILY_ACTION_LABELS_TH;
 }
 
-// ช่าง/พนักงานเดินเครื่องเลื่อนดูได้ 3 วัน: เมื่อวาน · วันนี้ · พรุ่งนี้
-// (เมื่อวาน = ตามงานที่ค้างไว้ / พรุ่งนี้ = เตรียมตัวว่าจะทำอะไรต่อ)
+// ช่าง/พนักงานเดินเครื่องเลื่อนดูได้ 3 วัน: วันทำงานก่อนหน้า · วันนี้ · วันทำงานถัดไป
+// (ย้อนไป = ตามงานที่ค้างไว้ / ไปข้างหน้า = เตรียมตัวว่าจะทำอะไรต่อ)
+// นับเป็น "วันทำงาน" ไม่ใช่วันปฏิทิน — ข้ามวันอาทิตย์/วันหยุดบริษัทไปเลย
+// (อาการเดิม: วันนี้จันทร์ กดย้อนไปเจอวันอาทิตย์ที่ไม่มีงานเลย แล้วไปต่อไม่ได้)
 // ส่วนการ "กดเริ่ม/จบงาน" ยังทำได้เฉพาะวันปัจจุบันเหมือนเดิม (ดู canActOnDailyDate)
-function dailyTechDateAllowed(iso) {
+const DAILY_TECH_DAY_SCAN_MAX = 14;   // กันวนไม่จบถ้าตั้งวันหยุดติดกันยาวผิดปกติ
+function dailyWorkingDayFrom(iso, dir) {
+  let d = addDaysIso(iso, dir);
+  for (let i = 0; i < DAILY_TECH_DAY_SCAN_MAX && isPlanDayOff(d); i++) d = addDaysIso(d, dir);
+  return d;
+}
+
+function dailyTechDates() {
   const today = dailyTodayIso();
-  return iso === today || iso === addDaysIso(today, -1) || iso === addDaysIso(today, 1);
+  return { prev: dailyWorkingDayFrom(today, -1), today, next: dailyWorkingDayFrom(today, 1) };
+}
+
+function dailyTechDateAllowed(iso) {
+  const d = dailyTechDates();
+  return iso === d.today || iso === d.prev || iso === d.next;
 }
 
 function clampDailyTechDate(iso) {
   return dailyTechDateAllowed(iso) ? iso : dailyTodayIso();
 }
 
-// ป้ายกำกับวันแบบเทียบกับวันนี้ — คืน '' ถ้าไม่ใช่ 3 วันนี้
+// ป้ายกำกับวันแบบเทียบกับวันนี้ — คืน '' ถ้าไม่ใช่ 3 วันของช่าง
+// ถ้าวันติดกันเป็นวันหยุด วันที่เลื่อนไปจะไม่ใช่ "เมื่อวาน/พรุ่งนี้" ตามปฏิทิน
+// จึงเปลี่ยนคำเป็น "วันทำงานก่อน/ถัดไป" ไม่ให้เข้าใจวันผิด
 function dailyRelativeDayLabel(iso) {
   const today = dailyTodayIso();
   if (iso === today) return 'วันนี้';
-  if (iso === addDaysIso(today, -1)) return 'เมื่อวาน';
-  if (iso === addDaysIso(today, 1)) return 'พรุ่งนี้';
+  const d = dailyTechDates();
+  if (iso === d.prev) return iso === addDaysIso(today, -1) ? 'เมื่อวาน' : 'วันทำงานก่อน';
+  if (iso === d.next) return iso === addDaysIso(today, 1) ? 'พรุ่งนี้' : 'วันทำงานถัดไป';
   return '';
 }
 
@@ -12031,7 +12048,7 @@ function applyDailyTechView() {
   const trigger = document.getElementById('daily-daterange-trigger');
   if (trigger) {
     trigger.style.cursor = tech ? 'default' : 'pointer';
-    trigger.title = tech ? 'ดูได้ 3 วัน: เมื่อวาน · วันนี้ · พรุ่งนี้ (ใช้ปุ่มก่อนหน้า/ถัดไป)' : 'คลิกเพื่อเลือกวันที่';
+    trigger.title = tech ? 'ดูได้ 3 วันทำงาน: วันทำงานก่อน · วันนี้ · วันทำงานถัดไป (ใช้ปุ่มก่อนหน้า/ถัดไป)' : 'คลิกเพื่อเลือกวันที่';
   }
   if (tech) closeDailyDatePicker();
 }
@@ -12043,11 +12060,13 @@ function syncDailyDateNavButtons() {
   document.querySelectorAll('.daily-datenav-btn').forEach(b => {
     const dir = b.getAttribute('data-daynav');
     if (!dir) { b.disabled = false; b.title = ''; return; }
-    const target = addDaysIso(dailyViewDate, parseInt(dir, 10));
+    const step = parseInt(dir, 10);
+    // ปลายทางที่จะเลื่อนไปจริง — ของช่างคือวันทำงานถัดไป/ก่อนหน้า (ข้ามวันหยุด)
+    const target = tech ? dailyWorkingDayFrom(dailyViewDate, step) : addDaysIso(dailyViewDate, step);
     const blocked = tech && !dailyTechDateAllowed(target);
     b.disabled = blocked;
     b.style.opacity = blocked ? '.45' : '';
-    b.title = blocked ? 'ดูได้ 3 วันเท่านั้น: เมื่อวาน · วันนี้ · พรุ่งนี้' : '';
+    b.title = blocked ? 'ดูได้ 3 วันทำงาน: วันทำงานก่อน · วันนี้ · วันทำงานถัดไป' : '';
   });
 }
 
@@ -12407,8 +12426,11 @@ function setDailyViewDate(iso) {
 }
 
 function dailyNav(dir) {
-  const target = addDaysIso(dailyViewDate, dir);
-  // ช่างเลื่อนได้แค่ในช่วง 3 วัน — กันไว้ที่ตัวฟังก์ชันด้วย ไม่ใช่แค่ปิดปุ่ม
+  // ช่างเลื่อนทีละ "วันทำงาน" (ข้ามวันหยุด) และต้องอยู่ในช่วง 3 วันเท่านั้น
+  // กันไว้ที่ตัวฟังก์ชันด้วย ไม่ใช่แค่ปิดปุ่ม
+  const target = isDailyTechRole()
+    ? dailyWorkingDayFrom(dailyViewDate, dir)
+    : addDaysIso(dailyViewDate, dir);
   if (isDailyTechRole() && !dailyTechDateAllowed(target)) return;
   dailyViewDate = target;
   renderDailyTasks();
