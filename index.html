@@ -6794,6 +6794,18 @@ function onPlanRollSetChange() {
   // ต้องเอาไปดึงรายการ Roll ด้วย ไม่งั้นช่องสีขึ้นสีแล้วแต่รายการ Roll ยังเป็นของ "ทั้งหมด"
   const colorKey = populatePlanRollColorSelect(setName, null) || null;
   fillPlanRollReadonly(setName, colorKey, null, currentEditingPlanTaskId);
+  // Size ที่มีหลายชุดสี (ยังไม่ได้เลือกให้อัตโนมัติ) — เปิดดรอปดาวน์ชุดสีให้เลือกต่อทันที
+  // ไม่ต้องกดเปิดเอง เพราะเลือก Size แล้วขั้นถัดไปคือเลือกชุดสีเสมอ
+  const colorCount = new Set(toolingData.roll.filter(r => r.set === setName).map(r => r.color || '')).size;
+  if (setName && !colorKey && colorCount > 1) {
+    const sel = document.getElementById('pf-rollcolor');
+    if (sel) {
+      sel.focus();
+      // showPicker เปิดรายการให้เลย — ต้องอยู่ในจังหวะที่ผู้ใช้กดจริง (change ของช่อง Size)
+      // เบราว์เซอร์ที่ไม่รองรับ/ไม่อนุญาต ก็ยังโฟกัสไว้ให้กดต่อได้ทันที
+      try { if (typeof sel.showPicker === 'function') sel.showPicker(); } catch (e) { /* ไม่รองรับ — ข้าม */ }
+    }
+  }
 }
 
 function onPlanRollColorChange() {
