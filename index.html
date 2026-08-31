@@ -6028,8 +6028,17 @@ function populatePlanRollColorSelect(setName, selectedColor) {
   }
   sel.disabled = false;
   const palette = getSetPalette(setName);
+  // สีที่มี Roll จริงอยู่ในชุดนี้ — ใช้ตัดสินว่ามีชุดสีให้เลือกจริงกี่สี
+  // (ปาเล็ตต์อาจมีสีที่ยังไม่มี Roll ซึ่งเลือกไปก็ไม่มีชิ้นงาน)
+  const used = new Set(toolingData.roll.filter(r => r.set === setName).map(r => r.color || ''));
+  const usable = palette.filter(c => used.has(c.key));
+  // มีชุดสีเดียวให้เลือก = เลือกให้เลย ไม่ต้องกดเลือกซ้ำอีกครั้ง
+  // (ยังเปลี่ยนกลับเป็น "ทั้งหมด" ได้เองถ้าต้องการ)
+  const effective = selectedColor || (usable.length === 1 ? usable[0].key : '');
   sel.innerHTML = '<option value="">— ทั้งหมด —</option>' +
-    palette.map(c => `<option value="${c.key}"${c.key === selectedColor ? ' selected' : ''}>${c.label}</option>`).join('');
+    palette.map(c => `<option value="${c.key}"${c.key === effective ? ' selected' : ''}>${c.label}</option>`).join('');
+  sel.value = effective;
+  return effective;   // ผู้เรียกใช้ค่านี้ไปดึงรายการ Roll ต่อได้เลย
 }
 
 // ดึง Roll ทั้งหมดของ Size Roll ชุดนี้ที่ตรงกับชุดสีที่เลือก (ไม่เลือกสี = ทุกสีในกลุ่มนี้)
@@ -6781,8 +6790,10 @@ function clearPlanFieldWarn(id) { const e = document.getElementById(id); if (e) 
 function onPlanRollSetChange() {
   const setName = document.getElementById('pf-rollset').value;
   clearPlanFieldWarn('pf-rollset');
-  populatePlanRollColorSelect(setName, null);
-  fillPlanRollReadonly(setName, null, null, currentEditingPlanTaskId);
+  // ถ้าชุดนี้มีสีเดียว populatePlanRollColorSelect จะเลือกให้เอง แล้วคืนค่าสีนั้นมา
+  // ต้องเอาไปดึงรายการ Roll ด้วย ไม่งั้นช่องสีขึ้นสีแล้วแต่รายการ Roll ยังเป็นของ "ทั้งหมด"
+  const colorKey = populatePlanRollColorSelect(setName, null) || null;
+  fillPlanRollReadonly(setName, colorKey, null, currentEditingPlanTaskId);
 }
 
 function onPlanRollColorChange() {
@@ -7333,8 +7344,8 @@ function openPlanTaskModal(mode, taskId, presetDate, presetShift) {
     document.getElementById(startFieldId).value = startValue;
   }
   populatePlanRollSetSelect(task ? task.rollSet : null);
-  populatePlanRollColorSelect(task ? task.rollSet : null, task ? task.rollColor : null);
-  fillPlanRollReadonly(task ? task.rollSet : null, task ? task.rollColor : null, task ? task.rollIds : null, currentEditingPlanTaskId); // คำนวณเวลาเริ่ม/จบของแต่ละกะให้อัตโนมัติในตัว — คงรายการ Roll ที่เลือกไว้เดิมถ้าเป็นการแก้ไข
+  const autoColor = populatePlanRollColorSelect(task ? task.rollSet : null, task ? task.rollColor : null);
+  fillPlanRollReadonly(task ? task.rollSet : null, task ? (task.rollColor || null) : (autoColor || null), task ? task.rollIds : null, currentEditingPlanTaskId); // คำนวณเวลาเริ่ม/จบของแต่ละกะให้อัตโนมัติในตัว — คงรายการ Roll ที่เลือกไว้เดิมถ้าเป็นการแก้ไข
   // แก้ไขงานเดิม — คงวันที่จบที่บันทึกไว้ถ้ามีค่าจริง ไม่ทับด้วยค่าคำนวณใหม่ แต่ถ้าเดิมว่าง/เป็น "—" ให้ใช้ค่าที่คำนวณอัตโนมัติแทน
   if (task && task.endDate) setPlanFormDate('pf-enddate', task.endDate);
   // โหมด "งานอื่นๆ" — แก้ไขงานเดิมที่เป็นงานอื่น ให้กลับมาอยู่โหมดนั้นพร้อมค่าที่บันทึกไว้
