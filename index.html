@@ -9719,9 +9719,26 @@ function renderProdWeightRunBanner() {
     const inSize = sets.filter(s => rollSetSizeGroupLabel(s) === label);
     const mc = [...new Set(inSize.map(machineOf).filter(Boolean))].join('/');
     const left = inSize.filter(s => !explicitRunColorFor(today, s)).length;
+    // ชุดสีที่ระบุไว้แล้วของขนาดนี้ — ปกติทั้ง Forming/Sizing/TH ใช้สีเดียวกัน จึงเหลือป้ายเดียว
+    // ถ้าคนละสีจริงก็โชว์ทุกสีพร้อมหมวดกำกับ จะได้รู้ว่าหมวดไหนเดินสีอะไร
+    const picked = inSize.map(s => ({ set: s, key: explicitRunColorFor(today, s) })).filter(x => x.key);
+    const byColor = new Map();
+    picked.forEach(x => {
+      const name = rollColorLabelFor(x.set, x.key);
+      if (!byColor.has(name)) byColor.set(name, { dot: inUseColorDot(x.set, x.key), cats: [] });
+      const cat = parseSizeRollName(x.set).category;
+      if (cat) byColor.get(name).cats.push(cat);
+    });
+    const colorTags = [...byColor.entries()].map(([name, v]) => {
+      const cats = byColor.size > 1 && v.cats.length ? ' ' + v.cats.map(c => (ROLL_CAT_ABBR[c] || c)).join('') : '';
+      return `<span title="${escapeHtmlAttr(name + (v.cats.length ? ' — ' + v.cats.join(', ') : ''))}"
+          style="display:inline-flex;align-items:center;gap:3px;font-weight:800;font-size:11px;color:var(--text-2);">
+        <span style="width:8px;height:8px;border-radius:50%;background:${v.dot};display:inline-block;"></span>${escapeHtmlAttr(name + cats)}</span>`;
+    }).join('');
     return `<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:99px;font-size:12px;font-weight:800;
                  background:var(--bg-card);color:var(--text-1);box-shadow:inset 0 0 0 1px var(--border);">
       ${escapeHtmlAttr(label)}${mc ? `<span style="font-weight:700;font-size:11px;color:var(--text-3);">เครื่อง ${escapeHtmlAttr(mc)}</span>` : ''}
+      ${colorTags}
       ${left ? `<span style="font-weight:800;font-size:11px;color:var(--amber);">รอระบุ ${left}</span>` : '<span style="font-size:11px;color:var(--green);font-weight:800;">✓</span>'}
     </span>`;
   }).join('');
