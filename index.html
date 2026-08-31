@@ -5001,7 +5001,7 @@ function planTaskPieceBreakdown(t) {
     const sched = computePlanPieceSchedule(t.date, t.startTime, mins, t.shift, t.otCapMinutesByShift || {});
     return ids.map((idx, i) => ({
       roll: { id: '—', name: (t.rollName || t.rollSet || 'งาน') + (ids.length > 1 ? ' — รายการที่ ' + (i + 1) : '') },
-      minutes: mins[i], range: sched[i] || {}, continued: false,
+      minutes: mins[i], range: sched[i] || {}, continued: false, fullMinutes: mins[i],
     }));
   }
   const scoped = getMatchingRollsForPlan(t.rollSet, t.rollColor);
@@ -5016,7 +5016,24 @@ function planTaskPieceBreakdown(t) {
   });
   const schedule = computePlanPieceSchedule(t.date, t.startTime, pieceMinutesList, t.shift, t.otCapMinutesByShift || {});
   // "continued" เฉพาะชิ้นที่นาทีจริงถูก override ไว้ *น้อยกว่า* เวลาแต่ง/ขัด Roll เต็มจากทะเบียน Tooling — คือชิ้นที่ถูกแบ่งเวลาคาบเกี่ยวจริงๆ ไม่ใช่ทุกชิ้นในงานที่เคยผ่านการตัดวัน
-  return pairs.map((p, i) => ({ roll: p.roll, minutes: pieceMinutesList[i], range: schedule[i] || {}, continued: pieceMinutesList[i] < (parseFloat(p.roll[field]) || 0) }));
+  return pairs.map((p, i) => ({
+    roll: p.roll, minutes: pieceMinutesList[i], range: schedule[i] || {},
+    continued: pieceMinutesList[i] < (parseFloat(p.roll[field]) || 0),
+    fullMinutes: parseFloat(p.roll[field]) || 0,   // เวลาเต็มของชิ้นนี้ = 1 ชิ้น ใช้คิดสัดส่วนของแต่ละช่วงเวลา
+  }));
+}
+
+// จำนวนชิ้นของช่วงเวลาหนึ่ง — เทียบกับ "เวลาเต็มของ Roll ชิ้นนั้น" (เวลาเต็ม = 1 ชิ้น)
+// เช่น Roll ที่ใช้เวลาเต็ม 100 นาที ถูกแบ่งเป็น 40 + 60 นาที = 0.4 ชิ้น + 0.6 ชิ้น
+// ตัดเลข 0 ท้ายทศนิยมออกให้อ่านง่าย (0.40 → 0.4, 1.00 → 1)
+function pieceCountText(minutes, fullMinutes) {
+  const full = parseFloat(fullMinutes) || 0;
+  const part = parseFloat(minutes) || 0;
+  if (full <= 0 || part <= 0) return '';
+  const n = part / full;
+  if (n < 0.01) return '< 0.01 ชิ้น';   // เศษเวลาเล็กมาก ปัดเป็น 0.00 แล้วอ่านเหมือนไม่มีงาน
+  const s = n.toFixed(2).replace(/.?0+$/, '');
+  return s + ' ชิ้น';
 }
 
 const PLAN_TIME_TYPE_META = {
@@ -5042,6 +5059,11 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
       : [{ shiftKey: null, type: null, startDate: p.range.startDate, startTime: p.range.startTime, endDate: p.range.endDate, endTime: p.range.endTime, minutes: p.minutes }];
     // โชว์ลำดับ/รหัส/ชื่อ Roll ที่แถวเวลาทำงานจริงแถวแรกของชิ้นนี้ (ไม่ใช่ si===0 เสมอไป เพราะบางทีชิ้นอาจเริ่มด้วยแถวพักถ้าพักเที่ยง/พัก OT มาคาบเกี่ยวพอดี)
     const firstWorkIdx = segs.findIndex(s => !PLAN_BREAK_TYPES.includes(s.type));
+    // ชิ้นนี้ "ถูกแบ่งเวลา" ไหม — แบ่งเป็นหลายช่วงในงานนี้ (ปกติ→OT / ข้ามกะ)
+    // หรือถูกแบ่งไปทำต่อในงานวันอื่น (continued: นาทีในงานนี้น้อยกว่าเวลาเต็มตามทะเบียน)
+    // ถ้าไม่ได้แบ่ง = 1 ชิ้นเต็มอยู่แล้ว ไม่ต้องโชว์สัดส่วนให้รก
+    const workSegCount = segs.filter(s => !PLAN_BREAK_TYPES.includes(s.type)).length;
+    const isSplitPiece = workSegCount > 1 || p.continued;
     return segs.map((s, si) => {
       const isBreak = PLAN_BREAK_TYPES.includes(s.type);
       const isFirstRow = si === (firstWorkIdx === -1 ? 0 : firstWorkIdx);
@@ -5095,7 +5117,9 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
         ${rollCell}
         <td>${shiftChip}</td>
         <td>${typeChip}</td>
-        <td class="muted" style="text-align:right;">${escapeHtmlAttr(String(s.minutes))}</td>
+        <td class="muted" style="text-align:right;">${escapeHtmlAttr(String(s.minutes))}${
+          (!isBreak && isSplitPiece && pieceCountText(s.minutes, p.fullMinutes))
+            ? `<div style="font-size:11px;font-weight:700;color:var(--accent);">${escapeHtmlAttr(pieceCountText(s.minutes, p.fullMinutes))}</div>` : ''}</td>
         <td class="muted">${escapeHtmlAttr(s.startTime || '—')}${actualStartSuffix}</td>
         <td class="muted">${escapeHtmlAttr(s.endTime || '—')}${endBadge}${actualEndSuffix}</td>
       </tr>`;
