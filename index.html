@@ -3206,7 +3206,8 @@ function inUsePickerRowHtml(setName, machine) {
         style="display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:99px;cursor:pointer;font-size:11px;font-weight:${on ? 800 : 600};
                border:1px solid ${on ? 'var(--inuse)' : 'var(--border)'};background:${on ? 'var(--inuse-dim)' : 'transparent'};
                color:${on ? 'var(--inuse)' : 'var(--text-2)'};">
-        <span style="width:8px;height:8px;border-radius:50%;background:${c.dot};flex-shrink:0;"></span>${escapeHtmlAttr(c.label)}
+        <span style="width:13px;height:13px;border-radius:50%;background:${c.dot};flex-shrink:0;
+                     box-shadow:inset 0 0 0 1px rgba(0,0,0,.32);"></span>${escapeHtmlAttr(c.label)}
         <span style="opacity:.65;font-weight:600;">${n}</span>${on ? ' ✓' : ''}</button>`;
     }).join('');
 
@@ -8828,6 +8829,33 @@ let rollSetPalettes = {};
 // เทียบด้วยค่าสี ไม่ใช่ key เพราะสีที่ใช้งานจริงหลายชุดถูกเพิ่มเป็นสีกำหนดเอง (key custom19 ฯลฯ)
 // แต่ค่าสียังเป็นค่าเริ่มต้นชุดเก่าเป๊ะ — ค่าสีอื่นที่ผู้ใช้เลือกเองจะไม่ถูกแตะ
 const LEGACY_ROLL_COLOR_DOTS = { '#EAB308': '#F7D000', '#C9A227': '#A97806' };
+// จุดสีขนาดเล็กบนพื้นขาวอ่านยาก — เพิ่มความเข้มขึ้นเล็กน้อยตอนแสดงผล
+// (เพิ่มความอิ่มสี 12% + ลดความสว่าง 10%) ไม่แตะค่าสีที่บันทึกไว้ในทะเบียน
+// ปรับน้อยๆ ตั้งใจ — ปรับแรงกว่านี้สีเหลืองจะเข้มจนใกล้สีทอง ซึ่งเคยแยกกันไว้แล้ว
+function strongRollDot(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex == null ? '' : hex).trim());
+  if (!m) return hex;                       // ไม่ใช่ค่าสี #RRGGBB (เช่น ชื่อสี/gradient) ปล่อยไว้
+  const n = parseInt(m[1], 16);
+  let r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  let l = (max + min) / 2;
+  let s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  let hh = 0;
+  if (d !== 0) {
+    if (max === r) hh = ((g - b) / d) % 6;
+    else if (max === g) hh = (b - r) / d + 2;
+    else hh = (r - g) / d + 4;
+    hh /= 6; if (hh < 0) hh += 1;
+  }
+  s = Math.min(1, s * 1.12);
+  l = Math.max(0, l * 0.90);
+  const c2 = (1 - Math.abs(2 * l - 1)) * s, x = c2 * (1 - Math.abs(((hh * 6) % 2) - 1)), mm = l - c2 / 2;
+  const seg = Math.floor(hh * 6) % 6;
+  const rgb = [[c2, x, 0], [x, c2, 0], [0, c2, x], [0, x, c2], [x, 0, c2], [c2, 0, x]][seg];
+  const hx = v => Math.round(Math.min(255, Math.max(0, (v + mm) * 255))).toString(16).padStart(2, '0');
+  return '#' + hx(rgb[0]) + hx(rgb[1]) + hx(rgb[2]);
+}
+
 function normalizeSetPalette(list) {
   list.forEach(c => {
     const next = LEGACY_ROLL_COLOR_DOTS[String(c.dot).toUpperCase()];
@@ -8840,7 +8868,9 @@ function getSetPalette(setName) {
   if (!rollSetPalettes[setName]) {
     rollSetPalettes[setName] = DEFAULT_ROLL_COLORS.map(c => ({...c}));
   }
-  return normalizeSetPalette(rollSetPalettes[setName]);
+  // คืนเป็นสำเนา (ไม่ใช่ตัวจริงในทะเบียน) เพราะปรับความเข้มของสีตอนแสดงผล
+  // ถ้าคืนตัวจริงแล้วเขียนทับ ค่าสีจะเข้มขึ้นเรื่อยๆ ทุกครั้งที่วาดหน้าจอ
+  return normalizeSetPalette(rollSetPalettes[setName]).map(c => ({ ...c, dot: strongRollDot(c.dot) }));
 }
 
 const SIZE_ROLL_CATEGORIES = ['Forming', 'Sizing', 'TH'];
@@ -12011,7 +12041,8 @@ function openAddColorModal() {
     if (!name) return;
     rollColorSeq++;
     const newKey = 'custom'+rollColorSeq;
-    getSetPalette(selectedRollSet).push({key:newKey, label:name, dot:val});
+    getSetPalette(selectedRollSet);   // สร้างชุดสีเริ่มต้นให้ถ้ากลุ่มนี้ยังไม่มี
+    rollSetPalettes[selectedRollSet].push({ key: newKey, label: name, dot: val });
     // เพิ่มสีใหม่เข้าปาเล็ตต์ของกลุ่มนี้เท่านั้น — ไม่กระทบกลุ่มอื่น เลือกใช้ได้ตอนเพิ่ม/แก้ไข Roll แต่ละตัว
     renderRollSetList();
     renderRollColorList();
