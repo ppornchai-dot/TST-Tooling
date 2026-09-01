@@ -9958,8 +9958,12 @@ function renderProdWeightRunBanner() {
   </div>`;
 }
 
-// ปุ่มเลือกช่วงเร็ว — เดิมมีแค่ช่องวันที่ที่ตั้งต้นเป็น 2020-01-01 ทำให้เผลอแก้แค่วัน/เดือน
-// แล้วเหลือปี 2020 ค้างไว้ กลายเป็นช่วง 6 ปีโดยไม่รู้ตัว แล้วเข้าใจว่าตัวกรองไม่ทำงาน
+// วันเริ่มต้นของข้อมูลน้ำหนักผลิตที่ใช้จริง — ช่วง "ทั้งหมด" และค่าตั้งต้นของหน้ายึดค่านี้
+// ก่อนหน้านี้ใช้ 2020-01-01 ซึ่งเป็นช่วง ~2,400 วันที่ไม่มีข้อมูล ทำให้ดึงช้าและอ่านยาก
+function prodWeightStartIso() { return '2026-08-01'; }
+
+// ปุ่มเลือกช่วงเร็ว — เดิมมีแค่ช่องวันที่ที่ตั้งต้นเป็นวันเริ่มข้อมูล ทำให้เผลอแก้แค่วัน/เดือน
+// แล้วเหลือปีเดิมค้างไว้ กลายเป็นช่วงยาวโดยไม่รู้ตัว แล้วเข้าใจว่าตัวกรองไม่ทำงาน
 function setProdWeightRange(kind) {
   const from = document.getElementById('prodweight-date-from');
   const to = document.getElementById('prodweight-date-to');
@@ -9969,7 +9973,7 @@ function setProdWeightRange(kind) {
   if (kind === 'today') from.value = todayIso;
   else if (kind === '7d') from.value = addDaysIso(todayIso, -6);
   else if (kind === 'month') from.value = todayIso.slice(0, 8) + '01';
-  else from.value = '2020-01-01';
+  else from.value = prodWeightStartIso();
   renderProdWeight();
 }
 
@@ -9982,7 +9986,7 @@ function prodWeightRangeKindFor(fromValue, toValue) {
   if (fromValue === todayIso) return 'today';
   if (fromValue === addDaysIso(todayIso, -6)) return '7d';
   if (fromValue === todayIso.slice(0, 8) + '01') return 'month';
-  if (fromValue === '2020-01-01') return 'all';
+  if (fromValue === prodWeightStartIso()) return 'all';
   return null;
 }
 function refreshProdWeightRangeButtons() {
@@ -10101,9 +10105,9 @@ async function renderProdWeight() {
   if (!grid) return;
   const fromInput = document.getElementById('prodweight-date-from');
   const toInput = document.getElementById('prodweight-date-to');
-  if (fromInput && !fromInput.value) fromInput.value = '2020-01-01';
+  if (fromInput && !fromInput.value) fromInput.value = prodWeightStartIso();
   if (toInput && !toInput.value) toInput.value = new Date().toISOString().slice(0, 10);
-  const fromDate = fromInput ? fromInput.value : '2020-01-01';
+  const fromDate = fromInput ? fromInput.value : prodWeightStartIso();
   const toDate = toInput ? toInput.value : new Date().toISOString().slice(0, 10);
 
   grid.innerHTML = `<div style="text-align:center;color:var(--text-3);font-size:13px;padding:24px 0;grid-column:1/-1;">กำลังโหลดน้ำหนักผลิตจากระบบ Production...</div>`;
@@ -10496,7 +10500,7 @@ let rollLifeFgLoading = false;
 function ensureRollLifeFg() {
   if (rollLifeFgByKey !== null || rollLifeFgLoading) return;
   rollLifeFgLoading = true;
-  fetchFgWeightByKey('2020-01-01', toISODate(new Date())).then(data => {
+  fetchFgWeightByKey(prodWeightStartIso(), toISODate(new Date())).then(data => {
     rollLifeFgByKey = data || {};
     // เก็บสำเนาแบบรายวันของช่วง "ทั้งหมด" ไว้เอง — ตัวแปรกลาง (fgWeightByKeyDate) จะถูกทับ
     // เมื่อหน้าน้ำหนักผลิตดึงตามช่วงวันที่ที่ผู้ใช้เลือก ซึ่งอาจแคบกว่าอายุการใช้งานจริงของ Roll
