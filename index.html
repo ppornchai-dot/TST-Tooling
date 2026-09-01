@@ -2485,22 +2485,80 @@ let inUseCalGuessRows = [];
 
 // กดแถวที่ระบบเดาให้ = ยืนยันว่าวันนั้นเดินชุดสีนี้จริง — บันทึกเป็นค่าที่ระบุเจาะจงของวันนั้น
 // หลังยืนยันแล้ว * จะหาย ป้ายเครื่องเปลี่ยนเป็นพื้นทึบ และยอดผลิตของวันนั้นถูกลงชุดนี้แน่นอน
+// กดแถวที่ระบบเดาให้ — ถ้าเดามาได้หลายเครื่อง (เช่น P1/P4) ต้องให้เลือกก่อนว่าเดินเครื่องไหนจริง
+// ของจริงชุดหนึ่งอยู่ได้ทีละเครื่อง ถ้าบันทึกไว้ทั้งสองเครื่องยอดผลิตจะยังแยกไม่ออกว่าของเครื่องไหน
 function confirmInUseCalRow(idx) {
   const row = inUseCalGuessRows[Number(idx)];
   if (!row || !canEditPlan()) return;
+  const machines = String(row.machine || '').split('/').map(s => s.trim()).filter(Boolean);
+  if (machines.length > 1) { openInUseCalMachinePick(Number(idx), machines); return; }
   const names = row.items.map(x => rollColorLabelFor(x.set, x.colorKey) + ' — ' + x.set);
   if (!confirm('ยืนยันว่าวันที่ ' + fmtDateThai(parseISODate(row.date)) + ' เดินชุดนี้จริง?\n\n'
-      + names.join('\n') + (row.machine ? '\n\nที่เครื่อง ' + row.machine : '')
+      + names.join('\n') + (machines.length ? '\n\nที่เครื่อง ' + machines[0] : '')
       + '\n\nยืนยันแล้วยอดผลิตของวันนั้นจะถูกนับให้ชุดนี้')) return;
+  applyInUseCalConfirm(Number(idx), machines[0] || '');
+}
+
+// เลือกเครื่องก่อนยืนยัน — กรณีชุดนั้นผูกไว้หลายเครื่องและวันนั้นไม่มียอดผลิตให้ชี้ชัด
+function openInUseCalMachinePick(idx, machines) {
+  const row = inUseCalGuessRows[Number(idx)];
+  if (!row) return;
+  let ov = document.getElementById('inusecal-mc-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'inusecal-mc-overlay';
+    ov.className = 'modal-overlay';
+    ov.style.zIndex = '1060';
+    ov.onclick = e => { if (e.target === ov) closeInUseCalMachinePick(); };
+    ov.innerHTML = `<div class="modal" style="max-width:520px;">
+      <div class="modal-head"><h3 id="inusecal-mc-title">เดินที่เครื่องไหน?</h3>
+        <button class="modal-close" onclick="closeInUseCalMachinePick()">✕</button></div>
+      <div class="modal-body" id="inusecal-mc-body"></div>
+      <div class="modal-footer"><button class="btn btn-ghost" onclick="closeInUseCalMachinePick()">ยกเลิก</button></div>
+    </div>`;
+    document.body.appendChild(ov);
+  }
+  const names = row.items.map(x => x.set + ' · ' + rollColorLabelFor(x.set, x.colorKey)).join('<br>');
+  document.getElementById('inusecal-mc-title').textContent = 'ยืนยันชุด Roll ที่เดิน — ' + fmtDateThai(parseISODate(row.date));
+  document.getElementById('inusecal-mc-body').innerHTML = `
+    <div style="font-size:12.5px;color:var(--text-2);line-height:1.7;margin-bottom:12px;">${names}</div>
+    <div style="font-size:12px;color:var(--text-3);margin-bottom:10px;">
+      ${row.guess === false
+        ? 'ยืนยันไว้แล้วเป็น <b>เครื่อง ' + escapeHtmlAttr(String((rollRunMachine[row.date] || {})[row.items[0].set] || row.machine)) + '</b> — เลือกใหม่เพื่อแก้'
+        : 'วันนั้นไม่มียอดผลิตของขนาดนี้ ระบบจึงยังไม่รู้ว่าเดินเครื่องไหน — เลือกเครื่องที่เดินจริง'}</div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      ${machines.map(m => `<button class="btn btn-primary" style="width:100%;justify-content:center;font-size:15px;font-weight:800;padding:12px;"
+        onclick="${jsCallAttr('pickInUseCalMachine', idx, m)}">เครื่อง ${escapeHtmlAttr(m)}</button>`).join('')}
+      <button class="btn btn-ghost" style="width:100%;justify-content:center;font-weight:700;"
+        onclick="${jsCallAttr('pickInUseCalMachine', idx, machines.join('/'))}"
+        title="ใช้เมื่อเดินขนาดนี้ทั้งสองเครื่องในวันเดียว">เดินทั้ง ${machines.length} เครื่อง (${escapeHtmlAttr(machines.join('/'))})</button>
+    </div>`;
+  ov.classList.add('open');
+}
+
+function closeInUseCalMachinePick() {
+  const ov = document.getElementById('inusecal-mc-overlay');
+  if (ov) ov.classList.remove('open');
+}
+
+function pickInUseCalMachine(idx, machine) {
+  closeInUseCalMachinePick();
+  applyInUseCalConfirm(Number(idx), machine);
+}
+
+// บันทึกผลการยืนยัน: ชุดสีของวันนั้น + เครื่องที่เดิน
+function applyInUseCalConfirm(idx, machine) {
+  const row = inUseCalGuessRows[Number(idx)];
+  if (!row || !canEditPlan()) return;
   // ชุดสีของวันนั้น — เขียนเฉพาะตัวที่ยังไม่ตรง (setRunColor มีตัวเขียนซ้ำตอน cloud ชน)
   row.items.forEach(x => {
     if (explicitRunColorFor(row.date, x.set) === x.colorKey) return;
     setRunColor(row.date, x.set, x.colorKey);
   });
   // เครื่องที่เดินของวันนั้น — ยืนยันไว้ให้ป้ายเครื่องเป็นค่าแน่นอน ไม่ใช่ค่าเดาอีก
-  if (row.machine) {
+  if (machine) {
     if (!rollRunMachine[row.date]) rollRunMachine[row.date] = {};
-    row.items.forEach(x => { rollRunMachine[row.date][x.set] = row.machine; });
+    row.items.forEach(x => { rollRunMachine[row.date][x.set] = machine; });
     persistState();
   }
   renderInUseCalendar();
@@ -2565,24 +2623,28 @@ function renderInUseCalendar() {
       // ยังเป็นค่าที่ระบบเดา → กดแถวเพื่อยืนยันได้เลย (เฉพาะคนที่มีสิทธิ์แก้แผน)
       // นับทั้ง 2 แบบ: ชุดสีที่เดามาจากยอดผลิต (*) และเครื่องที่เดามาจากทะเบียน/วันก่อน (ป้ายแบบขอบ)
       const isGuess = anyInferred || (!!machine && !machineSure);
-      const guessIdx = (isGuess && canEditPlan())
-        ? inUseCalGuessRows.push({ date: iso, machine,
+      // ทุกแถวกดได้ถ้ามีสิทธิ์แก้ — แถวที่ยืนยันแล้วกดซ้ำเพื่อเปลี่ยนเครื่องที่เลือกไว้ได้
+      // (พื้นเหลือง/เครื่องหมาย ✓? ยังขึ้นเฉพาะแถวที่ "ยังไม่ยืนยัน" เท่านั้น)
+      const guessIdx = canEditPlan()
+        ? inUseCalGuessRows.push({ date: iso, machine, guess: isGuess,
             items: ordered.map(x => ({ set: x.set, colorKey: x.colorKey, inferred: !!x.inferred })) }) - 1
         : -1;
+      const showGuessMark = isGuess && guessIdx >= 0;
       const guessAttr = guessIdx >= 0 ? ` onclick="event.stopPropagation();confirmInUseCalRow('${guessIdx}')"` : '';
       return `<div${guessAttr} title="${escapeHtmlAttr(sizeLabel + machineNote + ' — ' + detail +
-          (anyInferred ? (guessIdx >= 0 ? ' · * ระบบเดาจากยอดผลิตจริง — กดแถวนี้เพื่อยืนยันว่าเดินชุดนี้จริง'
-                                        : ' · * ยังไม่ได้บันทึกชุดสีของวันนั้น — อนุมานจากยอดผลิตจริง') : ''))}"
+          (showGuessMark ? ' · ระบบเดาให้ — กดแถวนี้เพื่อยืนยันว่าเดินชุดนี้จริง'
+            : (guessIdx >= 0 ? ' · กดแถวนี้เพื่อแก้ชุด/เครื่องที่ยืนยันไว้' : '')))}"
           style="display:flex;align-items:center;gap:3px;font-size:10.5px;line-height:1.4;margin-top:2px;
-                 ${guessIdx >= 0 ? 'cursor:pointer;border-radius:4px;padding:1px 2px;margin-left:-2px;margin-right:-2px;background:var(--amber-dim);' : ''}">
+                 ${guessIdx >= 0 ? 'cursor:pointer;border-radius:4px;padding:1px 2px;margin-left:-2px;margin-right:-2px;' : ''}
+                 ${showGuessMark ? 'background:var(--amber-dim);' : ''}">
         ${machine ? `<span style="font-size:9px;font-weight:800;padding:0 4px;border-radius:3px;line-height:1.5;flex-shrink:0;
                ${machineSure ? 'background:var(--inuse);color:#fff;'
                              : 'background:transparent;color:var(--text-3);border:1px solid var(--border);'}">${escapeHtmlAttr(machine)}</span>` : ''}
         <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2);font-weight:600;">${escapeHtmlAttr(inUseCalSizeShort(sizeLabel))}${
-          anyInferred ? (guessIdx >= 0
+          anyInferred ? (showGuessMark
             ? '<span style="color:var(--amber);font-weight:800;" title="กดเพื่อยืนยัน">*✓</span>'
             : '<span style="color:var(--text-3);font-weight:400;">*</span>')
-          : (guessIdx >= 0 ? '<span style="color:var(--amber);font-weight:800;" title="กดเพื่อยืนยันเครื่องที่เดิน">✓?</span>' : '')}</span>
+          : (showGuessMark ? '<span style="color:var(--amber);font-weight:800;" title="กดเพื่อยืนยันเครื่องที่เดิน">✓?</span>' : '')}</span>
         <span style="display:inline-flex;gap:2px;margin-left:auto;flex-shrink:0;">${catTags}</span>
       </div>`;
     }).join('');
