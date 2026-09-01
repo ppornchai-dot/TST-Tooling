@@ -5301,10 +5301,6 @@ function planSectionHeaderRow(s, colSpan, stat, addForIso) {
           // เวลาเริ่ม–จบของวันนั้นแยกตามกะ ใส่เฉพาะมุมมองรายวัน (addForIso มีค่า = ดูวันเดียว)
           + (addForIso && planSectionSpanText(stat, addForIso) ? ' · ' + escapeHtmlAttr(planSectionSpanText(stat, addForIso)) : '')
           : 'ไม่มีงาน'}</span>
-      ${!addForIso && canEditPlan() ? `<button class="btn btn-ghost" onclick="${jsCallAttr('planFillAllFreeTails', s.key)}"
-          title="ไล่ดึงงานวันถัดไปมาเติมเวลาว่างของทุกวันตั้งแต่วันนี้ไป จนไม่เหลือช่องว่างกลางวัน"
-          style="font-size:13px;font-weight:800;padding:7px 14px;border-radius:9px;line-height:1.2;white-space:nowrap;
-                 color:${s.color};border-color:${s.color};background:${s.bg};">⤵ เติมเวลาว่างทุกวัน</button>` : ''}
       ${addForIso && canEditPlan() ? (() => {
         // ปุ่มเติมเวลาว่าง — โชว์เฉพาะตอนที่วัน+กะนั้นยังมีเวลาว่างท้ายวันตั้งแต่ 1 ชม. ขึ้นไป
         const wt = s.key;
@@ -5504,6 +5500,8 @@ function planFillFreeTailNow(dateIso, workType, shiftKey) {
 // ต้องวนซ้ำ เพราะเติมวันแรกเสร็จแล้ววันถัดไปจะเกิดที่ว่างใหม่ (งานถูกดึงออกไป) ต้องเติมต่ออีก
 // จบเองเพราะตัวดึงงานเติมเฉพาะช่องว่างตั้งแต่ 1 ชม. และไม่ดึงเศษต่ำกว่า 10 นาที (วน 60 รอบเป็นกันชน)
 // งานที่กดเริ่ม/จบไปแล้วถูกข้ามในตัวดึงงานอยู่แล้ว วันที่ผ่านมาแล้วจึงไม่ถูกรื้อ
+// เติมเวลาว่างของทุกวันในครั้งเดียว — เอาปุ่มออกจากหน้าจอแล้ว (ผู้ใช้สั่งเป็นวันๆ เอง
+// ด้วยปุ่ม ⤵ ในช่องของวัน) คงฟังก์ชันไว้เผื่อเรียกจากคอนโซล/ปุ่มเก่าที่เบราว์เซอร์แคชไว้
 function planFillAllFreeTails(workType) {
   if (!canEditPlan()) return;
   const start = dailyTodayIso();
@@ -5759,10 +5757,6 @@ function renderPlanMonth() {
         <span aria-hidden="true">${s.icon}</span>${escapeHtmlAttr(s.label)}
       </span>
       <span style="margin-left:auto;display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
-        ${editable ? `<button class="btn btn-ghost" onclick="${jsCallAttr('planFillAllFreeTails', s.key)}"
-            title="ไล่ดึงงานวันถัดไปมาเติมเวลาว่างของทุกวันตั้งแต่วันนี้ไป จนไม่เหลือช่องว่างกลางวัน"
-            style="font-size:13px;font-weight:800;padding:7px 14px;border-radius:9px;line-height:1.2;white-space:nowrap;
-                   color:${s.color};border-color:${s.color};background:#fff;">⤵ เติมเวลาว่างทุกวัน</button>` : ''}
         <span style="font-size:12px;font-weight:700;color:${s.color};opacity:.9;">${
           stat.count ? stat.count + ' รายการ' + (stat.mins ? ' · ' + formatMinutesAsHm(stat.mins).replace('≈ ', '') : '') : 'ไม่มีงานเดือนนี้'}</span>
       </span>
