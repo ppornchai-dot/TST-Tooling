@@ -2003,7 +2003,14 @@ function showPage(id) {
   // ออกจากหน้าวางแผนแล้วเลิกโหมดลบด้วย กันสถานะค้างไว้จนกลับมาเจอแถบแดงโดยไม่รู้ว่ามาจากไหน
   if (id !== 'plan' && planDeleteMode) cancelPlanDeleteMode();
   if (id === 'dashboard') initDashboard();
-  if (id === 'daily') renderDailyTasks();
+  if (id === 'daily') {
+    // เข้าหน้านี้ทีไรให้กลับมาที่วันปัจจุบันเสมอ — ไม่ค้างวันที่เลื่อนดูไว้รอบก่อน
+    // (เลื่อนไปดูเมื่อวาน แล้วสลับไปหน้าอื่น พอกลับมาต้องเป็นวันนี้ ไม่ใช่เมื่อวาน
+    //  ไม่งั้นเผลอดู/กดงานผิดวันโดยไม่ทันสังเกตว่ายังค้างอยู่วันเดิม)
+    // goToDailyTask ตั้งวันหลัง showPage จึงยังพาไปวันของงานนั้นได้ตามเดิม
+    dailyViewDate = dailyTodayIso();
+    renderDailyTasks();
+  }
   if (id === 'history') renderHistory();
   if (id === 'pending') renderPending();
   if (id === 'prodWeight') renderProdWeight();
