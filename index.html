@@ -7948,12 +7948,19 @@ function savePlanDayEnd() {
   }
 
   // ใส่โควตา OT ที่ได้ให้ทุกงานของวันนั้น (เว้นงานที่เริ่ม/จบไปแล้ว — เวลาจริงผูกกับวันนั้นแล้ว ห้ามคิดใหม่)
-  let applied = 0, skipped = 0;
+  let applied = 0, skipped = 0, retimed = 0;
   planTasks.forEach(t => {
     if (t.workType !== workType || taskDisplayDate(t) !== dateIso) return;
     // แยกหมวดตามกะแล้ว ให้แตะเฉพาะงานที่เริ่มในกะนั้น
     if (dayEndTarget.onlyShift && taskSessionShiftKey(t) !== dayEndTarget.onlyShift) return;
-    if (planTaskIsSettled(t)) { skipped++; return; }
+    // งานที่ "กำลังทำอยู่" ของวันนี้ ต้องคิดเวลาจบใหม่ตามเวลา OT ที่เพิ่ง
+    // แก้ด้วย — ไม่งั้นตัด OT ทิ้งแล้วงานยังโชว์ว่าจบ 20:00 เหมือนเดิม
+    // เหมือนแก้ OT แล้วแผนไม่ขยับ (เวลาเริ่มไม่ขยับ เพราะเริ่มทำไปแล้วจริง
+    //  และเวลาที่ทำจริงรายชิ้นเก็บแยกอยู่แล้ว การคิดเวลาจบใหม่ไม่ทับของจริง)
+    // งานที่จบแล้ว/ของวันที่ผ่านไปแล้ว ยังไม่แตะเหมือนเดิม
+    const inProgressToday = planTaskProgressState(t) === "doing" && taskDisplayDate(t) >= dailyTodayIso();
+    if (planTaskIsSettled(t) && !inProgressToday) { skipped++; return; }
+    if (inProgressToday) retimed++;
     // กะที่ฟอร์มนี้ไม่ได้ดูแล ใช้ค่าที่ตั้งไว้ของวันนั้น (ไม่ได้ตั้ง = 0) ไม่ยกค่าเดิมที่ติดมากับงาน
     const dayCapsNow = planDayCapsFor(dateIso, workType);
     const next = { morning: 0, night: 0 };
@@ -7971,16 +7978,20 @@ function savePlanDayEnd() {
   // เรียงเวลาเริ่ม–จบของงานที่ยังไม่ได้ทำในวันนั้นใหม่ ต่อจากงานที่ทำไปแล้ว (หรือต้นกะถ้ายังไม่มีใครทำ)
   // ตั้งเวลาทั้งวันใหม่แล้วก็ต้องคิดคิวของวันนั้นใหม่ด้วย ไม่งั้นงานที่เคยเริ่มกลางช่วง OT (เช่น 17:20)
   // จะค้างเวลาเริ่มไว้ตรงนั้นทั้งที่ตัดเวลาเลิกลงมาเป็น 17:00 แล้ว — เวลาเริ่มที่ไม่มีใครทำงาน
-  const sameDay = planTasks
-    .filter(t => t.workType === workType && taskDisplayDate(t) === dateIso && t.shift === mainShiftKey)
-    .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
-  const settledEnd = sameDay.filter(planTaskIsSettled)
-    .reduce((best, t) => (!best || (t.endTime || '') > best) ? (t.endTime || '') : best, '');
-  const movable = sameDay.filter(t => !planTaskIsSettled(t)).map(t => t.id);
-  if (movable.length) {
-    const anchor = settledEnd || (SHIFTS[mainShiftKey] || SHIFTS.morning).start;
-    resequencePlanDayShift(dateIso, mainShiftKey, movable, anchor);
-  }
+  // ทำ "ทุกกะ" ของวันนั้น ไม่ใช่แค่กะหลัก — ไม่งั้นเพิ่ม OT กะเช้าคืน งานกะดึกยังค้าง
+  // เวลาเริ่มที่ถูกดันไปตอนตัด OT (เช่นค้างที่ 22:40 ทั้งที่กะดึกเริ่มได้ตั้งแต่ 20:00)
+  // เพราะตัวจัดคิว (autoFixPlanSequencing) ดันงานไปข้างหน้าได้ แต่ไม่ดึงกลับมาให้
+  shifts.forEach(sh => {
+    const sameShift = planTasks
+      .filter(t => t.workType === workType && taskDisplayDate(t) === dateIso && t.shift === sh)
+      .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+    const settledEnd = sameShift.filter(planTaskIsSettled)
+      .reduce((best, t) => (!best || (t.endTime || '') > best) ? (t.endTime || '') : best, '');
+    const movable = sameShift.filter(t => !planTaskIsSettled(t)).map(t => t.id);
+    if (!movable.length) return;
+    const anchor = settledEnd || (SHIFTS[sh] || SHIFTS.morning).start;
+    resequencePlanDayShift(dateIso, sh, movable, anchor);
+  });
   autoFixPlanSequencing();   // เวลาน้อยลง → งานท้ายวันถูกดันไปวันถัดไปเอง
   mergeAdjacentPlanTasks();
   // กดบันทึกเวลาเลิกงานของวัน = สั่งว่า "วันนี้ทำงานถึงเวลานี้" ระบบเติมงานให้เต็มเวลานั้นเลย
@@ -8001,8 +8012,10 @@ function savePlanDayEnd() {
       + ' → ' + mv.startTime + '–' + mv.endTime));
     if (pulled.length > 6) lines.push('• และอีก ' + (pulled.length - 6) + ' งาน');
   }
+  if (retimed) lines.push((lines.length ? '\n' : '') + 'คิดเวลาจบใหม่ให้งานที่กำลังทำ ' + retimed
+    + ' งาน ตามเวลา OT ใหม่ (เวลาเริ่มไม่ขยับ เพราะเริ่มทำไปแล้ว)');
   if (skipped) lines.push((lines.length ? '\n' : '') + 'ตั้งเวลาเลิกงานให้ ' + applied + ' งานแล้ว\nข้าม ' + skipped
-    + ' งานที่กดเริ่ม/จบไปแล้ว (เวลาที่ทำจริงผูกกับวันนั้นแล้ว จึงไม่คิดเวลาใหม่ให้)');
+    + ' งานที่ทำจบแล้ว/ของวันที่ผ่านไปแล้ว (เวลาที่ทำจริงผูกกับวันนั้นแล้ว จึงไม่คิดเวลาใหม่ให้)');
   if (lines.length) alert(lines.join('\n'));
 }
 
