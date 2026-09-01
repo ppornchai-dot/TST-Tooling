@@ -171,7 +171,16 @@ body{
 #plan-month-weekdays{
   position:sticky;z-index:20;background:var(--bg-surface);
   top:calc(var(--plan-head-top,var(--topbar-h)) + var(--plan-head-h,0px));
+  border-bottom:2px solid var(--border);
 }
+/* ชื่อวันเป็นแท็บสี ให้กวาดตาหาคอลัมน์วันได้เร็ว และแยกวันอาทิตย์ (วันหยุด) ออกชัดเจน */
+.plan-wd{
+  text-align:center;padding:6px 0;border-radius:8px;
+  font-size:12px;font-weight:800;letter-spacing:.06em;
+  color:var(--text-2);background:var(--bg-panel);
+  box-shadow:inset 0 0 0 1px var(--border-light);
+}
+.plan-wd-off{ color:var(--red);background:var(--red-dim);box-shadow:inset 0 0 0 1px var(--red); }
 .topbar-title{font-size:17px;font-weight:800;color:var(--text-1);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .topbar-actions{display:flex;align-items:center;gap:10px;}
 .btn{
@@ -1733,15 +1742,17 @@ canvas{display:block;}
       <!-- ═══ VIEW: รายเดือน ═══ -->
       <div id="plan-view-month" class="plan-view-panel">
         <div class="card">
-          <div class="card-header"><span class="card-title" id="plan-month-title">งานตามแผน — กรกฎาคม 2569</span></div>
-          <div id="plan-month-weekdays" style="padding:14px 14px 8px;display:grid;grid-template-columns:repeat(7,1fr);gap:8px;">
-            <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">อา</div>
-            <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">จ</div>
-            <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">อ</div>
-            <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">พ</div>
-            <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">พฤ</div>
-            <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">ศ</div>
-            <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">ส</div>
+          <div class="card-header" style="border-bottom:2px solid var(--accent);background:var(--accent-glow);border-radius:10px 10px 0 0;">
+            <span class="card-title" id="plan-month-title" style="font-size:15px;color:var(--accent);letter-spacing:.01em;">งานตามแผน — กรกฎาคม 2569</span>
+          </div>
+          <div id="plan-month-weekdays" style="padding:12px 14px 10px;display:grid;grid-template-columns:repeat(7,1fr);gap:8px;">
+            <div class="plan-wd plan-wd-off" title="วันอาทิตย์ — วันหยุด ไม่วางแผนงาน">อา</div>
+            <div class="plan-wd" title="วันจันทร์">จ</div>
+            <div class="plan-wd" title="วันอังคาร">อ</div>
+            <div class="plan-wd" title="วันพุธ">พ</div>
+            <div class="plan-wd" title="วันพฤหัสบดี">พฤ</div>
+            <div class="plan-wd" title="วันศุกร์">ศ</div>
+            <div class="plan-wd" title="วันเสาร์">ส</div>
           </div>
           <div id="plan-month-grid" style="padding:8px 14px 14px;display:grid;grid-template-columns:repeat(7,1fr);gap:8px;"></div>
         </div>
