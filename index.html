@@ -4557,7 +4557,11 @@ function syncRollStatusWithProdBlock() {
 // shifts = กะที่ประเภทงานนั้นทำได้จริง — งานขัด Roll ทำเฉพาะกะเช้า ส่วน CNC ทำได้ทุกกะ
 const PLAN_WORKTYPE_META = {
   // otMaxMin = โควตา OT สูงสุด (นาทีทำงานจริง ไม่รวมพัก 20 นาทีก่อนเริ่ม OT)
-  cnc:    { label: 'แผนงาน CNC', field: 'grindTime', metricLabel: 'เวลาแต่ง Roll (นาที)', shifts: ['morning', 'night', 'both'], otMaxMin: 3 * 60, otNote: 'สูงสุด 3 ชม. — กะเช้า OT 17:00–20:00 / กะดึก 05:00–08:00 (หักพัก 20 นาที เหลือทำงาน 2 ชม. 40 นาที)' },
+  // fillSameSetOnly = ตอน "เติมเวลาว่าง" ดึงได้เฉพาะชุด Roll เดียวกับที่วันนั้นทำอยู่
+  // งาน CNC ต้องตั้ง Roll บนเครื่อง เปลี่ยนชุดกลางวัน = ถอด/ใส่ใหม่ ระบบไม่ตัดสินใจแทน
+  // งานขัด Roll ไม่ต้องตั้งเครื่อง สลับชุดได้อิสระ (ปกติวันเดียวขัดหลายชุดอยู่แล้ว
+  //  เช่น GI 2"x2" Forming → Sizing → TH ในวันเดียว) จึงเติมด้วยชุดอื่นได้
+  cnc:    { label: 'แผนงาน CNC', field: 'grindTime', metricLabel: 'เวลาแต่ง Roll (นาที)', shifts: ['morning', 'night', 'both'], otMaxMin: 3 * 60, fillSameSetOnly: true, otNote: 'สูงสุด 3 ชม. — กะเช้า OT 17:00–20:00 / กะดึก 05:00–08:00 (หักพัก 20 นาที เหลือทำงาน 2 ชม. 40 นาที)' },
   polish: { label: 'แผนงานขัด Roll', field: 'polishTime', metricLabel: 'เวลาขัด Roll (นาที)', shifts: ['morning'], otMaxMin: 6 * 60, otNote: 'สูงสุด 6 ชม. — OT 17:00–23:00 (หักพัก 20 นาที เหลือทำงาน 5 ชม. 40 นาที)' },
 };
 function planWorkTypeShifts(workType) {
@@ -5414,6 +5418,43 @@ function planDayCapsFor(dateIso, workType) {
   return caps;
 }
 
+// ทำไมเติมไม่ได้ — บอกเหตุผลจริงของวันนั้น ไม่ใช่ข้อความรวมๆ ให้ไปเดาเอง
+// ("งานวันถัดไปก็มี ทำไมไม่ดึงมา" ส่วนใหญ่เป็นเพราะเวลาว่างไม่ถึง 1 ชม.
+//  หรือเป็นงานคนละชุด Roll ซึ่งงาน CNC ไม่สลับชุดกลางวันให้เอง)
+function planFillBlockReason(dateIso, workType, caps) {
+  const shifts = planDayEndShiftsFor(workType);
+  const lines = ['ไม่มีงานที่ดึงมาเติมได้ในเวลาที่เหลือของวันนี้'];
+  const freeMax = shifts.reduce((m, sh) => {
+    const tail = planDayFreeTail(workType, dateIso, sh, caps);
+    return Math.max(m, tail ? tail.freeMinutes : 0);
+  }, 0);
+  if (freeMax < 60) {
+    lines.push(freeMax > 0
+      ? 'เวลาว่างท้ายวันเหลือ ' + freeMax + ' นาที (น้อยกว่า 1 ชม. จึงไม่ดึงมาเติม)'
+      : 'วันนี้ไม่มีเวลาว่างท้ายวันเหลือแล้ว — เพิ่มเวลา OT ก่อนถ้าต้องการทำต่อ');
+    return lines.join('\n');
+  }
+  const later = planTasks.filter(t => t.workType === workType && !planTaskIsSettled(t)
+    && t.endTime && t.endTime !== '—' && taskDisplayDate(t) > dateIso)
+    .sort((a, b) => (taskDisplayDate(a) + a.startTime).localeCompare(taskDisplayDate(b) + b.startTime));
+  if (!later.length) {
+    lines.push('มีเวลาว่าง ' + freeMax + ' นาที แต่ไม่มีงานที่ยังไม่ได้เริ่มอยู่หลังจากวันนี้');
+    return lines.join('\n');
+  }
+  const lastHere = planLastTaskOnDay(workType, dateIso, shifts[0])
+    || (planWorkTypeAllowsShift(workType, 'both') ? planLastTaskOnDay(workType, dateIso, 'both') : null);
+  const sameSetOnly = !!(PLAN_WORKTYPE_META[workType] || {}).fillSameSetOnly;
+  const sameSetLeft = lastHere && later.some(t => t.rollSet === lastHere.rollSet && t.rollColor === lastHere.rollColor);
+  if (sameSetOnly && lastHere && !sameSetLeft) {
+    lines.push('มีเวลาว่าง ' + freeMax + ' นาที และมีงานวันถัดไปอยู่ (' + later[0].rollSet + ')');
+    lines.push('แต่เป็นชุด Roll อื่น — วันนี้ตั้งชุด ' + lastHere.rollSet + ' อยู่บนเครื่อง');
+    lines.push('งานแต่ง Roll (CNC) ไม่สลับชุดกลางวันให้เอง ถ้าต้องการให้ย้ายมาจริง ให้ลากงานนั้นมา หรือแก้วันของงานนั้นเอง');
+    return lines.join('\n');
+  }
+  lines.push('มีเวลาว่าง ' + freeMax + ' นาที แต่ไม่พอสำหรับชิ้นถัดไปของงาน ' + later[0].rollSet);
+  return lines.join('\n');
+}
+
 // เติมเวลาว่างของวันนั้นทุกกะในครั้งเดียว — ใช้จากปุ่ม ⤵ ในช่องของวัน (ปฏิทินรายสัปดาห์/รายเดือน)
 // ช่องของวันไม่ได้แยกกะ จึงไล่เติมทุกกะของประเภทงานนั้นตามลำดับ (เช้าก่อน แล้วดึก)
 function planFillDayNow(dateIso, workType) {
@@ -5424,7 +5465,7 @@ function planFillDayNow(dateIso, workType) {
     pullWorkIntoFreeTail(workType, dateIso, sh, caps, true).forEach(mv => all.push(mv));
   });
   if (!all.length) {
-    alert('ไม่มีงานที่ดึงมาเติมได้ในเวลาที่เหลือของวันนี้\n(เวลาว่างน้อยกว่า 1 ชม. หรือไม่มีงานที่ยังไม่ได้เริ่มอยู่หลังจากนี้)');
+    alert(planFillBlockReason(dateIso, workType, caps));
     return;
   }
   persistState();
@@ -8079,15 +8120,20 @@ function planPullForwardPlan(workType, dateIso, shiftKey, otCaps) {
   const lastHere = planLastTaskOnDay(workType, dateIso, shiftKey)
     || (planWorkTypeAllowsShift(workType, 'both') ? planLastTaskOnDay(workType, dateIso, 'both') : null);
   const sameSetAsHere = t => !!lastHere && t.rollSet === lastHere.rollSet && t.rollColor === lastHere.rollColor;
+  // งาน CNC: เติมได้เฉพาะชุดเดียวกับที่วันนั้นทำอยู่ ไม่มีชุดเดิมเหลือก็ปล่อยว่างไว้
+  // เพราะเปลี่ยนชุดกลางวัน = ต้องถอด/ใส่ Roll บนเครื่องจริง ระบบไม่มีสิทธิ์ตัดสินใจแทน
+  // (อาการเดิม: วางแผนไว้ชุด Sizing แต่มีงานชุด TH ถูกดึงมาแทรกในวันเดียวกันเอง)
+  // งานขัด Roll: สลับชุดได้ (ดู fillSameSetOnly ใน PLAN_WORKTYPE_META) แต่ยังเรียง
+  // ชุดเดียวกันมาก่อน ให้งานของชุดเดิมต่อกันจนจบก่อนเริ่มชุดใหม่
+  // วันที่ยังไม่มีงานเลย (lastHere = null) = ยังไม่ได้กำหนดว่าใส่ชุดไหน ดึงงานถัดไปในคิวได้ตามปกติ
+  const sameSetOnly = !!(PLAN_WORKTYPE_META[workType] || {}).fillSameSetOnly;
   const later = planTasks
     .filter(t => t.workType === workType && t.endTime && t.endTime !== '—' && !planTaskIsSettled(t)
       && queueKey(taskDisplayDate(t), t.startTime) > tailKey)
-    // เติมเวลาว่างด้วย "ชุด Roll เดียวกับที่วันนั้นทำอยู่" เท่านั้น — ไม่มีชุดเดิมเหลือก็ปล่อยว่างไว้
-    // เปลี่ยนชุดกลางวัน = ต้องถอด/ใส่ Roll บนเครื่องจริง ระบบไม่มีสิทธิ์ตัดสินใจแทน
-    // (อาการเดิม: วางแผนไว้ชุด Sizing แต่มีงานชุด TH ถูกดึงมาแทรกในวันเดียวกันเอง)
-    // วันที่ยังไม่มีงานเลย (lastHere = null) = ยังไม่ได้กำหนดว่าใส่ชุดไหน ดึงงานถัดไปในคิวมาได้ตามปกติ
-    .filter(t => !lastHere || sameSetAsHere(t))
+    .filter(t => !sameSetOnly || !lastHere || sameSetAsHere(t))
     .sort((a, b) => {
+      const sa = sameSetAsHere(a) ? 0 : 1, sb = sameSetAsHere(b) ? 0 : 1;
+      if (sa !== sb) return sa - sb;
       const ak = queueKey(taskDisplayDate(a), a.startTime), bk = queueKey(taskDisplayDate(b), b.startTime);
       return ak !== bk ? ak.localeCompare(bk) : (a.id < b.id ? -1 : 1);
     });
@@ -8132,8 +8178,10 @@ function applyPlanPullForward(workType, shiftKey, moves) {
   // (งานที่ดึงมาเติมช่วง OT ของกะดึกมีวันปฏิทินเป็นวันถัดไป ถ้าไม่กันไว้จะถูกมองเป็นงานของวันต้นทาง
   //  แล้วถูกดึงกลับไปเริ่มต้นกะ 20:00 กลายเป็นดันงานที่เหลือทั้งแผนต่อกันเป็นพรวน)
   const touched = new Set();
-  // วันต้นทางที่ถูก "ยกงานทั้งก้อน" ออกไป เท่านั้นที่ต้องปิดช่องว่าง
-  // ดึงมาบางส่วน งานเดิมยังอยู่ที่เดิม (แค่สั้นลง) ไม่มีช่องว่างต้องปิด
+  // วันต้นทางที่เสียงานไป (ทั้งก้อน หรือบางชิ้นจนงานสั้นลง) ต้องไล่เวลางานที่เหลือใหม่
+  // ไม่งั้นงานถัดไปของวันนั้นยังค้างเวลาเริ่มเดิม เกิดช่องว่างกลางวันที่ไม่มีใครทำ
+  // (อาการเดิม: ดึง 6/16 ชิ้นของวันที่ 2 ไปเติมวันที่ 1 งานนั้นสั้นลงจบ 10:40
+  //  แต่งานถัดไปยังเริ่ม 13:16 ตามเดิม เหลือช่องว่าง 2 ชม. 36 นาที)
   const cleanup = [];
   moves.forEach(mv => {
     const t = planTasks.find(x => x.id === mv.id);
@@ -8176,6 +8224,7 @@ function applyPlanPullForward(workType, shiftKey, moves) {
       t.rollMinutesOverride = restMin;
       setTimes(t, t.date, t.startTime, t.shift, t.otCapMinutesByShift || {});
       touched.add(newTask.id);
+      cleanup.push({ day: taskDisplayDate(t), shift: t.shift });   // ปิดช่องว่างที่เกิดจากงานเดิมสั้นลง
       return;
     }
     cleanup.push({ day: mv.fromDate, shift: t.shift });
