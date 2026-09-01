@@ -10149,32 +10149,40 @@ async function renderProdWeight() {
   const prodDays = fgWeightDates.filter(d => kgOnDate(d) > 0);
   let days = prodDays;
   let dayColsTrimmed = false;
-  if (prodDays.length) {
-    const full = [];
-    [...new Set(prodDays.map(d => d.slice(0, 7)))].sort().forEach(ym => {
-      const [y, mo] = ym.split('-').map(Number);
-      const lastDay = new Date(y, mo, 0).getDate(); // วันสุดท้ายของเดือนนั้น
-      for (let i = 1; i <= lastDay; i++) {
-        const iso = ym + '-' + String(i).padStart(2, '0');
-        if (iso < fromDate || iso > toDate) continue; // ไม่ล้นออกนอกช่วงที่เลือก
-        full.push(iso);
-      }
-    });
-    // เดือนปัจจุบันที่ยังไม่มียอดผลิตเลย (เช่นเช้าวันที่ 1 ของเดือน) ก็ต้องมีคอลัมน์ให้เห็น
-    // ไม่งั้นถึงวันใหม่แล้วตารางยังจบที่วันสุดท้ายของเดือนก่อน เหมือนวันนี้หายไป
-    // (คอลัมน์รายวันยึด "เดือนที่มีการผลิต" ซึ่งเดือนใหม่ยังไม่เข้าเกณฑ์จนกว่าจะมียอดแรก)
-    const todayIso = toISODate(new Date());
-    if (todayIso >= fromDate && todayIso <= toDate && !full.some(d => d.slice(0, 7) === todayIso.slice(0, 7))) {
-      const ym = todayIso.slice(0, 7);
-      for (let i = 1; i <= Number(todayIso.slice(8, 10)); i++) {
-        const iso = ym + '-' + String(i).padStart(2, '0');
-        if (iso >= fromDate && iso <= toDate) full.push(iso);
-      }
-      full.sort();
+  const full = [];
+  [...new Set(prodDays.map(d => d.slice(0, 7)))].sort().forEach(ym => {
+    const [y, mo] = ym.split('-').map(Number);
+    const lastDay = new Date(y, mo, 0).getDate(); // วันสุดท้ายของเดือนนั้น
+    for (let i = 1; i <= lastDay; i++) {
+      const iso = ym + '-' + String(i).padStart(2, '0');
+      if (iso < fromDate || iso > toDate) continue; // ไม่ล้นออกนอกช่วงที่เลือก
+      full.push(iso);
     }
-    if (full.length && full.length <= MAX_DAY_COLS) days = full;
-    else if (full.length > MAX_DAY_COLS) dayColsTrimmed = true;
+  });
+  // เดือนปัจจุบันที่ยังไม่มียอดผลิตเลย (เช่นเช้าวันที่ 1 ของเดือน) ก็ต้องมีคอลัมน์ให้เห็น
+  // ไม่งั้นถึงวันใหม่แล้วตารางยังจบที่วันสุดท้ายของเดือนก่อน เหมือนวันนี้หายไป
+  // (คอลัมน์รายวันยึด "เดือนที่มีการผลิต" ซึ่งเดือนใหม่ยังไม่เข้าเกณฑ์จนกว่าจะมียอดแรก)
+  const todayIso = toISODate(new Date());
+  if (todayIso >= fromDate && todayIso <= toDate && !full.some(d => d.slice(0, 7) === todayIso.slice(0, 7))) {
+    const ym = todayIso.slice(0, 7);
+    for (let i = 1; i <= Number(todayIso.slice(8, 10)); i++) {
+      const iso = ym + '-' + String(i).padStart(2, '0');
+      if (iso >= fromDate && iso <= toDate) full.push(iso);
+    }
+    full.sort();
   }
+  // ช่วงที่เลือกยังไม่มียอดผลิตเลยสักวัน (เช่นกด "วันนี้" ตอนเช้า หรือ "เดือนนี้" ต้นเดือน)
+  // ต้องยังขึ้นคอลัมน์รายวันของช่วงนั้นให้เห็นว่า "ยังไม่เดิน" — เดิมไม่ขึ้นวันเลย
+  // เหลือแต่ช่อง "ยกมา/รวม" ดูเหมือนตารางพัง ไม่ใช่ว่ายังไม่มียอด
+  // ช่วงกว้างมาก (เช่น 2020–ปัจจุบัน) เอาแค่ท้ายช่วง MAX_DAY_COLS วัน ไม่ให้ตารางกว้างจนใช้ไม่ได้
+  if (!full.length) {
+    const back = [];
+    let iso = toDate;
+    for (let i = 0; i < MAX_DAY_COLS && iso >= fromDate; i++) { back.push(iso); iso = addDaysIso(iso, -1); }
+    full.push(...back.reverse());
+  }
+  if (full.length && full.length <= MAX_DAY_COLS) days = full;
+  else if (full.length > MAX_DAY_COLS) dayColsTrimmed = true;
   const ton = kg => Math.round((kg || 0) / 1000 * 100) / 100;
   const fmt = v => v ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '<span class="muted">—</span>';
   const dayKg = {};
