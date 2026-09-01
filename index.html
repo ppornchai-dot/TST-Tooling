@@ -9903,10 +9903,28 @@ function renderProdWeightRunBanner() {
   const today = toISODate(new Date());
   const running = runningRollSetsOn(today);
   if (!running.size) {
+    // ยังไม่รู้ว่าวันนี้เดินขนาดไหน — ระบบอ่านจากยอดผลิต (FG) ของระบบ Production
+    // ถ้ายังไม่มีใครคีย์น้ำหนักของวันนี้ ก็ยังไม่มีข้อมูลให้เด้งถามชุดสีที่เดิน
+    // เดิมกรณีนี้แถบว่างเปล่า ไม่มีปุ่มอะไรเลย — หัวหน้างานที่รู้ว่าเดินอะไรอยู่จริง
+    // จึงบันทึกไว้ก่อนไม่ได้ ต้องรอให้ฝ่ายผลิตคีย์น้ำหนักเสร็จก่อนเท่านั้น
     const err = (fgRunningCache[today] || {}).error;
+    const manualBtn = `<button class="btn btn-ghost btn-sm" onclick="openRunColorPicker(toISODate(new Date()), null)"
+        style="flex:0 0 auto;font-weight:800;">ระบุชุด Roll ที่เดินวันนี้เอง</button>`;
     el.innerHTML = err
-      ? `<div style="background:var(--red-dim);color:var(--red);border-radius:8px;padding:10px 14px;font-size:12px;">อ่านงานที่เดินวันนี้จากระบบ Production ไม่สำเร็จ (${escapeHtmlAttr(err)})</div>`
-      : '';
+      ? `<div style="background:var(--red-dim);border-left:4px solid var(--red);border-radius:8px;padding:11px 14px;
+             display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <div style="flex:1;min-width:260px;font-size:12px;color:var(--red);font-weight:700;">
+            อ่านงานที่เดินวันนี้จากระบบ Production ไม่สำเร็จ (${escapeHtmlAttr(err)})</div>${manualBtn}</div>`
+      : `<div style="background:var(--bg-card);border-left:4px solid var(--border);border-radius:8px;padding:11px 14px;
+             display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <div style="flex:1;min-width:260px;">
+            <div style="font-size:13px;font-weight:800;color:var(--text-2);margin-bottom:3px;">
+              วันนี้ ${escapeHtmlAttr(fmtDateThai(parseISODate(today)))} ยังไม่มียอดผลิตในระบบ Production</div>
+            <div style="font-size:12px;color:var(--text-3);line-height:1.6;">
+              ระบบดูว่า "เดินขนาดไหน" จากน้ำหนักผลิต (FG) ที่คีย์เข้าระบบ Production
+              จึงยังไม่เด้งถามชุดสี Roll ที่เดิน — จะขึ้นให้เองเมื่อมีการคีย์น้ำหนักของวันนี้
+              ถ้ารู้อยู่แล้วว่าเดินชุดไหน กดปุ่มขวาเพื่อระบุไว้ก่อนได้เลย</div>
+          </div>${manualBtn}</div>`;
     return;
   }
   const sets = [...running.keys()];
