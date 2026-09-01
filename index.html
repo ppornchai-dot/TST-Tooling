@@ -10160,6 +10160,18 @@ async function renderProdWeight() {
         full.push(iso);
       }
     });
+    // เดือนปัจจุบันที่ยังไม่มียอดผลิตเลย (เช่นเช้าวันที่ 1 ของเดือน) ก็ต้องมีคอลัมน์ให้เห็น
+    // ไม่งั้นถึงวันใหม่แล้วตารางยังจบที่วันสุดท้ายของเดือนก่อน เหมือนวันนี้หายไป
+    // (คอลัมน์รายวันยึด "เดือนที่มีการผลิต" ซึ่งเดือนใหม่ยังไม่เข้าเกณฑ์จนกว่าจะมียอดแรก)
+    const todayIso = toISODate(new Date());
+    if (todayIso >= fromDate && todayIso <= toDate && !full.some(d => d.slice(0, 7) === todayIso.slice(0, 7))) {
+      const ym = todayIso.slice(0, 7);
+      for (let i = 1; i <= Number(todayIso.slice(8, 10)); i++) {
+        const iso = ym + '-' + String(i).padStart(2, '0');
+        if (iso >= fromDate && iso <= toDate) full.push(iso);
+      }
+      full.sort();
+    }
     if (full.length && full.length <= MAX_DAY_COLS) days = full;
     else if (full.length > MAX_DAY_COLS) dayColsTrimmed = true;
   }
