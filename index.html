@@ -159,6 +159,19 @@ body{
   padding:0 24px;
   position:sticky;top:0;z-index:50;
 }
+/* ตรึงหัวของหน้าวางแผน (ปุ่มจัดการ + คำอธิบายสี + แถบเลื่อนเดือน/ปุ่มมุมมอง) ไว้ใต้ topbar
+   ปฏิทินรายเดือนสูงกว่าจอ เลื่อนดูปลายเดือนแล้วต้องเลื่อนกลับขึ้นมาเปลี่ยนเดือน/มุมมองทุกครั้ง
+   --plan-head-top / --plan-head-h ตั้งค่าจริงด้วย JS (ดู syncPlanStickyHead) เพราะความสูง
+   ของ topbar กับแถบหัวเปลี่ยนตามความกว้างจอ (บนมือถือปุ่มขึ้นบรรทัดใหม่) */
+#plan-sticky-head{
+  position:sticky;top:var(--plan-head-top,var(--topbar-h));z-index:30;
+  background:var(--bg-base);padding-top:10px;
+  box-shadow:0 6px 10px -8px rgba(0,0,0,.28);
+}
+#plan-month-weekdays{
+  position:sticky;z-index:20;background:var(--bg-surface);
+  top:calc(var(--plan-head-top,var(--topbar-h)) + var(--plan-head-h,0px));
+}
 .topbar-title{font-size:17px;font-weight:800;color:var(--text-1);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .topbar-actions{display:flex;align-items:center;gap:10px;}
 .btn{
@@ -1627,6 +1640,7 @@ canvas{display:block;}
            รายวันแบ่งเป็นหัวข้อเหมือนหน้างานประจำวัน ส่วนรายสัปดาห์/รายเดือนติดไอคอนประเภทไว้ที่ป้ายงาน -->
       <!-- เอาปุ่มกรองกะ (ทั้งหมด/กะเช้า/กะดึก/2 กะ) ออกแล้ว — ทุกมุมมองแสดงงานทุกกะเสมอ
            กะของแต่ละงานดูได้จากคอลัมน์ "กะ" ในมุมมองรายวัน และจากทูลทิปของป้ายงานในรายสัปดาห์/รายเดือน -->
+      <div id="plan-sticky-head">
       <div class="mobile-wrap" id="plan-shift-row" style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
         <button class="btn btn-ghost btn-sm plan-edit-only" onclick="openCompanyHolidaysModal()">📅 เพิ่มวันหยุดในปฏิทิน</button>
         <button class="btn btn-ghost btn-sm plan-edit-only" style="color:var(--red);border-color:var(--red);" onclick="togglePlanDeleteMode()">🗑 ลบแผนงาน</button>
@@ -1657,6 +1671,7 @@ canvas{display:block;}
           <button class="plan-view-btn active" data-view="month" onclick="switchPlanView('month')">รายเดือน</button>
         </div>
       </div>
+      </div><!-- /plan-sticky-head -->
 
       <!-- แถบโหมดเลือกลบ — โผล่เมื่อกด "ลบแผนงาน" แล้วเลือกงานจากปฏิทินได้เลย ไม่ต้องเปิดกล่องซ้อน -->
       <div id="plan-delete-bar" style="display:none;align-items:center;gap:10px;margin-bottom:14px;padding:10px 14px;border:1px solid var(--red);border-radius:8px;background:var(--red-dim);">
@@ -1719,7 +1734,7 @@ canvas{display:block;}
       <div id="plan-view-month" class="plan-view-panel">
         <div class="card">
           <div class="card-header"><span class="card-title" id="plan-month-title">งานตามแผน — กรกฎาคม 2569</span></div>
-          <div style="padding:14px 14px 0;display:grid;grid-template-columns:repeat(7,1fr);gap:8px;">
+          <div id="plan-month-weekdays" style="padding:14px 14px 8px;display:grid;grid-template-columns:repeat(7,1fr);gap:8px;">
             <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">อา</div>
             <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">จ</div>
             <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text-3);">อ</div>
@@ -4768,7 +4783,20 @@ function renderCurrentPlanView() {
   // KPI แถวบนของ Dashboard นับจาก planTasks — ทุกจุดที่แก้แผนงานเรียกฟังก์ชันนี้อยู่แล้ว
   // เกาะไว้ที่นี่จึงไม่ต้องไปเติมทีละจุด (บันทึก/ลบ/ลาก/แยกวัน ฯลฯ)
   renderDashboardKpi();
+  // ระยะ top ของหัวที่ตรึงไว้ ต้องวัดใหม่ด้วย — ความสูงเปลี่ยนได้ทุกครั้งที่วาดใหม่
+  if (typeof syncPlanStickyHead === 'function') syncPlanStickyHead();
 }
+
+// ความสูงจริงของ topbar และแถบหัวหน้าวางแผน — ใช้เป็นระยะ top ของ sticky
+// วัดเอาเพราะบนมือถือปุ่มขึ้นบรรทัดใหม่ ความสูงจึงไม่ตรงกับ --topbar-h ที่ตั้งไว้
+function syncPlanStickyHead() {
+  const bar = document.querySelector('.topbar');
+  const head = document.getElementById('plan-sticky-head');
+  const root = document.documentElement;
+  if (bar) root.style.setProperty('--plan-head-top', bar.offsetHeight + 'px');
+  if (head) root.style.setProperty('--plan-head-h', head.offsetHeight + 'px');
+}
+window.addEventListener('resize', syncPlanStickyHead);
 
 function switchPlanView(mode) {
   currentPlanView = mode;
@@ -4778,6 +4806,7 @@ function switchPlanView(mode) {
     b.classList.toggle('active', b.getAttribute('data-view') === mode);
   });
   renderCurrentPlanView();
+  syncPlanStickyHead();   // สลับมุมมองแล้วแถบหัวอาจสูงเปลี่ยน (แถบโหมดลบ/ปุ่มขึ้นบรรทัดใหม่)
 }
 
 function planNav(dir) {
