@@ -1516,7 +1516,8 @@ canvas{display:block;}
               <span><b>ป้ายเครื่องพื้นทึบ</b> = ยืนยันแล้ว (มียอดผลิตของวันนั้น หรือมีแผนเปลี่ยน Roll)</span>
 
               <span style="font-size:9px;font-weight:800;padding:0 4px;border-radius:3px;line-height:1.5;background:transparent;color:var(--text-3);border:1px solid var(--border);justify-self:start;">P1</span>
-              <span><b>ป้ายเครื่องแบบขอบ</b> = ระบบเดาให้ เพราะวันนั้นยังไม่มียอดผลิตของขนาดนี้</span>
+              <span><b>ป้ายเครื่องแบบขอบ</b> = ระบบเดาให้ เพราะวันนั้นยังไม่มียอดผลิตของขนาดนี้ —
+                <b>กดแถวนั้นเพื่อยืนยันว่าเดินชุดนี้ที่เครื่องนี้จริง</b> (พื้นเหลือง = ยังไม่ยืนยัน)</span>
 
               <span style="display:inline-flex;gap:2px;justify-self:start;">
                 <span style="background:#2272B6;color:#fff;font-size:9px;font-weight:800;padding:0 3px;border-radius:3px;line-height:1.5;">F</span>
@@ -1527,7 +1528,8 @@ canvas{display:block;}
                 (ตัวอย่างนี้คนละสีกันทั้ง 3 หมวด) · ชี้ค้างที่ป้ายเพื่อดูชื่อสีเต็ม</span>
 
               <span style="font-weight:800;color:var(--text-3);justify-self:start;">*</span>
-              <span><b>* ท้ายชื่อขนาด</b> = วันนั้นยังไม่ได้บันทึกชุดสี ระบบเดาจากยอดผลิตจริง · ชี้ค้างที่บรรทัดเพื่อดูที่มา</span>
+              <span><b>*✓ ท้ายชื่อขนาด (พื้นเหลือง)</b> = ระบบเดาให้จากยอดผลิตจริง ยังไม่ได้บันทึก —
+                <b>กดแถวนั้นเพื่อยืนยันว่าเดินชุดนี้จริง</b> ยืนยันแล้วยอดผลิตของวันนั้นจะถูกนับให้ชุดนี้แน่นอน</span>
             </div>
           </div>
           <div id="inuse-cal-body"></div>
@@ -2407,6 +2409,9 @@ function inUseDayMachineInfo(iso, setName, colorKey, machineMap, running) {
   if (hit && hit.machines && hit.machines.length) return { machines: hit.machines.slice(), sure: true, note: '' };
   const planned = (machineMap[iso] || {})[setName];
   if (planned) return { machines: [planned], sure: true, note: '' };
+  // หัวหน้างานกดยืนยันไว้เองว่าวันนั้นเดินชุดนี้ที่เครื่องไหน — ถือเป็นค่าแน่นอน
+  const confirmedMachine = ((typeof rollRunMachine !== 'undefined' ? rollRunMachine : {})[iso] || {})[setName];
+  if (confirmedMachine) return { machines: String(confirmedMachine).split('/').filter(Boolean), sure: true, note: '' };
   let fgKey = null;
   try { fgKey = rollSetFgKey(setName); } catch (e) { /* ตอนบูตยังเรียกไม่ได้ */ }
   try {
@@ -2474,9 +2479,37 @@ function inUseCalStartIso() {
   return days.length ? days[0] : null;
 }
 
+// แถวในปฏิทินที่ยังเป็น "ค่าที่ระบบเดา" — เก็บไว้ตอนวาด แล้วปุ่มยืนยันอ้างด้วยลำดับ
+// (ส่งเป็น argument ในแอตทริบิวต์ onclick ไม่ได้ เพราะชื่อชุดมีเครื่องหมาย " อยู่ในตัว)
+let inUseCalGuessRows = [];
+
+// กดแถวที่ระบบเดาให้ = ยืนยันว่าวันนั้นเดินชุดสีนี้จริง — บันทึกเป็นค่าที่ระบุเจาะจงของวันนั้น
+// หลังยืนยันแล้ว * จะหาย ป้ายเครื่องเปลี่ยนเป็นพื้นทึบ และยอดผลิตของวันนั้นถูกลงชุดนี้แน่นอน
+function confirmInUseCalRow(idx) {
+  const row = inUseCalGuessRows[Number(idx)];
+  if (!row || !canEditPlan()) return;
+  const names = row.items.map(x => rollColorLabelFor(x.set, x.colorKey) + ' — ' + x.set);
+  if (!confirm('ยืนยันว่าวันที่ ' + fmtDateThai(parseISODate(row.date)) + ' เดินชุดนี้จริง?\n\n'
+      + names.join('\n') + (row.machine ? '\n\nที่เครื่อง ' + row.machine : '')
+      + '\n\nยืนยันแล้วยอดผลิตของวันนั้นจะถูกนับให้ชุดนี้')) return;
+  // ชุดสีของวันนั้น — เขียนเฉพาะตัวที่ยังไม่ตรง (setRunColor มีตัวเขียนซ้ำตอน cloud ชน)
+  row.items.forEach(x => {
+    if (explicitRunColorFor(row.date, x.set) === x.colorKey) return;
+    setRunColor(row.date, x.set, x.colorKey);
+  });
+  // เครื่องที่เดินของวันนั้น — ยืนยันไว้ให้ป้ายเครื่องเป็นค่าแน่นอน ไม่ใช่ค่าเดาอีก
+  if (row.machine) {
+    if (!rollRunMachine[row.date]) rollRunMachine[row.date] = {};
+    row.items.forEach(x => { rollRunMachine[row.date][x.set] = row.machine; });
+    persistState();
+  }
+  renderInUseCalendar();
+}
+
 function renderInUseCalendar() {
   const el = document.getElementById('inuse-cal-body');
   if (!el) return;
+  inUseCalGuessRows = [];   // สร้างใหม่ทุกครั้งที่วาด ลำดับจึงตรงกับแถวที่เห็นเสมอ
   const m = inUseCalMonthDate();
   const year = m.getFullYear(), month = m.getMonth();
   const label = document.getElementById('inuse-cal-label');
@@ -2529,14 +2562,27 @@ function renderInUseCalendar() {
                  padding:0 3px;border-radius:3px;line-height:1.5;flex-shrink:0;">${ROLL_CAT_ABBR[x.cat] || '?'}</span>`).join('');
       const machineNote = !machine ? ''
         : ' · เครื่อง ' + machine + (machineSure || !machineNotes.length ? '' : ' (' + machineNotes.join(' · ') + ')');
-      return `<div title="${escapeHtmlAttr(sizeLabel + machineNote + ' — ' + detail +
-          (anyInferred ? ' · * ยังไม่ได้บันทึกชุดสีของวันนั้น — อนุมานจากยอดผลิตจริง' : ''))}"
-          style="display:flex;align-items:center;gap:3px;font-size:10.5px;line-height:1.4;margin-top:2px;">
+      // ยังเป็นค่าที่ระบบเดา → กดแถวเพื่อยืนยันได้เลย (เฉพาะคนที่มีสิทธิ์แก้แผน)
+      // นับทั้ง 2 แบบ: ชุดสีที่เดามาจากยอดผลิต (*) และเครื่องที่เดามาจากทะเบียน/วันก่อน (ป้ายแบบขอบ)
+      const isGuess = anyInferred || (!!machine && !machineSure);
+      const guessIdx = (isGuess && canEditPlan())
+        ? inUseCalGuessRows.push({ date: iso, machine,
+            items: ordered.map(x => ({ set: x.set, colorKey: x.colorKey, inferred: !!x.inferred })) }) - 1
+        : -1;
+      const guessAttr = guessIdx >= 0 ? ` onclick="event.stopPropagation();confirmInUseCalRow('${guessIdx}')"` : '';
+      return `<div${guessAttr} title="${escapeHtmlAttr(sizeLabel + machineNote + ' — ' + detail +
+          (anyInferred ? (guessIdx >= 0 ? ' · * ระบบเดาจากยอดผลิตจริง — กดแถวนี้เพื่อยืนยันว่าเดินชุดนี้จริง'
+                                        : ' · * ยังไม่ได้บันทึกชุดสีของวันนั้น — อนุมานจากยอดผลิตจริง') : ''))}"
+          style="display:flex;align-items:center;gap:3px;font-size:10.5px;line-height:1.4;margin-top:2px;
+                 ${guessIdx >= 0 ? 'cursor:pointer;border-radius:4px;padding:1px 2px;margin-left:-2px;margin-right:-2px;background:var(--amber-dim);' : ''}">
         ${machine ? `<span style="font-size:9px;font-weight:800;padding:0 4px;border-radius:3px;line-height:1.5;flex-shrink:0;
                ${machineSure ? 'background:var(--inuse);color:#fff;'
                              : 'background:transparent;color:var(--text-3);border:1px solid var(--border);'}">${escapeHtmlAttr(machine)}</span>` : ''}
         <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2);font-weight:600;">${escapeHtmlAttr(inUseCalSizeShort(sizeLabel))}${
-          anyInferred ? '<span style="color:var(--text-3);font-weight:400;">*</span>' : ''}</span>
+          anyInferred ? (guessIdx >= 0
+            ? '<span style="color:var(--amber);font-weight:800;" title="กดเพื่อยืนยัน">*✓</span>'
+            : '<span style="color:var(--text-3);font-weight:400;">*</span>')
+          : (guessIdx >= 0 ? '<span style="color:var(--amber);font-weight:800;" title="กดเพื่อยืนยันเครื่องที่เดิน">✓?</span>' : '')}</span>
         <span style="display:inline-flex;gap:2px;margin-left:auto;flex-shrink:0;">${catTags}</span>
       </div>`;
     }).join('');
@@ -9098,6 +9144,13 @@ let cloudSyncReady = false;
 // ทำให้สคริปต์ตายกลางทาง โหลด state ไม่เสร็จ และ initCloudSync() ไม่ได้รันเลย
 let rollRunColor = {};
 
+// เครื่องที่หัวหน้างาน "ยืนยันเอง" ว่าวันนั้นเดินชุดนี้อยู่ที่เครื่องไหน
+// { 'YYYY-MM-DD': { 'ชื่อชุด Roll': 'P1' หรือ 'P1/P4' } }
+// ใช้ตอนวันนั้นไม่มียอดผลิตของขนาดนั้น (ระบบเดาเครื่องให้จากทะเบียน/วันก่อน)
+// ยืนยันแล้วถือเป็นค่าที่แน่นอน ป้ายเครื่องในปฏิทินจึงเปลี่ยนจากแบบขอบเป็นพื้นทึบ
+// ประกาศตรงนี้ด้วยเหตุผลเดียวกับ rollRunColor (TDZ ตอน buildStateSnapshot ระหว่างบูต)
+let rollRunMachine = {};
+
 // จุดเริ่มนับน้ำหนักผลิตใหม่ของแต่ละชุด Roll หลังแต่ง Roll เสร็จ
 // { 'GS 2"x1" (47x23) Forming|yellow': { from: 'YYYY-MM-DD', at: 'ISO', by: 'ชื่อคนกด' } }
 // from = นับน้ำหนักตั้งแต่วันนี้เป็นต้นไป (รวมวันนั้น) — วันก่อนหน้าถือเป็นรอบที่แต่งไปแล้ว
@@ -9121,7 +9174,7 @@ function buildStateSnapshot() {
     dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
     dailyPieceStatus, rollSizeLog, rollSizeLogSeq, dailyPauseLog, dailyPauseLogSeq,
     prodBlockProducts, prodBlockSeq, prodBlockCells, prodBlockPM, prodBlockSummary,
-    prodBlockEntries, prodBlockEntrySeq, prodBlockActiveMachine, prodBlockViewMonth, rollRunColor, rollSizeChangeQueue,
+    prodBlockEntries, prodBlockEntrySeq, prodBlockActiveMachine, prodBlockViewMonth, rollRunColor, rollRunMachine, rollSizeChangeQueue,
     rollDressReset, rollDressResetLog, rollCarryTon
   };
 }
@@ -9248,6 +9301,7 @@ function applyState(saved) {
   if (saved.rollSetCategoryTemplates) rollSetCategoryTemplates = saved.rollSetCategoryTemplates;
   if (saved.rollLifeSpec) rollLifeSpec = saved.rollLifeSpec;
   if (saved.rollRunColor) rollRunColor = saved.rollRunColor;
+  if (saved.rollRunMachine) rollRunMachine = saved.rollRunMachine;
   if (Array.isArray(saved.rollSizeChangeQueue)) rollSizeChangeQueue = saved.rollSizeChangeQueue;
   if (saved.rollDressReset) rollDressReset = saved.rollDressReset;
   if (Array.isArray(saved.rollDressResetLog)) rollDressResetLog = saved.rollDressResetLog;
