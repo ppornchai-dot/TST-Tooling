@@ -10284,10 +10284,17 @@ function renderProdWeightRunBanner() {
       const cat = parseSizeRollName(x.set).category;
       if (cat && !byColor.get(name).cats.includes(cat)) byColor.get(name).cats.push(cat);
     });
-    const colorTags = [...byColor.entries()].map(([name, v]) => {
+    // เรียงกลุ่มสีตามหมวดที่มาก่อน (F → S → T) ไม่ใช่ตามลำดับที่เจอในข้อมูล
+    // ป้ายหมวดใช้ "สีของชุด Roll" เป็นพื้น (ไม่ใช่สีประจำหมวด) — มองครั้งเดียวรู้ว่า
+    // หมวดนั้นเดินชุดสีอะไร ตัวอักษรเลือกขาว/ดำตามความสว่างของพื้น (rollColorTextOn)
+    const colorOrder = [...byColor.entries()].sort((a, b) => {
+      const rank = v => Math.min(...v.cats.map(c => (ROLL_CAT_SORT[c] ?? 9)), 9);
+      return rank(a[1]) - rank(b[1]);
+    });
+    const colorTags = colorOrder.map(([name, v]) => {
       const cats = v.cats.slice().sort((a, b) => (ROLL_CAT_SORT[a] ?? 9) - (ROLL_CAT_SORT[b] ?? 9));
       const catTags = cats.map(c => `<span style="font-size:10px;font-weight:800;padding:0 4px;border-radius:3px;
-             background:${ROLL_SET_SECTION_COLORS[c] || 'var(--text-3)'};color:#fff;">${escapeHtmlAttr(ROLL_CAT_ABBR[c] || c)}</span>`).join('');
+             background:${v.dot};color:${rollColorTextOn(v.dot)};box-shadow:inset 0 0 0 1px rgba(0,0,0,.28);">${escapeHtmlAttr(ROLL_CAT_ABBR[c] || c)}</span>`).join('');
       return `<span title="${escapeHtmlAttr(name + (cats.length ? ' — ' + cats.join(', ') : ''))}"
           style="display:inline-flex;align-items:center;gap:3px;font-weight:800;font-size:11px;color:var(--text-2);">
         <span style="width:10px;height:10px;border-radius:50%;background:${v.dot};display:inline-block;box-shadow:inset 0 0 0 1px rgba(0,0,0,.3);"></span>${escapeHtmlAttr(name)}${catTags}</span>`;
