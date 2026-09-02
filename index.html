@@ -10438,18 +10438,9 @@ function renderProdWeightRangeNote(fromDate, toDate) {
       ช่วงวันที่ไม่ถูกต้อง — "จากวันที่" อยู่หลัง "ถึงวันที่"</div>`;
     return;
   }
-  const total = fgWeightMeta ? (fgWeightMeta.totalKg / 1000) : null;
-  el.innerHTML = `<div style="background:var(--accent-glow);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text-2);">
-    ตัวเลข "ผลิตจริง" ด้านล่างคิดจากช่วง <b style="color:var(--text-1);">${fmtDateThai(parseISODate(fromDate))} – ${fmtDateThai(parseISODate(toDate))}</b>
-    <span style="color:var(--text-3);">(${days.toLocaleString()} วัน)</span>${total === null ? '' :
-      ` · น้ำหนักผลิตรวมทุกขนาด <b style="color:var(--text-1);">${total.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> ตัน
-        <span style="color:var(--text-3);">จาก ${fgWeightMeta.rowCount.toLocaleString()} รายการ</span>`}
-    <span style="color:var(--text-3);">— ส่วน "Usage สะสม" เป็นยอดตลอดอายุ Roll ไม่ขึ้นกับช่วงวันที่</span>
-    ${(fgWeightMeta && fgWeightMeta.scrapRows) ? `<div style="margin-top:3px;color:var(--text-3);">
-      ไม่รวมเศษ/ปรับยอดของระบบ Production <b>${fgWeightMeta.scrapRows.toLocaleString()}</b> รายการ
-      <b>${(fgWeightMeta.scrapKg / 1000).toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> ตัน
-      (row_type: scrap / old_scrap) — ไม่นับเป็นน้ำหนักผลิตของชุด Roll</div>` : ''}
-  </div>`;
+  // เอาแถบสรุปช่วงวันที่/ยอดรวมออกแล้ว — ตัวเลขในตารางกับหัวคอลัมน์บอกอยู่แล้ว
+  // เหลือไว้เฉพาะข้อความเตือนตอนกรอกช่วงวันที่ผิด (เช็คไว้ด้านบนแล้ว)
+  el.innerHTML = '';
 }
 
 // ─── บันทึกตารางน้ำหนักผลิตเป็นไฟล์ Excel ─────────────────────────────────────
