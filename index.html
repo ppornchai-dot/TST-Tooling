@@ -13291,14 +13291,31 @@ function collectHistoryRecords() {
   const records = [];
   Object.keys(dailyStatusByDate).forEach(dateIso => {
     const dayMap = dailyStatusByDate[dateIso] || {};
+    // งานแทรก (เพิ่มเองในหน้างานประจำวัน) — ลงประวัติเหมือนงานตามแผน
+    // เดิมลงเป็นประเภท 'checklist' ซึ่งไม่ตรงกับแท็บ CNC/ขัด Roll ของหน้านี้เลย
+    // จึงเห็นได้แค่ในแท็บ "ทั้งหมด" และไม่มีเวลาเริ่ม/จบ/ชั่วโมงทำงานให้ดู
     dailyChecklistTasks.filter(t => !t.date || t.date === dateIso).forEach(t => {
-      if (dayMap[t.id] !== 'done') return;
+      const st = dayMap[t.id];
+      if (st !== 'done' && st !== 'in_progress') return;
+      const wt = t.workType === 'polish' ? 'polish' : 'cnc';
+      const actual = (dailyActualTimes[dateIso] || {})[t.id] || {};
+      const startAt = actual.startTime || null;
+      const endAt = actual.endTime || null;
+      const usedMin = actualMinutesBetween(startAt, endAt);
       records.push({
-        date: dateIso, wo: t.id, typeKey: 'checklist', typeLabel: t.type || 'เช็คลิสต์',
-        tooling: t.ref || '—', detail: t.task, who: t.who || '—', hours: null, result: 'สำเร็จ',
-        // เช็คลิสต์ไม่ได้เก็บเวลาเริ่ม จึงจัดกลุ่มแยกไว้ท้ายวัน ไม่เดาว่าเป็นกะไหน
-        shiftKey: 'unknown',
-        sortKey: dateIso + ' 0000 ' + String(t.id),
+        date: dateIso, wo: t.id, typeKey: wt,
+        typeLabel: (wt === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)') + ' · งานแทรก',
+        tooling: 'งานแทรก' + (t.ref && t.ref !== '—' ? ' · ' + t.ref : ''),
+        detail: t.task, who: t.who || '—',
+        // งานแทรกไม่มีเวลาตามแผน — ใช้เวลาที่กดจริงเป็นชั่วโมงทำงาน
+        hours: usedMin ? Math.round((usedMin / 60) * 10) / 10 : null,
+        minutes: usedMin || null,
+        startTime: startAt || t.time || null, endTime: endAt,
+        result: st === 'done' ? 'สำเร็จ' : 'กำลังทำ',
+        resultChip: st === 'done' ? 'chip-green' : 'chip-blue', resultNote: '',
+        // จัดกลุ่มตามกะจากเวลาที่กดเริ่มจริง เหมือนงานตามแผน — ไม่มีเวลาเริ่มจึงไม่เดากะ
+        shiftKey: shiftKeyForTime(startAt) || 'unknown',
+        sortKey: dateIso + ' ' + String(historyDayOrderMin(startAt) + 1).padStart(4, '0') + ' ' + String(t.id),
       });
     });
   });
