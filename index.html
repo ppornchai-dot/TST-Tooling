@@ -2621,6 +2621,13 @@ function renderInUseCalendar() {
                  padding:0 3px;border-radius:3px;line-height:1.5;flex-shrink:0;">${ROLL_CAT_ABBR[x.cat] || '?'}</span>`).join('');
       const machineNote = !machine ? ''
         : ' · เครื่อง ' + machine + (machineSure || !machineNotes.length ? '' : ' (' + machineNotes.join(' · ') + ')');
+      // ยอดผลิตของขนาดนี้ในวันนั้น — ทุกหมวดของขนาดเดียวกันใช้ยอดก้อนเดียวกัน จึงเอาค่ามากสุด
+      // ต้องโชว์ เพราะบางวันมียอดนิดเดียว (เช่น 0.83 ต. ของ 4"x4" ที่เป็นของค้าง/คีย์ตกเครื่อง)
+      // แล้วขนาดนั้นก็ถูกนับว่า "เดินวันนี้" ทั้งที่เครื่องจริงเดินอีกขนาดอยู่ — เห็นตัวเลขแล้วตัดสินเองได้
+      const dayKg = ordered.reduce((mx, x) => Math.max(mx, ((running.get(x.set) || {}).kg) || 0), 0);
+      const tonText = dayKg > 0 ? (Math.round(dayKg / 10) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' ต.' : '';
+      // ยอดของขนาดนี้ไม่ได้ระบุเครื่องมาเลย — เครื่องที่เห็นเป็นค่าที่ระบบเดาให้ทั้งหมด
+      const noFgMachine = dayKg > 0 && ordered.every(x => !(((running.get(x.set) || {}).machines || []).length));
       // ยังเป็นค่าที่ระบบเดา → กดแถวเพื่อยืนยันได้เลย (เฉพาะคนที่มีสิทธิ์แก้แผน)
       // นับทั้ง 2 แบบ: ชุดสีที่เดามาจากยอดผลิต (*) และเครื่องที่เดามาจากทะเบียน/วันก่อน (ป้ายแบบขอบ)
       const isGuess = anyInferred || (!!machine && !machineSure);
@@ -2633,6 +2640,8 @@ function renderInUseCalendar() {
       const showGuessMark = isGuess && guessIdx >= 0;
       const guessAttr = guessIdx >= 0 ? ` onclick="event.stopPropagation();confirmInUseCalRow('${guessIdx}')"` : '';
       return `<div${guessAttr} title="${escapeHtmlAttr(sizeLabel + machineNote + ' — ' + detail +
+          (tonText ? ' · ยอดผลิตวันนั้น ' + tonText : '') +
+          (noFgMachine ? ' (ยอดนี้ไม่ได้ระบุเครื่องในระบบ Production — เครื่องที่เห็นเป็นค่าที่ระบบเดา)' : '') +
           (showGuessMark ? ' · ระบบเดาให้ — กดแถวนี้เพื่อยืนยันว่าเดินชุดนี้จริง'
             : (guessIdx >= 0 ? ' · กดแถวนี้เพื่อแก้ชุด/เครื่องที่ยืนยันไว้' : '')))}"
           style="display:flex;align-items:center;gap:3px;font-size:10.5px;line-height:1.4;margin-top:2px;
@@ -2646,7 +2655,9 @@ function renderInUseCalendar() {
             ? '<span style="color:var(--amber);font-weight:800;" title="กดเพื่อยืนยัน">*✓</span>'
             : '<span style="color:var(--text-3);font-weight:400;">*</span>')
           : (showGuessMark ? '<span style="color:var(--amber);font-weight:800;" title="กดเพื่อยืนยันเครื่องที่เดิน">✓?</span>' : '')}</span>
-        <span style="display:inline-flex;gap:2px;margin-left:auto;flex-shrink:0;">${catTags}</span>
+        ${tonText ? `<span style="font-size:9px;font-weight:700;color:${noFgMachine ? 'var(--amber)' : 'var(--text-3)'};flex-shrink:0;margin-left:auto;"
+            title="${escapeHtmlAttr('ยอดผลิตของขนาดนี้ในวันนั้น' + (noFgMachine ? ' — ไม่ได้ระบุเครื่องในระบบ Production' : ''))}">${escapeHtmlAttr(tonText)}</span>` : ''}
+        <span style="display:inline-flex;gap:2px;${tonText ? '' : 'margin-left:auto;'}flex-shrink:0;">${catTags}</span>
       </div>`;
     }).join('');
     cells += `<div style="min-height:78px;min-width:0;overflow:hidden;padding:6px 7px;border:1px solid var(--border-light);border-radius:6px;
