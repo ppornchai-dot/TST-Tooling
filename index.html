@@ -9981,9 +9981,13 @@ function renderRunColorPicker() {
           const prev = explicit ? null : prevDayRunColorFor(d, setName);
           const inuse = inUseColorFor(setName);
           const effective = explicit || (prev && prev.key) || inuse;
-          // คำเรียกวันที่อ้างอิง — ติดกันจริงใช้คำว่า "เมื่อวาน" ไม่งั้นบอกวันที่ตรงๆ
-          const prevLabel = !prev ? '' : (prev.from === addDaysIso(d, -1)
-            ? 'เมื่อวาน' : fmtDateThaiShort(parseISODate(prev.from)));
+          // คำเรียกวันที่อ้างอิง — เดินเมื่อวานจริงใช้คำว่า "เมื่อวาน"
+          // ไม่ได้เดินเมื่อวาน (ชุดนี้ว่างไปหลายวัน) บอกว่าเป็น "ล่าสุด <วันที่>" ให้ชัด
+          const prevIsYesterday = !!prev && prev.from === addDaysIso(d, -1);
+          const prevDateText = !prev ? '' : fmtDateThaiShort(parseISODate(prev.from));
+          const prevLabel = !prev ? '' : (prevIsYesterday ? 'เมื่อวาน' : 'ล่าสุด ' + prevDateText);
+          // ห่างมากี่วันแล้ว — ช่วยให้เห็นว่าชุดนี้หยุดไปนานแค่ไหน ไม่ใช่ของเมื่อวาน
+          const prevDaysAgo = !prev ? 0 : Math.round((parseISODate(d) - parseISODate(prev.from)) / 86400000);
           const prevColorName = !prev ? '' : ((palette.find(c => c.key === prev.key) || {}).label || prev.key);
           // โหมดเจาะจงชุดที่เดินงาน: บอกด้วยว่าเดินอยู่เครื่องไหน และวันนั้นผลิตไปกี่ตัน
           const runInfo = scope && scope.info ? scope.info.get(setName) : null;
@@ -10021,7 +10025,9 @@ function renderRunColorPicker() {
                     isPrevRef ? ` · ${escapeHtmlAttr(prevLabel)}` : ''}</button>`;
               }).join('') || '<span style="font-size:11px;color:var(--text-3);">ไม่มีชุดสีในกลุ่มนี้</span>'}
               ${!explicit && prev ? `<span style="flex-basis:100%;font-size:11px;font-weight:700;color:var(--amber);">
-                  ${escapeHtmlAttr(prevLabel)} (${escapeHtmlAttr(fmtDateThaiShort(parseISODate(prev.from)))}) เดิน ${escapeHtmlAttr(prevColorName)} —
+                  ${prevIsYesterday
+                    ? `เมื่อวาน (${escapeHtmlAttr(prevDateText)}) เดิน ${escapeHtmlAttr(prevColorName)}`
+                    : `ชุดนี้เดินครั้งล่าสุด ${escapeHtmlAttr(prevDateText)} (${prevDaysAgo} วันก่อน) ด้วย ${escapeHtmlAttr(prevColorName)} — เมื่อวานชุดนี้ไม่ได้เดิน`} —
                   ถ้าวันนี้เดินชุดเดิม กดปุ่มนั้นเพื่อยืนยัน</span>`
                 : (!explicit && inuse ? '<span style="flex-basis:100%;font-size:11px;color:var(--text-3);">ยังไม่มีประวัติของชุดนี้ — ค่าอ้างอิงมาจากสถานะ กำลังใช้งาน ในทะเบียน</span>' : '')}
               ${!effective ? '<span style="font-size:10px;color:var(--red);">ยังไม่มีชุดที่กำลังใช้งาน</span>' : ''}
