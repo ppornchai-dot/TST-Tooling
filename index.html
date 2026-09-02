@@ -10271,33 +10271,48 @@ function renderProdWeightRunBanner() {
     const ma = machineOfSize(a) || 'zzz', mb = machineOfSize(b) || 'zzz';
     return ma !== mb ? ma.localeCompare(mb, 'th') : a.localeCompare(b, 'th');
   });
-  const sizeChips = sizes.map(label => {
+  // ป้ายของหนึ่งขนาด — ชื่อขนาด + ชุดสีของแต่ละหมวด (F/S/T) + สถานะการระบุ
+  // บอกหมวดกำกับทุกสีเสมอ (ไม่ใช่เฉพาะตอนสีต่างกัน) จะได้รู้ว่า F/S/T เดินสีอะไรบ้าง
+  const sizeChipHtml = label => {
     const inSize = sets.filter(s => rollSetSizeGroupLabel(s) === label);
-    const mc = [...new Set(inSize.map(machineOf).filter(Boolean))].join('/');
     const left = inSize.filter(s => !explicitRunColorFor(today, s)).length;
-    // ชุดสีที่ระบุไว้แล้วของขนาดนี้ — ปกติทั้ง Forming/Sizing/TH ใช้สีเดียวกัน จึงเหลือป้ายเดียว
-    // ถ้าคนละสีจริงก็โชว์ทุกสีพร้อมหมวดกำกับ จะได้รู้ว่าหมวดไหนเดินสีอะไร
     const picked = inSize.map(s => ({ set: s, key: explicitRunColorFor(today, s) })).filter(x => x.key);
     const byColor = new Map();
     picked.forEach(x => {
       const name = rollColorLabelFor(x.set, x.key);
       if (!byColor.has(name)) byColor.set(name, { dot: inUseColorDot(x.set, x.key), cats: [] });
       const cat = parseSizeRollName(x.set).category;
-      if (cat) byColor.get(name).cats.push(cat);
+      if (cat && !byColor.get(name).cats.includes(cat)) byColor.get(name).cats.push(cat);
     });
     const colorTags = [...byColor.entries()].map(([name, v]) => {
-      const cats = byColor.size > 1 && v.cats.length ? ' ' + v.cats.map(c => (ROLL_CAT_ABBR[c] || c)).join('') : '';
-      return `<span title="${escapeHtmlAttr(name + (v.cats.length ? ' — ' + v.cats.join(', ') : ''))}"
+      const cats = v.cats.slice().sort((a, b) => (ROLL_CAT_SORT[a] ?? 9) - (ROLL_CAT_SORT[b] ?? 9));
+      const catTags = cats.map(c => `<span style="font-size:10px;font-weight:800;padding:0 4px;border-radius:3px;
+             background:${ROLL_SET_SECTION_COLORS[c] || 'var(--text-3)'};color:#fff;">${escapeHtmlAttr(ROLL_CAT_ABBR[c] || c)}</span>`).join('');
+      return `<span title="${escapeHtmlAttr(name + (cats.length ? ' — ' + cats.join(', ') : ''))}"
           style="display:inline-flex;align-items:center;gap:3px;font-weight:800;font-size:11px;color:var(--text-2);">
-        <span style="width:8px;height:8px;border-radius:50%;background:${v.dot};display:inline-block;"></span>${escapeHtmlAttr(name + cats)}</span>`;
+        <span style="width:10px;height:10px;border-radius:50%;background:${v.dot};display:inline-block;box-shadow:inset 0 0 0 1px rgba(0,0,0,.3);"></span>${escapeHtmlAttr(name)}${catTags}</span>`;
     }).join('');
-    return `<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:99px;font-size:12px;font-weight:800;
+    return `<span style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:99px;font-size:12px;font-weight:800;
                  background:var(--bg-card);color:var(--text-1);box-shadow:inset 0 0 0 1px var(--border);">
-      ${escapeHtmlAttr(label)}${mc ? `<span style="font-weight:700;font-size:11px;color:var(--text-3);">เครื่อง ${escapeHtmlAttr(mc)}</span>` : ''}
+      ${escapeHtmlAttr(label)}
       ${colorTags}
       ${left ? `<span style="font-weight:800;font-size:11px;color:var(--amber);">รอระบุ ${left}</span>` : '<span style="font-size:11px;color:var(--green);font-weight:800;">✓</span>'}
     </span>`;
-  }).join('');
+  };
+
+  // แสดงเครื่องละบรรทัด — เครื่องหนึ่งเดินได้หลายขนาด ป้ายขนาดจึงเรียงอยู่ในบรรทัดของเครื่องนั้น
+  const byMachine = new Map();
+  sizes.forEach(label => {
+    const key = machineOfSize(label) || '—';
+    if (!byMachine.has(key)) byMachine.set(key, []);
+    byMachine.get(key).push(label);
+  });
+  const sizeChips = [...byMachine.entries()].map(([mc, labels]) => `
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:3px 0;">
+      <span style="flex:0 0 auto;min-width:74px;font-size:12px;font-weight:800;padding:2px 9px;border-radius:6px;
+                   background:var(--accent);color:#fff;text-align:center;">${mc === '—' ? 'ไม่ทราบเครื่อง' : 'เครื่อง ' + escapeHtmlAttr(mc)}</span>
+      ${labels.map(sizeChipHtml).join('')}
+    </div>`).join('');
   el.innerHTML = `<div style="background:${bg};border-left:4px solid ${accent};border-radius:8px;padding:11px 14px;
        display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
     <div style="flex:1;min-width:260px;">
@@ -10305,7 +10320,7 @@ function renderProdWeightRunBanner() {
         วันนี้ ${escapeHtmlAttr(fmtDateThai(parseISODate(today)))} บล็อกเดินงาน ${sizes.length} ขนาด
         <span style="font-weight:700;color:var(--text-2);">· ระบุชุดสี Roll ที่เดินแล้ว ${done}/${sets.length} รายการ</span>
       </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;">${sizeChips}</div>
+      <div style="display:flex;flex-direction:column;gap:2px;">${sizeChips}</div>
     </div>
     <button class="btn ${complete ? 'btn-ghost' : 'btn-primary'} btn-sm" onclick="openRunColorPromptToday()"
       style="flex:0 0 auto;font-weight:800;">${complete ? 'แก้ชุดสีที่เดินวันนี้' : 'ระบุชุดสี Roll ที่เดินวันนี้'}</button>
