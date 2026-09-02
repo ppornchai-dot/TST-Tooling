@@ -10314,6 +10314,16 @@ function renderProdWeightRunBanner() {
     if (!byMachine.has(key)) byMachine.set(key, []);
     byMachine.get(key).push(label);
   });
+  // หมวดที่มาก่อนสุดของขนาดนั้น (F=0 · S=1 · T=2) — ใช้เรียงป้ายในบรรทัดของเครื่อง
+  // เครื่องหนึ่งอาจเดิน F ของขนาดหนึ่ง และ S/T ของอีกขนาด ต้องอ่านได้เป็น F → S → T
+  // ไล่จากหน้าไปหลังตามลำดับงานจริง (แต่ง Forming ก่อน แล้ว Sizing แล้ว TH)
+  const sizeCatRank = label => Math.min(...sets
+    .filter(s => rollSetSizeGroupLabel(s) === label)
+    .map(s => (ROLL_CAT_SORT[parseSizeRollName(s).category] ?? 9)), 9);
+  byMachine.forEach(labels => labels.sort((a, b) => {
+    const ra = sizeCatRank(a), rb = sizeCatRank(b);
+    return ra !== rb ? ra - rb : a.localeCompare(b, 'th');
+  }));
   const sizeChips = [...byMachine.entries()].map(([mc, labels]) => `
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:3px 0;">
       <span style="flex:0 0 auto;min-width:74px;font-size:12px;font-weight:800;padding:2px 9px;border-radius:6px;
