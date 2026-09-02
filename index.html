@@ -9771,6 +9771,17 @@ let fgRunningCache = {}; // { 'YYYY-MM-DD': { kgByKey:{}, machinesByKey:{}, erro
 // เก็บจากตอนเรนเดอร์เพื่อให้ไฟล์ตรงกับที่เห็นบนจอเสมอ ไม่ต้องคำนวณซ้ำแล้วเสี่ยงได้เลขไม่ตรงกัน
 let prodWeightExport = null;
 
+// ชุดสีที่ระบุไว้ของ "วันก่อนหน้าที่ใกล้ที่สุด" ของชุดนั้น — คืน { key, from } หรือ null
+// ชุด Roll เดิมที่ยังอยู่บนเครื่อง วันนี้ก็ต้องเป็นสีเดิม ค่านี้จึงแม่นกว่าสถานะ
+// "กำลังใช้งาน" ในทะเบียน ที่เปลี่ยนไปตามการปลด/ตั้งชุดหลังแต่ง Roll เสร็จ
+function prevDayRunColorFor(date, setName) {
+  const days = Object.keys(rollRunColor || {})
+    .filter(x => x < date && (rollRunColor[x] || {})[setName]).sort();
+  if (!days.length) return null;
+  const from = days[days.length - 1];
+  return { key: rollRunColor[from][setName], from };
+}
+
 // ชุดสีที่ระบุไว้ "เจาะจงวันนั้น" เท่านั้น (ไม่รวมค่าที่อนุมานจากสถานะกำลังใช้งาน)
 function explicitRunColorFor(date, setName) {
   return (rollRunColor[date] || {})[setName] || null;
@@ -9965,8 +9976,11 @@ function renderRunColorPicker() {
             ...(used.has(NO_COLOR_KEY) ? [{ key: NO_COLOR_KEY, label: 'ไม่ระบุสี', dot: '#9CA3AF' }] : []),
           ];
           const explicit = explicitRunColorFor(d, setName);
+          // ยังไม่ระบุของวันนี้ → ยึดสีของวันก่อนหน้าที่ระบุไว้จริงก่อน (ชุดเดิมยังอยู่บนเครื่อง)
+          // ไม่มีประวัติเลยจึงถอยไปใช้สถานะ "กำลังใช้งาน" ในทะเบียนเหมือนเดิม
+          const prev = explicit ? null : prevDayRunColorFor(d, setName);
           const inuse = inUseColorFor(setName);
-          const effective = explicit || inuse;
+          const effective = explicit || (prev && prev.key) || inuse;
           // โหมดเจาะจงชุดที่เดินงาน: บอกด้วยว่าเดินอยู่เครื่องไหน และวันนั้นผลิตไปกี่ตัน
           const runInfo = scope && scope.info ? scope.info.get(setName) : null;
           const runBadge = !runInfo ? '' : `<span style="flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--text-3);">
@@ -9985,7 +9999,8 @@ function renderRunColorPicker() {
                 const n = setRolls.filter(r => (r.color || NO_COLOR_KEY) === c.key).length;
                 return `<button onclick="${jsCallAttr('setRunColor', d, setName, c.key)}"
                   title="${escapeHtmlAttr(isExplicit ? 'ระบุไว้ว่าวันนี้เดินด้วย' + c.label + ' — กดซ้ำเพื่อยกเลิก'
-                    : (on ? c.label + ' กำลังใช้งานอยู่ (ค่าอ้างอิง) — กดเพื่อยืนยันว่าวันนี้เดินชุดนี้'
+                    : (on ? c.label + ' — ค่าอ้างอิง' + (prev ? ' จากวันที่ ' + fmtDateThaiShort(parseISODate(prev.from)) + ' (ชุดเดิม)' : ' จากสถานะกำลังใช้งาน')
+                            + ' · กดเพื่อยืนยันว่าวันนี้เดินชุดนี้'
                           : 'ระบุว่าวันนี้เดินด้วย' + c.label))}"
                   style="display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:99px;cursor:pointer;font-size:11px;font-weight:${on ? 800 : 600};
                          border:1px ${isExplicit ? 'solid' : (on ? 'dashed' : 'solid')} ${on ? 'var(--accent)' : 'var(--border)'};
@@ -9994,7 +10009,8 @@ function renderRunColorPicker() {
                   <span style="width:8px;height:8px;border-radius:50%;background:${c.dot};flex-shrink:0;"></span>${escapeHtmlAttr(c.label)}
                   <span style="opacity:.6;font-weight:600;">${n}</span>${isExplicit ? ' ✓' : ''}</button>`;
               }).join('') || '<span style="font-size:11px;color:var(--text-3);">ไม่มีชุดสีในกลุ่มนี้</span>'}
-              ${!explicit && inuse ? '<span style="font-size:10px;color:var(--text-3);">← อ้างจากสถานะกำลังใช้งาน</span>' : ''}
+              ${!explicit && prev ? `<span style="font-size:10px;color:var(--text-3);">← อ้างจากวันที่ ${escapeHtmlAttr(fmtDateThaiShort(parseISODate(prev.from)))} (ชุดเดิม)</span>`
+                : (!explicit && inuse ? '<span style="font-size:10px;color:var(--text-3);">← อ้างจากสถานะกำลังใช้งาน</span>' : '')}
               ${!effective ? '<span style="font-size:10px;color:var(--red);">ยังไม่มีชุดที่กำลังใช้งาน</span>' : ''}
             </span>
           </div>`;
@@ -10007,15 +10023,22 @@ function renderRunColorPicker() {
   const shownSets = [...groups.values()].flatMap(g => g.sets);
   const chosenCount = shownSets.filter(s => explicitRunColorFor(d, s)).length;
   const note = document.getElementById('runcolor-note');
+  const prevCount = [...groups.values()].reduce((n, g) =>
+    n + g.sets.filter(s => !explicitRunColorFor(d, s) && prevDayRunColorFor(d, s)).length, 0);
   const inferredCount = [...groups.values()].reduce((n, g) =>
-    n + g.sets.filter(s => !explicitRunColorFor(d, s) && inUseColorFor(s)).length, 0);
+    n + g.sets.filter(s => !explicitRunColorFor(d, s) && !prevDayRunColorFor(d, s) && inUseColorFor(s)).length, 0);
   if (note) note.innerHTML = (scope
     ? `ขนาดเหล่านี้ <b style="color:var(--text-1);">เดินงานอยู่ในบล็อกของวันนี้</b> — เลือกให้ตรงว่าแต่ละหมวดเดินด้วยชุดสีไหน
-       เพื่อให้น้ำหนักผลิตของวันนี้ไปลงชุดที่เดินจริง (ปุ่มขอบประ = ระบบเดาจากสถานะ <b>กำลังใช้งาน</b> ยังไม่ได้ยืนยัน)<br>
+       เพื่อให้น้ำหนักผลิตของวันนี้ไปลงชุดที่เดินจริง (ปุ่มขอบประ = ค่าอ้างอิง ยังไม่ได้ยืนยัน —
+       <b>ชุดเดิมยึดสีของวันก่อนหน้า</b> ถ้าไม่มีประวัติจึงใช้สถานะ <b>กำลังใช้งาน</b>)<br>
        1 Size Roll เดินได้วันละ 1 ชุดสี · กดสีที่ระบุไว้ซ้ำเพื่อยกเลิกการระบุ &nbsp;·&nbsp;`
-    : `1 Size Roll เดินได้วันละ 1 ชุดสี — ปกติระบบยึดจากชุดที่สถานะ <b>กำลังใช้งาน</b> อยู่ให้เลย (ปุ่มขอบประ)<br>
-      ระบุทับได้เฉพาะวันที่เดินคนละชุดกับตอนนี้ กดสีที่ระบุไว้ซ้ำเพื่อยกเลิกการระบุ &nbsp;·&nbsp;`)
-    + ` <b style="color:var(--text-1);">ระบุเอง ${chosenCount}</b> · อ้างจากกำลังใช้งาน ${inferredCount} · รวม ${setCount} รายการ`;
+    : `1 Size Roll เดินได้วันละ 1 ชุดสี — ค่าอ้างอิง (ปุ่มขอบประ) ยึด <b>ชุดสีของวันก่อนหน้า</b>
+      ที่ระบุไว้จริงก่อน ถ้าไม่มีประวัติจึงใช้สถานะ <b>กำลังใช้งาน</b> ในทะเบียน<br>
+      ระบุทับได้เฉพาะวันที่เดินคนละชุดกับที่อ้างอิงไว้ กดสีที่ระบุไว้ซ้ำเพื่อยกเลิกการระบุ &nbsp;·&nbsp;`)
+    + ` <b style="color:var(--text-1);">ระบุเอง ${chosenCount}</b>`
+    + (prevCount ? ` · อ้างจากวันก่อน ${prevCount}` : '')
+    + (inferredCount ? ` · อ้างจากกำลังใช้งาน ${inferredCount}` : '')
+    + ` · รวม ${setCount} รายการ`;
 
   // แท็บเครื่อง — เลขบนแท็บคือจำนวน Size Roll ที่ผูกกับเครื่องนั้น (ที่มี Roll จริง)
   const tabsEl = document.getElementById('runcolor-tabs');
