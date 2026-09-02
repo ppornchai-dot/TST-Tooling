@@ -10258,12 +10258,19 @@ function renderProdWeightRunBanner() {
   }
   const sets = [...running.keys()];
   const missing = sets.filter(s => !explicitRunColorFor(today, s));
-  const sizes = [...new Set(sets.map(s => rollSetSizeGroupLabel(s)))];
   const done = sets.length - missing.length;
   const complete = !missing.length;
   const accent = complete ? 'var(--green)' : 'var(--amber)';
   const bg = complete ? 'var(--green-dim)' : 'var(--amber-dim)';
   const machineOf = s => (running.get(s).machines || []).join('/');
+  // เรียงตามเครื่อง (P1 → P4) ก่อน แล้วจึงตามชื่อขนาด — ไล่ดูทีละเครื่องได้ตรงกับหน้างาน
+  // ขนาดที่ยังไม่รู้ว่าอยู่เครื่องไหน ไปอยู่ท้ายสุด
+  const machineOfSize = label => [...new Set(sets.filter(s => rollSetSizeGroupLabel(s) === label)
+    .map(machineOf).filter(Boolean))].sort().join('/');
+  const sizes = [...new Set(sets.map(s => rollSetSizeGroupLabel(s)))].sort((a, b) => {
+    const ma = machineOfSize(a) || 'zzz', mb = machineOfSize(b) || 'zzz';
+    return ma !== mb ? ma.localeCompare(mb, 'th') : a.localeCompare(b, 'th');
+  });
   const sizeChips = sizes.map(label => {
     const inSize = sets.filter(s => rollSetSizeGroupLabel(s) === label);
     const mc = [...new Set(inSize.map(machineOf).filter(Boolean))].join('/');
