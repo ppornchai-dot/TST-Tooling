@@ -3732,6 +3732,28 @@ function getWorkingRollEntries(workType) {
     // เก็บงานตามแผนที่ยุบมารวมกันไว้ด้วย เพื่อให้กดจาก Dashboard แล้วเด้งไปหางานนั้นได้
     e.tasks.push({ id: t.id, date: d, workType: t.workType });
   });
+  // งานแทรกของประเภทนี้ (เพิ่มเองในหน้างานประจำวัน) — ไม่มี Roll ในทะเบียน
+  // แต่เป็นงานที่ต้องทำจริงเหมือนกัน ต้องขึ้นในการ์ดนี้ด้วย ไม่งั้นการ์ดว่างทั้งที่มีงานอยู่
+  // งานแทรกเก่าที่ยังไม่ระบุประเภทถือเป็นงานแต่ง Roll (CNC) เกณฑ์เดียวกับตารางงานประจำวัน
+  const inserts = [];
+  (dailyChecklistTasks || []).forEach(t => {
+    const wt = t.workType === 'polish' ? 'polish' : 'cnc';
+    if (wt !== workType) return;
+    const d = t.date || today;
+    const st = (dailyStatusByDate[d] || {})[t.id];
+    if (st === 'done') return;                       // ทำเสร็จแล้ว ไม่ใช่งานค้าง
+    const started = st === 'in_progress';
+    const cat = (d < today) ? 'late' : (started ? 'doing' : 'wait');
+    inserts.push({
+      set: t.task || 'งานแทรก', colorKey: NO_COLOR_KEY, cat,
+      colorLabel: 'งานแทรก', dot: 'var(--text-3)',
+      doing: started ? 1 : 0, done: 0, total: 1,
+      firstDate: d, dayCount: 1,
+      insert: true, taskId: t.id, taskDate: d, workType: wt,
+      detailNote: t.who ? String(t.who) : 'ยังไม่ระบุผู้รับผิดชอบ',
+    });
+  });
+
   // ในแต่ละกลุ่มเรียงตามวันที่วางแผนไว้เร็วสุด งานค้างเก่าสุดอยู่บนสุด
   return [...byKey.values()].map(e => {
     // กดแล้วไปที่งานของวันแรกสุดในกลุ่ม (งานที่ต้องจัดการก่อน)
@@ -3739,6 +3761,7 @@ function getWorkingRollEntries(workType) {
     return { ...e, firstDate: [...e.dates].sort()[0], dayCount: e.dates.size,
              taskId: first && first.id, taskDate: first && first.date, workType: first && first.workType };
   })
+    .concat(inserts)
     .sort((a, b) => a.firstDate !== b.firstDate
       ? String(a.firstDate).localeCompare(String(b.firstDate)) : a.set.localeCompare(b.set, 'th'));
 }
@@ -3752,15 +3775,18 @@ function dashRollWorkingChipHtml(e, accentVar, bgVar) {
     ? ` · ${escapeHtmlAttr(fmtDateThaiShort(parseISODate(e.firstDate)))}${e.dayCount > 1 ? ` +${e.dayCount - 1} วัน` : ''}`
     : '';
   const style = {
-    late:  { border: '1px solid var(--red)',      bg: 'var(--red-dim)',  badge: `ค้าง ${remain} ชิ้น`,   badgeColor: 'var(--red)' },
-    doing: { border: `1px solid ${accentVar}`,    bg: bgVar,             badge: `${e.doing} ชิ้น`,       badgeColor: accentVar },
-    wait:  { border: `1px dashed ${accentVar}`,   bg: 'transparent',     badge: `รอทำ ${remain} ชิ้น`,   badgeColor: 'var(--text-3)' },
+    late:  { border: '1px solid var(--red)',      bg: 'var(--red-dim)',  badge: e.insert ? 'ค้าง' : `ค้าง ${remain} ชิ้น`,   badgeColor: 'var(--red)' },
+    doing: { border: `1px solid ${accentVar}`,    bg: bgVar,             badge: e.insert ? 'กำลังทำ' : `${e.doing} ชิ้น`,     badgeColor: accentVar },
+    wait:  { border: `1px dashed ${accentVar}`,   bg: 'transparent',     badge: e.insert ? 'รอทำ' : `รอทำ ${remain} ชิ้น`,   badgeColor: 'var(--text-3)' },
   }[e.cat];
-  const detail = e.cat === 'wait' ? `ตามแผน ${e.total} ชิ้น` : `เสร็จ ${e.done}/${e.total} ชิ้น`;
+  // งานแทรกไม่ได้นับเป็นชิ้น Roll — ใช้คำอธิบายของตัวเอง (ดู detailNote ใน getWorkingRollEntries)
+  const detail = e.detailNote || (e.cat === 'wait' ? `ตามแผน ${e.total} ชิ้น` : `เสร็จ ${e.done}/${e.total} ชิ้น`);
   // กดแล้วเด้งไปหน้างานประจำวันของวันนั้นเลย จะกดเริ่ม/จบงานต่อได้ทันที
-  const jump = e.taskId
-    ? jsCallAttr('goToDailyTask', e.taskId, e.taskDate || '', e.workType || '')
-    : jsCallAttr('goToRollSetColor', e.set, e.colorKey);
+  const jump = e.insert
+    ? jsCallAttr('goToDailyInsert', e.taskId, e.taskDate || '')
+    : (e.taskId
+      ? jsCallAttr('goToDailyTask', e.taskId, e.taskDate || '', e.workType || '')
+      : jsCallAttr('goToRollSetColor', e.set, e.colorKey));
   return `<div onclick="${jump}"
     style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:8px;cursor:pointer;
            border:${style.border};background:${style.bg};margin-bottom:6px;transition:filter .12s;"
@@ -3805,6 +3831,22 @@ function goToDailyTask(taskId, dateIso, workType) {
   expandedDailyTaskId = taskId;
   renderDailyTasks();
   highlightPlanTask(taskId); // ตัวไฮไลต์ตัวเดียวกัน — หาจาก [data-taskid] ซึ่งแถวงานประจำวันมีแล้ว
+}
+
+// กดงานแทรกจากการ์ด Dashboard → ไปหน้างานประจำวันของวันนั้น (ไม่ใช่งานตามแผน
+// จึงหาใน planTasks ไม่เจอ ใช้ทางนี้แทน goToDailyTask)
+function goToDailyInsert(taskId, dateIso) {
+  showPage('daily');
+  const day = dateIso || dailyTodayIso();
+  if (isDailyTechRole() && !dailyTechDateAllowed(day)) {
+    dailyViewDate = dailyTodayIso();
+    renderDailyTasks();
+    alert('งานแทรกนี้เป็นของวันที่ ' + fmtDateThai(parseISODate(day)) + '\nเปิดดูได้เฉพาะ วันที่มีงานก่อนหน้า · วันนี้ · วันที่มีงานถัดไป');
+    return;
+  }
+  dailyViewDate = day;
+  renderDailyTasks();
+  highlightPlanTask(taskId);   // ตัวไฮไลต์ตัวเดียวกัน — หาแถวจาก [data-taskid]
 }
 
 function goToPlanTask(taskId, dateIso, workType) {
