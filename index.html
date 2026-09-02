@@ -12986,7 +12986,15 @@ function renderDailyTasks() {
     const endTimeDisplay = item.endTimeHtml + (actual.endTime ? ` <span class="muted" style="font-size:11px;">(จริง ${escapeHtmlAttr(actual.endTime)})</span>` : '');
     let actions;
     if (item.editable) {
-      actions = `<div style="display:flex;gap:4px;"><button class="btn btn-ghost btn-sm" onclick="openDailyChecklistModal('edit','${item.key}')">แก้ไข</button><button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteDailyChecklistTask('${item.key}')">ลบ</button></div>`;
+      // งานแทรกกดเริ่ม/จบงานได้เหมือนงานตามแผน — สถานะกับเวลาจริงเก็บที่เดียวกัน
+      // (startDailyTask/finishDailyTask ยึด id ของงาน ไม่ได้ผูกกับงานตามแผนเท่านั้น)
+      // เสร็จแล้วเหลือแค่ปุ่มแก้ไข/ลบ — ยกเลิกสถานะได้จากช่องติ๊กหน้าแถวเหมือนเดิม
+      const actBtn = status === 'pending'
+        ? `<button class="btn btn-ghost btn-sm daily-act daily-act-start" ${blockReason ? `disabled title="${blockReason} — เริ่มงานนี้ไม่ได้"` : ''} onclick="startDailyTask('${item.key}','${item.workerId || ''}')">▶ ${DL().start}</button>`
+        : (status === 'in_progress'
+          ? `<button class="btn btn-ghost btn-sm daily-act daily-act-finish" style="color:var(--accent);" ${blockReason ? `disabled title="${blockReason} — จบงานนี้ไม่ได้"` : ''} onclick="finishDailyTask('${item.key}','${item.workerId || ''}')">■ ${DL().finish}</button>`
+          : '');
+      actions = `<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">${actBtn}<button class="btn btn-ghost btn-sm" onclick="openDailyChecklistModal('edit','${item.key}')">แก้ไข</button><button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteDailyChecklistTask('${item.key}')">ลบ</button></div>`;
     } else if (item.expandable) {
       // งานที่มีหลาย Roll ให้กดเริ่ม/จบงานแยกทีละชิ้นในตารางย่อยด้านล่างแทน ไม่มีปุ่มรวมตรงนี้
       actions = '';
