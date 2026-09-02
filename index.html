@@ -13301,15 +13301,13 @@ function collectHistoryRecords() {
       const actual = (dailyActualTimes[dateIso] || {})[t.id] || {};
       const startAt = actual.startTime || null;
       const endAt = actual.endTime || null;
-      const usedMin = actualMinutesBetween(startAt, endAt);
       records.push({
         date: dateIso, wo: t.id, typeKey: wt,
         typeLabel: (wt === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)') + ' · งานแทรก',
         tooling: 'งานแทรก' + (t.ref && t.ref !== '—' ? ' · ' + t.ref : ''),
         detail: t.task, who: t.who || '—',
-        // งานแทรกไม่มีเวลาตามแผน — ใช้เวลาที่กดจริงเป็นชั่วโมงทำงาน
-        hours: usedMin ? Math.round((usedMin / 60) * 10) / 10 : null,
-        minutes: usedMin || null,
+        // งานแทรกไม่มีเวลาตามแผน จึงไม่มี Standard — เห็นเวลาที่ใช้จริงจากบรรทัด "ทำจริง"
+        hours: null, minutes: null,
         startTime: startAt || t.time || null, endTime: endAt,
         result: st === 'done' ? 'สำเร็จ' : 'กำลังทำ',
         resultChip: st === 'done' ? 'chip-green' : 'chip-blue', resultNote: '',
