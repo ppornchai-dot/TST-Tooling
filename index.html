@@ -1662,7 +1662,8 @@ canvas{display:block;}
       <div class="card">
         <div class="card-header">
           <span class="card-title">เช็คลิสต์งานวันนี้</span>
-          <button class="btn btn-primary btn-sm" onclick="openDailyChecklistModal('add')">+ เพิ่มงานแทรก</button>
+          <!-- ปุ่ม "+ เพิ่มงานแทรก" ย้ายไปอยู่ท้ายหัวข้อ "งานแทรก" ในตาราง (เหมือนหน้าวางแผน)
+               อยู่ตรงที่งานแทรกโผล่จริง ไม่ต้องกวาดตาขึ้นมามุมขวาบนของการ์ด -->
         </div>
         <div class="table-wrap">
           <table id="tbl-daily">
@@ -13049,18 +13050,27 @@ function renderDailyTasks() {
     </td></tr>`;
   };
   const emptyRow = text => `<tr><td colspan="12" style="padding:14px;text-align:center;color:var(--text-3);font-size:12.5px;">${escapeHtmlAttr(text)}</td></tr>`;
+  // ปุ่มเพิ่มงานแทรกวางเป็นแถวใต้รายการของหัวข้อนั้น ชิดซ้าย ตัวใหญ่ — แบบเดียวกับหน้าวางแผน
+  const addChecklistRow = () => `<tr><td colspan="12" style="padding:10px 12px;border-bottom:2px solid var(--accent);">
+      <button class="btn" onclick="openDailyChecklistModal('add')"
+        title="เพิ่มงานแทรกของวันที่กำลังดู"
+        style="font-size:15px;font-weight:800;padding:11px 22px;border-radius:10px;
+               background:var(--accent);color:#fff;border:1px solid var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.18);">
+        + เพิ่มงานแทรก</button>
+    </td></tr>`;
 
   const DAILY_SECTIONS = [
     { key: 'cnc',       icon: '⚙', label: 'แต่ง Roll (CNC)', color: 'var(--accent)', bg: 'var(--accent-glow)', empty: 'ไม่มีงานแต่ง Roll ในวันนี้', always: true },
     { key: 'polish',    icon: '✦', label: 'ขัด Roll',        color: 'var(--purple)', bg: 'var(--purple-dim)',  empty: 'ไม่มีงานขัด Roll ในวันนี้',  always: true },
-    { key: 'checklist', icon: '＋', label: 'งานแทรก',         color: 'var(--text-2)', bg: 'var(--bg-panel)',    empty: '',                          always: false },
+    { key: 'checklist', icon: '＋', label: 'งานแทรก',         color: 'var(--accent)', bg: 'var(--bg-panel)',    empty: 'ยังไม่มีงานแทรกในวันนี้',    always: true },
   ];
   tbody.innerHTML = DAILY_SECTIONS.filter(s => {
     if (forcedType && (s.key === 'cnc' || s.key === 'polish')) return s.key === forcedType;
     return s.always || allItems.some(it => it.section === s.key);
   }).map(s => {
     const items = allItems.filter(it => it.section === s.key);
-    return sectionHeader(s, items) + (items.length ? items.map(rowHtmlFor).join('') : emptyRow(s.empty));
+    return sectionHeader(s, items) + (items.length ? items.map(rowHtmlFor).join('') : emptyRow(s.empty))
+      + (s.key === 'checklist' ? addChecklistRow() : '');
   }).join('');
 
   // นับเป็น "จำนวนชิ้น Roll" ไม่ใช่จำนวนงาน — งานตามแผน 1 รายการมีหลายชิ้น แต่ละชิ้นมีสถานะของตัวเอง (ดู dailyPieceStatus)
