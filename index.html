@@ -2058,7 +2058,12 @@ function showPage(id) {
     if (n.getAttribute('onclick') && n.getAttribute('onclick').includes("'" + id + "'"))
       n.classList.add('active');
   });
-  if (id === 'inuse') renderInUsePage();
+  if (id === 'inuse') {
+    renderInUsePage();
+    // หน้านี้คือที่ที่ต้องมาเปลี่ยนชุดที่ใช้งาน — เข้ามาแล้วต้องเช็คว่ามี Size เปลี่ยนค้างอยู่ไหม
+    // (เดิมเช็คแค่ตอนเข้า Dashboard ถ้าเข้าหน้านี้ตรงๆ จะไม่มีอะไรเด้งถามเลย)
+    setTimeout(() => refreshSizeChangeWatch(true), 0);
+  }
   const titleEl = document.getElementById('page-title');
   if (titleEl && PAGE_META[id]) titleEl.textContent = PAGE_META[id].title;
   currentPage = id;
@@ -3159,14 +3164,24 @@ function maybeAutoOpenSizeChangePrompt() {
   openInUseRollPickerFor(list[0].machine);
 }
 
-// ตรวจการเปลี่ยน Size ของวันนี้แล้วอัปเดตแถบเตือน/เด้งหน้าต่าง — เรียกตอนเข้าหน้า Dashboard
-async function refreshSizeChangeWatch() {
+// ตรวจการเปลี่ยน Size ของวันนี้แล้วอัปเดตแถบเตือน/เด้งหน้าต่าง
+// force = true ให้ทิ้งแคชยอดผลิตของวันนี้แล้วดึงใหม่ — จำเป็นสำหรับการเช็คเป็นรอบ
+// เพราะ loadFgRunningOn() คืนค่าจากแคชถ้าเคยดึงวันนั้นแล้ว ถ้าไม่ทิ้งแคชจะไม่เห็น
+// การเปลี่ยน Size ที่เกิดขึ้นหลังเปิดหน้าเลย (ต้องรีเฟรชหน้าเองจึงจะรู้)
+async function refreshSizeChangeWatch(force) {
   const today = toISODate(new Date());
+  if (force) delete fgRunningCache[today];
   await loadFgRunningOn(today);
   syncRollSizeChangeQueue(today);
   renderDashboardSizeChangeAlert();
   maybeAutoOpenSizeChangePrompt();
 }
+
+// เช็คซ้ำทุก 5 นาที — เครื่องเปลี่ยน Size กลางกะ ต้องเด้งถามเองโดยไม่ต้องรีเฟรชหน้า
+// (เดิมเช็คแค่ตอนเข้าหน้า Dashboard ครั้งแรก เปิดหน้าค้างไว้ทั้งวันก็ไม่มีอะไรเด้ง)
+setInterval(() => {
+  try { if (canEditPlan()) refreshSizeChangeWatch(true); } catch (e) { /* ยังบูตไม่เสร็จ */ }
+}, 5 * 60 * 1000);
 
 // แยกเป็นแท็บ "ต่อเครื่อง" แล้วในแต่ละเครื่องแสดงเฉพาะ Size Roll ที่ผูกกับเครื่องนั้น
 // ชุดที่ผูกไว้ 2 เครื่องจะโผล่ในทั้งสองแท็บ เลือกที่แท็บไหน = ใช้อยู่ที่เครื่องนั้น
