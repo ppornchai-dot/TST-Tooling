@@ -12947,7 +12947,9 @@ function renderDailyTasks() {
       key: t.id, date: t.date || dailyViewDate, startTime: t.time || '—', endTimeHtml: '—', duration: '—',
       rollSet: '—', rollColor: '—', rollId: t.ref || '—', task: t.task,
       who: t.who, workerId: null, editable: true, expandable: false,
-      section: 'checklist',
+      // งานแทรกแยกหัวข้อตามประเภทงานเหมือนงานตามแผน — ของเก่าที่ยังไม่ระบุประเภท
+      // ถือเป็นงานแต่ง Roll (CNC) ตามที่เจอในทางปฏิบัติ แก้ประเภทได้จากปุ่มแก้ไข
+      section: t.workType === 'polish' ? 'checklist-polish' : 'checklist-cnc',
     }));
   const forcedType = forcedWorkTypeForRole();
   // ใช้ "ส่วนของแต่ละวัน" ชุดเดียวกับหน้าวางแผน (planDayPartsByDate) ไม่ใช่กรองงานก้อนจริงด้วยวันเริ่ม
@@ -13059,26 +13061,30 @@ function renderDailyTasks() {
   };
   const emptyRow = text => `<tr><td colspan="12" style="padding:14px;text-align:center;color:var(--text-3);font-size:12.5px;">${escapeHtmlAttr(text)}</td></tr>`;
   // ปุ่มเพิ่มงานแทรกวางเป็นแถวใต้รายการของหัวข้อนั้น ชิดซ้าย ตัวใหญ่ — แบบเดียวกับหน้าวางแผน
-  const addChecklistRow = () => `<tr><td colspan="12" style="padding:10px 12px;border-bottom:2px solid var(--accent);">
-      <button class="btn" onclick="openDailyChecklistModal('add')"
-        title="เพิ่มงานแทรกของวันที่กำลังดู"
+  // แยกปุ่มตามประเภทงาน จะได้ไม่ต้องเดาว่ากำลังเพิ่มงานแทรกของงานไหน
+  const addChecklistRow = s => `<tr><td colspan="12" style="padding:10px 12px;border-bottom:2px solid ${s.color};">
+      <button class="btn" onclick="${jsCallAttr('openDailyChecklistModal', 'add', '', s.addType)}"
+        title="${escapeHtmlAttr('เพิ่มงานแทรกของ' + (s.addType === 'polish' ? 'งานขัด Roll' : 'งานแต่ง Roll (CNC)') + ' ของวันที่กำลังดู')}"
         style="font-size:15px;font-weight:800;padding:11px 22px;border-radius:10px;
-               background:var(--accent);color:#fff;border:1px solid var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.18);">
-        + เพิ่มงานแทรก</button>
+               background:${s.color};color:#fff;border:1px solid ${s.color};box-shadow:0 1px 3px rgba(0,0,0,.18);">
+        + เพิ่มงานแทรก${escapeHtmlAttr(s.addType === 'polish' ? ' (ขัด Roll)' : ' (CNC)')}</button>
     </td></tr>`;
 
   const DAILY_SECTIONS = [
     { key: 'cnc',       icon: '⚙', label: 'แต่ง Roll (CNC)', color: 'var(--accent)', bg: 'var(--accent-glow)', empty: 'ไม่มีงานแต่ง Roll ในวันนี้', always: true },
     { key: 'polish',    icon: '✦', label: 'ขัด Roll',        color: 'var(--purple)', bg: 'var(--purple-dim)',  empty: 'ไม่มีงานขัด Roll ในวันนี้',  always: true },
-    { key: 'checklist', icon: '＋', label: 'งานแทรก',         color: 'var(--accent)', bg: 'var(--bg-panel)',    empty: 'ยังไม่มีงานแทรกในวันนี้',    always: true },
+    { key: 'checklist-cnc',    icon: '＋', label: 'งานแทรก — แต่ง Roll (CNC)', color: 'var(--accent)', bg: 'var(--bg-panel)', empty: 'ยังไม่มีงานแทรกของงานแต่ง Roll ในวันนี้', always: true, addType: 'cnc' },
+    { key: 'checklist-polish', icon: '＋', label: 'งานแทรก — ขัด Roll',        color: 'var(--purple)', bg: 'var(--bg-panel)', empty: 'ยังไม่มีงานแทรกของงานขัด Roll ในวันนี้',  always: true, addType: 'polish' },
   ];
   tbody.innerHTML = DAILY_SECTIONS.filter(s => {
     if (forcedType && (s.key === 'cnc' || s.key === 'polish')) return s.key === forcedType;
+    // ช่างเห็นงานแทรกของประเภทตัวเองอย่างเดียว (เกณฑ์เดียวกับงานตามแผน)
+    if (forcedType && s.addType) return s.addType === forcedType;
     return s.always || allItems.some(it => it.section === s.key);
   }).map(s => {
     const items = allItems.filter(it => it.section === s.key);
     return sectionHeader(s, items) + (items.length ? items.map(rowHtmlFor).join('') : emptyRow(s.empty))
-      + (s.key === 'checklist' ? addChecklistRow() : '');
+      + (s.addType ? addChecklistRow(s) : '');
   }).join('');
 
   // นับเป็น "จำนวนชิ้น Roll" ไม่ใช่จำนวนงาน — งานตามแผน 1 รายการมีหลายชิ้น แต่ละชิ้นมีสถานะของตัวเอง (ดู dailyPieceStatus)
@@ -13457,23 +13463,34 @@ function dailyChecklistFormFields(mode) {
     <div class="modal-row full">
       <div class="form-group"><label class="form-label">ชื่องาน</label><input class="form-input" id="dcf-task" placeholder="เช่น GI2x1 F1 T"></div>
     </div>
+    <div class="modal-row full">
+      <div class="form-group"><label class="form-label">ประเภทงาน</label>
+        <select class="form-select" id="dcf-worktype">
+          <option value="cnc">แต่ง Roll (CNC)</option>
+          <option value="polish">ขัด Roll</option>
+        </select></div>
+    </div>
     ${mode === 'edit' ? '' : `<div class="muted" style="font-size:12px;margin-top:-4px;">บันทึกเป็นงานของวันที่กำลังดูอยู่ · เวลาใช้ตอนกดบันทึก · ผู้รับผิดชอบ: <strong>${escapeHtmlAttr(effectiveUserName())}</strong></div>`}`;
 }
 
-function openDailyChecklistModal(mode, taskId) {
+// workType = ประเภทงานของงานแทรก (มาจากปุ่มของหัวข้อนั้น) — ของเก่าที่ไม่ระบุถือเป็น CNC
+function openDailyChecklistModal(mode, taskId, workType) {
   const task = mode === 'edit' ? dailyChecklistTasks.find(t => t.id === taskId) : null;
   document.getElementById('modal-title').textContent = mode === 'edit' ? 'แก้ไขงานแทรก' : 'เพิ่มงานแทรกใหม่';
   document.getElementById('modal-body').innerHTML = dailyChecklistFormFields(mode);
   document.getElementById('dcf-task').value = task ? task.task : '';
+  const wtSel = document.getElementById('dcf-worktype');
+  if (wtSel) wtSel.value = (task ? task.workType : workType) === 'polish' ? 'polish' : 'cnc';
   document.getElementById('modal-overlay').classList.add('open');
 
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const taskName = document.getElementById('dcf-task').value.trim();
     if (!taskName) { alert('กรุณากรอกชื่องาน'); return; }
     // แก้ไข: เปลี่ยนแค่ชื่องาน ค่าอื่นที่บันทึกไว้เดิม (เวลา/ผู้รับผิดชอบ/ประเภท) คงไว้ ไม่ทับทิ้ง
+    const wt = ((document.getElementById('dcf-worktype') || {}).value === 'polish') ? 'polish' : 'cnc';
     const data = mode === 'edit'
-      ? { task: taskName }
-      : { task: taskName, time: nowHHMM(), type: '—', who: effectiveUserName(), ref: '—', date: dailyViewDate };
+      ? { task: taskName, workType: wt }
+      : { task: taskName, workType: wt, time: nowHHMM(), type: '—', who: effectiveUserName(), ref: '—', date: dailyViewDate };
     if (mode === 'edit') {
       Object.assign(task, data);
     } else {
