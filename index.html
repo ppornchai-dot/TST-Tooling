@@ -9849,12 +9849,27 @@ function setRunColor(date, setName, colorKey) {
   withCloudRetry(() => applyRunColor(date, setName, target));
 }
 
+// แถวที่เป็น "เศษ/ปรับยอด" ของระบบ Production — ไม่ใช่ของที่ผลิตออกมาเป็นชิ้นงาน
+// ไม่นับรวมเป็นน้ำหนักผลิตของชุด Roll (ทั้งตารางน้ำหนักผลิต การ์ด และ Usage อายุ Roll)
+// เจอกับ GI 4"x4" วันที่ 2 ก.ย. 69: ผลิตจริง 0 ต. แต่มีเศษของ MO เดือน ส.ค. 0.83 ต.
+// ถูกปรับยอดเข้ามาในวันนั้น ทำให้ดูเหมือนชุด 4"x4" เดินงานและมีน้ำหนักผลิต
+// row_type ที่ถือเป็นการผลิตจริง: bundle · grade_b · grade_c · hold · old_hold
+function fgRowIsScrap(row) {
+  const t = String((row || {}).row_type || '').toLowerCase();
+  return t === 'scrap' || t === 'old_scrap';
+}
+
 async function fetchFgWeightByKey(fromDate, toDate) {
   try {
     const res = await fetch(FG_API_URL + '?from=' + fromDate + '&to=' + toDate);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
-    const rows = json.rows || [];
+    // ตัดแถวเศษ/ปรับยอดออกก่อนคิดทุกอย่าง — จำนวนรายการที่รายงานจึงเป็นของที่ผลิตจริง
+    const rows = (json.rows || []).filter(r => !fgRowIsScrap(r));
+    const scrapRows = (json.rows || []).length - rows.length;
+    // ยอดเศษที่ตัดออก — ต้องบอกให้เห็น ไม่ใช่ให้ตัวเลขเล็กลงเงียบๆ
+    const scrapKg = (json.rows || []).filter(fgRowIsScrap)
+      .reduce((s, r) => s + (parseFloat(r.weight_kg) || 0), 0);
     const byKey = {};
     const byKeyDate = {};
     const dateSet = new Set();
@@ -9873,7 +9888,7 @@ async function fetchFgWeightByKey(fromDate, toDate) {
       byKeyDate[key][d] = (byKeyDate[key][d] || 0) + kg;
     });
     fgWeightFetchError = null;
-    fgWeightMeta = { rowCount: rows.length, totalKg };
+    fgWeightMeta = { rowCount: rows.length, totalKg, scrapRows, scrapKg };
     fgWeightByKeyDate = byKeyDate;
     fgWeightDates = [...dateSet].sort();
     return byKey;
@@ -10137,6 +10152,8 @@ async function loadFgRunningOn(dateIso) {
     (json.rows || []).forEach(r => {
       // API เคยส่งวันข้างเคียงติดมาด้วย จึงกรองด้วย production_date อีกชั้น
       if (String(r.production_date || '').slice(0, 10) !== dateIso) return;
+      // เศษ/ปรับยอด ไม่ใช่งานที่เครื่องเดินอยู่ ไม่นับเป็น "ขนาดที่เดินวันนั้น"
+      if (fgRowIsScrap(r)) return;
       const key = fgProductCodeToKey(r.product_code);
       if (!key) return;
       kgByKey[key] = (kgByKey[key] || 0) + (parseFloat(r.weight_kg) || 0);
@@ -10428,6 +10445,10 @@ function renderProdWeightRangeNote(fromDate, toDate) {
       ` · น้ำหนักผลิตรวมทุกขนาด <b style="color:var(--text-1);">${total.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> ตัน
         <span style="color:var(--text-3);">จาก ${fgWeightMeta.rowCount.toLocaleString()} รายการ</span>`}
     <span style="color:var(--text-3);">— ส่วน "Usage สะสม" เป็นยอดตลอดอายุ Roll ไม่ขึ้นกับช่วงวันที่</span>
+    ${(fgWeightMeta && fgWeightMeta.scrapRows) ? `<div style="margin-top:3px;color:var(--text-3);">
+      ไม่รวมเศษ/ปรับยอดของระบบ Production <b>${fgWeightMeta.scrapRows.toLocaleString()}</b> รายการ
+      <b>${(fgWeightMeta.scrapKg / 1000).toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> ตัน
+      (row_type: scrap / old_scrap) — ไม่นับเป็นน้ำหนักผลิตของชุด Roll</div>` : ''}
   </div>`;
 }
 
