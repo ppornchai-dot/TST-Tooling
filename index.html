@@ -12377,11 +12377,16 @@ function getDailyStatus(idx) {
 }
 
 function toggleDailyTask(idx) {
-  const dayMap = dailyStatusByDate[dailyStatusDateFor(idx)] || (dailyStatusByDate[dailyStatusDateFor(idx)] = {});
-  dayMap[idx] = getDailyStatus(idx) === 'done' ? 'pending' : 'done';
-  maybeAutoContinueDailyPlan(dailyViewDate);
-  persistState();
-  renderDailyTasks();
+  // ตัดสินว่าจะเป็น done หรือ pending ครั้งเดียว แล้วส่งเป็น "ค่าที่ต้องการ" ให้ตัวทำซ้ำ
+  // ไม่งั้นถ้าเขียนชนแล้วทำซ้ำ จะกลายเป็นสลับค่ากลับ (เห็นเป็นติ๊กแล้วเด้งกลับเอง)
+  const target = getDailyStatus(idx) === 'done' ? 'pending' : 'done';
+  withCloudRetry(() => {
+    const dayMap = dailyStatusByDate[dailyStatusDateFor(idx)] || (dailyStatusByDate[dailyStatusDateFor(idx)] = {});
+    dayMap[idx] = target;
+    maybeAutoContinueDailyPlan(dailyViewDate);
+    persistState();
+    renderDailyTasks();
+  });
 }
 
 function getDailyActualTimes(idx) {
@@ -12497,22 +12502,28 @@ function canActOnDailyItem(workerId) {
 }
 function startDailyTask(idx, workerId) {
   if (!canActOnDailyItem(workerId)) return;
-  const dayMap = dailyStatusByDate[dailyStatusDateFor(idx)] || (dailyStatusByDate[dailyStatusDateFor(idx)] = {});
-  dayMap[idx] = 'in_progress';
-  const timesMap = dailyActualTimes[dailyStatusDateFor(idx)] || (dailyActualTimes[dailyStatusDateFor(idx)] = {});
-  timesMap[idx] = { ...(timesMap[idx] || {}), startTime: nowHHMM() };
-  persistState();
-  renderDailyTasks();
+  const at = nowHHMM();   // จับเวลาครั้งเดียว ทำซ้ำตอนเขียนชนแล้วได้ค่าเดิม
+  withCloudRetry(() => {
+    const dayMap = dailyStatusByDate[dailyStatusDateFor(idx)] || (dailyStatusByDate[dailyStatusDateFor(idx)] = {});
+    dayMap[idx] = 'in_progress';
+    const timesMap = dailyActualTimes[dailyStatusDateFor(idx)] || (dailyActualTimes[dailyStatusDateFor(idx)] = {});
+    timesMap[idx] = { ...(timesMap[idx] || {}), startTime: at };
+    persistState();
+    renderDailyTasks();
+  });
 }
 function finishDailyTask(idx, workerId) {
   if (!canActOnDailyItem(workerId)) return;
-  const dayMap = dailyStatusByDate[dailyStatusDateFor(idx)] || (dailyStatusByDate[dailyStatusDateFor(idx)] = {});
-  dayMap[idx] = 'done';
-  const timesMap = dailyActualTimes[dailyStatusDateFor(idx)] || (dailyActualTimes[dailyStatusDateFor(idx)] = {});
-  timesMap[idx] = { ...(timesMap[idx] || {}), endTime: nowHHMM() };
-  maybeAutoContinueDailyPlan(dailyViewDate);
-  persistState();
-  renderDailyTasks();
+  const at = nowHHMM();
+  withCloudRetry(() => {
+    const dayMap = dailyStatusByDate[dailyStatusDateFor(idx)] || (dailyStatusByDate[dailyStatusDateFor(idx)] = {});
+    dayMap[idx] = 'done';
+    const timesMap = dailyActualTimes[dailyStatusDateFor(idx)] || (dailyActualTimes[dailyStatusDateFor(idx)] = {});
+    timesMap[idx] = { ...(timesMap[idx] || {}), endTime: at };
+    maybeAutoContinueDailyPlan(dailyViewDate);
+    persistState();
+    renderDailyTasks();
+  });
 }
 
 // ช่าง CNC เห็นเฉพาะงานแต่ง Roll และช่างขัด Roll เห็นเฉพาะงานขัด — คืน null ถ้าไม่ถูกจำกัด (admin/หัวหน้า/ช่างเครื่อง)
@@ -12553,13 +12564,16 @@ function getDailyPieceEntry(taskId, rollIdx) {
 }
 function startDailyPiece(taskId, rollIdx, workerId) {
   if (!canActOnDailyItem(workerId)) return;
-  const dateMap = dailyPieceStatus[dailyStatusDateFor(taskId)] || (dailyPieceStatus[dailyStatusDateFor(taskId)] = {});
-  const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
-  taskMap[rollIdx] = { status: 'in_progress', startTime: nowHHMM() };
-  const dayMap = dailyStatusByDate[dailyStatusDateFor(taskId)] || (dailyStatusByDate[dailyStatusDateFor(taskId)] = {});
-  if ((dayMap[taskId] || 'pending') === 'pending') dayMap[taskId] = 'in_progress';
-  persistState();
-  renderDailyTasks();
+  const at = nowHHMM();
+  withCloudRetry(() => {
+    const dateMap = dailyPieceStatus[dailyStatusDateFor(taskId)] || (dailyPieceStatus[dailyStatusDateFor(taskId)] = {});
+    const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
+    taskMap[rollIdx] = { status: 'in_progress', startTime: at };
+    const dayMap = dailyStatusByDate[dailyStatusDateFor(taskId)] || (dailyStatusByDate[dailyStatusDateFor(taskId)] = {});
+    if ((dayMap[taskId] || 'pending') === 'pending') dayMap[taskId] = 'in_progress';
+    persistState();
+    renderDailyTasks();
+  });
 }
 // ─── กล่องกรอกข้อความพร้อมปุ่มพูดแทนพิมพ์ (ใช้แทน prompt เดิม) ─────────────────
 // กดปุ่มไมค์แล้วพูด ระบบถอดเสียงเป็นข้อความภาษาไทยพิมพ์ลงช่องให้ (Web Speech API)
@@ -12816,12 +12830,14 @@ async function pauseDailyPiece(taskId, rollIdx, workerId) {
 // กดทำต่อหลังพักงาน — กลับไปสถานะ "กำลังทำ" ตามเดิม เหตุผลที่พักครั้งนั้นยังอยู่ใน dailyPauseLog เป็นประวัติ
 function resumeDailyPiece(taskId, rollIdx, workerId) {
   if (!canActOnDailyItem(workerId)) return;
-  const dateMap = dailyPieceStatus[dailyStatusDateFor(taskId)] || (dailyPieceStatus[dailyStatusDateFor(taskId)] = {});
-  const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
-  const prevEntry = getDailyPieceEntry(taskId, rollIdx);
-  taskMap[rollIdx] = { ...prevEntry, status: 'in_progress', pauseReason: null, pausedAt: null };
-  persistState();
-  renderDailyTasks();
+  withCloudRetry(() => {
+    const dateMap = dailyPieceStatus[dailyStatusDateFor(taskId)] || (dailyPieceStatus[dailyStatusDateFor(taskId)] = {});
+    const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
+    const prevEntry = getDailyPieceEntry(taskId, rollIdx);
+    taskMap[rollIdx] = { ...prevEntry, status: 'in_progress', pauseReason: null, pausedAt: null };
+    persistState();
+    renderDailyTasks();
+  });
 }
 
 // เมื่อรายการเช็คลิสต์ + งานตามแผนของวันนี้ "เสร็จครบทุกรายการ" แล้ว ให้สร้างแผนงาน CNC/ขัด Roll ของวันถัดไปต่อให้อัตโนมัติทันที
