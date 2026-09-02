@@ -10183,6 +10183,12 @@ function runningRollSetsOn(dateIso) {
   Object.keys(kgByKey).forEach(fgKey => {
     if (!(kgByKey[fgKey] > 0)) return;
     const machines = cached ? (cached.machinesByKey[fgKey] || []) : [];
+    // ยอดของขนาดนี้ "ไม่ได้ระบุเครื่อง" ทุกแถว = ไม่ใช่งานที่เครื่องเดินอยู่จริง
+    // (ของค้าง/rework/คีย์ตกเครื่อง เช่น 4"x4" 0.83 ต. ที่โผล่มาทั้งที่ P4 เดิน 4"x2")
+    // ไม่นับเป็นขนาดที่เดินวันนั้น จึงไม่ขึ้นในปฏิทิน/แถบวันนี้ และไม่เด้งถามชุดสี
+    // เช็คได้เฉพาะเมื่อดึงยอดรายวันมาแล้ว (cached) — ถ้ายังไม่ดึงจะไม่รู้เครื่องของทุกขนาด
+    // (ยอดผลิตในตาราง "น้ำหนักผลิต" ยังนับครบเหมือนเดิม ตรงนี้เป็นแค่การตัดสินว่าเดินอะไรอยู่)
+    if (cached && !machines.length) return;
     sets.filter(s => rollSetFgKey(s) === fgKey).forEach(s => add(s, { machines, kg: kgByKey[fgKey] }));
     // ขนาดนี้ยืม Forming ของอีกขนาดมาเดินด้วย — Forming ชุดนั้นก็กำลังเดินอยู่จริง ต้องถามสีด้วย
     const borrowed = FG_SHARED_FORMING[fgKey];
