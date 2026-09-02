@@ -9981,6 +9981,10 @@ function renderRunColorPicker() {
           const prev = explicit ? null : prevDayRunColorFor(d, setName);
           const inuse = inUseColorFor(setName);
           const effective = explicit || (prev && prev.key) || inuse;
+          // คำเรียกวันที่อ้างอิง — ติดกันจริงใช้คำว่า "เมื่อวาน" ไม่งั้นบอกวันที่ตรงๆ
+          const prevLabel = !prev ? '' : (prev.from === addDaysIso(d, -1)
+            ? 'เมื่อวาน' : fmtDateThaiShort(parseISODate(prev.from)));
+          const prevColorName = !prev ? '' : ((palette.find(c => c.key === prev.key) || {}).label || prev.key);
           // โหมดเจาะจงชุดที่เดินงาน: บอกด้วยว่าเดินอยู่เครื่องไหน และวันนั้นผลิตไปกี่ตัน
           const runInfo = scope && scope.info ? scope.info.get(setName) : null;
           const runBadge = !runInfo ? '' : `<span style="flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--text-3);">
@@ -9989,13 +9993,19 @@ function renderRunColorPicker() {
               ${runInfo.sharedFrom ? `<span style="color:var(--accent);" title="ขนาดที่เดินยืม Forming ชุดนี้ไปใช้ร่วม">ยืมไปเดิน ${escapeHtmlAttr(fgKeyLabel(runInfo.sharedFrom))}</span>` : ''}
               ${runInfo.fromBlock && !(runInfo.kg > 0) ? '<span title="มาจากบล็อกที่วางไว้ ยังไม่มียอดผลิตของวันนั้น">ตามบล็อก</span>' : ''}
             </span>`;
-          return `<div style="display:flex;align-items:center;gap:10px;padding:7px 6px;border-bottom:1px solid var(--border-light);">
+          // แถวที่ยังไม่ยืนยันของวันนี้ ทำพื้นเหลืองจางไว้ทั้งแถว จะได้กวาดตาเห็นว่าเหลืออะไร
+          const rowBg = explicit ? '' : 'background:rgba(184,114,0,.06);';
+          return `<div style="display:flex;align-items:center;gap:10px;padding:7px 6px;border-bottom:1px solid var(--border-light);${rowBg}flex-wrap:wrap;">
             <span style="flex:0 0 62px;font-size:12px;font-weight:800;color:${catColor};">${escapeHtmlAttr(cat || setName)}</span>
             ${runBadge}
             <span style="flex:1;display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
               ${palette.map(c => {
                 const on = effective === c.key;
                 const isExplicit = explicit === c.key;
+                // ปุ่มนี้คือ "สีที่เดินเมื่อวาน" — ทำให้เด่นด้วยสีเหลืองอำพัน + ป้ายกำกับ
+                // ไม่งั้นดูไม่ออกว่าชุดไหนเป็นค่าอ้างอิง (ขอบประเทาบางๆ กลืนกับปุ่มอื่น)
+                const isPrevRef = !isExplicit && !!prev && prev.key === c.key;
+                const onColor = isPrevRef ? 'var(--amber)' : 'var(--accent)';
                 const n = setRolls.filter(r => (r.color || NO_COLOR_KEY) === c.key).length;
                 return `<button onclick="${jsCallAttr('setRunColor', d, setName, c.key)}"
                   title="${escapeHtmlAttr(isExplicit ? 'ระบุไว้ว่าวันนี้เดินด้วย' + c.label + ' — กดซ้ำเพื่อยกเลิก'
@@ -10003,14 +10013,17 @@ function renderRunColorPicker() {
                             + ' · กดเพื่อยืนยันว่าวันนี้เดินชุดนี้'
                           : 'ระบุว่าวันนี้เดินด้วย' + c.label))}"
                   style="display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:99px;cursor:pointer;font-size:11px;font-weight:${on ? 800 : 600};
-                         border:1px ${isExplicit ? 'solid' : (on ? 'dashed' : 'solid')} ${on ? 'var(--accent)' : 'var(--border)'};
-                         background:${isExplicit ? 'var(--accent-glow)' : 'transparent'};
-                         color:${on ? 'var(--accent)' : 'var(--text-2)'};">
-                  <span style="width:8px;height:8px;border-radius:50%;background:${c.dot};flex-shrink:0;"></span>${escapeHtmlAttr(c.label)}
-                  <span style="opacity:.6;font-weight:600;">${n}</span>${isExplicit ? ' ✓' : ''}</button>`;
+                         border:${isExplicit ? '2px solid var(--accent)' : (on ? '2px dashed ' + onColor : '1px solid var(--border)')};
+                         background:${isExplicit ? 'var(--accent-glow)' : (isPrevRef ? 'var(--amber-dim)' : 'transparent')};
+                         color:${on ? onColor : 'var(--text-2)'};">
+                  <span style="width:11px;height:11px;border-radius:50%;background:${c.dot};flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.32);"></span>${escapeHtmlAttr(c.label)}
+                  <span style="opacity:.6;font-weight:600;">${n}</span>${isExplicit ? ' ✓ ยืนยันแล้ว' : ''}${
+                    isPrevRef ? ` · ${escapeHtmlAttr(prevLabel)}` : ''}</button>`;
               }).join('') || '<span style="font-size:11px;color:var(--text-3);">ไม่มีชุดสีในกลุ่มนี้</span>'}
-              ${!explicit && prev ? `<span style="font-size:10px;color:var(--text-3);">← อ้างจากวันที่ ${escapeHtmlAttr(fmtDateThaiShort(parseISODate(prev.from)))} (ชุดเดิม)</span>`
-                : (!explicit && inuse ? '<span style="font-size:10px;color:var(--text-3);">← อ้างจากสถานะกำลังใช้งาน</span>' : '')}
+              ${!explicit && prev ? `<span style="flex-basis:100%;font-size:11px;font-weight:700;color:var(--amber);">
+                  ${escapeHtmlAttr(prevLabel)} (${escapeHtmlAttr(fmtDateThaiShort(parseISODate(prev.from)))}) เดิน ${escapeHtmlAttr(prevColorName)} —
+                  ถ้าวันนี้เดินชุดเดิม กดปุ่มนั้นเพื่อยืนยัน</span>`
+                : (!explicit && inuse ? '<span style="flex-basis:100%;font-size:11px;color:var(--text-3);">ยังไม่มีประวัติของชุดนี้ — ค่าอ้างอิงมาจากสถานะ กำลังใช้งาน ในทะเบียน</span>' : '')}
               ${!effective ? '<span style="font-size:10px;color:var(--red);">ยังไม่มีชุดที่กำลังใช้งาน</span>' : ''}
             </span>
           </div>`;
