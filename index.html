@@ -13128,10 +13128,12 @@ function renderDailyTasks() {
         + เพิ่มงานแทรก${escapeHtmlAttr(s.addType === 'polish' ? ' (ขัด Roll)' : ' (CNC)')}</button>
     </td></tr>`;
 
+  // เรียงเป็นคู่: งานตามแผนของประเภทนั้น แล้วต่อด้วยงานแทรกของประเภทเดียวกันทันที
+  // (เดิมงานแทรกทั้งสองประเภทไปกองท้ายตาราง ต้องเลื่อนหาว่าของงานไหน)
   const DAILY_SECTIONS = [
     { key: 'cnc',       icon: '⚙', label: 'แต่ง Roll (CNC)', color: 'var(--accent)', bg: 'var(--accent-glow)', empty: 'ไม่มีงานแต่ง Roll ในวันนี้', always: true },
-    { key: 'polish',    icon: '✦', label: 'ขัด Roll',        color: 'var(--purple)', bg: 'var(--purple-dim)',  empty: 'ไม่มีงานขัด Roll ในวันนี้',  always: true },
     { key: 'checklist-cnc',    icon: '＋', label: 'งานแทรก — แต่ง Roll (CNC)', color: 'var(--accent)', bg: 'var(--bg-panel)', empty: 'ยังไม่มีงานแทรกของงานแต่ง Roll ในวันนี้', always: true, addType: 'cnc' },
+    { key: 'polish',    icon: '✦', label: 'ขัด Roll',        color: 'var(--purple)', bg: 'var(--purple-dim)',  empty: 'ไม่มีงานขัด Roll ในวันนี้',  always: true },
     { key: 'checklist-polish', icon: '＋', label: 'งานแทรก — ขัด Roll',        color: 'var(--purple)', bg: 'var(--bg-panel)', empty: 'ยังไม่มีงานแทรกของงานขัด Roll ในวันนี้',  always: true, addType: 'polish' },
   ];
   tbody.innerHTML = DAILY_SECTIONS.filter(s => {
