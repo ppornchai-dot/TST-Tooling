@@ -2072,11 +2072,10 @@ function showPage(id) {
   if (id !== 'plan' && planDeleteMode) cancelPlanDeleteMode();
   if (id === 'dashboard') initDashboard();
   if (id === 'daily') {
-    // เข้าหน้านี้ทีไรให้กลับมาที่วันปัจจุบันเสมอ — ไม่ค้างวันที่เลื่อนดูไว้รอบก่อน
-    // (เลื่อนไปดูเมื่อวาน แล้วสลับไปหน้าอื่น พอกลับมาต้องเป็นวันนี้ ไม่ใช่เมื่อวาน
-    //  ไม่งั้นเผลอดู/กดงานผิดวันโดยไม่ทันสังเกตว่ายังค้างอยู่วันเดิม)
-    // goToDailyTask ตั้งวันหลัง showPage จึงยังพาไปวันของงานนั้นได้ตามเดิม
-    dailyViewDate = dailyTodayIso();
+    // เปิดหน้านี้ครั้งแรกของรอบนี้ = วันปัจจุบัน แต่ถ้าผู้ใช้กดเลือกวันเองแล้ว
+    // ให้ค้างวันนั้นไว้ (สลับไปหน้าอื่นแล้วกลับมา ยังเป็นวันที่กำลังดูอยู่)
+    // กดปุ่ม "วันนี้" หรือเปิดหน้าเว็บใหม่ = เริ่มนับใหม่ที่วันปัจจุบัน
+    if (!dailyDateTouched) dailyViewDate = dailyTodayIso();
     renderDailyTasks();
   }
   if (id === 'history') renderHistory();
@@ -3853,6 +3852,7 @@ function goToDailyTask(taskId, dateIso, workType) {
     return;
   }
   dailyViewDate = day;
+  dailyDateTouched = day !== dailyTodayIso();
   // กางรายละเอียดรายชิ้นของงานนั้นไว้เลย จะเห็นปุ่มเริ่ม/พัก/จบของแต่ละชิ้นทันทีไม่ต้องกดอีกที
   expandedDailyTaskId = taskId;
   renderDailyTasks();
@@ -3871,6 +3871,7 @@ function goToDailyInsert(taskId, dateIso) {
     return;
   }
   dailyViewDate = day;
+  dailyDateTouched = day !== dailyTodayIso();
   renderDailyTasks();
   highlightPlanTask(taskId);   // ตัวไฮไลต์ตัวเดียวกัน — หาแถวจาก [data-taskid]
 }
@@ -4709,6 +4710,9 @@ let dailyStatusByDate = {};
 // ประกาศ dailyStatusByDate ไว้ก่อนบรรทัดนี้ — dailyTodayIso() เรียก nightSessionStillRunning() ซึ่งอ่านค่านั้น
 // ถ้าเรียกก่อนประกาศจะชน TDZ แล้วสคริปต์ตายกลางทาง (อาการเดียวกับที่เคยเจอหลายรอบ)
 let dailyViewDate = dailyTodayIso();
+// ผู้ใช้กดเลือกวันเองแล้วหรือยังในรอบนี้ — ใช้ตัดสินว่าเข้าหน้างานประจำวันแล้ว
+// ต้องดึงกลับมาวันปัจจุบันไหม (เปิดหน้าเว็บใหม่ = เริ่มที่ false = เริ่มที่วันนี้)
+let dailyDateTouched = false;
 // เวลาเริ่ม/จบงานจริงที่บันทึกจากปุ่ม "เริ่มงาน"/"จบงาน" ของงานตามแผน (CNC/ขัด Roll) แยกตามวันที่ที่ดู — { 'YYYY-MM-DD': { [planTaskId]: {startTime, endTime} } }
 let dailyActualTimes = {};
 // ไม่มีตัวกรองประเภทงานในหน้างานประจำวันแล้ว — ตารางแบ่งหัวข้อเป็น CNC / ขัด Roll เสมอ (ดู DAILY_SECTIONS)
@@ -12978,6 +12982,7 @@ function maybeAutoContinueDailyPlan() { /* ไม่สร้างแผนว�
 function setDailyViewDate(iso) {
   if (!iso) return;
   dailyViewDate = iso;
+  dailyDateTouched = true;   // เลือกวันเองแล้ว — ค้างวันนี้ไว้จนกดปุ่ม "วันนี้"
   renderDailyTasks();
 }
 
@@ -12989,11 +12994,13 @@ function dailyNav(dir) {
     : addDaysIso(dailyViewDate, dir);
   if (isDailyTechRole() && !dailyTechDateAllowed(target)) return;
   dailyViewDate = target;
+  dailyDateTouched = target !== dailyTodayIso();   // เลื่อนมาลงวันนี้พอดี = เหมือนอยู่วันปัจจุบัน
   renderDailyTasks();
 }
 
 function dailyGoToday() {
   dailyViewDate = dailyTodayIso();
+  dailyDateTouched = false;   // กลับมาวันปัจจุบันแล้ว เริ่มนับใหม่
   renderDailyTasks();
 }
 
