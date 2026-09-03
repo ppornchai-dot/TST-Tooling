@@ -3195,6 +3195,8 @@ async function refreshSizeChangeWatch(force) {
   await loadFgRunningOn(today);
   syncRollSizeChangeQueue(today);
   renderDashboardSizeChangeAlert();
+  // แถบบนหน้าน้ำหนักผลิตอ่านจากแคชก้อนเดียวกัน — ดึงใหม่แล้วต้องวาดใหม่ ไม่งั้นค้างของเก่า
+  renderProdWeightRunBanner();
   maybeAutoOpenSizeChangePrompt();
 }
 
@@ -10191,8 +10193,13 @@ function fgKeyLabel(fgKey) {
 // แต่ API ยอดผลิต (/api/trans/fg) ส่ง production_date + machine_id มาด้วย — ขนาดที่มียอดผลิตของวันนั้น
 // ก็คือขนาดที่บล็อกวันนั้นเดินงานจริง และรู้ด้วยว่าเดินอยู่เครื่องไหน
 // ดึงแยกเป็นวันเดียวและแคชไว้ เพื่อให้ไม่ขึ้นกับช่วงวันที่ที่ผู้ใช้เลือกดูในตาราง
-async function loadFgRunningOn(dateIso) {
-  if (fgRunningCache[dateIso]) return fgRunningCache[dateIso];
+// maxAgeMs = อายุแคชที่ยอมรับได้ (ms) — เกินนั้นให้ดึงใหม่
+// จำเป็นเพราะยอดผลิตของ "วันนี้" ถูกคีย์เพิ่มเรื่อยๆ ทั้งวัน เครื่องที่เพิ่งเริ่มเดิน
+// (เช่น P1 คีย์ล็อตแรกตอนสาย) จะไม่โผล่ในแถบ "วันนี้บล็อกเดินงาน" เลย ถ้าอ่านแคชที่ดึงไว้ตอนเปิดหน้า
+// ไม่ส่ง maxAgeMs = ใช้แคชตลอด (ของวันย้อนหลังที่ปิดยอดแล้ว ไม่ต้องดึงซ้ำ)
+async function loadFgRunningOn(dateIso, maxAgeMs) {
+  const hit = fgRunningCache[dateIso];
+  if (hit && !(maxAgeMs > 0 && Date.now() - (hit.at || 0) > maxAgeMs)) return hit;
   try {
     const res = await fetch(FG_API_URL + '?from=' + dateIso + '&to=' + dateIso);
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -10217,9 +10224,9 @@ async function loadFgRunningOn(dateIso) {
       }
     });
     Object.values(machinesByKey).forEach(list => list.sort());
-    fgRunningCache[dateIso] = { kgByKey, machinesByKey, latestByMachine };
+    fgRunningCache[dateIso] = { kgByKey, machinesByKey, latestByMachine, at: Date.now() };
   } catch (e) {
-    fgRunningCache[dateIso] = { kgByKey: {}, machinesByKey: {}, latestByMachine: {}, error: e.message };
+    fgRunningCache[dateIso] = { kgByKey: {}, machinesByKey: {}, latestByMachine: {}, error: e.message, at: Date.now() };
   }
   return fgRunningCache[dateIso];
 }
@@ -10588,7 +10595,9 @@ async function renderProdWeight() {
   const fgByKey = await fetchFgWeightByKey(fromDate, toDate);
   renderProdWeightRangeNote(fromDate, toDate);
   // งานที่บล็อกเดินอยู่ "วันนี้" — ดึงแยกจากช่วงที่เลือกดู แล้วเด้งถามชุดสีที่เดินถ้ายังไม่ได้ระบุ
-  await loadFgRunningOn(toISODate(new Date()));
+  // ยอมให้ใช้ของเก่าได้ไม่เกิน 1 นาที: เข้าหน้าใหม่/กดเปลี่ยนช่วงวันที่ = ได้ของสดเสมอ
+  // แต่ตอนกดเลือกสีทีละชุด (applyRunColor → renderProdWeight) จะไม่ยิง API ซ้ำทุกครั้ง
+  await loadFgRunningOn(toISODate(new Date()), 60 * 1000);
   renderProdWeightRunBanner();
   maybeAutoOpenRunColorPrompt();
   const sets = getRollSets();
