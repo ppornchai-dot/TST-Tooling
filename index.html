@@ -1157,7 +1157,7 @@ canvas{display:block;}
       <div class="card" style="margin-bottom:18px;">
         <div class="card-header">
           <span class="card-title" style="font-size:17px;color:var(--red);display:inline-flex;align-items:center;gap:8px;">
-            <span style="width:11px;height:11px;border-radius:50%;background:var(--red);flex-shrink:0;"></span>น้ำหนักใกล้หมด / หมดแล้ว</span>
+            <span style="width:11px;height:11px;border-radius:50%;background:var(--red);flex-shrink:0;"></span>น้ำหนักเฝ้าระวัง / ใกล้หมด / หมดแล้ว</span>
           <span style="margin-left:auto;font-size:12px;color:var(--text-3);">
             <span id="dash-roll-weight-count" style="font-weight:700;color:var(--red);">0</span> ชุด
           </span>
@@ -3683,18 +3683,25 @@ function renderDashboardRollWeight() {
   const el = document.getElementById('dash-roll-weight-list');
   if (!el) return;
   ensureRollLifeFg(); // ดึงข้อมูลน้ำหนักผลิตทั้งหมด (โหลดเสร็จแล้วจะ render หน้านี้ใหม่ให้เอง)
-  const rows = rollUsageRows().filter(g => g.prodPct != null && g.prodPct > 90);
+  // เกณฑ์เดียวกับ rollUsageBand: ไม่เกิน 80% ปกติ · เกิน 80–90% เฝ้าระวัง · เกิน 90% ใกล้หมด
+  // เอาชั้นเฝ้าระวังเข้ามาด้วย จะได้เห็นล่วงหน้าก่อนที่ชุดนั้นจะเลยรอบการแต่งไปแล้ว
+  const rows = rollUsageRows().filter(g => g.prodPct != null && g.prodPct > 80);
   const over = rows.filter(g => g.prodPct >= 100).sort((a, b) => b.prodPct - a.prodPct);
-  const near = rows.filter(g => g.prodPct < 100).sort((a, b) => b.prodPct - a.prodPct);
+  const near = rows.filter(g => g.prodPct < 100 && g.prodPct > 90).sort((a, b) => b.prodPct - a.prodPct);
+  const watch = rows.filter(g => g.prodPct <= 90).sort((a, b) => b.prodPct - a.prodPct);
   const countEl = document.getElementById('dash-roll-weight-count');
-  if (countEl) countEl.textContent = rows.length;
+  if (countEl) {
+    countEl.textContent = rows.length;
+    countEl.style.color = over.length ? 'var(--red)' : (near.length ? 'var(--amber)'
+      : (rows.length ? 'var(--st-waitpolish)' : 'var(--text-3)'));
+  }
 
   if (rollLifeFgLoading && !rows.length) {
     el.innerHTML = '<div style="padding:4px;color:var(--text-3);font-size:13px;">กำลังโหลดน้ำหนักผลิต…</div>';
     return;
   }
   if (!rows.length) {
-    el.innerHTML = '<div style="padding:4px;color:var(--text-3);font-size:13px;">ยังไม่มีชุด Roll ที่น้ำหนักใกล้หมดหรือหมดแล้ว</div>';
+    el.innerHTML = '<div style="padding:4px;color:var(--text-3);font-size:13px;">ยังไม่มีชุด Roll ที่น้ำหนักเข้าเกณฑ์เฝ้าระวัง (เกิน 80% ของรอบการแต่ง)</div>';
     return;
   }
   const group = (label, list, color, bg) => list.length ? `
@@ -3733,7 +3740,8 @@ function renderDashboardRollWeight() {
     </div>`; }).join('')}` : '';
 
   el.innerHTML = group('หมดแล้ว (≥ 100%)', over, 'var(--red)', 'var(--red-dim)')
-    + group('ใกล้หมด (> 90%)', near, 'var(--amber)', 'var(--amber-dim)');
+    + group('ใกล้หมด (> 90%)', near, 'var(--amber)', 'var(--amber-dim)')
+    + group('เฝ้าระวัง (> 80%)', watch, 'var(--st-waitpolish)', 'var(--st-waitpolish-dim)');
 }
 
 // ─── DASHBOARD: ชุด Roll กำลังแต่ง / กำลังขัด ─────────────────────────────────
