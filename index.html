@@ -10444,6 +10444,60 @@ function markRunColorPromptAsked(dateIso, setNames) {
   try { localStorage.setItem(RUNCOLOR_PROMPT_KEY, JSON.stringify({ date: dateIso, sets: merged })); }
   catch (e) { /* จำไม่ได้ก็แค่เด้งซ้ำ ไม่กระทบข้อมูล */ }
 }
+// ชุดสีทั้งหมดที่มี Roll จริงอยู่ในชุดนั้น — ใช้ตัดสินว่า "มีสีเดียว" หรือ "หลายสี"
+function rollSetUsedColorKeys(setName) {
+  return [...new Set(toolingData.roll.filter(r => r.set === setName).map(r => r.color || NO_COLOR_KEY))];
+}
+
+// ชุดที่มีชุดสีเดียว = ยอดของวันนั้นเป็นของชุดสีนั้นแน่นอน ไม่มีทางเป็นชุดอื่น
+// จึงระบุให้อัตโนมัติเลย ไม่ต้องให้คนมากดยืนยันสิ่งที่มีคำตอบเดียว
+// (ชุดที่ยังไม่ระบุ ยอดจะไม่ถูกนับใน % การใช้รอบการแต่ง — ดู producedTonForRollSet)
+// คืน key ของสีนั้น หรือ null ถ้ามีหลายสี/ไม่มีสีที่ระบุได้
+function rollSetSingleColorKey(setName) {
+  const keys = rollSetUsedColorKeys(setName);
+  if (keys.length !== 1) return null;
+  return keys[0] === NO_COLOR_KEY ? null : keys[0];   // "ไม่ระบุสี" ไม่ถือเป็นชุดสี ไม่เขียนให้เอง
+}
+
+// ยอดผลิตของชุดนั้นในวันนั้น (รวมขนาดอื่นที่มาใช้ Forming ร่วม) — ใช้ตัดสินว่า "เดินวันนั้นจริง"
+function rollSetKgOnDate(setName, dateIso, byKeyDate) {
+  const src = byKeyDate || {};
+  return ((src[rollSetFgKey(setName)] || {})[dateIso] || 0)
+    + sharedFormingSources(setName).reduce((t, k) => t + ((src[k] || {})[dateIso] || 0), 0);
+}
+
+// ผลการเติมอัตโนมัติรอบล่าสุด — เอาไปบอกในหน้าน้ำหนักผลิตว่าระบบเติมให้กี่รายการ
+// (ไม่ให้เป็นการแก้ข้อมูลแบบเงียบๆ ต้องเห็นว่าระบบทำอะไรไป)
+let runColorAutoFilled = { count: 0, days: 0 };
+
+// เติมชุดสีของ "ชุดที่มีสีเดียว" ให้ทุกวันที่มีการผลิตแต่ยังไม่ได้ระบุ
+// เขียนครั้งเดียวท้ายสุด (persistState หนึ่งครั้ง) ไม่ยิงอัปโหลดทีละรายการ
+// ทำซ้ำได้ ผลลัพธ์เหมือนเดิม — รอบต่อไปไม่มีอะไรให้เติมก็ไม่เขียนอะไรเลย
+// ไม่เขียนทับค่าที่คนระบุไว้เองเด็ดขาด (เช็ค explicitRunColorFor ก่อน)
+function autoFillSingleColorRunColors(days, byKeyDate) {
+  if (!canEditPlan()) return 0;                    // ช่างไม่มีสิทธิ์เขียนค่านี้
+  const sets = getRollSets().filter(s => toolingData.roll.some(r => r.set === s));
+  const single = new Map();
+  sets.forEach(s => { const c = rollSetSingleColorKey(s); if (c) single.set(s, c); });
+  if (!single.size) return 0;
+  let count = 0;
+  const touched = new Set();
+  (days || []).forEach(d => {
+    single.forEach((colorKey, s) => {
+      if (explicitRunColorFor(d, s)) return;
+      if (!(rollSetKgOnDate(s, d, byKeyDate) > 0)) return;
+      if (!rollRunColor[d]) rollRunColor[d] = {};
+      rollRunColor[d][s] = colorKey;
+      count++; touched.add(d);
+    });
+  });
+  if (count) {
+    runColorAutoFilled = { count, days: touched.size };
+    persistState();
+  }
+  return count;
+}
+
 // วันที่มีการผลิตแต่ยังไม่ได้ระบุชุดสีที่เดิน — ใช้ทำแถบ "ระบุย้อนหลัง" ในหน้าน้ำหนักผลิต
 // ยึดยอดรายวันของช่วงที่หน้านั้นดึงมา (byKeyDate) ไม่ใช่ยอดของวันนี้
 // ตันของวันนั้นนับ "ขนาดละครั้ง" (ตาม fgKey) ไม่บวกซ้ำตามหมวด Forming/Sizing/TH ที่ใช้ยอดร่วมกัน
@@ -10454,10 +10508,10 @@ function runColorMissingByDate(days, byKeyDate) {
     const missing = [], kgByFgKey = {};
     sets.forEach(s => {
       const fgKey = rollSetFgKey(s);
-      const own = ((byKeyDate[fgKey] || {})[d] || 0)
-        + sharedFormingSources(s).reduce((t, k) => t + ((byKeyDate[k] || {})[d] || 0), 0);
+      const own = rollSetKgOnDate(s, d, byKeyDate);
       if (!(own > 0)) return;
       if (explicitRunColorFor(d, s)) return;   // ระบุไว้แล้ว ไม่ต้องถามซ้ำ
+      if (rollSetSingleColorKey(s)) return;    // มีสีเดียว ระบบระบุให้เองอยู่แล้ว ไม่ต้องถาม
       missing.push(s);
       if (fgKey) kgByFgKey[fgKey] = (byKeyDate[fgKey] || {})[d] || 0;
     });
@@ -10473,6 +10527,8 @@ function runColorMissingByDate(days, byKeyDate) {
 // จำกัดเฉพาะชุดที่ "ผลิตวันนั้นและยังไม่ได้ระบุ" จะได้ไม่ต้องไล่หาในรายการ 47 ชุด
 // ระบบเดาสีให้แล้วในหน้าต่างนั้น (จากวันที่ระบุไว้ใกล้ที่สุด/ชุดที่กำลังใช้งาน) กดยืนยันทีเดียวจบ
 function openRunColorBackfill(dateIso) {
+  // ชุดที่มีสีเดียวของวันนั้น เติมให้ก่อน จะได้ไม่ต้องกดยืนยันสิ่งที่มีคำตอบเดียว
+  autoFillSingleColorRunColors([dateIso], fgWeightByKeyDate);
   const running = runningRollSetsOn(dateIso);
   const list = runColorMissingByDate([dateIso], fgWeightByKeyDate)[0];
   const want = list ? list.sets : [];
@@ -10483,6 +10539,8 @@ function openRunColorBackfill(dateIso) {
 function openRunColorPromptFor(dateIso) {
   const running = runningRollSetsOn(dateIso);
   if (!running.size) return false;
+  // ชุดที่มีสีเดียวไม่ต้องถาม — ระบุให้เลย เหลือถามแต่ชุดที่มีหลายสีจริงๆ
+  autoFillSingleColorRunColors([dateIso], fgWeightByKeyDate);
   markRunColorPromptAsked(dateIso, [...running.keys()]);
   openRunColorPicker(dateIso, { title: 'ชุด Roll ที่เดินงาน', info: running, sets: [...running.keys()] });
   return true;
@@ -10501,7 +10559,10 @@ function maybeAutoOpenRunColorPrompt() {
   if (!running.size) return;                         // วันนี้บล็อกไม่ได้เดินขนาดไหนเลย
   const asked = runColorPromptAsked(today);
   // เด้งเมื่อยังมีชุดที่เดินอยู่แต่ยังไม่ได้ระบุสี และยังไม่เคยถูกถามในวันนี้
-  const needAsk = [...running.keys()].filter(s => !explicitRunColorFor(today, s) && !asked.includes(s));
+  // ชุดที่มีสีเดียว ระบุให้เองก่อน แล้วค่อยดูว่ายังมีอะไรต้องถามคนไหม
+  autoFillSingleColorRunColors([today], fgWeightByKeyDate);
+  const needAsk = [...running.keys()].filter(s => !explicitRunColorFor(today, s)
+    && !rollSetSingleColorKey(s) && !asked.includes(s));
   if (!needAsk.length) return;
   openRunColorPromptFor(today);
 }
@@ -11007,13 +11068,23 @@ async function renderProdWeight() {
   // วันที่ผลิตแล้วแต่ยังไม่ได้ระบุชุดสีที่เดิน — กดปุ่มวันนั้นเพื่อระบุย้อนหลังได้เลย
   // ยอดของวันแบบนี้จะไม่ถูกนับใน % การใช้รอบการแต่ง (หน้าอายุ Roll นับเฉพาะวันที่ระบุไว้จริง)
   // จึงต้องดันให้เห็นชัด ไม่ใช่ซ่อนอยู่ในเครื่องหมาย * ในช่อง
+  // ชุดที่มีสีเดียว: ระบุให้อัตโนมัติทุกวันที่มีการผลิตในช่วงที่ดึงมา (ไม่ใช่แค่คอลัมน์ที่แสดง)
+  runColorAutoFilled = { count: 0, days: 0 };
+  const autoFilled = autoFillSingleColorRunColors(fgWeightDates, fgWeightByKeyDate);
   const missDays = canEditPlan() ? runColorMissingByDate(days, fgWeightByKeyDate) : [];
   const missKg = missDays.reduce((s, x) => s + x.kg, 0);
+  // เติมอัตโนมัติไปแล้วต้องบอกให้เห็น ไม่ใช่แก้ข้อมูลเงียบๆ
+  const autoNote = !autoFilled ? '' : `<div style="background:var(--green-dim);border-left:4px solid var(--green);
+       border-radius:8px;padding:8px 13px;margin-bottom:10px;font-size:12px;line-height:1.6;color:var(--text-2);">
+    <b style="color:var(--green);">ระบุชุดสีให้อัตโนมัติแล้ว ${autoFilled} รายการ (${runColorAutoFilled.days} วัน)</b>
+    — เป็นชุด Roll ที่มีชุดสีเดียว ยอดของวันนั้นเป็นของชุดนั้นแน่นอน จึงไม่ต้องกดเลือก
+    <span style="color:var(--text-3);">(แก้ทับได้ที่ปุ่ม ✎ ของวันนั้น)</span></div>`;
   const missBanner = !missDays.length ? '' : `<div style="background:var(--amber-dim);border-left:4px solid var(--amber);
        border-radius:8px;padding:10px 13px;margin-bottom:10px;font-size:12px;line-height:1.7;color:var(--text-2);">
     <b style="color:var(--amber);font-size:13px;">ยังไม่ได้ระบุชุดสี Roll ที่เดิน ${missDays.length} วัน
       (${fmt(ton(missKg))} ตัน)</b> — ยอดของวันเหล่านี้ยังไม่ถูกนับใน % การใช้รอบการแต่ง (หน้าอายุ Roll)<br>
-    <span style="color:var(--text-3);">กดวันที่เพื่อระบุย้อนหลัง — ระบบเดาชุดสีให้แล้ว กดยืนยันทีเดียวจบ</span>
+    <span style="color:var(--text-3);">เหลือแต่ชุด Roll ที่มีหลายชุดสี ระบบเลือกให้เองไม่ได้ —
+      กดวันที่เพื่อระบุย้อนหลัง (ระบบเดาไว้ให้แล้ว กดยืนยันทีเดียวจบ)</span>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;">
       ${missDays.map(x => `<button onclick="${jsCallAttr('openRunColorBackfill', x.date)}"
         title="${escapeHtmlAttr(fmtDateThai(parseISODate(x.date)) + ' — ยังไม่ได้ระบุ ' + x.sets.length
@@ -11026,7 +11097,7 @@ async function renderProdWeight() {
     </div>
   </div>`;
   const missDaySet = new Set(missDays.map(x => x.date));
-  grid.innerHTML = errorBanner + missBanner + `<div class="card"><div class="table-wrap table-wrap-sticky"><table>
+  grid.innerHTML = errorBanner + autoNote + missBanner + `<div class="card"><div class="table-wrap table-wrap-sticky"><table>
     <thead><tr>
       <th class="pw-fz1">SIZE ROLL</th><th class="pw-fz2">ชุดสี</th>
       <th style="text-align:right;white-space:nowrap;" title="น้ำหนักที่ผลิตไปแล้วก่อนช่วงข้อมูลที่ระบบมี — กรอกเอง ไม่รวมในคอลัมน์รวมและแถวรวมท้ายตาราง แต่ไปบวกใน % การใช้รอบการแต่งหน้าอายุ Roll">
@@ -11250,6 +11321,9 @@ function ensureRollLifeFg() {
     rollLifeFgByKeyDate = fgWeightByKeyDate;
     rollLifeFgDates = fgWeightDates;
     rollLifeFgLoading = false;
+    // ชุดที่มีสีเดียว ระบุให้เองตรงนี้ด้วย เพื่อให้ % การใช้รอบการแต่งถูกต้อง
+    // แม้ผู้ใช้ไม่เคยเปิดหน้าน้ำหนักผลิตเลย (การ์ดหน้า Dashboard ก็อ่านค่านี้)
+    autoFillSingleColorRunColors(rollLifeFgDates, rollLifeFgByKeyDate);
     renderRollLife();
     // การ์ด "น้ำหนักใกล้หมด / หมดแล้ว" หน้า Dashboard ใช้ข้อมูลก้อนเดียวกัน ต้องวาดใหม่ด้วยเมื่อโหลดเสร็จ
     if (typeof renderDashboardRollWeight === 'function') renderDashboardRollWeight();
