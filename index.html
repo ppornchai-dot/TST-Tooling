@@ -2322,6 +2322,28 @@ function dashRollInUseMachineSortKey(e) {
   return idxs.length ? Math.min(...idxs) : ROLL_MACHINES.length;
 }
 
+// เรียงชุดในการ์ดรอแต่ง/รอขัด: ชุดที่ "วางแผนไว้แล้ว" ขึ้นก่อน เรียงตามวันที่จะเสร็จ
+// ชุดที่ "ยังไม่ได้วางแผน" ลงไปอยู่ท้ายกลุ่ม เรียงตามเครื่อง — เห็นทันทีว่าเหลือชุดไหนต้องวางแผน
+// (เดิมเรียงตามเครื่องล้วน ชุดที่วางแผนแล้วของ P4 จึงไปแทรกอยู่ล่างสุดใต้ชุดที่ยังไม่วางแผน)
+// workType ว่าง = การ์ดกำลังใช้งาน/พร้อมใช้ ที่ไม่มีป้ายวันเสร็จ → เรียงตามเครื่องเหมือนเดิม
+// จำผลของ plannedFinishForRollColor ไว้ เพราะตัวนั้นไล่ planTasks ทั้งก้อน และ comparator ถูกเรียกซ้ำหลายรอบ
+function dashRollStatusSortCmp(workType) {
+  const cache = new Map();
+  const finOf = e => {
+    const k = e.set + '|' + e.colorKey;
+    if (!cache.has(k)) cache.set(k, workType ? plannedFinishForRollColor(e.set, e.colorKey, workType) : null);
+    return cache.get(k);
+  };
+  return (a, b) => {
+    const fa = finOf(a), fb = finOf(b);
+    if (!!fa !== !!fb) return fa ? -1 : 1;
+    if (fa && fb && fa.date !== fb.date) return fa.date < fb.date ? -1 : 1;
+    const m = dashRollInUseMachineSortKey(a) - dashRollInUseMachineSortKey(b);
+    if (m) return m;
+    return String(a.set + a.colorLabel).localeCompare(String(b.set + b.colorLabel), 'th');
+  };
+}
+
 // เรนเดอร์การ์ด "ชุด Roll กำลังใช้งาน" และ "ชุด Roll พร้อมใช้งาน" ด้วยตัวเดียวกัน
 // ต่างกันแค่สถานะที่กรอง สีป้ายเครื่อง และข้อความตอนไม่มีข้อมูล
 // ─── ปฏิทินชุด Roll ที่เดินงานแต่ละวัน ────────────────────────────────────────
@@ -2794,7 +2816,7 @@ function renderDashboardRollStatusCard(listId, countId, status, emptyText, badge
 
   el.innerHTML = `<div class="dash-rollinuse-grid" style="display:grid;grid-template-columns:repeat(${columns.length},1fr);gap:16px;">
     ${columns.map(([label, list]) => {
-      const sorted = list.slice().sort((a, b) => dashRollInUseMachineSortKey(a) - dashRollInUseMachineSortKey(b));
+      const sorted = list.slice().sort(dashRollStatusSortCmp(plannedWorkType));
       return `<div>
       ${rollSetSectionHeaderHtml(label, list.length, ROLL_SET_SECTION_COLORS[label])}
       ${sorted.length ? sorted.map(e => dashRollInUseChipHtml(e, badgeColor, rowBg, plannedWorkType)).join('') : `<div style="padding:4px;color:var(--text-3);font-size:12px;">ไม่มี</div>`}
@@ -2916,7 +2938,7 @@ function renderStatusDonePicker() {
   const cols = [['Forming', buckets.Forming], ['Sizing', buckets.Sizing], ['TH', buckets.TH]];
   if (buckets.other.length) cols.push(['อื่นๆ', buckets.other]);
   body.innerHTML = cols.filter(([, list]) => list.length).map(([label, list]) => {
-    const sorted = list.slice().sort((a, b) => dashRollInUseMachineSortKey(a) - dashRollInUseMachineSortKey(b));
+    const sorted = list.slice().sort(dashRollStatusSortCmp(cfg.workType));
     return rollSetSectionHeaderHtml(label, list.length, ROLL_SET_SECTION_COLORS[label])
       + sorted.map(e => {
         const on = statusDoneSelected.has(e.set + '|' + e.colorKey);
