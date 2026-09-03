@@ -9910,16 +9910,66 @@ function fgRowIsScrap(row) {
   return t === 'scrap' || t === 'old_scrap';
 }
 
+// ─── ดึงยอดผลิต (FG) เป็นก้อนสั้นๆ แล้วรวมเอง ────────────────────────────────
+// API ตัดแถวทิ้งเงียบๆ เมื่อขอช่วงยาว: ขอ 1 ส.ค.–3 ก.ย. ได้ 1,935 แถว แต่ขอวันละครั้ง
+// รวมกันได้เกิน 5,000 แถว (25 ส.ค. ขอวันเดียวได้ 203 แถว แต่ในช่วงกว้างเหลือ 27 แถว)
+// ยอดที่หายไปไม่มีสัญญาณอะไรบอก — ตารางน้ำหนักผลิตจึงขึ้นเป็น — ทั้งที่วันนั้นผลิตจริง
+// (เจอกับ GI 3"x1-1/2" วันที่ 25–27 ส.ค. 69: ผลิต 15.37 / 71.25 / 62.13 ตัน แต่ตารางไม่มียอด)
+// ก้อนไหนได้แถวเยอะจนใกล้เพดาน = อาจถูกตัด ให้แบ่งครึ่งขอใหม่ — ปรับตัวเองได้ถ้าเพดานเปลี่ยน
+const FG_FETCH_CHUNK_DAYS = 3;    // ขอทีละ 3 วัน (~750 แถว) ยังห่างจากเพดาน
+const FG_FETCH_SUSPECT_ROWS = 900; // ได้เกินนี้ = สงสัยว่าถูกตัด แบ่งครึ่งขอใหม่
+const FG_FETCH_PARALLEL = 6;      // ขอพร้อมกันได้กี่ก้อน
+
+function fgDaysBetween(fromIso, toIso) {
+  return Math.round((parseISODate(toIso) - parseISODate(fromIso)) / 86400000);
+}
+
+// ขอหนึ่งก้อน — กรองให้เหลือเฉพาะวันในก้อนนี้ (API เคยส่งวันข้างเคียงติดมาด้วย)
+// จะได้ไม่นับซ้ำเวลารวมหลายก้อนเข้าด้วยกัน
+async function fgFetchRowsChunk(fromIso, toIso) {
+  const res = await fetch(FG_API_URL + '?from=' + fromIso + '&to=' + toIso);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const json = await res.json();
+  const all = json.rows || [];
+  const span = fgDaysBetween(fromIso, toIso);
+  if (all.length >= FG_FETCH_SUSPECT_ROWS && span >= 1) {
+    const mid = addDaysIso(fromIso, Math.floor(span / 2));
+    const parts = await Promise.all([fgFetchRowsChunk(fromIso, mid), fgFetchRowsChunk(addDaysIso(mid, 1), toIso)]);
+    return parts[0].concat(parts[1]);
+  }
+  return all.filter(r => { const d = String(r.production_date || '').slice(0, 10); return d >= fromIso && d <= toIso; });
+}
+
+// ทั้งช่วง = หลายก้อน ขอขนานกันแบบจำกัดจำนวน แล้วรวมแถวทั้งหมด (กัน id ซ้ำอีกชั้น)
+async function fgFetchRowsRange(fromDate, toDate) {
+  const spans = [];
+  for (let d = fromDate; d <= toDate; d = addDaysIso(d, FG_FETCH_CHUNK_DAYS)) {
+    const end = addDaysIso(d, FG_FETCH_CHUNK_DAYS - 1);
+    spans.push([d, end > toDate ? toDate : end]);
+  }
+  const out = [];
+  for (let i = 0; i < spans.length; i += FG_FETCH_PARALLEL) {
+    const got = await Promise.all(spans.slice(i, i + FG_FETCH_PARALLEL).map(s => fgFetchRowsChunk(s[0], s[1])));
+    got.forEach(list => out.push(...list));
+  }
+  const seen = new Set();
+  return out.filter(r => {
+    const id = r.id == null ? null : String(r.id);
+    if (id == null) return true;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
 async function fetchFgWeightByKey(fromDate, toDate) {
   try {
-    const res = await fetch(FG_API_URL + '?from=' + fromDate + '&to=' + toDate);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const json = await res.json();
+    const allRows = await fgFetchRowsRange(fromDate, toDate);
     // ตัดแถวเศษ/ปรับยอดออกก่อนคิดทุกอย่าง — จำนวนรายการที่รายงานจึงเป็นของที่ผลิตจริง
-    const rows = (json.rows || []).filter(r => !fgRowIsScrap(r));
-    const scrapRows = (json.rows || []).length - rows.length;
+    const rows = allRows.filter(r => !fgRowIsScrap(r));
+    const scrapRows = allRows.length - rows.length;
     // ยอดเศษที่ตัดออก — ต้องบอกให้เห็น ไม่ใช่ให้ตัวเลขเล็กลงเงียบๆ
-    const scrapKg = (json.rows || []).filter(fgRowIsScrap)
+    const scrapKg = allRows.filter(fgRowIsScrap)
       .reduce((s, r) => s + (parseFloat(r.weight_kg) || 0), 0);
     const byKey = {};
     const byKeyDate = {};
