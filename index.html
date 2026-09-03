@@ -3286,7 +3286,7 @@ function renderInUseRollPicker() {
       const chosen = sets.filter(s => inUseColorOnMachine(s, inUsePickerMachine)).length;
       // data-cat ไว้ให้เลื่อนไปหมวดถัดไปหลังเลือกเสร็จ (ดู scrollInUsePickerToCategory)
       return `<div data-cat="${escapeHtmlAttr(label)}" style="margin-bottom:6px;">
-        ${rollSetSectionHeaderHtml(label, `${chosen}/${sets.length}`, ROLL_SET_SECTION_COLORS[label])}
+        ${rollSetSectionHeaderHtml(label, `${chosen}/${sets.length}`, ROLL_SET_SECTION_COLORS[label], { sticky: true })}
         ${inUseCategoryConflictHtml(label, inUsePickerMachine === INUSE_UNASSIGNED ? null : inUsePickerMachine)}
         ${sets.length ? sets.map(s => inUsePickerRowHtml(s, inUsePickerMachine)).join('')
           : `<div style="padding:4px;color:var(--text-3);font-size:12px;">ไม่มีชุดของหมวดนี้ผูกกับเครื่องนี้</div>`}
@@ -11746,15 +11746,46 @@ function setColorManageListHtml(setName) {
 
 // opts.keepCase: ชื่อขนาด Roll มีตัว x เล็กอยู่ในตัว (1"x1") ถ้าบังคับ uppercase จะกลายเป็น 1"X1" ผิดจากชื่อจริง
 // opts.big: หัวข้อขนาดในทะเบียน Roll เป็นตัวคั่นหลักของรายการ ต้องอ่านชัดกว่าหัวข้อหมวดที่ใช้ในการ์ด Dashboard
+// ปรับเฉดสีฐาน 16 (#RRGGBB) ให้เข้มขึ้น/อ่อนลง — amt ติดลบ = เข้มขึ้น
+// ใช้ทำแถบหัวข้อหมวดให้ทึบพอที่ตัวหนังสือสีขาวอ่านได้ชัด (สีเหลือง C_AMBER ตัวขาวบนสีเดิมอ่านยาก)
+function shadeHex(hex, amt) {
+  const m = /^#([0-9a-f]{6})$/i.exec(String(hex || ""));
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(v => {
+    const t = amt < 0 ? v * (1 + amt) : v + (255 - v) * amt;
+    return Math.max(0, Math.min(255, Math.round(t)));
+  });
+  return '#' + ch.map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+// หัวข้อหมวดชุด Roll (Forming / Sizing / TH) — ทำเป็นแถบสีทึบ ตัวหนังสือขาว
+// เพราะแบบเดิมเป็นตัวหนังสือสีเล็ก 11px มีแค่เส้นใต้ กวาดตาหาหมวดที่ต้องการยาก
+// เวลามีหลายหมวดเรียงต่อกันในหน้าเดียว (หน้าเลือกชุดที่ใช้งาน/การ์ด Dashboard)
+// หมวดที่ไม่มีสีประจำ (อื่นๆ) ใช้สีเทาเข้มแทน จะได้เป็นแถบเหมือนกันทั้งชุด
+// o.big = หัวข้อกลุ่มขนาดในหน้าทะเบียน ซึ่งส่งสีมาเป็น CSS var — คงรูปแบบเดิมไว้
 function rollSetSectionHeaderHtml(label, count, color, opts) {
   const o = opts || {};
   const c = color || 'var(--text-3)';
-  const dot = o.big ? 10 : 7;
-  return `<div style="font-size:${o.big ? '16px' : '11px'};font-weight:800;color:${c};${o.keepCase ? '' : 'text-transform:uppercase;'}letter-spacing:${o.big ? '0' : '.05em'};
-    padding:${o.big ? '14px 4px 8px' : '10px 4px 6px'};margin-top:4px;border-bottom:2px solid ${c};margin-bottom:${o.big ? '8px' : '6px'};
-    display:flex;align-items:center;justify-content:space-between;">
-    <span style="display:flex;align-items:center;gap:${o.big ? 8 : 6}px;"><span style="width:${dot}px;height:${dot}px;border-radius:50%;background:${c};flex-shrink:0;"></span>${label}</span>
-    <span style="font-weight:700;font-size:${o.big ? '14px' : '11px'};">${count}</span>
+  if (o.big) {
+    return `<div style="font-size:16px;font-weight:800;color:${c};${o.keepCase ? '' : 'text-transform:uppercase;'}
+      padding:14px 4px 8px;margin-top:4px;border-bottom:2px solid ${c};margin-bottom:8px;
+      display:flex;align-items:center;justify-content:space-between;">
+      <span style="display:flex;align-items:center;gap:8px;"><span style="width:10px;height:10px;border-radius:50%;background:${c};flex-shrink:0;"></span>${label}</span>
+      <span style="font-weight:700;font-size:14px;">${count}</span>
+    </div>`;
+  }
+  const band = shadeHex(c, -0.22) === c ? C_SLATE : shadeHex(c, -0.22);
+  // sticky = เลื่อนดูรายการยาวๆ แถบหมวดยังค้างอยู่บนสุด จะรู้ตลอดว่าตอนนี้อยู่หมวดไหน
+  // (ใช้ในหน้าต่างเลือกชุดที่ใช้งาน ซึ่งมี Size Roll หลายสิบชุดต่อหมวด)
+  return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;
+    margin:8px 0 8px;padding:7px 9px 7px 11px;border-radius:9px;background:${band};
+    ${o.sticky ? 'position:sticky;top:0;z-index:3;' : ''}box-shadow:0 1px 3px rgba(0,0,0,.18);">
+    <span style="display:flex;align-items:center;gap:7px;font-size:13.5px;font-weight:900;color:#fff;
+                 letter-spacing:.02em;${o.keepCase ? '' : 'text-transform:uppercase;'}">
+      <span style="width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.85);flex-shrink:0;"></span>${label}</span>
+    <span style="flex-shrink:0;font-size:11.5px;font-weight:800;color:#fff;background:rgba(255,255,255,.24);
+                 padding:2px 8px;border-radius:99px;">${count}</span>
   </div>`;
 }
 
