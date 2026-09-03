@@ -10444,6 +10444,42 @@ function markRunColorPromptAsked(dateIso, setNames) {
   try { localStorage.setItem(RUNCOLOR_PROMPT_KEY, JSON.stringify({ date: dateIso, sets: merged })); }
   catch (e) { /* จำไม่ได้ก็แค่เด้งซ้ำ ไม่กระทบข้อมูล */ }
 }
+// วันที่มีการผลิตแต่ยังไม่ได้ระบุชุดสีที่เดิน — ใช้ทำแถบ "ระบุย้อนหลัง" ในหน้าน้ำหนักผลิต
+// ยึดยอดรายวันของช่วงที่หน้านั้นดึงมา (byKeyDate) ไม่ใช่ยอดของวันนี้
+// ตันของวันนั้นนับ "ขนาดละครั้ง" (ตาม fgKey) ไม่บวกซ้ำตามหมวด Forming/Sizing/TH ที่ใช้ยอดร่วมกัน
+function runColorMissingByDate(days, byKeyDate) {
+  const out = [];
+  const sets = getRollSets().filter(s => toolingData.roll.some(r => r.set === s));
+  (days || []).forEach(d => {
+    const missing = [], kgByFgKey = {};
+    sets.forEach(s => {
+      const fgKey = rollSetFgKey(s);
+      const own = ((byKeyDate[fgKey] || {})[d] || 0)
+        + sharedFormingSources(s).reduce((t, k) => t + ((byKeyDate[k] || {})[d] || 0), 0);
+      if (!(own > 0)) return;
+      if (explicitRunColorFor(d, s)) return;   // ระบุไว้แล้ว ไม่ต้องถามซ้ำ
+      missing.push(s);
+      if (fgKey) kgByFgKey[fgKey] = (byKeyDate[fgKey] || {})[d] || 0;
+    });
+    if (!missing.length) return;
+    const kg = Object.values(kgByFgKey).reduce((s, v) => s + v, 0);
+    const sizes = [...new Set(missing.map(rollSetSizeGroupLabel))];
+    out.push({ date: d, sets: missing, kg, sizes });
+  });
+  return out;
+}
+
+// ระบุชุดสีย้อนหลังของวันนั้น — เปิดหน้าต่างเดียวกับที่เด้งถามของวันนี้
+// จำกัดเฉพาะชุดที่ "ผลิตวันนั้นและยังไม่ได้ระบุ" จะได้ไม่ต้องไล่หาในรายการ 47 ชุด
+// ระบบเดาสีให้แล้วในหน้าต่างนั้น (จากวันที่ระบุไว้ใกล้ที่สุด/ชุดที่กำลังใช้งาน) กดยืนยันทีเดียวจบ
+function openRunColorBackfill(dateIso) {
+  const running = runningRollSetsOn(dateIso);
+  const list = runColorMissingByDate([dateIso], fgWeightByKeyDate)[0];
+  const want = list ? list.sets : [];
+  if (!want.length) { openRunColorPicker(dateIso, null); return; }   // ระบุครบแล้ว เปิดดูทั้งหมดแทน
+  openRunColorPicker(dateIso, { title: 'ชุด Roll ที่เดินงาน (ระบุย้อนหลัง)', info: running, sets: want });
+}
+
 function openRunColorPromptFor(dateIso) {
   const running = runningRollSetsOn(dateIso);
   if (!running.size) return false;
@@ -10916,7 +10952,9 @@ async function renderProdWeight() {
             + ' ตัน ที่ระบบ Production ไม่ได้ระบุวันผลิต — ลงวันตามเวลาที่คีย์เข้าระบบไว้ก่อน (ᵈ)');
           return `<td style="text-align:right;${x.kg ? 'font-weight:700;' : ''}${x.inferred ? 'color:var(--text-2);' : ''}"
             ${tips.length ? `title="${escapeHtmlAttr(tips.join(' · '))}"` : ''}>${x.kg
-              ? fmt(ton(x.kg)) + (x.inferred ? '<span style="font-weight:400;color:var(--text-3);">*</span>' : '')
+              ? fmt(ton(x.kg)) + (x.inferred ? `<span onclick="${jsCallAttr('openRunColorBackfill', x.d)}"
+                  style="font-weight:700;color:var(--amber);cursor:pointer;padding:0 2px;"
+                  title="ยังไม่ได้ระบุชุดสีที่เดินของวันนี้ — กดเพื่อระบุย้อนหลัง">*</span>` : '')
                               + (x.shareKg ? '<span style="font-weight:400;color:var(--accent);">⁺</span>' : '')
                               + (x.dateGuessKg ? '<span style="font-weight:700;color:var(--amber);">ᵈ</span>' : '')
               : '<span class="muted">—</span>'}</td>`;
@@ -10966,22 +11004,48 @@ async function renderProdWeight() {
   if (exportBtn) exportBtn.disabled = !exportRows.length;
 
   const colCount = days.length + 4;
-  grid.innerHTML = errorBanner + `<div class="card"><div class="table-wrap table-wrap-sticky"><table>
+  // วันที่ผลิตแล้วแต่ยังไม่ได้ระบุชุดสีที่เดิน — กดปุ่มวันนั้นเพื่อระบุย้อนหลังได้เลย
+  // ยอดของวันแบบนี้จะไม่ถูกนับใน % การใช้รอบการแต่ง (หน้าอายุ Roll นับเฉพาะวันที่ระบุไว้จริง)
+  // จึงต้องดันให้เห็นชัด ไม่ใช่ซ่อนอยู่ในเครื่องหมาย * ในช่อง
+  const missDays = canEditPlan() ? runColorMissingByDate(days, fgWeightByKeyDate) : [];
+  const missKg = missDays.reduce((s, x) => s + x.kg, 0);
+  const missBanner = !missDays.length ? '' : `<div style="background:var(--amber-dim);border-left:4px solid var(--amber);
+       border-radius:8px;padding:10px 13px;margin-bottom:10px;font-size:12px;line-height:1.7;color:var(--text-2);">
+    <b style="color:var(--amber);font-size:13px;">ยังไม่ได้ระบุชุดสี Roll ที่เดิน ${missDays.length} วัน
+      (${fmt(ton(missKg))} ตัน)</b> — ยอดของวันเหล่านี้ยังไม่ถูกนับใน % การใช้รอบการแต่ง (หน้าอายุ Roll)<br>
+    <span style="color:var(--text-3);">กดวันที่เพื่อระบุย้อนหลัง — ระบบเดาชุดสีให้แล้ว กดยืนยันทีเดียวจบ</span>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;">
+      ${missDays.map(x => `<button onclick="${jsCallAttr('openRunColorBackfill', x.date)}"
+        title="${escapeHtmlAttr(fmtDateThai(parseISODate(x.date)) + ' — ยังไม่ได้ระบุ ' + x.sets.length
+          + ' รายการ: ' + x.sizes.join(', '))}"
+        style="padding:3px 10px;border-radius:99px;cursor:pointer;font-size:12px;font-weight:800;
+               border:1px solid var(--amber);background:var(--bg-card);color:var(--amber);white-space:nowrap;">
+        ${escapeHtmlAttr(fmtDateThaiShort(parseISODate(x.date)))}
+        <span style="font-weight:600;color:var(--text-3);">${fmt(ton(x.kg))} ต. · ${x.sets.length} รายการ</span>
+      </button>`).join('')}
+    </div>
+  </div>`;
+  const missDaySet = new Set(missDays.map(x => x.date));
+  grid.innerHTML = errorBanner + missBanner + `<div class="card"><div class="table-wrap table-wrap-sticky"><table>
     <thead><tr>
       <th class="pw-fz1">SIZE ROLL</th><th class="pw-fz2">ชุดสี</th>
       <th style="text-align:right;white-space:nowrap;" title="น้ำหนักที่ผลิตไปแล้วก่อนช่วงข้อมูลที่ระบบมี — กรอกเอง ไม่รวมในคอลัมน์รวมและแถวรวมท้ายตาราง แต่ไปบวกใน % การใช้รอบการแต่งหน้าอายุ Roll">
         ยกมา (ตัน)<div style="font-size:10px;font-weight:400;color:var(--text-3);">กรอกเอง</div></th>
       ${days.map(d => {
         const overrides = Object.keys(rollRunColor[d] || {}).length;
+        // วันที่ยังระบุไม่ครบ = ปุ่มสีเหลือง และกดแล้วเข้าโหมดระบุย้อนหลัง (เฉพาะชุดที่ยังขาด)
+        const miss = missDaySet.has(d);
+        const col = miss ? 'var(--amber)' : (overrides ? 'var(--accent)' : 'var(--text-3)');
         return `<th style="text-align:right;white-space:nowrap;">
           <div>${escapeHtmlAttr(fmtDateThaiShort(parseISODate(d)))}</div>
-          <button onclick="${jsCallAttr('openRunColorPicker', d)}"
-            title="${escapeHtmlAttr('ดู/ระบุชุดสี Roll ที่ใช้เดินวันที่ ' + fmtDateThai(parseISODate(d))
-              + (overrides ? ' — ระบุเองไว้ ' + overrides + ' รายการ' : ' — ยังอ้างจากสถานะกำลังใช้งานทั้งหมด'))}"
+          <button onclick="${jsCallAttr(miss ? 'openRunColorBackfill' : 'openRunColorPicker', d)}"
+            title="${escapeHtmlAttr((miss ? 'ยังไม่ได้ระบุชุดสีที่เดินของวันนี้ครบ — กดเพื่อระบุย้อนหลัง · ' : 'ดู/ระบุชุดสี Roll ที่ใช้เดินวันที่ ')
+              + fmtDateThai(parseISODate(d))
+              + (overrides ? ' — ระบุเองไว้ ' + overrides + ' รายการ' : ' — ยังไม่ได้ระบุเลย'))}"
             style="margin-top:3px;padding:1px 7px;border-radius:99px;cursor:pointer;font-size:10px;font-weight:700;white-space:nowrap;
-                   border:1px solid ${overrides ? 'var(--accent)' : 'var(--border)'};
-                   background:${overrides ? 'var(--accent-glow)' : 'transparent'};
-                   color:${overrides ? 'var(--accent)' : 'var(--text-3)'};">✎${overrides ? ' ' + overrides : ''}</button>
+                   border:1px solid ${miss ? 'var(--amber)' : (overrides ? 'var(--accent)' : 'var(--border)')};
+                   background:${miss ? 'var(--amber-dim)' : (overrides ? 'var(--accent-glow)' : 'transparent')};
+                   color:${col};">${miss ? '✎ ระบุ' : '✎' + (overrides ? ' ' + overrides : '')}</button>
         </th>`;
       }).join('')}
       <th style="text-align:right;">รวม (ตัน)</th>
@@ -11005,6 +11069,8 @@ async function renderProdWeight() {
     <b>ชุดสีที่ใช้เดิน</b> โดยยึดจากชุดที่สถานะ <b>กำลังใช้งาน</b> อยู่ (ชุดเดียวกับการ์ด "ชุด Roll กำลังใช้งาน" หน้า Dashboard)
     ตัวเลขที่มี <b>*</b> คือค่าที่อ้างจากสถานะกำลังใช้งาน ยังไม่ได้ระบุเจาะจงของวันนั้น
     ถ้าวันไหนเดินคนละชุดกับตอนนี้ กดปุ่ม <b>✎</b> ที่หัวคอลัมน์วันเพื่อระบุทับได้ (ค่าที่ระบุเองชนะเสมอ)
+    วันที่ยังระบุไม่ครบ ปุ่มจะเป็น <b style="color:var(--amber);">✎ ระบุ</b> สีเหลือง และกดที่
+    <b style="color:var(--amber);">*</b> ในช่องก็เปิดหน้าต่างระบุย้อนหลังของวันนั้นได้เหมือนกัน
     ขนาดที่ยังไม่มีชุดไหนกำลังใช้งานและไม่ได้ระบุไว้ จะไม่ลงแถวใดเลย แต่ยังนับอยู่ในยอดรวมของขนาดและแถวรวมท้ายตาราง ยอดจึงไม่หาย<br>
     ตัวเลขที่มี <b style="color:var(--accent);">⁺</b> คือรวมน้ำหนักของขนาดอื่นที่มาใช้ <b>Forming</b> ชุดนี้ร่วมด้วย
     (GS 1-1/2" → GS 2"x1" · GI 1-1/2" → GI 2"x1" · GI 3"x3" → GI 4"x2") —
