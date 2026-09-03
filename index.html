@@ -11421,6 +11421,34 @@ function rollDressResetFor(setName, colorKey) {
 
 function dressResetDateLabel(iso) { return iso ? fmtDateThai(parseISODate(iso)) : '—'; }
 
+// รายการรีล่าสุดของชุดนี้ (มี tonBefore = ยอดสะสมก่อนกดรี) — ใช้บอกว่ารอบก่อนมีเท่าไร
+function dressResetLogFor(setName, colorKey, from) {
+  return (rollDressResetLog || []).find(x => x.set === setName && x.colorKey === colorKey
+    && (!from || x.from === from)) || null;
+}
+
+// บรรทัดใต้ยอดผลิตของแถวที่กดรีแล้ว — เดิมบอกแค่ "เริ่มนับ <วัน>" ทำให้เข้าใจผิดว่า
+// ยอดเดิมหายไป ทั้งที่การรีแค่ตั้งวันเริ่มนับ ไม่ได้ลบข้อมูลการผลิตอะไรเลย
+// ตอนนี้บอกด้วยว่า: รอบก่อนสะสมไว้เท่าไร · ยกมาที่ถูกล้าง (กดยกเลิกการรีได้คืน)
+// และถ้ายังเป็น 0 ก็บอกตรงๆ ว่ายังไม่มียอดตั้งแต่วันเริ่มนับ (ไม่ใช่ข้อมูลหาย)
+function dressResetNoteHtml(g) {
+  if (!g.dressReset) return '';
+  const log = dressResetLogFor(g.set, g.colorKey, g.dressReset.from);
+  const cleared = g.dressReset.carryCleared;
+  const tips = [];
+  tips.push('กดรีหลังแต่ง Roll เสร็จ จึงนับน้ำหนักตั้งแต่วันนี้ — ยอดก่อนวันนี้ไม่ถูกลบ ยังดูได้ที่หน้าน้ำหนักผลิต');
+  if (log && log.tonBefore) tips.push('รอบก่อนรีสะสมไว้ ' + log.tonBefore.toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' ตัน');
+  if (cleared) tips.push('ยอดยกมาที่กรอกเอง ' + cleared.toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' ตัน ถูกล้างตอนกดรี — กด "ยกเลิกการรี" ได้คืน');
+  if (log && log.by) tips.push('โดย ' + log.by);
+  const zero = !g.producedTon;
+  return `<div class="muted" style="font-size:10px;" title="${escapeHtmlAttr(tips.join(' · '))}">
+    เริ่มนับ ${escapeHtmlAttr(dressResetDateLabel(g.dressReset.from))}${log && log.tonBefore
+      ? ` · <span style="color:var(--text-3);">รอบก่อน ${escapeHtmlAttr(log.tonBefore.toLocaleString(undefined, { maximumFractionDigits: 2 }))} ต.</span>` : ''}
+    ${zero ? `<div style="color:var(--amber);font-weight:700;">ยังไม่มียอดตั้งแต่วันเริ่มนับ</div>` : ''}
+    ${cleared ? `<div>ล้างยกมา ${escapeHtmlAttr(cleared.toLocaleString(undefined, { maximumFractionDigits: 2 }))} ต. (ยกเลิกการรีได้คืน)</div>` : ''}
+  </div>`;
+}
+
 let dressResetTarget = null; // { set, colorKey, colorLabel }
 
 function openDressResetDialog(setName, colorKey, colorLabel) {
@@ -11707,7 +11735,7 @@ function renderRollLife() {
             onclick="${jsCallAttr('openDressResetDialog', g.set, g.colorKey, g.colorLabel)}">↺ รี</button>` : ''}
         </span>
         ${g.carryTon ? `<div class="muted" style="font-size:10px;" title="ยอดยกมาที่กรอกเองไว้ที่หน้าน้ำหนักผลิต ${escapeHtmlAttr(g.carryTon.toLocaleString())} ตัน + ยอดจากระบบ ${escapeHtmlAttr((g.fgTon || 0).toLocaleString())} ตัน">ยกมา ${escapeHtmlAttr(g.carryTon.toLocaleString(undefined, { maximumFractionDigits: 2 }))} + ${escapeHtmlAttr((g.fgTon || 0).toLocaleString(undefined, { maximumFractionDigits: 2 }))}</div>` : ''}
-        ${g.dressReset ? `<div class="muted" style="font-size:10px;" title="กดรีหลังแต่ง Roll เสร็จ จึงนับน้ำหนักตั้งแต่วันนี้">เริ่มนับ ${escapeHtmlAttr(dressResetDateLabel(g.dressReset.from))}</div>` : ''}
+        ${dressResetNoteHtml(g)}
       </td>
       <td style="text-align:right;">${leftTon == null ? '<span class="muted">—</span>'
         : `<strong style="color:${leftColor};">${escapeHtmlAttr(leftTon.toLocaleString())}</strong>`}</td>
