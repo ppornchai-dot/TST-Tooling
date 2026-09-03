@@ -1439,7 +1439,7 @@ canvas{display:block;}
           <label class="form-label">ถึงวันที่</label>
           <input class="form-input" type="date" id="prodweight-date-to" style="width:160px;" onchange="refreshProdWeightRangeButtons()">
         </div>
-        <button class="btn btn-primary btn-sm" onclick="renderProdWeight()">ค้นหา</button>
+        <button class="btn btn-primary btn-sm" onclick="renderProdWeight(true)" title="โหลดยอดผลิตจากระบบ Production ใหม่ทันที">ค้นหา</button>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <button class="btn btn-ghost btn-sm pw-range-btn" data-range="today" aria-pressed="false" onclick="setProdWeightRange('today')">วันนี้</button>
           <button class="btn btn-ghost btn-sm pw-range-btn" data-range="7d" aria-pressed="false" onclick="setProdWeightRange('7d')">7 วันล่าสุด</button>
@@ -10043,7 +10043,28 @@ function fgRowDateInfo(row) {
   return keyedDay ? { date: keyedDay, inferred: true } : { date: '', inferred: false };
 }
 
-async function fetchFgWeightByKey(fromDate, toDate) {
+// ผลการดึงของแต่ละช่วงวันที่ เก็บไว้ 5 นาที — วาดตารางใหม่ในช่วงนั้นไม่ต้องยิง API อีก
+// จำเป็นเพราะ renderProdWeight() ถูกเรียกทุกครั้งที่กดเลือกชุดสี (applyRunColor) และตอนเข้าหน้า
+// ถ้าดึงใหม่ทุกครั้ง = 12 คำขอ ~7 วินาที ตารางกลายเป็น "กำลังโหลด..." ทุกคลิก ใช้งานไม่ได้
+// การกดเลือกชุดสีไม่ได้เปลี่ยนยอดผลิต แค่เปลี่ยนว่ายอดนั้นลงชุดสีไหน จึงใช้ของเดิมได้
+// กดปุ่ม "ค้นหา" = บังคับโหลดใหม่ (renderProdWeight(true))
+const FG_WEIGHT_CACHE_MS = 5 * 60 * 1000;
+const fgWeightRangeCache = new Map();   // "from|to" → { at, byKey, byKeyDate, dates, meta, inferred }
+
+// maxAgeMs: ไม่ส่ง = ใช้ค่ามาตรฐาน 5 นาที · 0 = บังคับดึงใหม่
+async function fetchFgWeightByKey(fromDate, toDate, maxAgeMs) {
+  const cacheKey = fromDate + '|' + toDate;
+  const ttl = maxAgeMs == null ? FG_WEIGHT_CACHE_MS : maxAgeMs;
+  const hit = fgWeightRangeCache.get(cacheKey);
+  if (hit && ttl > 0 && Date.now() - hit.at <= ttl) {
+    // คืนค่าจากแคช — ตั้งตัวแปรกลางให้เหมือนเพิ่งดึงมา เพื่อให้ทุกหน้าที่อ่านค่านี้ทำงานเหมือนเดิม
+    fgWeightByKeyDate = hit.byKeyDate;
+    fgWeightInferredByKeyDate = hit.inferred;
+    fgWeightDates = hit.dates;
+    fgWeightMeta = hit.meta;
+    fgWeightFetchError = null;
+    return hit.byKey;
+  }
   try {
     const allRows = await fgFetchRowsRange(fromDate, toDate);
     // ตัดแถวเศษ/ปรับยอดออกก่อนคิดทุกอย่าง — จำนวนรายการที่รายงานจึงเป็นของที่ผลิตจริง
@@ -10086,6 +10107,9 @@ async function fetchFgWeightByKey(fromDate, toDate) {
     fgWeightByKeyDate = byKeyDate;
     fgWeightInferredByKeyDate = inferredByKeyDate;
     fgWeightDates = [...dateSet].sort();
+    fgWeightRangeCache.set(cacheKey, { at: Date.now(), byKey, byKeyDate, dates: fgWeightDates,
+                                       meta: fgWeightMeta, inferred: inferredByKeyDate });
+    if (fgWeightRangeCache.size > 6) fgWeightRangeCache.delete(fgWeightRangeCache.keys().next().value);
     return byKey;
   } catch (e) {
     fgWeightFetchError = e.message;
@@ -10093,6 +10117,7 @@ async function fetchFgWeightByKey(fromDate, toDate) {
     fgWeightByKeyDate = {};
     fgWeightInferredByKeyDate = {};
     fgWeightDates = [];
+    fgWeightRangeCache.delete(cacheKey);   // ดึงไม่สำเร็จ ไม่เก็บเป็นแคช
     return null;
   }
 }
@@ -10702,7 +10727,7 @@ function setProdWeightRange(kind) {
   else if (kind === '7d') from.value = addDaysIso(todayIso, -6);
   else if (kind === 'month') from.value = todayIso.slice(0, 8) + '01';
   else from.value = prodWeightStartIso();
-  renderProdWeight();
+  renderProdWeight();   // ช่วงใหม่ที่ยังไม่มีในแคชจะดึงเอง ช่วงที่เพิ่งดูไปแล้วขึ้นทันที
 }
 
 // ปุ่มช่วงวันที่ที่ตรงกับค่าในช่อง "จากวันที่/ถึงวันที่" ตอนนี้ — null ถ้าผู้ใช้กรอกวันเองไม่ตรงปุ่มไหน
@@ -10840,7 +10865,8 @@ function prodWeightStatusMeta(pct) {
   return { color: 'var(--red)', chip: 'chip-red' };
 }
 
-async function renderProdWeight() {
+// force = true ให้ทิ้งแคชแล้วดึงใหม่ (ปุ่ม "ค้นหา") — เรียกเฉยๆ ใช้ของในแคช 5 นาที
+async function renderProdWeight(force) {
   const grid = document.getElementById('prodweight-grid');
   if (!grid) return;
   const fromInput = document.getElementById('prodweight-date-from');
@@ -10850,12 +10876,17 @@ async function renderProdWeight() {
   const fromDate = fromInput ? fromInput.value : prodWeightStartIso();
   const toDate = toInput ? toInput.value : new Date().toISOString().slice(0, 10);
 
-  grid.innerHTML = `<div style="text-align:center;color:var(--text-3);font-size:13px;padding:24px 0;grid-column:1/-1;">กำลังโหลดน้ำหนักผลิตจากระบบ Production...</div>`;
-  // แสดงช่วงที่กำลังจะดึงทันที ไม่ให้แถบค้างช่วงเดิมไว้ระหว่างรอ (ดูแล้วเข้าใจผิดว่ากดแล้วไม่เปลี่ยน)
-  fgWeightMeta = null;
+  // มีของในแคชอยู่แล้วก็วาดต่อได้เลย ไม่ต้องล้างตารางเป็น "กำลังโหลด..." ให้กระพริบ
+  const cached = fgWeightRangeCache.get(fromDate + '|' + toDate);
+  const willFetch = force || !cached || Date.now() - cached.at > FG_WEIGHT_CACHE_MS;
+  if (willFetch) {
+    grid.innerHTML = `<div style="text-align:center;color:var(--text-3);font-size:13px;padding:24px 0;grid-column:1/-1;">กำลังโหลดน้ำหนักผลิตจากระบบ Production...</div>`;
+    // แสดงช่วงที่กำลังจะดึงทันที ไม่ให้แถบค้างช่วงเดิมไว้ระหว่างรอ (ดูแล้วเข้าใจผิดว่ากดแล้วไม่เปลี่ยน)
+    fgWeightMeta = null;
+  }
   refreshProdWeightRangeButtons();
   renderProdWeightRangeNote(fromDate, toDate);
-  const fgByKey = await fetchFgWeightByKey(fromDate, toDate);
+  const fgByKey = await fetchFgWeightByKey(fromDate, toDate, force ? 0 : undefined);
   renderProdWeightRangeNote(fromDate, toDate);
   // งานที่บล็อกเดินอยู่ "วันนี้" — ดึงแยกจากช่วงที่เลือกดู แล้วเด้งถามชุดสีที่เดินถ้ายังไม่ได้ระบุ
   // ยอมให้ใช้ของเก่าได้ไม่เกิน 1 นาที: เข้าหน้าใหม่/กดเปลี่ยนช่วงวันที่ = ได้ของสดเสมอ
@@ -11097,7 +11128,12 @@ async function renderProdWeight() {
     </div>
   </div>`;
   const missDaySet = new Set(missDays.map(x => x.date));
-  grid.innerHTML = errorBanner + autoNote + missBanner + `<div class="card"><div class="table-wrap table-wrap-sticky"><table>
+  // บอกว่าตัวเลขชุดนี้ดึงมาเมื่อไร — ไม่ให้เข้าใจผิดว่าเป็นของสดทุกวินาที
+  const at = (fgWeightRangeCache.get(fromDate + '|' + toDate) || {}).at;
+  const fetchedNote = !at ? '' : `<div style="font-size:11px;color:var(--text-3);margin-bottom:8px;">
+    ตัวเลขนี้ดึงจากระบบ Production เมื่อ <b>${new Date(at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</b>
+    (เก็บไว้ใช้ 5 นาที — กด <b>ค้นหา</b> เพื่อโหลดใหม่ทันที)</div>`;
+  grid.innerHTML = errorBanner + fetchedNote + autoNote + missBanner + `<div class="card"><div class="table-wrap table-wrap-sticky"><table>
     <thead><tr>
       <th class="pw-fz1">SIZE ROLL</th><th class="pw-fz2">ชุดสี</th>
       <th style="text-align:right;white-space:nowrap;" title="น้ำหนักที่ผลิตไปแล้วก่อนช่วงข้อมูลที่ระบบมี — กรอกเอง ไม่รวมในคอลัมน์รวมและแถวรวมท้ายตาราง แต่ไปบวกใน % การใช้รอบการแต่งหน้าอายุ Roll">
