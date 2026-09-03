@@ -9958,13 +9958,75 @@ async function fgFetchRowsRange(fromDate, toDate) {
     got.forEach(list => out.push(...list));
   }
   const seen = new Set();
-  return out.filter(r => {
+  const rows = out.filter(r => {
     const id = r.id == null ? null : String(r.id);
     if (id == null) return true;
     if (seen.has(id)) return false;
     seen.add(id);
     return true;
   });
+  // แถวที่ยังไม่มีวันผลิต — ถาม API ด้วยช่วงที่ย้อนไปถึงก่อนวันที่คีย์ (ทำครั้งเดียวต่อวันที่คีย์)
+  // ต้องทำที่นี่ ไม่ใช่ในแต่ละก้อน เพราะก้อนละ 3 วันอาจไม่คลุมวันผลิตจริงของแถวนั้น
+  // ถ้าไม่ทำ ยอดจะไปลงวันที่คีย์ ซึ่งเปลี่ยนไปตามว่าขอบก้อนตกที่วันไหน = เลขไม่นิ่ง
+  await fgBackfillMissingDates(rows);
+  return rows;
+}
+
+// ─── เติมวันผลิตของแถวที่ API ส่งค่าว่างมา ───────────────────────────────────
+// API เติม production_date ให้เองเมื่อ "ช่วงที่ขอ" ย้อนไปถึงวันก่อนวันที่คีย์
+// (ทดสอบกับ b-4872/b-4873: ขอ 2 ก.ย. วันเดียว = null · ขอ 1–2 ก.ย. = 1 ก.ย. + เครื่อง P1)
+// จึงต้องถาม API ก่อนเสมอ ห้ามเดาจากเวลาคีย์ทันที เพราะเวลาคีย์เป็นวันถัดไปได้
+// (มัดของ MO ที่เดินจบไปแล้ว มาคีย์เช้าวันรุ่งขึ้น ยอดจะไปลงผิดวันแล้วชุด Roll ผิดตัวด้วย)
+// ขอกว้างขึ้นทีละวันแล้วหยุดทันทีที่ได้ค่า — ช่วงสั้นๆ จึงไม่ชนเพดานแถวของ API
+const FG_DATE_BACKFILL_BACK_DAYS = [1, 2, 3];
+
+async function fgBackfillMissingDates(rows) {
+  const missing = rows.filter(r => !String((r || {}).production_date || '').trim() && r && r.keyed_at);
+  if (!missing.length) return;
+  // จัดกลุ่มตาม "วันที่คีย์" — แถวที่คีย์วันเดียวกันถามครั้งเดียวพอ
+  const byKeyedDay = new Map();
+  missing.forEach(r => {
+    const d = fgKeyedDateIso(r);
+    if (!d) return;
+    if (!byKeyedDay.has(d)) byKeyedDay.set(d, []);
+    byKeyedDay.get(d).push(r);
+  });
+  for (const entry of byKeyedDay) {
+    const day = entry[0];
+    let left = entry[1];
+    for (const back of FG_DATE_BACKFILL_BACK_DAYS) {
+      if (!left.length) break;
+      let found = null;
+      try {
+        const res = await fetch(FG_API_URL + '?from=' + addDaysIso(day, -back) + '&to=' + day);
+        if (res.ok) {
+          const json = await res.json();
+          found = new Map();
+          (json.rows || []).forEach(r => {
+            const pd = String(r.production_date || '').slice(0, 10);
+            if (pd) found.set(String(r.id), { date: pd, machine: r.machine_id || null });
+          });
+        }
+      } catch (e) { /* ขอไม่ได้ก็ลองช่วงกว้างขึ้น แล้วค่อยตกไปใช้วันที่คีย์ */ }
+      if (!found) continue;
+      left = left.filter(r => {
+        const hit = found.get(String(r.id));
+        if (!hit) return true;
+        r.production_date = hit.date;                       // ค่าจากระบบ Production เอง ไม่ใช่ค่าที่เดา
+        if (!r.machine_id && hit.machine) r.machine_id = hit.machine;
+        return false;
+      });
+    }
+  }
+}
+
+// วันตามเวลาไทยของ keyed_at (UTC+7)
+function fgKeyedDateIso(row) {
+  const keyed = (row || {}).keyed_at;
+  if (!keyed) return '';
+  const t = new Date(keyed);
+  if (isNaN(t.getTime())) return '';
+  return new Date(t.getTime() + 7 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
 // วันผลิตของแถวหนึ่ง — ระบบ Production ส่ง production_date ว่างมาได้ (มัดที่คีย์ทีหลัง
@@ -9976,11 +10038,9 @@ async function fgFetchRowsRange(fromDate, toDate) {
 function fgRowDateInfo(row) {
   const d = String((row || {}).production_date || '').slice(0, 10);
   if (d) return { date: d, inferred: false };
-  const keyed = (row || {}).keyed_at;
-  if (!keyed) return { date: '', inferred: false };
-  const t = new Date(keyed);
-  if (isNaN(t.getTime())) return { date: '', inferred: false };
-  return { date: new Date(t.getTime() + 7 * 3600 * 1000).toISOString().slice(0, 10), inferred: true };
+  // ถาม API แล้วยังไม่ได้ (ดู fgBackfillMissingDates) จึงตกมาใช้วันที่คีย์เป็นทางสุดท้าย
+  const keyedDay = fgKeyedDateIso(row);
+  return keyedDay ? { date: keyedDay, inferred: true } : { date: '', inferred: false };
 }
 
 async function fetchFgWeightByKey(fromDate, toDate) {
@@ -10290,7 +10350,10 @@ async function loadFgRunningOn(dateIso, maxAgeMs) {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
     const kgByKey = {}, machinesByKey = {}, latestByMachine = {};
-    (json.rows || []).forEach(r => {
+    // ขอวันเดียวเป็นกรณีที่ API ไม่เติม production_date ให้บ่อยที่สุด — เติมก่อนคิด
+    const dayRows = json.rows || [];
+    await fgBackfillMissingDates(dayRows);
+    dayRows.forEach(r => {
       // API เคยส่งวันข้างเคียงติดมาด้วย จึงกรองด้วยวันผลิตอีกชั้น
       // (ใช้ fgRowDateInfo ตัวเดียวกับตารางน้ำหนักผลิต ทั้งสองที่จึงลงวันเหมือนกันเสมอ)
       if (fgRowDateInfo(r).date !== dateIso) return;
