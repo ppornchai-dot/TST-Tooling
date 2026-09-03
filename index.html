@@ -11015,6 +11015,8 @@ async function renderProdWeight(force) {
         // ยอดยกมาถูกบวกเข้าคอลัมน์ "รวม" และแถวรวมท้ายตารางด้วย (ตามที่ผู้ใช้กำหนด)
         // ทำให้สองค่านั้นไม่เท่ากับยอดจริงจาก TST Production อีกแล้ว จึงแยกโชว์ "ผลิต + ยกมา" กำกับไว้ทุกจุด
         // ส่วนคอลัมน์รายวันยังเป็นยอดผลิตจริงล้วนๆ ไม่มีการยกมาปน (ยกมาไม่ผูกกับวันใดวันหนึ่ง)
+        // ชุดที่กดรีแล้วไม่นับยกมา — ช่องกรอกจึงถูกปิด และไม่บวกเข้าคอลัมน์รวม
+        const carryReset = rollDressResetFor(setName, c.key);
         const carryTon = rollCarryTonFor(setName, c.key);
         carryTotal += carryTon;
         if (carryTon > groupCarryMax) groupCarryMax = carryTon;
@@ -11031,9 +11033,13 @@ async function renderProdWeight(force) {
           <span style="width:9px;height:9px;border-radius:50%;background:${c.dot};flex-shrink:0;"></span>${escapeHtmlAttr(c.label)}</span></td>
         <td style="text-align:right;">
           <input type="number" min="0" step="0.01" inputmode="decimal" class="form-input"
-            value="${carryTon ? escapeHtmlAttr(carryTon) : ''}" placeholder="0"
-            style="width:82px;padding:3px 7px;font-size:12px;text-align:right;${carryTon ? 'font-weight:700;color:var(--accent);' : ''}"
-            title="น้ำหนักที่ชุดนี้ผลิตไปแล้วก่อนช่วงข้อมูลที่ระบบมี — กรอกเอง ใช้บวกเข้า % การใช้รอบการแต่งในหน้าอายุ Roll"
+            value="${carryTon ? escapeHtmlAttr(carryTon) : ''}" placeholder="${carryReset ? 'ไม่นับ' : '0'}"
+            ${carryReset ? 'disabled' : ''}
+            style="width:82px;padding:3px 7px;font-size:12px;text-align:right;${carryTon ? 'font-weight:700;color:var(--accent);' : ''}${carryReset ? 'opacity:.55;' : ''}"
+            title="${carryReset
+              ? escapeHtmlAttr('ชุดนี้กดรีน้ำหนักแล้ว (เริ่มนับ ' + dressResetDateLabel(carryReset.from) + ') — รอบใหม่เริ่มจากศูนย์ จึงไม่นับยอดยกมา'
+                + ' ถ้าต้องการใช้ยกมา ให้กด "ยกเลิกการรี" ที่หน้าอายุ Roll ก่อน')
+              : 'น้ำหนักที่ชุดนี้ผลิตไปแล้วก่อนช่วงข้อมูลที่ระบบมี — กรอกเอง ใช้บวกเข้า % การใช้รอบการแต่งในหน้าอายุ Roll'}"
             onchange="${jsCallAttrValue('setRollCarryTon', setName, c.key)}"></td>
         ${cells.map(x => {
           const tips = [];
@@ -11399,11 +11405,28 @@ function producedTonForRollSet(setName, colorKey, byKeyDate, dates, sinceIso) {
 function rollDressResetKey(setName, colorKey) { return setName + '|' + colorKey; }
 
 // ยอดยกมาที่กรอกเอง (ตัน) ของชุด Roll หนึ่ง — 0 ถ้าไม่ได้กรอก
-function rollCarryTonFor(setName, colorKey) {
+// ยอดยกมาที่กรอกเอง (ตัน) — เก็บไว้เท่าไรก็ตาม
+function rollCarryTonRaw(setName, colorKey) {
   const v = rollCarryTon[rollDressResetKey(setName, colorKey)];
   return typeof v === 'number' && isFinite(v) ? v : 0;
 }
+
+// ยอดยกมาที่ "เอาไปนับได้จริง" — ชุดที่กดรีน้ำหนักแล้วไม่นับยกมาอีกเลย
+// เพราะการรี = เริ่มรอบใหม่จากศูนย์ ยอดยกมาเป็นของรอบก่อนแต่ง ถ้ายังบวกอยู่จะเกินความจริง
+// (ตอนกดรีระบบล้างค่าให้แล้ว แต่กันไว้อีกชั้น เผื่อมีการกรอกเข้ามาใหม่หลังรี)
+// กด "ยกเลิกการรี" แล้วยกมาจะกลับมานับตามปกติ (ค่าเดิมถูกเก็บไว้ในรายการรี)
+function rollCarryTonFor(setName, colorKey) {
+  if (rollDressResetFor(setName, colorKey)) return 0;
+  return rollCarryTonRaw(setName, colorKey);
+}
 function setRollCarryTon(setName, colorKey, raw) {
+  const reset = rollDressResetFor(setName, colorKey);
+  if (reset) {
+    alert('ชุดนี้กดรีน้ำหนักแล้ว (เริ่มนับ ' + dressResetDateLabel(reset.from) + ')\n'
+      + 'รอบใหม่เริ่มจากศูนย์ จึงไม่นับยอดยกมา — ถ้าต้องการใช้ยกมา ให้กด "ยกเลิกการรี" ที่หน้าอายุ Roll ก่อน');
+    if (typeof renderProdWeight === 'function') renderProdWeight();   // วาดกลับเป็นค่าเดิม
+    return;
+  }
   const key = rollDressResetKey(setName, colorKey);
   const n = parseFloat(String(raw == null ? '' : raw).replace(/,/g, '').trim());
   const before = rollCarryTonFor(setName, colorKey);
@@ -11549,7 +11572,9 @@ function confirmDressReset() {
   if (!from) { alert('เลือกวันที่เริ่มนับใหม่ก่อน'); return; }
   const { set, colorKey, colorLabel } = dressResetTarget;
   const key = rollDressResetKey(set, colorKey);
-  const carryBefore = rollCarryTonFor(set, colorKey);
+  // ใช้ค่าดิบ เพราะถ้าชุดนี้เคยรีไว้แล้ว rollCarryTonFor() จะคืน 0 (กฎไม่นับยกมาหลังรี)
+  // แต่ตอนรีทับเราต้องรู้ว่ามีค่าค้างอยู่จริงเท่าไร เพื่อเก็บไว้ให้ยกเลิกการรีคืนได้
+  const carryBefore = rollCarryTonRaw(set, colorKey);
   const before = (producedTonForRollSet(set, colorKey, rollLifeFgByKeyDate, rollLifeFgDates,
     (rollDressReset[key] || {}).from || null) || 0) + carryBefore;
   // เก็บยอดยกมาที่ล้างไปไว้กับรายการรี เพื่อให้ "ยกเลิกการรี" คืนค่าได้ครบ ไม่ใช่คืนแค่วันเริ่มนับ
