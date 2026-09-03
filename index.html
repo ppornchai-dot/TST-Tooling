@@ -9825,6 +9825,9 @@ function rollSetFgKey(setName) {
 let fgWeightFetchError = null;
 let fgWeightMeta = null; // สรุปผลการดึงรอบล่าสุด ใช้แสดงว่าตัวเลขบนการ์ดมาจากช่วงไหน กี่รายการ
 let fgWeightByKeyDate = {}; // { 'GI|4x2': { 'YYYY-MM-DD': kg } } สำหรับตารางน้ำหนักผลิตต่อวัน
+// ส่วนของ fgWeightByKeyDate ที่ "อนุมานวันเอง" เพราะระบบ Production ไม่ได้ระบุวันผลิตมา
+// ใช้กำกับ ᵈ ในตารางให้รู้ว่าช่องนั้นมียอดที่วันอาจไม่ตรงกับที่เดินจริง (ดู fgRowDateInfo)
+let fgWeightInferredByKeyDate = {};
 let fgWeightDates = [];     // วันที่ที่มีการผลิตจริงในช่วงที่ดึงมา (เรียงแล้ว)
 // ยอดผลิต "ของวันเดียว" แยกแคชไว้ต่างหาก ไม่ปนกับช่วงวันที่ผู้ใช้เลือกดูในตาราง
 // เพราะแถบ "วันนี้บล็อกเดินขนาดไหน" ต้องรู้ของวันนี้เสมอ แม้ผู้ใช้เลือกดูช่วงย้อนหลังที่ไม่คลุมวันนี้
@@ -9937,7 +9940,9 @@ async function fgFetchRowsChunk(fromIso, toIso) {
     const parts = await Promise.all([fgFetchRowsChunk(fromIso, mid), fgFetchRowsChunk(addDaysIso(mid, 1), toIso)]);
     return parts[0].concat(parts[1]);
   }
-  return all.filter(r => { const d = String(r.production_date || '').slice(0, 10); return d >= fromIso && d <= toIso; });
+  // ใช้วันที่ที่หาได้ (มีค่าว่างก็อนุมานจากเวลาคีย์) ไม่ใช่ production_date ดิบ
+  // ไม่งั้นแถวที่ไม่มีวันผลิตจะตกหายไปทุกก้อน แล้วยอดขาดแบบไม่มีอะไรบอก
+  return all.filter(r => { const d = fgRowDateInfo(r).date; return d >= fromIso && d <= toIso; });
 }
 
 // ทั้งช่วง = หลายก้อน ขอขนานกันแบบจำกัดจำนวน แล้วรวมแถวทั้งหมด (กัน id ซ้ำอีกชั้น)
@@ -9962,6 +9967,22 @@ async function fgFetchRowsRange(fromDate, toDate) {
   });
 }
 
+// วันผลิตของแถวหนึ่ง — ระบบ Production ส่ง production_date ว่างมาได้ (มัดที่คีย์ทีหลัง
+// ของ MO ที่เดินจบไปแล้ว เช่น b-4872/b-4873 ของ MO-2608-204 คีย์ 2 ก.ย. 09:40 น.
+// รวม 2.06 ตัน — ขอเป็นช่วงจะได้ production_date = 1 ก.ย. แต่ขอวันเดียวได้ค่าว่าง)
+// เดิมแถวแบบนี้ถูกทิ้งจากตารางรายวัน ยอดหายเงียบๆ ทั้งที่ยังถูกนับในยอดรวมของช่วง
+// ตัวเลขสองที่จึงไม่ตรงกันโดยไม่มีอะไรบอก — ตอนนี้ลงวันตาม "เวลาที่คีย์เข้าระบบ"
+// (keyed_at เป็น UTC จึง +7 ชม. ให้เป็นวันตามเวลาไทย) แล้วกำกับว่าเป็นวันที่อนุมาน
+function fgRowDateInfo(row) {
+  const d = String((row || {}).production_date || '').slice(0, 10);
+  if (d) return { date: d, inferred: false };
+  const keyed = (row || {}).keyed_at;
+  if (!keyed) return { date: '', inferred: false };
+  const t = new Date(keyed);
+  if (isNaN(t.getTime())) return { date: '', inferred: false };
+  return { date: new Date(t.getTime() + 7 * 3600 * 1000).toISOString().slice(0, 10), inferred: true };
+}
+
 async function fetchFgWeightByKey(fromDate, toDate) {
   try {
     const allRows = await fgFetchRowsRange(fromDate, toDate);
@@ -9973,30 +9994,44 @@ async function fetchFgWeightByKey(fromDate, toDate) {
       .reduce((s, r) => s + (parseFloat(r.weight_kg) || 0), 0);
     const byKey = {};
     const byKeyDate = {};
+    const inferredByKeyDate = {};   // ยอดที่ต้องอนุมานวันเอง แยกไว้กำกับในตาราง
     const dateSet = new Set();
     let totalKg = 0;
+    let guessRows = 0, guessKg = 0;   // อนุมานวันจากเวลาคีย์
+    let noDateRows = 0, noDateKg = 0; // ไม่มีทั้งวันผลิตและเวลาคีย์ — ลงวันไหนไม่ได้จริงๆ
+    const guessList = [];
     rows.forEach(r => {
       const kg = parseFloat(r.weight_kg) || 0;
       totalKg += kg;
       const key = fgProductCodeToKey(r.product_code);
       if (!key) return;
       byKey[key] = (byKey[key] || 0) + kg;
-      // แยกรายวันด้วย เพื่อทำตารางน้ำหนักผลิตต่อวัน — ใช้ production_date ของระบบ Production
-      const d = String(r.production_date || '').slice(0, 10);
-      if (!d) return;
+      // แยกรายวันด้วย เพื่อทำตารางน้ำหนักผลิตต่อวัน (ดู fgRowDateInfo)
+      const info = fgRowDateInfo(r);
+      const d = info.date;
+      if (!d) { noDateRows++; noDateKg += kg; return; }
       dateSet.add(d);
       if (!byKeyDate[key]) byKeyDate[key] = {};
       byKeyDate[key][d] = (byKeyDate[key][d] || 0) + kg;
+      if (info.inferred) {
+        guessRows++; guessKg += kg;
+        if (!inferredByKeyDate[key]) inferredByKeyDate[key] = {};
+        inferredByKeyDate[key][d] = (inferredByKeyDate[key][d] || 0) + kg;
+        guessList.push({ key, date: d, kg, code: r.product_code, order: r.order_no, keyedAt: r.keyed_at });
+      }
     });
     fgWeightFetchError = null;
-    fgWeightMeta = { rowCount: rows.length, totalKg, scrapRows, scrapKg };
+    fgWeightMeta = { rowCount: rows.length, totalKg, scrapRows, scrapKg,
+                     guessRows, guessKg, noDateRows, noDateKg, guessList };
     fgWeightByKeyDate = byKeyDate;
+    fgWeightInferredByKeyDate = inferredByKeyDate;
     fgWeightDates = [...dateSet].sort();
     return byKey;
   } catch (e) {
     fgWeightFetchError = e.message;
     fgWeightMeta = null;
     fgWeightByKeyDate = {};
+    fgWeightInferredByKeyDate = {};
     fgWeightDates = [];
     return null;
   }
@@ -10256,8 +10291,9 @@ async function loadFgRunningOn(dateIso, maxAgeMs) {
     const json = await res.json();
     const kgByKey = {}, machinesByKey = {}, latestByMachine = {};
     (json.rows || []).forEach(r => {
-      // API เคยส่งวันข้างเคียงติดมาด้วย จึงกรองด้วย production_date อีกชั้น
-      if (String(r.production_date || '').slice(0, 10) !== dateIso) return;
+      // API เคยส่งวันข้างเคียงติดมาด้วย จึงกรองด้วยวันผลิตอีกชั้น
+      // (ใช้ fgRowDateInfo ตัวเดียวกับตารางน้ำหนักผลิต ทั้งสองที่จึงลงวันเหมือนกันเสมอ)
+      if (fgRowDateInfo(r).date !== dateIso) return;
       // เศษ/ปรับยอด ไม่ใช่งานที่เครื่องเดินอยู่ ไม่นับเป็น "ขนาดที่เดินวันนั้น"
       if (fgRowIsScrap(r)) return;
       const key = fgProductCodeToKey(r.product_code);
@@ -10545,8 +10581,25 @@ function renderProdWeightRangeNote(fromDate, toDate) {
     return;
   }
   // เอาแถบสรุปช่วงวันที่/ยอดรวมออกแล้ว — ตัวเลขในตารางกับหัวคอลัมน์บอกอยู่แล้ว
-  // เหลือไว้เฉพาะข้อความเตือนตอนกรอกช่วงวันที่ผิด (เช็คไว้ด้านบนแล้ว)
-  el.innerHTML = '';
+  // เหลือไว้เฉพาะคำเตือนที่ต้องรู้จริงๆ: ช่วงวันที่ผิด (เช็คด้านบน) และแถวที่ระบบ
+  // Production ไม่ได้ระบุวันผลิตมา ซึ่งเดิมยอดหายไปเงียบๆ ตอนนี้ลงวันให้แล้วต้องบอกด้วย
+  const m = fgWeightMeta;
+  const guessed = m && m.guessRows ? m.guessRows : 0;
+  const noDate = m && m.noDateRows ? m.noDateRows : 0;
+  if (!guessed && !noDate) { el.innerHTML = ''; return; }
+  const ton2 = kg => (kg / 1000).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const byDate = {};
+  (m.guessList || []).forEach(x => { byDate[x.date] = (byDate[x.date] || 0) + x.kg; });
+  const dayList = Object.keys(byDate).sort()
+    .map(d => fmtDateThaiShort(parseISODate(d)) + ' ' + ton2(byDate[d]) + ' ต.').join(' · ');
+  el.innerHTML = `<div style="background:var(--amber-dim);border-left:4px solid var(--amber);border-radius:8px;
+       padding:8px 12px;font-size:12px;color:var(--text-2);line-height:1.6;">
+    ${guessed ? `<b style="color:var(--amber);">ระบบ Production ไม่ได้ระบุวันผลิตของ ${guessed} รายการ
+      (${ton2(m.guessKg)} ตัน)</b> — ลงวันตามเวลาที่คีย์เข้าระบบไว้ก่อน มี
+      <b style="color:var(--amber);">ᵈ</b> กำกับในช่องนั้น: ${escapeHtmlAttr(dayList)}` : ''}
+    ${noDate ? `${guessed ? '<br>' : ''}<b style="color:var(--red);">อีก ${noDate} รายการ (${ton2(m.noDateKg)} ตัน)
+      ไม่มีทั้งวันผลิตและเวลาคีย์</b> — ลงคอลัมน์วันไหนไม่ได้ นับอยู่ในยอดรวมของช่วงเท่านั้น` : ''}
+  </div>`;
 }
 
 // ─── บันทึกตารางน้ำหนักผลิตเป็นไฟล์ Excel ─────────────────────────────────────
@@ -10751,6 +10804,9 @@ async function renderProdWeight() {
       // ขนาดอื่นที่มาใช้ Forming ของชุดนี้ร่วม — บวกน้ำหนักของขนาดนั้นเข้ามาด้วย
       const sharedSrc = sharedFormingSources(setName);
       const sharedPerDay = d => sharedSrc.reduce((s, k) => s + ((fgWeightByKeyDate[k] || {})[d] || 0), 0);
+      // ส่วนที่ต้องอนุมานวันเอง (ระบบ Production ไม่ได้ระบุวันผลิตมา) — เอาไปกำกับ ᵈ ในช่อง
+      const guessPerDay = d => ((fgWeightInferredByKeyDate[g.fgKey] || {})[d] || 0)
+        + sharedSrc.reduce((s, k) => s + ((fgWeightInferredByKeyDate[k] || {})[d] || 0), 0);
       const usedKeys = palette.map(x => x.key);
       return palette.map(c => {
         const cells = days.map(d => {
@@ -10759,7 +10815,7 @@ async function renderProdWeight() {
           const ownKg = mine ? (perDay[d] || 0) : 0;
           const shareKg = mine ? sharedPerDay(d) : 0;
           // ไม่ได้ระบุเจาะจงของวันนั้น = ค่าที่อนุมานให้ — ทำให้ดูต่างกันเล็กน้อยและมี * กำกับ
-          return { d, kg: ownKg + shareKg, shareKg,
+          return { d, kg: ownKg + shareKg, shareKg, dateGuessKg: mine ? guessPerDay(d) : 0,
                    inferred: mine && res.kind !== 'explicit', kind: res.kind, from: res.from };
         });
         const rowKg = cells.reduce((s, x) => s + x.kg, 0);
@@ -10773,7 +10829,7 @@ async function renderProdWeight() {
           size: g.label, cat: cat || setName, setName, color: c.label, carry: carryTon,
           // ตันของแต่ละวัน — ว่าง (null) ถ้าวันนั้นไม่มียอด เพื่อให้ช่องใน Excel ว่างจริง ไม่ใช่เลข 0
           cells: cells.map(x => (x.kg ? ton(x.kg) : null)),
-          flags: cells.map(x => (x.kg ? ((x.inferred ? '*' : '') + (x.shareKg ? '⁺' : '')) : '')),
+          flags: cells.map(x => (x.kg ? ((x.inferred ? '*' : '') + (x.shareKg ? '⁺' : '') + (x.dateGuessKg ? 'ᵈ' : '')) : '')),
           total: Math.round((ton(rowKg) + carryTon) * 100) / 100,
         });
         return `<tr>
@@ -10793,10 +10849,13 @@ async function renderProdWeight() {
             : x.kind === 'only' ? 'ยังไม่ได้ระบุชุดสีของวันนี้ — ขนาดนี้มีชุดสีเดียว ยอดจึงเป็นของชุดนี้'
             : 'อ้างจากชุดที่สถานะกำลังใช้งานอยู่ — ยังไม่ได้ระบุเจาะจงของวันนี้');
           if (x.shareKg) tips.push('รวมน้ำหนักที่มาใช้ Forming ร่วมจาก ' + sharedSrc.map(fgKeyLabel).join(', ') + ' อีก ' + ton(x.shareKg).toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' ตัน');
+          if (x.dateGuessKg) tips.push('ในนี้มี ' + ton(x.dateGuessKg).toLocaleString(undefined, { maximumFractionDigits: 2 })
+            + ' ตัน ที่ระบบ Production ไม่ได้ระบุวันผลิต — ลงวันตามเวลาที่คีย์เข้าระบบไว้ก่อน (ᵈ)');
           return `<td style="text-align:right;${x.kg ? 'font-weight:700;' : ''}${x.inferred ? 'color:var(--text-2);' : ''}"
             ${tips.length ? `title="${escapeHtmlAttr(tips.join(' · '))}"` : ''}>${x.kg
               ? fmt(ton(x.kg)) + (x.inferred ? '<span style="font-weight:400;color:var(--text-3);">*</span>' : '')
                               + (x.shareKg ? '<span style="font-weight:400;color:var(--accent);">⁺</span>' : '')
+                              + (x.dateGuessKg ? '<span style="font-weight:700;color:var(--amber);">ᵈ</span>' : '')
               : '<span class="muted">—</span>'}</td>`;
         }).join('')}
         <td style="text-align:right;font-weight:800;color:${(rowKg || carryTon) ? 'var(--text-1)' : 'var(--text-3)'};"
