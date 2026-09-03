@@ -10823,8 +10823,8 @@ function exportProdWeightXlsx() {
     aoa.push([r.size, r.cat, r.color, num2(r.carry) || null, ...r.cells.map(num2), num2(r.total) || null, marks]);
   });
   aoa.push([]);
-  aoa.push(['รวมทุกขนาด (นับขนาดละครั้ง ไม่นับซ้ำตามหมวด/ชุดสี)', '', '', num2(m.carryTotalTon) || null,
-    ...m.dayTotalsTon.map(v => num2(v) || null), num2(m.grandTon + m.carryTotalTon) || null, '']);
+  aoa.push(['รวมทุกขนาด (นับขนาดละครั้ง ไม่นับซ้ำตามหมวด/ชุดสี · ยอดรวมเป็นผลิตล้วน ไม่บวกยกมา)', '', '', num2(m.carryTotalTon) || null,
+    ...m.dayTotalsTon.map(v => num2(v) || null), num2(m.grandTon) || null, '']);
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols'] = [{ wch: 26 }, { wch: 10 }, { wch: 12 }, { wch: 11 },
@@ -10840,8 +10840,8 @@ function exportProdWeightXlsx() {
   m.groups.forEach(g => sum.push([g.size, g.colorSets, g.pieces, num2(g.producedTon) || null,
     num2(g.carryTon) || null, num2(g.producedTon + g.carryTon) || null, ...g.cells.map(num2)]));
   sum.push([]);
-  sum.push(['รวมทุกขนาด', '', '', num2(m.grandTon) || null, num2(m.carryTotalTon) || null,
-    num2(m.grandTon + m.carryTotalTon) || null, ...m.dayTotalsTon.map(v => num2(v) || null)]);
+  sum.push(['รวมทุกขนาด (ยอดรวมเป็นผลิตล้วน ไม่บวกยกมา)', '', '', num2(m.grandTon) || null, num2(m.carryTotalTon) || null,
+    num2(m.grandTon) || null, ...m.dayTotalsTon.map(v => num2(v) || null)]);
   const ws2 = XLSX.utils.aoa_to_sheet(sum);
   ws2['!cols'] = [{ wch: 26 }, { wch: 11 }, { wch: 10 }, { wch: 13 }, { wch: 11 }, { wch: 11 },
     ...m.days.map(() => ({ wch: 9 }))];
@@ -10979,7 +10979,9 @@ async function renderProdWeight(force) {
       const ca = ROLL_SET_CATEGORY_ORDER[parseSizeRollName(a).category], cb = ROLL_SET_CATEGORY_ORDER[parseSizeRollName(b).category];
       return (ca === undefined ? 9 : ca) - (cb === undefined ? 9 : cb);
     });
-    let groupCarry = 0; // ยอดยกมาของทุกชุดสีในขนาดนี้ — เอาไปต่อท้ายหัวกลุ่มให้ตรงกับคอลัมน์รวม
+    // ยกมาของขนาดนี้ — เก็บ "มากสุดต่อชุด" ไม่ใช่ผลบวก เพราะ Forming/Sizing/TH เป็น Roll คนละชุด
+    // (เดิมบวกกันแล้วโชว์ที่หัวกลุ่ม ทำให้ยกมาก้อนเดียวถูกนับซ้ำตามจำนวนหมวด)
+    let groupCarryMax = 0;
     const rows = sorted.map(setName => {
       const cat = parseSizeRollName(setName).category;
       const catColor = ROLL_SET_SECTION_COLORS[cat] || 'var(--text-2)';
@@ -11015,7 +11017,7 @@ async function renderProdWeight(force) {
         // ส่วนคอลัมน์รายวันยังเป็นยอดผลิตจริงล้วนๆ ไม่มีการยกมาปน (ยกมาไม่ผูกกับวันใดวันหนึ่ง)
         const carryTon = rollCarryTonFor(setName, c.key);
         carryTotal += carryTon;
-        groupCarry += carryTon;
+        if (carryTon > groupCarryMax) groupCarryMax = carryTon;
         exportRows.push({
           size: g.label, cat: cat || setName, setName, color: c.label, carry: carryTon,
           // ตันของแต่ละวัน — ว่าง (null) ถ้าวันนั้นไม่มียอด เพื่อให้ช่องใน Excel ว่างจริง ไม่ใช่เลข 0
@@ -11066,7 +11068,7 @@ async function renderProdWeight(force) {
       return n + (rs.length ? new Set(rs.map(r => r.color || NO_COLOR_KEY)).size : 0);
     }, 0);
     exportGroups.push({
-      size: g.label, colorSets, pieces, producedTon: ton(groupKg), carryTon: groupCarry,
+      size: g.label, colorSets, pieces, producedTon: ton(groupKg), carryTon: groupCarryMax,
       cells: days.map(d => (perDay[d] ? ton(perDay[d]) : null)),
     });
     return `<tr><td colspan="${days.length + 4}" style="background:var(--bg-panel);padding:11px 12px;border-top:2px solid var(--text-1);">
@@ -11074,7 +11076,8 @@ async function renderProdWeight(force) {
         <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(g.label)}
       </span>
       <span style="float:right;font-size:12px;font-weight:700;color:var(--text-3);">${colorSets} ชุด · ${pieces} ลูก · ผลิตรวม ${ton(groupKg).toLocaleString(undefined, { maximumFractionDigits: 2 })} ตัน${
-        groupCarry ? ` <span style="color:var(--accent);">+ ยกมา ${groupCarry.toLocaleString(undefined, { maximumFractionDigits: 2 })} ตัน</span>` : ''}${(() => {
+        groupCarryMax ? ` <span style="color:var(--accent);" title="ยอดยกมาที่กรอกเองเป็นของ Roll แต่ละชุดแยกกัน (Forming/Sizing/TH เป็นชุดคนละชุด) จึงบอกค่าที่มากสุดต่อชุด ไม่ใช่ผลบวก">·
+          ยกมามากสุด ${groupCarryMax.toLocaleString(undefined, { maximumFractionDigits: 2 })} ตัน/ชุด</span>` : ''}${(() => {
         // ขนาดนี้มี Forming ที่ถูกขนาดอื่นมาใช้ร่วม — บอกยอดที่บวกเข้ามาไว้ที่หัวกลุ่มด้วย
         const src = g.sets.flatMap(sharedFormingSources);
         if (!src.length) return '';
@@ -11161,14 +11164,15 @@ async function renderProdWeight(force) {
     ${days.length ? `<tfoot><tr style="background:var(--bg-panel);">
       <td class="pw-fz1" colspan="2" style="font-weight:800;width:204px;min-width:204px;box-shadow:1px 0 0 var(--border);">รวมทุกขนาด <span style="font-weight:400;font-size:11px;color:var(--text-3);">(นับขนาดละครั้ง ไม่นับซ้ำตามหมวด/ชุดสี)</span></td>
       <td style="text-align:right;font-weight:700;color:${carryTotal ? 'var(--accent)' : 'var(--text-3)'};"
-        title="ผลรวมยอดยกมาที่กรอกเองทุกชุด — แยกจากยอดผลิตจริง ไม่ถูกนับในยอดรวมด้านขวา">${carryTotal ? fmt(carryTotal) : '—'}</td>
+        title="ผลรวมยอดยกมาที่กรอกเองของทุกชุด Roll — เป็นยอดใช้งานของ Roll แต่ละชุด ไม่ใช่ตันที่ผลิตได้
+จึงไม่ถูกบวกในยอดรวมด้านขวา">${carryTotal ? fmt(carryTotal) : '—'}</td>
       ${days.map(d => `<td style="text-align:right;font-weight:700;">${fmt(ton(dayKg[d]))}</td>`).join('')}
       <td style="text-align:right;font-weight:800;color:var(--accent);"
         title="${escapeHtmlAttr('ผลิตจริงจาก TST Production ' + ton(grandKg).toLocaleString(undefined, { maximumFractionDigits: 2 })
-          + ' ตัน' + (carryTotal ? ' + ยกมาที่กรอกเอง ' + carryTotal.toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' ตัน' : ''))}">
-        ${fmt(Math.round((ton(grandKg) + carryTotal) * 100) / 100)}
-        ${carryTotal ? `<div style="font-size:10px;font-weight:600;color:var(--text-3);">ผลิต ${escapeHtmlAttr(ton(grandKg).toLocaleString(undefined, { maximumFractionDigits: 2 }))}
-          + ยกมา ${escapeHtmlAttr(carryTotal.toLocaleString(undefined, { maximumFractionDigits: 2 }))}</div>` : ''}</td>
+          + ' ตัน (นับขนาดละครั้ง) — ยอดยกมาที่กรอกเองไม่ถูกบวกในนี้ เพราะเป็นยอดใช้งานของ Roll แต่ละชุด'
+          + (carryTotal ? ' รวมทุกชุด ' + carryTotal.toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' ตัน' : ''))}">
+        ${fmt(ton(grandKg))}
+        ${carryTotal ? `<div style="font-size:10px;font-weight:600;color:var(--text-3);">ผลิตล้วน · ยกมาดูรายแถว</div>` : ''}</td>
     </tr></tfoot>` : ''}
   </table></div>
   ${days.length ? `<div style="padding:10px 14px;border-top:1px solid var(--border-light);font-size:11px;color:var(--text-3);line-height:1.6;">
