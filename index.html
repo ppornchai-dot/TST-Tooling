@@ -1595,7 +1595,7 @@ canvas{display:block;}
         <div class="table-wrap table-wrap-sticky">
           <table>
             <thead>
-              <tr><th class="pw-fz1">Size Roll</th><th class="pw-fz2">ชุดสี</th><th style="text-align:right;">จำนวน (ลูก)</th><th style="text-align:right;">OD ปัจจุบัน</th><th style="text-align:right;">สึกไปมากสุด</th><th style="text-align:right;" title="ตันที่รีดได้ต่อการแต่ง Roll 1 รอบ — มาจากช่อง &quot;รอบการใช้งาน&quot; ของ Roll ในทะเบียน Tooling">น้ำหนักต่อรอบการแต่ง (ตัน)</th><th style="text-align:right;" title="ยอดผลิตของชุด Roll ชุดนี้ตลอดอายุ — เกณฑ์เดียวกับหน้าน้ำหนักผลิต คือลงเฉพาะวันที่ชุดสีนี้เป็นชุดที่ใช้เดิน และรวมขนาดที่มาใช้ Forming ร่วมด้วย — % คือใช้รอบการแต่งไปแล้วเท่าไร (ไม่เกิน 80% เขียว, 81–90% เหลือง, เกิน 90% แดง)">น้ำหนักผลิต (ตัน / %)</th><th style="text-align:right;" title="น้ำหนักต่อรอบการแต่ง ลบ น้ำหนักผลิต — เหลืออีกเท่าไรก่อนถึงรอบแต่งถัดไป ">น้ำหนักเหลือ (ตัน)</th><th>อายุคงเหลือ</th><th title="สถานะของชุดสี Roll ที่ตั้งไว้ในทะเบียน Tooling">สถานะ (ทะเบียน)</th></tr>
+              <tr><th class="pw-fz1">Size Roll</th><th class="pw-fz2">ชุดสี</th><th style="text-align:right;">จำนวน (ลูก)</th><th style="text-align:right;" title="ช่วง OD ที่วัดได้ล่าสุดของ Roll ในชุด · Std = ช่วงขนาดตอนใส่ครั้งแรกของลูกในชุดนั้น · ▼ = ลูกที่สึกมากสุดเทียบกับ Ø มาตรฐานของลูกนั้นเอง">OD ปัจจุบัน / Std</th><th style="text-align:right;">สึกไปมากสุด</th><th style="text-align:right;" title="ตันที่รีดได้ต่อการแต่ง Roll 1 รอบ — มาจากช่อง &quot;รอบการใช้งาน&quot; ของ Roll ในทะเบียน Tooling">น้ำหนักต่อรอบการแต่ง (ตัน)</th><th style="text-align:right;" title="ยอดผลิตของชุด Roll ชุดนี้ตลอดอายุ — เกณฑ์เดียวกับหน้าน้ำหนักผลิต คือลงเฉพาะวันที่ชุดสีนี้เป็นชุดที่ใช้เดิน และรวมขนาดที่มาใช้ Forming ร่วมด้วย — % คือใช้รอบการแต่งไปแล้วเท่าไร (ไม่เกิน 80% เขียว, 81–90% เหลือง, เกิน 90% แดง)">น้ำหนักผลิต (ตัน / %)</th><th style="text-align:right;" title="น้ำหนักต่อรอบการแต่ง ลบ น้ำหนักผลิต — เหลืออีกเท่าไรก่อนถึงรอบแต่งถัดไป ">น้ำหนักเหลือ (ตัน)</th><th>อายุคงเหลือ</th><th title="สถานะของชุดสี Roll ที่ตั้งไว้ในทะเบียน Tooling">สถานะ (ทะเบียน)</th></tr>
             </thead>
             <tbody id="rolllife-tbody"></tbody>
           </table>
@@ -10889,6 +10889,32 @@ function rollLifeFor(roll) {
   return { lifePct, basis, wornMm, odPct, tonPct, curOD, usedTon, newOD, minOD, maxTon };
 }
 
+// บรรทัดใต้ "OD ปัจจุบัน" ในตารางอายุ Roll — บอกขนาดตั้งต้นและสึกไปเท่าไร
+// เทียบรายลูกแล้วเอาลูกที่แย่สุดของชุดมาแสดง (ต้องถอดทั้งชุดพร้อมกัน ลูกแย่สุดเป็นตัวตัดสิน)
+// ลูกที่ยังไม่เคยวัดหลังแต่ง ระบบถือว่า OD ปัจจุบัน = มาตรฐาน จึงบอกจำนวนไว้ด้วย
+// ไม่ให้เข้าใจผิดว่า "ไม่สึก" ทั้งที่ยังไม่ได้วัด
+function odStdCellHtml(g) {
+  if (g.stdODMin == null) return '';
+  const fmt = n => (Math.round(n * 100) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const stdText = g.stdODMax !== g.stdODMin ? `Ø${fmt(g.stdODMin)} – Ø${fmt(g.stdODMax)}` : `Ø${fmt(g.stdODMin)}`;
+  const parts = [`<div class="muted" style="font-size:10px;" title="ขนาดตอนใส่ครั้งแรกของ Roll ในชุดนี้ (Ø มาตรฐาน ในทะเบียน Tooling)">Std ${escapeHtmlAttr(stdText)}</div>`];
+  if (g.dropMax) {
+    parts.push(`<div style="font-size:10.5px;font-weight:800;color:var(--amber);"
+      title="ลูกที่สึกมากสุดในชุด เล็กลงจาก Ø มาตรฐานของลูกนั้น ${escapeHtmlAttr(fmt(g.dropMax))} มม.">▼ ${escapeHtmlAttr(fmt(g.dropMax))} มม.</div>`);
+  } else if (!g.unmeasured && !g.overMax) {
+    parts.push('<div style="font-size:10.5px;font-weight:800;color:var(--green);" title="ทุกลูกวัดแล้วและยังเท่า Ø มาตรฐาน">= เท่ามาตรฐาน</div>');
+  }
+  if (g.overMax) {
+    parts.push(`<div style="font-size:10.5px;font-weight:800;color:var(--accent);"
+      title="วัดได้ใหญ่กว่า Ø มาตรฐาน ${escapeHtmlAttr(fmt(g.overMax))} มม. — ตรวจค่าที่บันทึกอีกครั้ง">▲ ${escapeHtmlAttr(fmt(g.overMax))} มม.</div>`);
+  }
+  if (g.unmeasured) {
+    parts.push(`<div class="muted" style="font-size:10px;"
+      title="ยังไม่เคยกรอกขนาดหลังแต่ง Roll ระบบจึงถือว่าเท่า Ø มาตรฐานไว้ก่อน">ยังไม่วัด ${g.unmeasured}/${g.count} ลูก</div>`);
+  }
+  return parts.join('');
+}
+
 function rollLifeChip(pct) {
   if (pct == null) return { chip: 'chip-blue', label: 'ยังไม่กำหนดเกณฑ์' };
   if (pct <= 20) return { chip: 'chip-red', label: 'ใกล้หมดอายุ' };
@@ -11179,6 +11205,11 @@ function renderRollLife() {
         dot: colorMeta ? colorMeta.dot : '#9CA3AF',
         count: 0, lifePct: null, basis: null, wornMm: null,
         curODMin: null, curODMax: null, usedTon: null, minOD: null, maxTon: null,
+        // เทียบกับ Ø มาตรฐาน "ของลูกนั้นๆ" (roll.diameterStd) ไม่ใช่ newOD ของเกณฑ์รายชุด
+        // เพราะชุดหนึ่งมีหลายลูกและขนาดตั้งต้นไม่เท่ากัน (เช่น Ø100 กับ Ø300 อยู่ชุดเดียวกัน)
+        // stdODMin/Max = ช่วงขนาดตั้งต้นของชุด · dropMax = ลูกที่สึกมากสุดกี่ มม.
+        // overMax = ลูกที่วัดได้ใหญ่กว่ามาตรฐาน (ค่าผิดปกติ ควรวัดซ้ำ) · unmeasured = ยังไม่เคยวัดหลังแต่ง
+        stdODMin: null, stdODMax: null, dropMax: null, overMax: null, unmeasured: 0,
       });
     }
     const g = groupMap.get(key);
@@ -11189,6 +11220,17 @@ function renderRollLife() {
       g.curODMin = g.curODMin == null ? life.curOD : Math.min(g.curODMin, life.curOD);
       g.curODMax = g.curODMax == null ? life.curOD : Math.max(g.curODMax, life.curOD);
     }
+    const stdOD = rollLifeNum(rollStdDiameter(roll));
+    if (stdOD != null) {
+      g.stdODMin = g.stdODMin == null ? stdOD : Math.min(g.stdODMin, stdOD);
+      g.stdODMax = g.stdODMax == null ? stdOD : Math.max(g.stdODMax, stdOD);
+      if (life.curOD != null) {
+        const d = Math.round((stdOD - life.curOD) * 100) / 100;
+        if (d > 0) g.dropMax = Math.max(g.dropMax == null ? 0 : g.dropMax, d);
+        if (d < 0) g.overMax = Math.max(g.overMax == null ? 0 : g.overMax, -d);
+      }
+    }
+    if (!rollHasCurrentOd(roll)) g.unmeasured++;
     if (life.wornMm != null) g.wornMm = g.wornMm == null ? life.wornMm : Math.max(g.wornMm, life.wornMm);
     if (life.usedTon != null) g.usedTon = g.usedTon == null ? life.usedTon : Math.max(g.usedTon, life.usedTon);
     if (life.lifePct != null && (g.lifePct == null || life.lifePct < g.lifePct)) { g.lifePct = life.lifePct; g.basis = life.basis; }
@@ -11260,7 +11302,7 @@ function renderRollLife() {
       <td class="pw-fz2"><span style="display:inline-flex;align-items:center;gap:6px;">
         <span style="width:9px;height:9px;border-radius:50%;background:${g.dot};flex-shrink:0;"></span>${escapeHtmlAttr(g.colorLabel)}</span></td>
       <td class="muted" style="text-align:right;">${g.count.toLocaleString()}</td>
-      <td style="text-align:right;">${escapeHtmlAttr(odText)}${g.minOD != null ? `<div class="muted" style="font-size:10px;">เล็กสุด Ø${escapeHtmlAttr(g.minOD)}</div>` : ''}</td>
+      <td style="text-align:right;"><div style="white-space:nowrap;">${escapeHtmlAttr(odText)}</div>${odStdCellHtml(g)}${g.minOD != null ? `<div class="muted" style="font-size:10px;">เล็กสุด Ø${escapeHtmlAttr(g.minOD)}</div>` : ''}</td>
       <td style="text-align:right;">${g.wornMm != null ? escapeHtmlAttr(Math.round(g.wornMm * 10) / 10 + ' mm') : '—'}</td>
       <td style="text-align:right;">${perRoundTon != null ? escapeHtmlAttr(perRoundTon.toLocaleString()) : '<span class="muted">—</span>'}</td>
       <td style="text-align:right;white-space:nowrap;">
