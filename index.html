@@ -6708,11 +6708,30 @@ function workerName(workerId) {
   const m = teamMembers.find(x => x.id === workerId);
   return m ? m.name : '—';
 }
+// ชุดสีของ Size Roll นั้นที่มี Roll จริงและสถานะตรงกับที่ต้องการ (เช่น 'waitpolish' = รอขัด)
+function rollSetColorKeysWithStatus(setName, status) {
+  const used = [...new Set(toolingData.roll.filter(r => r.set === setName).map(r => r.color || NO_COLOR_KEY))];
+  return used.filter(k => rollColorStatusFor(setName, k) === status);
+}
+
+// แผนงานขัด Roll ต้องเลือกได้เฉพาะชุดที่สถานะ "รอขัด" เท่านั้น — ชุดที่ยังไม่ได้แต่งหรือ
+// พร้อมใช้/กำลังใช้งานอยู่ ไม่ควรถูกวางแผนขัด (วางไปแล้วก็ไม่มีใครไปขัดจริง)
+// งานแต่ง (cnc) ยังเลือกได้ทุกชุดเหมือนเดิม เพราะบางครั้งต้องวางล่วงหน้าก่อนสถานะจะเปลี่ยน
+function planFormRequiredColorStatus() {
+  return planFormWorkType() === 'polish' ? 'waitpolish' : null;
+}
+
 function populatePlanRollSetSelect(selectedSet) {
   const sel = document.getElementById('pf-rollset');
   if (!sel) return;
-  const sets = getRollSets();
-  sel.innerHTML = '<option value="">— เลือก Size Roll —</option>' +
+  const need = planFormRequiredColorStatus();
+  let sets = getRollSets();
+  if (need) {
+    // ชุดที่กำลังแก้อยู่ต้องอยู่ในรายการเสมอ ไม่งั้นเปิดฟอร์มแก้งานเก่าแล้วค่าหาย
+    sets = sets.filter(s => s === selectedSet || rollSetColorKeysWithStatus(s, need).length);
+  }
+  const placeholder = need && !sets.length ? '— ไม่มีชุด Roll ที่รอขัด —' : '— เลือก Size Roll —';
+  sel.innerHTML = `<option value="">${placeholder}</option>` +
     sets.map(s => `<option value="${escapeHtmlAttr(s)}"${s === selectedSet ? ' selected' : ''}>${escapeHtmlAttr(s)}</option>`).join('');
 }
 
@@ -6725,7 +6744,10 @@ function populatePlanRollColorSelect(setName, selectedColor) {
     return;
   }
   sel.disabled = false;
-  const palette = getSetPalette(setName);
+  const need = planFormRequiredColorStatus();
+  let palette = getSetPalette(setName);
+  // งานขัด Roll: เหลือเฉพาะชุดสีที่สถานะ "รอขัด" (คงสีที่เลือกไว้เดิมไว้ด้วย ไม่ให้ค่าหายตอนแก้งานเก่า)
+  if (need) palette = palette.filter(c => c.key === selectedColor || rollColorStatusFor(setName, c.key) === need);
   // สีที่มี Roll จริงอยู่ในชุดนี้ — ใช้ตัดสินว่ามีชุดสีให้เลือกจริงกี่สี
   // (ปาเล็ตต์อาจมีสีที่ยังไม่มี Roll ซึ่งเลือกไปก็ไม่มีชิ้นงาน)
   const used = new Set(toolingData.roll.filter(r => r.set === setName).map(r => r.color || ''));
@@ -6733,7 +6755,11 @@ function populatePlanRollColorSelect(setName, selectedColor) {
   // มีชุดสีเดียวให้เลือก = เลือกให้เลย ไม่ต้องกดเลือกซ้ำอีกครั้ง
   // (ยังเปลี่ยนกลับเป็น "ทั้งหมด" ได้เองถ้าต้องการ)
   const effective = selectedColor || (usable.length === 1 ? usable[0].key : '');
-  sel.innerHTML = '<option value="">— ทั้งหมด —</option>' +
+  // งานขัด Roll ไม่มีตัวเลือก "ทั้งหมด" เพราะจะลากชุดสีที่ยังไม่รอขัดเข้ามาด้วย
+  const placeholder = need
+    ? (palette.length ? '— เลือกชุดสีที่รอขัด —' : '— ไม่มีชุดสีที่รอขัดในชุดนี้ —')
+    : '— ทั้งหมด —';
+  sel.innerHTML = `<option value="">${placeholder}</option>` +
     palette.map(c => `<option value="${c.key}"${c.key === effective ? ' selected' : ''}>${c.label}</option>`).join('');
   sel.value = effective;
   return effective;   // ผู้เรียกใช้ค่านี้ไปดึงรายการ Roll ต่อได้เลย
