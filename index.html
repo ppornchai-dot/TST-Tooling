@@ -6232,12 +6232,50 @@ function renderPlanDay() {
   // การสลับลำดับถูกจำกัดไว้ในหมวดเดียวกันด้วย data-section ของแต่ละแถว
   dayBody.classList.add('plan-drop-zone');
   dayBody.dataset.day = iso;
+  // งานแทรกที่เพิ่มจากหน้างานประจำวัน (dailyChecklistTasks) — เอามาแสดงในตารางแผนงานด้วย
+  // เพราะเป็นงานที่ช่างทำจริงในวันนั้น ถ้าไม่เห็นในตารางนี้ หัวหน้าจะวางแผนโดยไม่รู้ว่ามีงานแทรกอยู่
+  // แสดงเป็นแถวอ่านค่า (ไม่มีเวลาตามแผน/ไม่มี Roll ในทะเบียน) แก้/ลบผ่านตัวจัดการเช็คลิสต์ตัวเดิม
+  // ของที่ไม่ระบุประเภทถือเป็นงานแต่ง Roll (CNC) เหมือนหน้างานประจำวัน
+  const cncShifts = planDayEndShiftsFor('cnc');
+  const insertItems = (dailyChecklistTasks || []).filter(t => !t.date || t.date === iso);
+  const insertRowFor = t => {
+    const st = ((dailyStatusByDate[iso] || {})[t.id]) || null;
+    const actual = (dailyActualTimes[iso] || {})[t.id] || {};
+    const stMeta = st === 'done' ? { label: 'เสร็จแล้ว', chip: 'chip-green' }
+      : st === 'in_progress' ? { label: 'กำลังทำ', chip: 'chip-blue' } : null;
+    return `<tr data-taskid="${escapeHtmlAttr(t.id)}" style="background:var(--amber-dim);">
+      <td class="muted" style="white-space:nowrap;"><span class="chip chip-amber" title="งานแทรกที่เพิ่มจากหน้างานประจำวัน">แทรก</span></td>
+      <td class="muted">—</td>
+      <td class="muted">—</td>
+      <td class="muted">${escapeHtmlAttr(t.ref || '—')}</td>
+      <td><strong>${escapeHtmlAttr(t.task || '—')}</strong>${stMeta ? ` <span class="chip ${stMeta.chip}">${stMeta.label}</span>` : ''}
+        ${t.who ? `<div class="muted" style="font-size:11px;">${escapeHtmlAttr(t.who)}</div>` : ''}</td>
+      <td class="muted" style="text-align:right;" title="งานแทรกไม่มีเวลาตามแผนในทะเบียน">—</td>
+      <td class="muted">${escapeHtmlAttr(actual.startTime || t.time || '—')}</td>
+      <td class="muted">${escapeHtmlAttr(actual.endTime || '—')}</td>
+      <td style="display:flex;gap:4px;">${canEditPlan()
+        ? `<button class="btn btn-ghost btn-sm" onclick="${jsCallAttr('openDailyChecklistModal', 'edit', t.id)}">แก้ไข</button>
+           <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="${jsCallAttr('deleteDailyChecklistTask', t.id)}">ลบ</button>`
+        : '<span class="muted">—</span>'}</td>
+    </tr>`;
+  };
+  // งานแทรกของหมวดนี้ (และของกะนั้น ถ้าหมวดแยกกะ) — ไม่รู้กะก็ให้ไปอยู่กะแรก
+  const insertItemsFor = s => insertItems.filter(t => {
+    const key = t.workType === 'polish' ? 'polish' : 'cnc';
+    if (key !== s.key) return false;
+    if (!s.shiftKey) return true;
+    const at = ((dailyActualTimes[iso] || {})[t.id] || {}).startTime || t.time || null;
+    return (shiftKeyForTime(at) || cncShifts[0]) === s.shiftKey;
+  });
+
   dayBody.innerHTML = daySections.map(s => {
     const items = tasks.filter(t => planTaskSectionKey(t) === s.key
       && (!s.shiftKey || taskSessionShiftKey(t) === s.shiftKey));
+    const inserts = insertItemsFor(s);
     return planSectionHeaderRow(s, 9, planSectionCount(partsByDate, s.key, [iso], s.shiftKey), iso)
       + (items.length ? items.map((t, i) => rowHtmlFor(t, i, s)).join('')
-        : `<tr><td colspan="9" style="padding:14px;text-align:center;color:var(--text-3);font-size:12.5px;">${escapeHtmlAttr(s.empty)}</td></tr>`)
+        : (inserts.length ? '' : `<tr><td colspan="9" style="padding:14px;text-align:center;color:var(--text-3);font-size:12.5px;">${escapeHtmlAttr(s.empty)}</td></tr>`))
+      + inserts.map(insertRowFor).join('')
       + addRowFor(s);
   }).join('');
 }
@@ -14587,6 +14625,7 @@ function openDailyChecklistModal(mode, taskId, workType) {
     }
     persistState();
     renderDailyTasks();
+    if (typeof renderCurrentPlanView === 'function') renderCurrentPlanView();   // งานแทรกโชว์ในตารางแผนงานด้วย
     const btn = this;
     const orig = btn.innerHTML;
     btn.innerHTML = '✓ บันทึกแล้ว';
@@ -14602,6 +14641,8 @@ function deleteDailyChecklistTask(taskId) {
   dailyChecklistTasks = dailyChecklistTasks.filter(x => x.id !== taskId);
   persistState();
   renderDailyTasks();
+  // งานแทรกโชว์ในตารางแผนงานด้วย (renderPlanDay) จึงต้องวาดหน้านั้นใหม่ ถ้าแก้/ลบจากหน้าวางแผน
+  if (typeof renderCurrentPlanView === 'function') renderCurrentPlanView();
 }
 
 // Render all tables on load
