@@ -14360,15 +14360,17 @@ function renderHistoryDayChips(scopeRecords, fromIso, toIso) {
     ${escapeHtmlAttr(label)}${sub ? `<span style="font-size:11px;font-weight:700;opacity:${on ? '.85' : '.6'};">${escapeHtmlAttr(sub)}</span>` : ''}
   </button>`;
   const today = dailyTodayIso();
+  // ไม่มีปุ่ม "ทุกวัน" แยก — กดปุ่มวันที่กำลังดูอยู่ซ้ำ = เลิกกรอง กลับไปดูทุกวัน
   el.innerHTML = `<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;align-items:center;">
     <span style="flex:0 0 auto;font-size:11.5px;font-weight:800;color:var(--text-3);">เลือกวัน</span>
-    ${chip(!oneDay, 'ทุกวัน', String((scopeRecords || []).length.toLocaleString()), 'ดูทุกวันในเงื่อนไขที่กรองอยู่', 'historyClearDay()')}
     ${days.map(d => {
       const dt = parseISODate(d);
+      const on = oneDay === d;
       const label = dt.getDate() + ' ' + THAI_MONTHS_ABBR[dt.getMonth()] + (d === today ? ' (วันนี้)' : '');
-      return chip(oneDay === d, label, String(byDay[d].toLocaleString()),
-        fmtDateThai(dt) + ' — ' + byDay[d].toLocaleString() + ' รายการ (กดเพื่อดูเฉพาะวันนี้)',
-        jsCallAttr('historyViewDay', d));
+      return chip(on, label, String(byDay[d].toLocaleString()),
+        fmtDateThai(dt) + ' — ' + byDay[d].toLocaleString() + ' รายการ'
+          + (on ? ' (กำลังดูวันนี้ — กดซ้ำเพื่อดูทุกวัน)' : ' (กดเพื่อดูเฉพาะวันนี้)'),
+        on ? 'historyClearDay()' : jsCallAttr('historyViewDay', d));
     }).join('')}
   </div>`;
 }
@@ -14505,12 +14507,10 @@ function renderHistory() {
   // ตัวหารนับเฉพาะประเภทที่บทบาทนี้เห็นได้ ไม่งั้นช่างจะเห็น "แสดง 10 จาก 19" ทั้งที่อีก 9 รายการไม่ใช่ของตัวเองและเข้าถึงไม่ได้
   const totalVisible = forcedType ? all.filter(r => historyTypeMatches(r, forcedType)).length : all.length;
   const label = document.getElementById('history-count-label');
-  // กรองอยู่วันเดียว = บอกให้เห็นชัดพร้อมทางออกกลับไปดูทุกวัน (ไม่ต้องไปล้างช่องวันที่เอง)
+  // กรองอยู่วันเดียว = บอกไว้ให้รู้ (ทางออกอยู่ที่ปุ่มวันด้านบน กดปุ่มวันเดิมซ้ำเพื่อดูทุกวัน)
   const oneDay = fromIso && fromIso === toIso;
   label.innerHTML = `แสดง ${records.length} จาก ${totalVisible} รายการ`
-    + (oneDay ? ` · <b style="color:var(--accent);">เฉพาะวันที่ ${escapeHtmlAttr(fmtDateThai(parseISODate(fromIso)))}</b>
-        <button onclick="historyClearDay()" style="margin-left:6px;padding:1px 9px;border-radius:99px;cursor:pointer;
-                font-size:11px;font-weight:800;border:1px solid var(--accent);background:transparent;color:var(--accent);">× ดูทุกวัน</button>` : '');
+    + (oneDay ? ` · <b style="color:var(--accent);">เฉพาะวันที่ ${escapeHtmlAttr(fmtDateThai(parseISODate(fromIso)))}</b>` : '');
 }
 
 // ─── งานค้าง (หน้า Pending) ────────────────────────────────────────────────
