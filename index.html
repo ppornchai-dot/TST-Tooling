@@ -2784,20 +2784,28 @@ function renderInUseCalMachineTimeline() {
           'ครอบ ' + span + ' วัน · เดินงานจริง ' + r.ranDays + ' วัน' + (ton ? ' · ผลิตรวม ' + ton : '')];
         if (r.inferred) tips.push('บางวันยังไม่ได้บันทึกชุดสี ระบบอนุมานจากยอดผลิต (*)');
         if (r.unsure) tips.push('เครื่องเป็นค่าที่ระบบอ้างให้' + (r.note ? ' — ' + r.note : ''));
-        // แท่งแคบ (ช่วงยาว/ใส่วันเดียว) ใส่ตัวหนังสือไม่ลง เหลือแค่สีกับทูลทิป
-        // 3 ระดับตามความกว้างของแท่ง — แคบแค่ไหนก็ต้องเห็นชื่อขนาด (เดิมแท่งแคบเป็นสีเปล่า)
+        // 4 ระดับตามความกว้างของแท่ง — ยัดเท่าที่พอดี ไม่ให้ชื่อขนาดถูกตัดเหลือ "G..."
+        //   >=130px : ขนาด · สี   +   n วัน · X ต.        (ครบทุกอย่าง)
+        //   >= 78px : ขนาด        +   X ต.                (ตัดชุดสี/จำนวนวันออก — ความยาวแท่งบอกวันอยู่แล้ว)
+        //   >= 42px : ชื่อขนาดย่อ                          (น้ำหนักดูจากทูลทิป)
+        //   < 42px  : ตัวย่อสั้นสุด เช่น 2x2 · 3x1½
         const w = span * cellW;
-        const tier = w >= 78 ? 2 : (w >= 42 ? 1 : 0);
-        const inner = tier === 2
-          ? `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${
-              escapeHtmlAttr(inUseCalSizeShort(r.sizeLabel))} · ${escapeHtmlAttr(colorName)}${r.inferred ? '*' : ''}</span>
-             <span style="flex:0 0 auto;opacity:.85;font-weight:700;">${span} วัน${stillOn ? ' · ยังใส่อยู่' : ''}</span>`
+        const tier = w >= 130 ? 3 : (w >= 78 ? 2 : (w >= 42 ? 1 : 0));
+        // "ยังใส่อยู่" เขียนเฉพาะแท่งที่กว้างมาก เพราะขอบขวาสีน้ำเงินบอกอยู่แล้ว
+        const meta = `${span} วัน${ton ? ' · ' + ton : ''}${stillOn && w >= 240 ? ' · ยังใส่อยู่' : ''}`;
+        const nameCell = txt2 => `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${txt2}</span>`;
+        const inner = tier === 3
+          ? nameCell(escapeHtmlAttr(inUseCalSizeShort(r.sizeLabel)) + ' · ' + escapeHtmlAttr(colorName) + (r.inferred ? '*' : ''))
+            + `<span style="flex:0 0 auto;opacity:.9;font-weight:700;">${escapeHtmlAttr(meta)}</span>`
+          : tier === 2
+          ? nameCell(escapeHtmlAttr(inUseCalSizeShort(r.sizeLabel)) + (r.inferred ? '*' : ''))
+            + (ton ? `<span style="flex:0 0 auto;opacity:.9;font-weight:700;">${escapeHtmlAttr(ton)}</span>` : '')
           : `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;">${
               escapeHtmlAttr(tier === 1 ? inUseCalSizeShort(r.sizeLabel) : inUseCalSizeTiny(r.sizeLabel))}${r.inferred ? '*' : ''}</span>`;
         return `<div title="${escapeHtmlAttr(tips.join(' · '))}"
-          style="grid-column:${r.fromCol} / span ${span};display:flex;align-items:center;gap:${tier === 2 ? 4 : 1}px;overflow:hidden;
-                 background:${dot};color:${txt};border-radius:5px;padding:2px ${tier === 2 ? 5 : 1}px;
-                 font-size:${tier === 2 ? 10 : (tier === 1 ? 9 : 8)}px;font-weight:800;letter-spacing:${tier ? '0' : '-.2px'};
+          style="grid-column:${r.fromCol} / span ${span};display:flex;align-items:center;gap:${tier >= 2 ? 4 : 1}px;overflow:hidden;
+                 background:${dot};color:${txt};border-radius:5px;padding:2px ${tier >= 2 ? 5 : 1}px;
+                 font-size:${tier >= 2 ? 10 : (tier === 1 ? 9 : 8)}px;font-weight:800;letter-spacing:${tier ? '0' : '-.2px'};
                  box-shadow:inset 0 0 0 1px rgba(0,0,0,.22);${stillOn ? 'border-right:3px solid var(--accent);' : ''}">
           ${inner}
         </div>`;
