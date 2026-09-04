@@ -10892,8 +10892,26 @@ function prodWeightStatusMeta(pct) {
   return { color: 'var(--red)', chip: 'chip-red' };
 }
 
+// รอบการวาดล่าสุด — กันรอบเก่าที่ await ค้างอยู่วาดทับรอบใหม่ (ทำให้เห็นเลขสลับไปมา)
+let prodWeightRenderGen = 0;
+
+// จำ/คืนตำแหน่งเลื่อนของตาราง (แนวนอน+แนวตั้ง) และของหน้า
+// ตารางนี้กว้างหลายสิบคอลัมน์ ถ้าวาดใหม่แล้วเลื่อนกลับไปคอลัมน์แรกทุกครั้ง จะหาที่เดิมไม่เจอ
+function prodWeightScrollState() {
+  const wrap = document.querySelector('#prodweight-grid .table-wrap');
+  return { left: wrap ? wrap.scrollLeft : 0, top: wrap ? wrap.scrollTop : 0, page: window.scrollY || 0 };
+}
+function prodWeightScrollRestore(s) {
+  if (!s) return;
+  const wrap = document.querySelector('#prodweight-grid .table-wrap');
+  if (wrap) { wrap.scrollLeft = s.left; wrap.scrollTop = s.top; }
+  if (s.page) window.scrollTo(0, s.page);
+}
+
 // force = true ให้ทิ้งแคชแล้วดึงใหม่ (ปุ่ม "ค้นหา") — เรียกเฉยๆ ใช้ของในแคช 5 นาที
 async function renderProdWeight(force) {
+  const myGen = ++prodWeightRenderGen;
+  const scroll = prodWeightScrollState();
   const grid = document.getElementById('prodweight-grid');
   if (!grid) return;
   const fromInput = document.getElementById('prodweight-date-from');
@@ -10914,11 +10932,13 @@ async function renderProdWeight(force) {
   refreshProdWeightRangeButtons();
   renderProdWeightRangeNote(fromDate, toDate);
   const fgByKey = await fetchFgWeightByKey(fromDate, toDate, force ? 0 : undefined);
+  if (myGen !== prodWeightRenderGen) return;   // มีรอบใหม่แซงไปแล้ว รอบนี้ไม่ต้องวาด
   renderProdWeightRangeNote(fromDate, toDate);
   // งานที่บล็อกเดินอยู่ "วันนี้" — ดึงแยกจากช่วงที่เลือกดู แล้วเด้งถามชุดสีที่เดินถ้ายังไม่ได้ระบุ
   // ยอมให้ใช้ของเก่าได้ไม่เกิน 1 นาที: เข้าหน้าใหม่/กดเปลี่ยนช่วงวันที่ = ได้ของสดเสมอ
   // แต่ตอนกดเลือกสีทีละชุด (applyRunColor → renderProdWeight) จะไม่ยิง API ซ้ำทุกครั้ง
   await loadFgRunningOn(toISODate(new Date()), 60 * 1000);
+  if (myGen !== prodWeightRenderGen) return;
   renderProdWeightRunBanner();
   maybeAutoOpenRunColorPrompt();
   const sets = getRollSets();
@@ -11130,6 +11150,8 @@ async function renderProdWeight(force) {
   };
   const exportBtn = document.getElementById('prodweight-export-btn');
   if (exportBtn) exportBtn.disabled = !exportRows.length;
+  // คืนตำแหน่งที่เลื่อนไว้ — ทำหลังใส่ HTML ใหม่เสร็จ (จบฟังก์ชันนี้) ดู prodWeightScrollRestore
+  setTimeout(() => { if (myGen === prodWeightRenderGen) prodWeightScrollRestore(scroll); }, 0);
 
   const colCount = days.length + 4;
   // วันที่ผลิตแล้วแต่ยังไม่ได้ระบุชุดสีที่เดิน — กดปุ่มวันนั้นเพื่อระบุย้อนหลังได้เลย
@@ -11169,6 +11191,7 @@ async function renderProdWeight(force) {
   const fetchedNote = !at ? '' : `<div style="font-size:11px;color:var(--text-3);margin-bottom:8px;">
     ตัวเลขนี้ดึงจากระบบ Production เมื่อ <b>${new Date(at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</b>
     (เก็บไว้ใช้ 5 นาที — กด <b>ค้นหา</b> เพื่อโหลดใหม่ทันที)</div>`;
+  if (myGen !== prodWeightRenderGen) return;
   grid.innerHTML = errorBanner + fetchedNote + autoNote + missBanner + `<div class="card"><div class="table-wrap table-wrap-sticky"><table>
     <thead><tr>
       <th class="pw-fz1">SIZE ROLL</th><th class="pw-fz2">ชุดสี</th>
@@ -15423,6 +15446,10 @@ async function initCloudSync() {
       .channel('app_state_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state', filter: 'id=eq.main' }, payload => {
         if (!payload.new || !payload.new.data) return;
+        // การเขียนของเครื่องนี้เองจะสะท้อนกลับมาเป็นอีเวนต์ด้วย (updated_at ตรงกับที่เพิ่งเขียนไป)
+        // ถ้าไม่ข้าม จะ applyState + วาดทุกหน้าใหม่ซ้ำอีกรอบทั้งที่ข้อมูลเหมือนเดิม
+        // ผลคือกดเลือกอะไรทีเดียวแล้วหน้าจอกระพริบ/เด้งสองครั้ง (ในหน้าน้ำหนักผลิตเห็นชัดสุด)
+        if (payload.new.updated_at && payload.new.updated_at === cloudUpdatedAt) return;
         cloudUpdatedAt = payload.new.updated_at || cloudUpdatedAt;
         applyState(payload.new.data);
         syncRollStatusWithProdBlock();
