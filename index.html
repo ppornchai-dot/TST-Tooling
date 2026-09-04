@@ -1812,14 +1812,15 @@ canvas{display:block;}
         <button class="btn btn-ghost history-type-btn" data-histtype="polish" aria-pressed="false" onclick="switchHistoryType('polish')">✦ ขัด Roll <span class="history-type-count" data-count-for="polish"></span></button>
       </div>
 
+      <!-- ช่วงวันที่อยู่ซ้ายสุด (อ่านคู่กับปุ่มเลือกวันด้านล่างที่เริ่มจากซ้ายเหมือนกัน) ช่องค้นหายืดเต็มที่เหลือ -->
       <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;">
+        <input type="date" class="form-input" id="history-date-from" style="width:150px;flex:0 0 auto;" onchange="renderHistory()">
+        <span style="align-self:center;color:var(--text-3);flex:0 0 auto;">—</span>
+        <input type="date" class="form-input" id="history-date-to" style="width:150px;flex:0 0 auto;" onchange="renderHistory()">
         <div class="search-bar" style="flex:1;margin-bottom:0;">
           <svg width="14" height="14" fill="none" stroke="var(--text-3)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input type="text" id="history-search" placeholder="ค้นหา WO / Tooling / ชื่อ Roll / ผู้ดำเนินการ..." oninput="renderHistory()">
         </div>
-        <input type="date" class="form-input" id="history-date-from" style="width:150px;" onchange="renderHistory()">
-        <span style="align-self:center;color:var(--text-3);">—</span>
-        <input type="date" class="form-input" id="history-date-to" style="width:150px;" onchange="renderHistory()">
       </div>
 
       <!-- ปุ่มเลือกดูรายวัน — กดวันที่ที่ต้องการดูได้เลย ไม่ต้องกรอกช่วงวันที่เอง (ดู renderHistoryDayChips) -->
