@@ -1812,7 +1812,7 @@ canvas{display:block;}
         <button class="btn btn-ghost history-type-btn" data-histtype="polish" aria-pressed="false" onclick="switchHistoryType('polish')">✦ ขัด Roll <span class="history-type-count" data-count-for="polish"></span></button>
       </div>
 
-      <!-- ช่วงวันที่อยู่ซ้ายสุด (อ่านคู่กับปุ่มเลือกวันด้านล่างที่เริ่มจากซ้ายเหมือนกัน) ช่องค้นหายืดเต็มที่เหลือ -->
+      <!-- ช่วงวันที่อยู่ซ้ายสุด ช่องค้นหายืดเต็มพื้นที่ที่เหลือ -->
       <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;">
         <input type="date" class="form-input" id="history-date-from" style="width:150px;flex:0 0 auto;" onchange="renderHistory()">
         <span style="align-self:center;color:var(--text-3);flex:0 0 auto;">—</span>
@@ -1823,8 +1823,6 @@ canvas{display:block;}
         </div>
       </div>
 
-      <!-- ปุ่มเลือกดูรายวัน — กดวันที่ที่ต้องการดูได้เลย ไม่ต้องกรอกช่วงวันที่เอง (ดู renderHistoryDayChips) -->
-      <div id="history-day-chips" style="margin-bottom:14px;"></div>
 
       <div class="card">
         <!-- ตรึงหัวตารางไว้ตอนเลื่อนดูประวัติย้อนหลัง (ดูคลาส .table-wrap-sticky) -->
@@ -14341,61 +14339,6 @@ function switchHistoryType(key) {
   renderHistory();
 }
 
-// ปุ่มเลือกดูรายวันของหน้าประวัติ — 1 ปุ่มต่อ 1 วันที่มีรายการ (ใหม่สุดอยู่ซ้าย)
-// กดปุ่มวันไหน = ดูเฉพาะวันนั้น · ปุ่ม "ทุกวัน" = ล้างตัวกรองวัน
-// เดิมต้องกรอกช่อง "จากวันที่/ถึงวันที่" เองทั้งสองช่องให้ตรงกันจึงจะดูวันเดียวได้
-// นับจำนวนรายการต่อวันไว้บนปุ่ม เห็นว่าวันไหนมีงานเยอะ/ไม่มีงานเลยไม่ต้องกดเข้าไปดู
-function renderHistoryDayChips(scopeRecords, fromIso, toIso) {
-  const el = document.getElementById('history-day-chips');
-  if (!el) return;
-  const byDay = {};
-  (scopeRecords || []).forEach(r => { if (r.date) byDay[r.date] = (byDay[r.date] || 0) + 1; });
-  const days = Object.keys(byDay).sort().reverse();   // ใหม่สุดก่อน ให้ตรงกับลำดับในตาราง
-  if (!days.length) { el.innerHTML = ''; return; }
-  const oneDay = fromIso && fromIso === toIso ? fromIso : null;
-  const chip = (on, label, sub, title, onclick) => `<button onclick="${onclick}" title="${escapeHtmlAttr(title)}"
-    style="display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:99px;cursor:pointer;white-space:nowrap;
-           font-size:12.5px;font-weight:800;border:1px solid ${on ? 'var(--accent)' : 'var(--border)'};
-           background:${on ? 'var(--accent)' : 'var(--bg-card)'};color:${on ? '#fff' : 'var(--text-2)'};">
-    ${escapeHtmlAttr(label)}${sub ? `<span style="font-size:11px;font-weight:700;opacity:${on ? '.85' : '.6'};">${escapeHtmlAttr(sub)}</span>` : ''}
-  </button>`;
-  const today = dailyTodayIso();
-  // ไม่มีปุ่ม "ทุกวัน" แยก — กดปุ่มวันที่กำลังดูอยู่ซ้ำ = เลิกกรอง กลับไปดูทุกวัน
-  el.innerHTML = `<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;align-items:center;">
-    <span style="flex:0 0 auto;font-size:11.5px;font-weight:800;color:var(--text-3);">เลือกวัน</span>
-    ${days.map(d => {
-      const dt = parseISODate(d);
-      const on = oneDay === d;
-      const label = dt.getDate() + ' ' + THAI_MONTHS_ABBR[dt.getMonth()] + (d === today ? ' (วันนี้)' : '');
-      return chip(on, label, String(byDay[d].toLocaleString()),
-        fmtDateThai(dt) + ' — ' + byDay[d].toLocaleString() + ' รายการ'
-          + (on ? ' (กำลังดูวันนี้ — กดซ้ำเพื่อดูทุกวัน)' : ' (กดเพื่อดูเฉพาะวันนี้)'),
-        on ? 'historyClearDay()' : jsCallAttr('historyViewDay', d));
-    }).join('')}
-  </div>`;
-}
-
-// ดูประวัติเฉพาะวันเดียว — ตั้งช่วงวันที่ให้เป็นวันนั้นทั้งต้นและปลาย
-// (กดจากหัวข้อวันในตาราง หรือจากที่อื่นที่อยากพามาดูวันนั้น)
-function historyViewDay(iso) {
-  const f = document.getElementById('history-date-from');
-  const t = document.getElementById('history-date-to');
-  if (f) f.value = iso || '';
-  if (t) t.value = iso || '';
-  renderHistory();
-  const el = document.getElementById('tbody-history');
-  if (el && el.scrollIntoView) { try { el.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) { /* เบราว์เซอร์เก่า */ } }
-}
-
-// กลับไปดูทุกวัน — ล้างช่วงวันที่ทั้งสองช่อง
-function historyClearDay() {
-  const f = document.getElementById('history-date-from');
-  const t = document.getElementById('history-date-to');
-  if (f) f.value = '';
-  if (t) t.value = '';
-  renderHistory();
-}
-
 function renderHistory() {
   const tbody = document.getElementById('tbody-history');
   if (!tbody) return;
@@ -14421,13 +14364,6 @@ function renderHistory() {
     el.textContent = inScope.filter(r => historyTypeMatches(r, key)).length.toLocaleString();
   });
   refreshHistoryTypeButtons();
-  // ปุ่มรายวัน — นับตามประเภท/คำค้นที่กรองอยู่ แต่ไม่สนช่วงวันที่
-  // (ไม่งั้นกดดูวันเดียวแล้วปุ่มวันอื่นหายหมด กดข้ามวันต่อไม่ได้)
-  renderHistoryDayChips(all.filter(r => {
-    if (!historyTypeMatches(r, typeFilter)) return false;
-    if (search && !`${r.wo} ${r.tooling} ${r.detail} ${r.who}`.toLowerCase().includes(search)) return false;
-    return true;
-  }), fromIso, toIso);
 
   const records = all.filter(r => {
     if (fromIso && r.date < fromIso) return false;
@@ -14455,7 +14391,7 @@ function renderHistory() {
 
   const dayHeader = (dateIso, list) => {
     const hrs = list.reduce((s, x) => s + (x.hours || 0), 0);
-    // หัวข้อวันเป็นแค่ตัวคั่น ไม่กดได้ — การเลือกดูรายวันใช้ปุ่มวันด้านบนตาราง (renderHistoryDayChips)
+    // หัวข้อวันเป็นแค่ตัวคั่น ไม่กดได้ — เลือกช่วงวันที่ดูได้จากช่อง "จากวันที่/ถึงวันที่" ด้านบน
     return `<tr><td colspan="8" style="background:var(--bg-panel);padding:11px 12px;border-top:2px solid var(--text-1);">
       <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);">
         <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(fmtDateThai(parseISODate(dateIso)))}
@@ -14498,7 +14434,7 @@ function renderHistory() {
   // ตัวหารนับเฉพาะประเภทที่บทบาทนี้เห็นได้ ไม่งั้นช่างจะเห็น "แสดง 10 จาก 19" ทั้งที่อีก 9 รายการไม่ใช่ของตัวเองและเข้าถึงไม่ได้
   const totalVisible = forcedType ? all.filter(r => historyTypeMatches(r, forcedType)).length : all.length;
   const label = document.getElementById('history-count-label');
-  // กรองอยู่วันเดียว = บอกไว้ให้รู้ (ทางออกอยู่ที่ปุ่มวันด้านบน กดปุ่มวันเดิมซ้ำเพื่อดูทุกวัน)
+  // กรองอยู่วันเดียว = บอกไว้ให้รู้ (ล้างได้จากช่องวันที่ด้านบน)
   const oneDay = fromIso && fromIso === toIso;
   label.innerHTML = `แสดง ${records.length} จาก ${totalVisible} รายการ`
     + (oneDay ? ` · <b style="color:var(--accent);">เฉพาะวันที่ ${escapeHtmlAttr(fmtDateThai(parseISODate(fromIso)))}</b>` : '');
