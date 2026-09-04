@@ -2606,7 +2606,7 @@ let inUseCalAll = false;
 
 function setInUseCalView(v) {
   inUseCalView = v;
-  if (v === 'day') inUseCalAll = false;   // ปฏิทินรายวันเป็นรายเดือนอยู่แล้ว
+  inUseCalAll = false;   // ทั้ง "รายวัน" และ "รายเดือน" ผูกกับเดือนที่เลือก จึงออกจากโหมดทั้งหมด
   renderInUseCalendar();
 }
 
@@ -2623,15 +2623,18 @@ function inUseCalViewTabsHtml() {
            border:1px solid ${on ? 'var(--accent)' : 'var(--border)'};
            background:${on ? 'var(--accent)' : 'transparent'};
            color:${on ? '#fff' : 'var(--text-2)'};">${label}</button>`;
+  // ลำดับปุ่ม: รายวัน → รายเดือน → ทั้งหมด (ละเอียดสุด → กว้างสุด)
+  // "รายเดือน"/"ทั้งหมด" = ไทม์ไลน์แยกรายเครื่อง ต่างกันที่ช่วงเวลาที่แสดง
   return `<span style="display:inline-flex;gap:5px;flex-wrap:wrap;">
-    ${tab(inUseCalView === 'machine' && !inUseCalAll, 'แยกรายเครื่อง',
-      'เห็นเป็นแท่งต่อเนื่องว่าแต่ละเครื่องใส่ชุด Roll ไหน ตั้งแต่วันไหนถึงวันไหน (เดือนที่เลือก)',
-      jsCallAttr('setInUseCalAll', false) + ';' + jsCallAttr('setInUseCalView', 'machine'))}
-    ${tab(inUseCalAll, 'ทั้งหมด',
-      'ไม่แยกเดือน — แสดงตั้งแต่วันแรกที่มีบันทึกถึงวันนี้ในแถบเดียว เห็นรอบการเปลี่ยนชุดข้ามเดือนได้',
-      jsCallAttr('setInUseCalAll', true))}
-    ${tab(inUseCalView === 'day' && !inUseCalAll, 'รายวัน', 'ปฏิทินเดือน — ดูว่าวันนั้นเดินขนาดไหนบ้าง',
+    ${tab(inUseCalView === 'day' && !inUseCalAll, 'รายวัน',
+      'ปฏิทินเดือนแบบช่องวัน — ดูว่าวันนั้นเดินขนาดไหน สีไหน กี่ตัน (กดยืนยันชุดสี/เครื่องได้)',
       jsCallAttr('setInUseCalView', 'day'))}
+    ${tab(inUseCalView === 'machine' && !inUseCalAll, 'รายเดือน',
+      'ไทม์ไลน์แยกรายเครื่องของเดือนที่เลือก — เห็นเป็นแท่งต่อเนื่องว่าชุดไหนใส่ตั้งแต่วันไหนถึงวันไหน',
+      jsCallAttr('setInUseCalView', 'machine'))}
+    ${tab(inUseCalAll, 'ทั้งหมด',
+      'ไทม์ไลน์แยกรายเครื่องแบบไม่แยกเดือน — ตั้งแต่วันแรกที่มีบันทึกถึงวันนี้ในแถบเดียว เห็นรอบที่คร่อมเดือนได้',
+      jsCallAttr('setInUseCalAll', true))}
   </span>`;
 }
 
