@@ -2363,11 +2363,13 @@ function inUseCalMonthDate() {
 function inUseCalNav(dir) {
   const m = inUseCalMonthDate();
   inUseCalMonth = new Date(m.getFullYear(), m.getMonth() + dir, 1);
+  inUseCalAll = false;   // เลือกเดือนแล้ว = ออกจากมุมมอง "ทั้งหมด"
   renderInUseCalendar();
 }
 function inUseCalToday() {
   const t = parseISODate(dailyTodayIso());
   inUseCalMonth = new Date(t.getFullYear(), t.getMonth(), 1);
+  inUseCalAll = false;
   renderInUseCalendar();
 }
 
@@ -2599,35 +2601,76 @@ function applyInUseCalConfirm(idx, machine) {
 // แถว = เครื่อง × หมวด (F/S/T) เพราะเครื่องหนึ่งใส่ 3 ชุดพร้อมกันและเปลี่ยนไม่พร้อมกัน
 // วันที่ไม่มีข้อมูล (หยุด/ไม่ได้เดินขนาดนี้) ไม่ตัดแท่ง เพราะ Roll ยังอยู่บนเครื่อง
 let inUseCalView = 'machine';   // 'machine' = ไทม์ไลน์รายเครื่อง · 'day' = ปฏิทินรายวันแบบเดิม
+// true = ไม่แยกเดือน แสดงตั้งแต่วันแรกที่มีบันทึกถึงวันนี้ในแถบเดียว (เห็นรอบการเปลี่ยนข้ามเดือนได้)
+let inUseCalAll = false;
 
 function setInUseCalView(v) {
   inUseCalView = v;
+  if (v === 'day') inUseCalAll = false;   // ปฏิทินรายวันเป็นรายเดือนอยู่แล้ว
+  renderInUseCalendar();
+}
+
+// ดูทั้งหมด (ไม่แยกเดือน) — ใช้ได้กับไทม์ไลน์เท่านั้น กดจากมุมมองรายวันให้สลับมาเอง
+function setInUseCalAll(on) {
+  inUseCalAll = !!on;
+  if (inUseCalAll) inUseCalView = 'machine';
   renderInUseCalendar();
 }
 
 function inUseCalViewTabsHtml() {
-  const tab = (v, label, title) => `<button onclick="${jsCallAttr('setInUseCalView', v)}" title="${escapeHtmlAttr(title)}"
+  const tab = (on, label, title, onclick) => `<button onclick="${onclick}" title="${escapeHtmlAttr(title)}"
     style="padding:3px 11px;border-radius:99px;cursor:pointer;font-size:12px;font-weight:800;white-space:nowrap;
-           border:1px solid ${inUseCalView === v ? 'var(--accent)' : 'var(--border)'};
-           background:${inUseCalView === v ? 'var(--accent)' : 'transparent'};
-           color:${inUseCalView === v ? '#fff' : 'var(--text-2)'};">${label}</button>`;
-  return `<span style="display:inline-flex;gap:5px;">
-    ${tab('machine', 'แยกรายเครื่อง', 'เห็นเป็นแท่งต่อเนื่องว่าแต่ละเครื่องใส่ชุด Roll ไหน ตั้งแต่วันไหนถึงวันไหน')}
-    ${tab('day', 'รายวัน', 'ปฏิทินเดือน — ดูว่าวันนั้นเดินขนาดไหนบ้าง')}
+           border:1px solid ${on ? 'var(--accent)' : 'var(--border)'};
+           background:${on ? 'var(--accent)' : 'transparent'};
+           color:${on ? '#fff' : 'var(--text-2)'};">${label}</button>`;
+  return `<span style="display:inline-flex;gap:5px;flex-wrap:wrap;">
+    ${tab(inUseCalView === 'machine' && !inUseCalAll, 'แยกรายเครื่อง',
+      'เห็นเป็นแท่งต่อเนื่องว่าแต่ละเครื่องใส่ชุด Roll ไหน ตั้งแต่วันไหนถึงวันไหน (เดือนที่เลือก)',
+      jsCallAttr('setInUseCalAll', false) + ';' + jsCallAttr('setInUseCalView', 'machine'))}
+    ${tab(inUseCalAll, 'ทั้งหมด',
+      'ไม่แยกเดือน — แสดงตั้งแต่วันแรกที่มีบันทึกถึงวันนี้ในแถบเดียว เห็นรอบการเปลี่ยนชุดข้ามเดือนได้',
+      jsCallAttr('setInUseCalAll', true))}
+    ${tab(inUseCalView === 'day' && !inUseCalAll, 'รายวัน', 'ปฏิทินเดือน — ดูว่าวันนั้นเดินขนาดไหนบ้าง',
+      jsCallAttr('setInUseCalView', 'day'))}
   </span>`;
 }
 
-// ข้อมูลของเดือนที่กำลังดู: เครื่อง → หมวด → วัน → { ชุด, สี, ยอดตัน, ค่าที่เดา }
-function inUseCalMonthData(year, month, daysInMonth) {
+// วันสุดท้ายที่มีบันทึกชุดสีที่เดิน — ใช้กำหนดปลายช่วงของมุมมอง "ทั้งหมด"
+function inUseCalLastIso() {
+  const days = Object.keys(rollRunColor || {}).filter(d => Object.keys(rollRunColor[d] || {}).length).sort();
+  return days.length ? days[days.length - 1] : null;
+}
+
+// รายการวันของช่วงที่กำลังดู — รายเดือน (ตามเดือนที่เลือก) หรือทั้งหมด (วันแรกที่บันทึก → วันนี้)
+function inUseCalDayList() {
+  const today = dailyTodayIso();
+  if (inUseCalAll) {
+    const start = inUseCalStartIso();
+    if (!start) return [];
+    const last = inUseCalLastIso();
+    const end = (last && last > today) ? last : today;
+    const out = [];
+    for (let d = start; d <= end; d = addDaysIso(d, 1)) out.push(d);
+    return out;
+  }
+  const m = inUseCalMonthDate();
+  const year = m.getFullYear(), month = m.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const out = [];
+  for (let d = 1; d <= daysInMonth; d++) out.push(toISODate(new Date(year, month, d)));
+  return out;
+}
+
+// ข้อมูลของช่วงที่กำลังดู: เครื่อง → หมวด → วัน → { ชุด, สี, ยอดตัน, ค่าที่เดา }
+function inUseCalRangeData(dayList) {
   const machineMap = inUseMachineMap();
   const startIso = inUseCalStartIso();
   const today = dailyTodayIso();
   const need = [];
   const cells = {};      // machine -> cat -> iso -> entry
   const machines = [];
-  for (let d = 1; d <= daysInMonth; d++) {
-    const iso = toISODate(new Date(year, month, d));
-    if (startIso && iso < startIso) continue;
+  dayList.forEach((iso, idx) => {
+    if (startIso && iso < startIso) return;
     if (iso <= today) need.push(iso);
     const running = inUseRunningSetsSafe(iso);
     inUseDayRunGroups(iso, running).forEach(([sizeLabel, list]) => {
@@ -2640,14 +2683,13 @@ function inUseCalMonthData(year, month, daysInMonth) {
         if (!cells[mc][cat]) cells[mc][cat] = {};
         cells[mc][cat][iso] = { set: x.set, colorKey: x.colorKey, sizeLabel,
           inferred: !!x.inferred, sure: !!info.sure, note: info.note || '',
-          kg: ((running.get(x.set) || {}).kg) || 0, day: d };
+          kg: ((running.get(x.set) || {}).kg) || 0, col: idx + 1 };
       });
     });
-  }
+  });
   // เรียงเครื่องตามลำดับในทะเบียน (P1→P4) เครื่องอื่นต่อท้าย "ไม่ทราบเครื่อง" ไว้ท้ายสุด
   machines.sort((a, b) => {
-    const rank = v => v === 'ไม่ทราบเครื่อง' ? 999
-      : (ROLL_MACHINES.indexOf(v) >= 0 ? ROLL_MACHINES.indexOf(v) : 500 + String(v).localeCompare('', 'th'));
+    const rank = v => v === 'ไม่ทราบเครื่อง' ? 999 : (ROLL_MACHINES.indexOf(v) >= 0 ? ROLL_MACHINES.indexOf(v) : 500);
     const ra = rank(a), rb = rank(b);
     return ra !== rb ? ra - rb : String(a).localeCompare(String(b), 'th');
   });
@@ -2663,13 +2705,13 @@ function inUseCalRuns(byIso) {
     const key = e.set + '|' + e.colorKey;
     const last = runs[runs.length - 1];
     if (last && last.key === key) {
-      last.to = iso; last.toDay = e.day; last.ranDays++; last.kg += e.kg;
+      last.to = iso; last.toCol = e.col; last.ranDays++; last.kg += e.kg;
       if (e.inferred) last.inferred = true;
       if (!e.sure) last.unsure = true;
       return;
     }
     runs.push({ key, set: e.set, colorKey: e.colorKey, sizeLabel: e.sizeLabel,
-      from: iso, to: iso, fromDay: e.day, toDay: e.day, ranDays: 1, kg: e.kg,
+      from: iso, to: iso, fromCol: e.col, toCol: e.col, ranDays: 1, kg: e.kg,
       inferred: !!e.inferred, unsure: !e.sure, note: e.note });
   });
   return runs;
@@ -2678,29 +2720,40 @@ function inUseCalRuns(byIso) {
 function renderInUseCalMachineTimeline() {
   const el = document.getElementById('inuse-cal-body');
   if (!el) return;
-  const m = inUseCalMonthDate();
-  const year = m.getFullYear(), month = m.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const data = inUseCalMonthData(year, month, daysInMonth);
+  const dayList = inUseCalDayList();
+  if (!dayList.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-3);padding:14px 4px;">ยังไม่มีบันทึกชุดสีที่เดินเลย</div>';
+    return;
+  }
+  const n = dayList.length;
+  const data = inUseCalRangeData(dayList);
   const today = data.today;
   const dayNames = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
-  const cols = `grid-template-columns:118px repeat(${daysInMonth}, minmax(30px, 1fr));`;
+  // ช่วงยาว (ดูทั้งหมด) ช่องแคบลงและใส่เลขวันเฉพาะบางวัน ไม่ให้เลขซ้อนกันจนอ่านไม่ออก
+  const cellW = n > 70 ? 14 : (n > 45 ? 20 : 30);
+  const labelEvery = n > 70 ? 5 : (n > 45 ? 2 : 1);
+  const cols = `grid-template-columns:118px repeat(${n}, minmax(${cellW}px, 1fr));`;
+  const dayCols = `grid-template-columns:repeat(${n}, minmax(${cellW}px, 1fr));`;
 
-  // หัวตาราง: เลขวัน + ชื่อวัน (วันหยุด/อาทิตย์พื้นเหลือง วันนี้ขอบน้ำเงิน)
   let head = `<div style="display:grid;${cols}gap:2px;position:sticky;top:0;z-index:2;background:var(--bg-card);padding-bottom:2px;">
     <div style="font-size:11px;font-weight:800;color:var(--text-3);align-self:end;">เครื่อง · หมวด</div>`;
-  for (let d = 1; d <= daysInMonth; d++) {
-    const iso = toISODate(new Date(year, month, d));
-    const dow = new Date(year, month, d).getDay();
+  dayList.forEach((iso, i) => {
+    const dt = parseISODate(iso);
+    const dow = dt.getDay();
+    const dnum = dt.getDate();
     const holiday = companyHolidays.find(x => x.date === iso);
     const off = dow === 0 || holiday;
-    head += `<div title="${escapeHtmlAttr(fmtDateThai(parseISODate(iso)) + (holiday ? ' · วันหยุด: ' + holiday.name : ''))}"
-      style="text-align:center;font-size:10px;line-height:1.25;padding:2px 0;border-radius:4px;
-             ${off ? 'background:#FDF3D8;' : ''}${iso === today ? 'outline:2px solid var(--accent);outline-offset:-2px;' : ''}">
-      <div style="color:var(--text-3);">${dayNames[dow]}</div>
-      <div style="font-weight:800;${iso === today ? 'color:var(--accent);' : ''}">${d}</div>
+    const firstOfMonth = dnum === 1 || i === 0;
+    const showNum = firstOfMonth || (i % labelEvery === 0) || iso === today;
+    head += `<div title="${escapeHtmlAttr(fmtDateThai(dt) + (holiday ? ' · วันหยุด: ' + holiday.name : ''))}"
+      style="text-align:center;font-size:${n > 45 ? 9 : 10}px;line-height:1.2;padding:2px 0;border-radius:4px;overflow:hidden;
+             ${off ? 'background:#FDF3D8;' : ''}${iso === today ? 'outline:2px solid var(--accent);outline-offset:-2px;' : ''}
+             ${firstOfMonth && i > 0 ? 'box-shadow:inset 2px 0 0 var(--accent);' : ''}">
+      ${n > 45 ? '' : `<div style="color:var(--text-3);">${dayNames[dow]}</div>`}
+      <div style="font-weight:800;${iso === today ? 'color:var(--accent);' : ''}">${showNum ? dnum : '·'}</div>
+      ${firstOfMonth ? `<div style="font-size:8px;font-weight:800;color:var(--accent);">${THAI_MONTHS_ABBR[dt.getMonth()]}</div>` : ''}
     </div>`;
-  }
+  });
   head += '</div>';
 
   const catOrder = ['Forming', 'Sizing', 'TH'];
@@ -2711,7 +2764,7 @@ function renderInUseCalMachineTimeline() {
         const dot = inUseColorDot(r.set, r.colorKey);
         const txt = rollColorTextOn(dot);
         const colorName = rollColorLabelFor(r.set, r.colorKey);
-        const span = r.toDay - r.fromDay + 1;
+        const span = r.toCol - r.fromCol + 1;
         const stillOn = r.to >= today;
         const ton = r.kg > 0 ? (Math.round(r.kg / 10) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' ต.' : '';
         const tips = [r.sizeLabel + ' ' + cat + ' · ' + colorName,
@@ -2719,19 +2772,21 @@ function renderInUseCalMachineTimeline() {
           'ครอบ ' + span + ' วัน · เดินงานจริง ' + r.ranDays + ' วัน' + (ton ? ' · ผลิตรวม ' + ton : '')];
         if (r.inferred) tips.push('บางวันยังไม่ได้บันทึกชุดสี ระบบอนุมานจากยอดผลิต (*)');
         if (r.unsure) tips.push('เครื่องเป็นค่าที่ระบบอ้างให้' + (r.note ? ' — ' + r.note : ''));
+        // แท่งแคบ (ช่วงยาว/ใส่วันเดียว) ใส่ตัวหนังสือไม่ลง เหลือแค่สีกับทูลทิป
+        const wide = span * cellW >= 78;
         return `<div title="${escapeHtmlAttr(tips.join(' · '))}"
-          style="grid-column:${r.fromDay + 1} / span ${span};display:flex;align-items:center;gap:4px;overflow:hidden;
-                 background:${dot};color:${txt};border-radius:5px;padding:2px 5px;font-size:10px;font-weight:800;
+          style="grid-column:${r.fromCol} / span ${span};display:flex;align-items:center;gap:4px;overflow:hidden;
+                 background:${dot};color:${txt};border-radius:5px;padding:2px ${wide ? 5 : 1}px;font-size:10px;font-weight:800;
                  box-shadow:inset 0 0 0 1px rgba(0,0,0,.22);${stillOn ? 'border-right:3px solid var(--accent);' : ''}">
-          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${
+          ${wide ? `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${
             escapeHtmlAttr(inUseCalSizeShort(r.sizeLabel))} · ${escapeHtmlAttr(colorName)}${r.inferred ? '*' : ''}</span>
-          <span style="flex:0 0 auto;opacity:.85;font-weight:700;">${span} วัน${stillOn ? ' · ยังใส่อยู่' : ''}</span>
+          <span style="flex:0 0 auto;opacity:.85;font-weight:700;">${span} วัน${stillOn ? ' · ยังใส่อยู่' : ''}</span>` : ''}
         </div>`;
       }).join('');
       const catColor = ROLL_SET_SECTION_COLORS[cat] || 'var(--text-2)';
       return `<div style="display:grid;${cols}gap:2px;align-items:center;margin-bottom:3px;">
         <div style="font-size:11px;font-weight:800;color:${catColor};padding-left:8px;">${escapeHtmlAttr(cat)}</div>
-        <div style="grid-column:2 / -1;display:grid;grid-template-columns:repeat(${daysInMonth}, minmax(30px, 1fr));gap:2px;min-height:20px;">
+        <div style="grid-column:2 / -1;display:grid;${dayCols}gap:2px;min-height:20px;">
           ${bars || `<div style="grid-column:1 / -1;font-size:10px;color:var(--text-3);">—</div>`}
         </div>
       </div>`;
@@ -2741,19 +2796,21 @@ function renderInUseCalMachineTimeline() {
         <span style="font-size:12px;font-weight:800;padding:2px 10px;border-radius:6px;background:var(--accent);color:#fff;">${
           mc === 'ไม่ทราบเครื่อง' ? 'ไม่ทราบเครื่อง' : 'เครื่อง ' + escapeHtmlAttr(mc)}</span>
       </div>
-      ${rows || '<div style="font-size:11px;color:var(--text-3);padding-left:8px;">ไม่มีข้อมูลในเดือนนี้</div>'}
+      ${rows || '<div style="font-size:11px;color:var(--text-3);padding-left:8px;">ไม่มีข้อมูลในช่วงนี้</div>'}
     </div>`;
   }).join('');
 
   el.innerHTML = `<div style="font-size:11px;color:var(--text-3);line-height:1.6;margin:0 0 10px;">
       แท่งหนึ่งแท่ง = ชุด Roll หนึ่งชุดที่ใส่อยู่บนเครื่องนั้นต่อเนื่อง — ยาวเท่าไรคือใส่กี่วัน รอยต่อระหว่างแท่งคือวันที่เปลี่ยนชุด<br>
       สีของแท่ง = สีชุด Roll · <b>ขอบขวาน้ำเงิน</b> = ยังใส่อยู่ถึงวันนี้ · <b>*</b> = บางวันยังไม่ได้บันทึกชุดสี ระบบอนุมานจากยอดผลิต ·
-      วันหยุด/วันที่ไม่ได้เดินขนาดนี้ไม่ตัดแท่ง เพราะ Roll ยังอยู่บนเครื่อง (ชี้ค้างที่แท่งเพื่อดูวันเริ่ม–สิ้นสุดและยอดผลิตรวม)
+      วันหยุด/วันที่ไม่ได้เดินขนาดนี้ไม่ตัดแท่ง เพราะ Roll ยังอยู่บนเครื่อง (ชี้ค้างที่แท่งเพื่อดูวันเริ่ม–สิ้นสุดและยอดผลิตรวม)${
+        inUseCalAll ? '<br><b style="color:var(--accent);">มุมมองทั้งหมด</b> — ' + escapeHtmlAttr(fmtDateThai(parseISODate(dayList[0]))
+          + ' ถึง ' + fmtDateThai(parseISODate(dayList[n - 1])) + ' (' + n + ' วัน)') + ' · เส้นน้ำเงินบางในหัวตาราง = วันที่ 1 ของเดือนใหม่' : ''}
     </div>
-    <div style="overflow-x:auto;"><div style="min-width:${118 + daysInMonth * 32}px;">
+    <div style="overflow-x:auto;"><div style="min-width:${118 + n * (cellW + 2)}px;">
       ${head}
-      ${body || '<div style="font-size:12px;color:var(--text-3);padding:14px 4px;">ยังไม่มีบันทึกชุดสีที่เดินในเดือนนี้</div>'}
-    </div></div>${data.startIso && toISODate(new Date(year, month, 1)) < data.startIso
+      ${body || '<div style="font-size:12px;color:var(--text-3);padding:14px 4px;">ยังไม่มีบันทึกชุดสีที่เดินในช่วงนี้</div>'}
+    </div></div>${!inUseCalAll && data.startIso && dayList[0] < data.startIso
       ? `<div class="muted" style="font-size:11.5px;margin-top:8px;">เริ่มบันทึกชุดสีที่เดินรายวันตั้งแต่ ${
           escapeHtmlAttr(fmtDateThai(parseISODate(data.startIso)))} — วันก่อนหน้านั้นไม่แสดง</div>`
       : ''}`;
@@ -2766,9 +2823,19 @@ function renderInUseCalendar() {
   if (!el) return;
   // ตั้งชื่อเดือนก่อนแยกทาง เพราะทั้งสองมุมมองใช้หัวเดียวกัน
   {
-    const mm = inUseCalMonthDate();
     const lb = document.getElementById('inuse-cal-label');
-    if (lb) lb.textContent = THAI_MONTHS_FULL[mm.getMonth()] + ' ' + (mm.getFullYear() + 543);
+    if (lb) {
+      if (inUseCalAll) {
+        // ไม่แยกเดือน — บอกช่วงจริงที่กำลังแสดงแทนชื่อเดือน
+        const ds = inUseCalDayList();
+        lb.textContent = ds.length
+          ? fmtDateThaiShort(parseISODate(ds[0])) + ' – ' + fmtDateThai(parseISODate(ds[ds.length - 1]))
+          : 'ทั้งหมด';
+      } else {
+        const mm = inUseCalMonthDate();
+        lb.textContent = THAI_MONTHS_FULL[mm.getMonth()] + ' ' + (mm.getFullYear() + 543);
+      }
+    }
   }
   // ปุ่มสลับมุมมองอยู่บนหัวการ์ด (นอก #inuse-cal-body) จึงเรนเดอร์แยก
   {
