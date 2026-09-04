@@ -6163,6 +6163,54 @@ function addPlanTaskOnDate(dateIso, workType, shiftKey) {
   openPlanTaskModal('add', null, dateIso, preset);
 }
 
+// ─── งานแทรกในหน้าวางแผน (ใช้ร่วมกันทั้งรายวัน / รายสัปดาห์ / รายเดือน) ──────
+// งานแทรก (dailyChecklistTasks) คืองานที่เพิ่มจากหน้างานประจำวัน ไม่มีเวลาตามแผน/ไม่มี Roll ในทะเบียน
+// แต่กินเวลาช่างจริง จึงต้องเห็นในหน้าวางแผนทุกมุมมอง ไม่ใช่เห็นแค่หน้างานประจำวัน
+// date ว่าง = งานที่ทำซ้ำทุกวัน · ไม่ระบุประเภท = ถือเป็นงานแต่ง Roll (CNC) เหมือนหน้างานประจำวัน
+// shiftKey ส่งมาเมื่อหมวดนั้นแยกกะ (CNC เช้า/ดึก) — ยึดกะจากเวลาที่เริ่มจริง ไม่รู้ก็ไปกะแรก
+function planInsertTasksFor(iso, sectionKey, shiftKey) {
+  const shifts = planDayEndShiftsFor('cnc');
+  return (dailyChecklistTasks || []).filter(t => {
+    if (t.date && t.date !== iso) return false;
+    if ((t.workType === 'polish' ? 'polish' : 'cnc') !== sectionKey) return false;
+    if (!shiftKey) return true;
+    const at = ((dailyActualTimes[iso] || {})[t.id] || {}).startTime || t.time || null;
+    return (shiftKeyForTime(at) || shifts[0]) === shiftKey;
+  });
+}
+
+// สถานะของงานแทรกในวันนั้น — ใช้ทั้งแถวในตารางรายวันและชิปในปฏิทิน
+function planInsertStatusMeta(iso, t) {
+  const st = ((dailyStatusByDate[iso] || {})[t.id]) || null;
+  if (st === 'done') return { label: 'เสร็จแล้ว', chip: 'chip-green' };
+  if (st === 'in_progress') return { label: 'กำลังทำ', chip: 'chip-blue' };
+  return null;
+}
+
+// ชิปงานแทรกในปฏิทินรายสัปดาห์/รายเดือน — พื้นเหลืองเหมือนแถวในตารางรายวัน
+// กดที่ชิปเพื่อแก้ไขงานแทรกนั้นได้เลย (ไม่ให้ทะลุไปเปิดแผนของวันด้วย stopPropagation)
+function planInsertChipHtml(iso, t) {
+  const stMeta = planInsertStatusMeta(iso, t);
+  const actual = (dailyActualTimes[iso] || {})[t.id] || {};
+  const at = actual.startTime || t.time || '';
+  const tips = ['งานแทรก: ' + (t.task || '—'),
+    t.ref && t.ref !== '—' ? 'อ้างอิง ' + t.ref : '',
+    t.who ? 'ผู้ปฏิบัติงาน ' + t.who : '',
+    at ? 'เริ่ม ' + at + (actual.endTime ? ' – ' + actual.endTime : '') : '',
+    stMeta ? stMeta.label : 'ยังไม่เริ่ม',
+    canEditPlan() ? 'กดเพื่อแก้ไขงานแทรก' : ''].filter(Boolean);
+  return `<div ${canEditPlan() ? `onclick="event.stopPropagation();${jsCallAttr('openDailyChecklistModal', 'edit', t.id)}" style="cursor:pointer;` : 'style="'}
+      display:flex;align-items:center;gap:4px;background:var(--amber-dim);border:1px solid var(--amber);
+      border-radius:5px;padding:2px 5px;font-size:10.5px;line-height:1.35;"
+    title="${escapeHtmlAttr(tips.join(' · '))}">
+    <span style="flex:0 0 auto;font-size:9px;font-weight:800;color:var(--amber);">แทรก</span>
+    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700;color:var(--text-1);">${
+      escapeHtmlAttr(t.task || '—')}</span>
+    ${stMeta ? `<span style="flex:0 0 auto;font-size:9px;font-weight:800;color:${stMeta.chip === 'chip-green' ? 'var(--green)' : 'var(--accent)'};">${
+      stMeta.chip === 'chip-green' ? '✓' : '●'}</span>` : ''}
+  </div>`;
+}
+
 function renderPlanDay() {
   const iso = toISODate(planViewDate);
   document.getElementById('plan-daterange-label').textContent = fmtDateThai(planViewDate);
@@ -6235,14 +6283,10 @@ function renderPlanDay() {
   // งานแทรกที่เพิ่มจากหน้างานประจำวัน (dailyChecklistTasks) — เอามาแสดงในตารางแผนงานด้วย
   // เพราะเป็นงานที่ช่างทำจริงในวันนั้น ถ้าไม่เห็นในตารางนี้ หัวหน้าจะวางแผนโดยไม่รู้ว่ามีงานแทรกอยู่
   // แสดงเป็นแถวอ่านค่า (ไม่มีเวลาตามแผน/ไม่มี Roll ในทะเบียน) แก้/ลบผ่านตัวจัดการเช็คลิสต์ตัวเดิม
-  // ของที่ไม่ระบุประเภทถือเป็นงานแต่ง Roll (CNC) เหมือนหน้างานประจำวัน
-  const cncShifts = planDayEndShiftsFor('cnc');
-  const insertItems = (dailyChecklistTasks || []).filter(t => !t.date || t.date === iso);
+  // ของที่ไม่ระบุประเภทถือเป็นงานแต่ง Roll (CNC) เหมือนหน้างานประจำวัน (ดู planInsertTasksFor)
   const insertRowFor = t => {
-    const st = ((dailyStatusByDate[iso] || {})[t.id]) || null;
     const actual = (dailyActualTimes[iso] || {})[t.id] || {};
-    const stMeta = st === 'done' ? { label: 'เสร็จแล้ว', chip: 'chip-green' }
-      : st === 'in_progress' ? { label: 'กำลังทำ', chip: 'chip-blue' } : null;
+    const stMeta = planInsertStatusMeta(iso, t);
     return `<tr data-taskid="${escapeHtmlAttr(t.id)}" style="background:var(--amber-dim);">
       <td class="muted" style="white-space:nowrap;"><span class="chip chip-amber" title="งานแทรกที่เพิ่มจากหน้างานประจำวัน">แทรก</span></td>
       <td class="muted">—</td>
@@ -6259,19 +6303,10 @@ function renderPlanDay() {
         : '<span class="muted">—</span>'}</td>
     </tr>`;
   };
-  // งานแทรกของหมวดนี้ (และของกะนั้น ถ้าหมวดแยกกะ) — ไม่รู้กะก็ให้ไปอยู่กะแรก
-  const insertItemsFor = s => insertItems.filter(t => {
-    const key = t.workType === 'polish' ? 'polish' : 'cnc';
-    if (key !== s.key) return false;
-    if (!s.shiftKey) return true;
-    const at = ((dailyActualTimes[iso] || {})[t.id] || {}).startTime || t.time || null;
-    return (shiftKeyForTime(at) || cncShifts[0]) === s.shiftKey;
-  });
-
   dayBody.innerHTML = daySections.map(s => {
     const items = tasks.filter(t => planTaskSectionKey(t) === s.key
       && (!s.shiftKey || taskSessionShiftKey(t) === s.shiftKey));
-    const inserts = insertItemsFor(s);
+    const inserts = planInsertTasksFor(iso, s.key, s.shiftKey);
     return planSectionHeaderRow(s, 9, planSectionCount(partsByDate, s.key, [iso], s.shiftKey), iso)
       + (items.length ? items.map((t, i) => rowHtmlFor(t, i, s)).join('')
         : (inserts.length ? '' : `<tr><td colspan="9" style="padding:14px;text-align:center;color:var(--text-3);font-size:12.5px;">${escapeHtmlAttr(s.empty)}</td></tr>`))
@@ -6364,10 +6399,12 @@ function renderPlanWeek() {
         const items = tasks.map(t => planDragWrap(t, iso,
           `${planCalendarChip(t, editable, 'flex:1;min-width:0;')}${editable ? `<button title="ลบ" onclick="deletePlanTask('${t.id}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:11px;padding:0;flex:0 0 auto;">✕</button>` : ''}`,
           editable)).join('');
+        // งานแทรกของวันนั้น (หมวดเดียวกัน) — ต่อท้ายชิปงานตามแผน
+        const inserts = planInsertTasksFor(iso, s.key, null).map(t => planInsertChipHtml(iso, t)).join('');
         return `<td onclick="planOpenDayFromCell(event, '${iso}')" style="min-width:110px;cursor:pointer;"
           title="${escapeHtmlAttr('กดที่ช่องนี้เพื่อเปิดแผนของวัน ' + fmtDateThaiShort(d))}">
           <div class="plan-drop-zone" data-day="${iso}" style="display:flex;flex-direction:column;gap:4px;min-height:30px;">
-            ${items || '<span class="muted">—</span>'}
+            ${items || (inserts ? '' : '<span class="muted">—</span>')}${inserts}
             <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
               ${editable ? `<button class="btn btn-ghost btn-sm" style="padding:2px 6px;font-size:11px;" onclick="${jsCallAttr('addPlanTaskOnDate', iso, s.key)}">+ เพิ่ม</button>` : ''}
               ${planDayCellSettingsHtml(iso, s.key, s.color, s.bg, true)}
@@ -6419,7 +6456,9 @@ function renderPlanMonth() {
       // (วันอาทิตย์ที่ตั้งเป็นวันหยุดพิเศษด้วย ยังขึ้นชื่อวันหยุดนั้นตามปกติ)
       const offLabel = holidayName || '';
       const tasks = (partsByDate.get(iso) || []).filter(t => planTaskSectionKey(t) === s.key);
-      const chips = tasks.map(t => planDragWrap(t, iso, planCalendarChip(t, editable, 'flex:1;min-width:0;'), editable)).join('');
+      // งานแทรกของวันนั้น (หมวดเดียวกัน) — ต่อท้ายชิปงานตามแผน เห็นในปฏิทินรายเดือนด้วย
+      const chips = tasks.map(t => planDragWrap(t, iso, planCalendarChip(t, editable, 'flex:1;min-width:0;'), editable)).join('')
+        + planInsertTasksFor(iso, s.key, null).map(t => planInsertChipHtml(iso, t)).join('');
       html += `<div onclick="planOpenDayFromCell(event, '${iso}')"
         style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;cursor:pointer;${dayOffBg}${offLabel ? 'display:flex;flex-direction:column;' : ''}"
         title="${escapeHtmlAttr((offLabel ? 'วันหยุด: ' + offLabel + ' · ' : '') + 'กดที่ช่องนี้เพื่อเปิดแผนของวันนี้')}">
