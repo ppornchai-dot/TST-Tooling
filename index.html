@@ -10029,6 +10029,21 @@ function fgKeyedDateIso(row) {
   return new Date(t.getTime() + 7 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
+// เครื่องของ "ชุดสีหนึ่ง" สำหรับวันที่กำลังระบุ — คืน { machine, kind } หรือ null
+// kind: run = บันทึกไว้ว่าเดินเครื่องนี้วันนั้น · prev = ของวันที่เดินล่าสุด · inuse = ตามสถานะกำลังใช้งาน
+function runColorMachineFor(dateIso, setName, colorKey) {
+  const onDay = (rollRunMachine[dateIso] || {})[setName];
+  if (onDay && (rollRunColor[dateIso] || {})[setName] === colorKey) return { machine: onDay, kind: 'run' };
+  const prev = prevDayRunColorFor(dateIso, setName);
+  if (prev && prev.key === colorKey) {
+    const m = (rollRunMachine[prev.from] || {})[setName];
+    if (m) return { machine: m, kind: 'prev', from: prev.from };
+  }
+  const inuseMc = rollColorActiveMachineFor(setName, colorKey);
+  if (inuseMc) return { machine: inuseMc, kind: 'inuse' };
+  return null;
+}
+
 // วันผลิตของแถวหนึ่ง — ระบบ Production ส่ง production_date ว่างมาได้ (มัดที่คีย์ทีหลัง
 // ของ MO ที่เดินจบไปแล้ว เช่น b-4872/b-4873 ของ MO-2608-204 คีย์ 2 ก.ย. 09:40 น.
 // รวม 2.06 ตัน — ขอเป็นช่วงจะได้ production_date = 1 ก.ย. แต่ขอวันเดียวได้ค่าว่าง)
@@ -10236,6 +10251,9 @@ function renderRunColorPicker() {
           // ห่างมากี่วันแล้ว — ช่วยให้เห็นว่าชุดนี้หยุดไปนานแค่ไหน ไม่ใช่ของเมื่อวาน
           const prevDaysAgo = !prev ? 0 : Math.round((parseISODate(d) - parseISODate(prev.from)) / 86400000);
           const prevColorName = !prev ? '' : ((palette.find(c => c.key === prev.key) || {}).label || prev.key);
+          // เครื่องที่เดินของวันอ้างอิง (ถ้าเคยบันทึกไว้) — บอกไปในบรรทัดคำอธิบายด้วย
+          const prevMachine = !prev ? null : ((rollRunMachine[prev.from] || {})[setName] || null);
+          const prevMachineText = prevMachine ? ' ที่เครื่อง ' + escapeHtmlAttr(prevMachine) : '';
           // โหมดเจาะจงชุดที่เดินงาน: บอกด้วยว่าเดินอยู่เครื่องไหน และวันนั้นผลิตไปกี่ตัน
           const runInfo = scope && scope.info ? scope.info.get(setName) : null;
           const runBadge = !runInfo ? '' : `<span style="flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--text-3);">
@@ -10258,6 +10276,15 @@ function renderRunColorPicker() {
                 const isPrevRef = !isExplicit && !!prev && prev.key === c.key;
                 const onColor = isPrevRef ? 'var(--amber)' : 'var(--accent)';
                 const n = setRolls.filter(r => (r.color || NO_COLOR_KEY) === c.key).length;
+                // ชุดสีนี้อยู่เครื่องไหน — ขนาดที่ผูก 2 เครื่องจะได้รู้ว่าสีไหนของเครื่องไหน
+                const mcInfo = runColorMachineFor(d, setName, c.key);
+                const mcKindText = !mcInfo ? '' : (mcInfo.kind === 'run' ? 'บันทึกไว้ว่าวันนี้เดินที่เครื่องนี้'
+                  : mcInfo.kind === 'prev' ? 'เครื่องที่เดินครั้งล่าสุด (' + fmtDateThaiShort(parseISODate(mcInfo.from)) + ')'
+                  : 'เครื่องที่ตั้งไว้ว่ากำลังใช้งานในทะเบียน');
+                const mcTag = !mcInfo ? '' : `<span title="${escapeHtmlAttr(mcKindText)}"
+                  style="flex:0 0 auto;font-size:9.5px;font-weight:800;padding:0 5px;border-radius:99px;
+                         background:${mcInfo.kind === 'inuse' ? 'var(--bg-panel)' : 'var(--accent)'};
+                         color:${mcInfo.kind === 'inuse' ? 'var(--text-3)' : '#fff'};">${escapeHtmlAttr(mcInfo.machine)}</span>`;
                 return `<button onclick="${jsCallAttr('setRunColor', d, setName, c.key)}"
                   title="${escapeHtmlAttr(isExplicit ? 'ระบุไว้ว่าวันนี้เดินด้วย' + c.label + ' — กดซ้ำเพื่อยกเลิก'
                     : (on ? c.label + ' — ค่าอ้างอิง' + (prev ? ' จากวันที่ ' + fmtDateThaiShort(parseISODate(prev.from)) + ' (ชุดเดิม)' : ' จากสถานะกำลังใช้งาน')
@@ -10268,13 +10295,13 @@ function renderRunColorPicker() {
                          background:${isExplicit ? 'var(--accent-glow)' : (isPrevRef ? 'var(--amber-dim)' : 'transparent')};
                          color:${on ? onColor : 'var(--text-2)'};">
                   <span style="width:11px;height:11px;border-radius:50%;background:${c.dot};flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.32);"></span>${escapeHtmlAttr(c.label)}
-                  <span style="opacity:.6;font-weight:600;">${n}</span>${isExplicit ? ' ✓ ยืนยันแล้ว' : ''}${
+                  ${mcTag}<span style="opacity:.6;font-weight:600;">${n}</span>${isExplicit ? ' ✓ ยืนยันแล้ว' : ''}${
                     isPrevRef ? ` · ${escapeHtmlAttr(prevLabel)}` : ''}</button>`;
               }).join('') || '<span style="font-size:11px;color:var(--text-3);">ไม่มีชุดสีในกลุ่มนี้</span>'}
               ${!explicit && prev ? `<span style="flex-basis:100%;font-size:11px;font-weight:700;color:var(--amber);">
                   ${prevIsYesterday
-                    ? `เมื่อวาน (${escapeHtmlAttr(prevDateText)}) เดิน ${escapeHtmlAttr(prevColorName)}`
-                    : `ชุดนี้เดินครั้งล่าสุด ${escapeHtmlAttr(prevDateText)} (${prevDaysAgo} วันก่อน) ด้วย ${escapeHtmlAttr(prevColorName)} — เมื่อวานชุดนี้ไม่ได้เดิน`} —
+                    ? `เมื่อวาน (${escapeHtmlAttr(prevDateText)}) เดิน ${escapeHtmlAttr(prevColorName)}${prevMachineText}`
+                    : `ชุดนี้เดินครั้งล่าสุด ${escapeHtmlAttr(prevDateText)} (${prevDaysAgo} วันก่อน) ด้วย ${escapeHtmlAttr(prevColorName)}${prevMachineText} — เมื่อวานชุดนี้ไม่ได้เดิน`} —
                   ถ้าวันนี้เดินชุดเดิม กดปุ่มนั้นเพื่อยืนยัน</span>`
                 : (!explicit && inuse ? '<span style="flex-basis:100%;font-size:11px;color:var(--text-3);">ยังไม่มีประวัติของชุดนี้ — ค่าอ้างอิงมาจากสถานะ กำลังใช้งาน ในทะเบียน</span>' : '')}
               ${!effective ? '<span style="font-size:10px;color:var(--red);">ยังไม่มีชุดที่กำลังใช้งาน</span>' : ''}
