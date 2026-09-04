@@ -1485,8 +1485,10 @@ canvas{display:block;}
 
       <!-- ปฏิทินย้อนหลัง: แต่ละวันเดินชุด Roll ขนาดไหน สีไหน (จากบันทึกชุดสีที่เดินรายวัน) -->
       <div class="card" style="margin-top:18px;">
-        <div class="card-header">
-          <span class="card-title" style="font-size:17px;">ปฏิทินชุด Roll ที่เดินงาน</span>
+        <div class="card-header" style="flex-wrap:wrap;row-gap:8px;">
+          <span class="card-title" style="font-size:17px;white-space:nowrap;">ปฏิทินชุด Roll ที่เดินงาน</span>
+          <!-- ปุ่มสลับมุมมอง (แยกรายเครื่อง / รายวัน) — วางไว้บนหัวการ์ดให้เห็นตลอดทั้งสองมุมมอง -->
+          <span id="inuse-cal-view-tabs" style="display:inline-flex;align-items:center;gap:5px;margin-left:12px;"></span>
           <span style="margin-left:auto;display:inline-flex;align-items:center;gap:8px;">
             <button class="btn btn-ghost btn-sm" onclick="inUseCalNav(-1)" title="เดือนก่อนหน้า">‹</button>
             <span id="inuse-cal-label" style="font-size:14px;font-weight:800;min-width:120px;text-align:center;"></span>
@@ -2743,8 +2745,7 @@ function renderInUseCalMachineTimeline() {
     </div>`;
   }).join('');
 
-  el.innerHTML = `${inUseCalViewTabsHtml()}
-    <div style="font-size:11px;color:var(--text-3);line-height:1.6;margin:8px 0 10px;">
+  el.innerHTML = `<div style="font-size:11px;color:var(--text-3);line-height:1.6;margin:0 0 10px;">
       แท่งหนึ่งแท่ง = ชุด Roll หนึ่งชุดที่ใส่อยู่บนเครื่องนั้นต่อเนื่อง — ยาวเท่าไรคือใส่กี่วัน รอยต่อระหว่างแท่งคือวันที่เปลี่ยนชุด<br>
       สีของแท่ง = สีชุด Roll · <b>ขอบขวาน้ำเงิน</b> = ยังใส่อยู่ถึงวันนี้ · <b>*</b> = บางวันยังไม่ได้บันทึกชุดสี ระบบอนุมานจากยอดผลิต ·
       วันหยุด/วันที่ไม่ได้เดินขนาดนี้ไม่ตัดแท่ง เพราะ Roll ยังอยู่บนเครื่อง (ชี้ค้างที่แท่งเพื่อดูวันเริ่ม–สิ้นสุดและยอดผลิตรวม)
@@ -2768,6 +2769,11 @@ function renderInUseCalendar() {
     const mm = inUseCalMonthDate();
     const lb = document.getElementById('inuse-cal-label');
     if (lb) lb.textContent = THAI_MONTHS_FULL[mm.getMonth()] + ' ' + (mm.getFullYear() + 543);
+  }
+  // ปุ่มสลับมุมมองอยู่บนหัวการ์ด (นอก #inuse-cal-body) จึงเรนเดอร์แยก
+  {
+    const tb = document.getElementById('inuse-cal-view-tabs');
+    if (tb) tb.innerHTML = inUseCalViewTabsHtml();
   }
   // คำอธิบายกล่องบนเป็นของมุมมองรายวัน — ซ่อนตอนดูไทม์ไลน์ (ไทม์ไลน์มีคำอธิบายของตัวเอง)
   {
@@ -2878,8 +2884,7 @@ function renderInUseCalendar() {
     </div>`;
   }
 
-  el.innerHTML = inUseCalViewTabsHtml() + `<div style="height:10px;"></div>
-    <div style="overflow-x:auto;"><div style="min-width:1120px;">
+  el.innerHTML = `<div style="overflow-x:auto;"><div style="min-width:1120px;">
       <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px;">
         ${dayNames.map(n => `<div style="text-align:center;font-size:11px;font-weight:800;color:var(--text-3);">${n}</div>`).join('')}
       </div>
