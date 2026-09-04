@@ -14337,6 +14337,27 @@ function switchHistoryType(key) {
   renderHistory();
 }
 
+// ดูประวัติเฉพาะวันเดียว — ตั้งช่วงวันที่ให้เป็นวันนั้นทั้งต้นและปลาย
+// (กดจากหัวข้อวันในตาราง หรือจากที่อื่นที่อยากพามาดูวันนั้น)
+function historyViewDay(iso) {
+  const f = document.getElementById('history-date-from');
+  const t = document.getElementById('history-date-to');
+  if (f) f.value = iso || '';
+  if (t) t.value = iso || '';
+  renderHistory();
+  const el = document.getElementById('tbody-history');
+  if (el && el.scrollIntoView) { try { el.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) { /* เบราว์เซอร์เก่า */ } }
+}
+
+// กลับไปดูทุกวัน — ล้างช่วงวันที่ทั้งสองช่อง
+function historyClearDay() {
+  const f = document.getElementById('history-date-from');
+  const t = document.getElementById('history-date-to');
+  if (f) f.value = '';
+  if (t) t.value = '';
+  renderHistory();
+}
+
 function renderHistory() {
   const tbody = document.getElementById('tbody-history');
   if (!tbody) return;
@@ -14389,9 +14410,19 @@ function renderHistory() {
 
   const dayHeader = (dateIso, list) => {
     const hrs = list.reduce((s, x) => s + (x.hours || 0), 0);
+    // กดหัวข้อวันเพื่อดูเฉพาะวันนั้น (ตั้งช่วงวันที่ให้เป็นวันเดียว) — กดซ้ำเพื่อกลับไปดูทุกวัน
+    // เดิมต้องไปกรอกช่อง "จากวันที่/ถึงวันที่" เองทั้งสองช่องเพื่อดูวันเดียว
+    const onlyThisDay = fromIso === dateIso && toIso === dateIso;
     return `<tr><td colspan="8" style="background:var(--bg-panel);padding:11px 12px;border-top:2px solid var(--text-1);">
-      <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);">
-        <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(fmtDateThai(parseISODate(dateIso)))}
+      <span onclick="${jsCallAttr(onlyThisDay ? 'historyClearDay' : 'historyViewDay', dateIso)}"
+        title="${escapeHtmlAttr(onlyThisDay ? 'กำลังดูเฉพาะวันนี้ — กดเพื่อกลับไปดูทุกวัน'
+          : 'กดเพื่อดูเฉพาะวันที่ ' + fmtDateThai(parseISODate(dateIso)))}"
+        style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;cursor:pointer;
+               padding:2px 9px;margin-left:-9px;border-radius:99px;
+               color:${onlyThisDay ? '#fff' : 'var(--text-1)'};background:${onlyThisDay ? 'var(--accent)' : 'transparent'};">
+        <span style="width:10px;height:10px;border-radius:50%;background:${onlyThisDay ? '#fff' : 'var(--text-1)'};"></span>${
+          escapeHtmlAttr(fmtDateThai(parseISODate(dateIso)))}
+        <span style="font-size:11px;font-weight:700;opacity:.75;">${onlyThisDay ? '× ดูทุกวัน' : '▾ ดูเฉพาะวันนี้'}</span>
       </span>
       <span style="float:right;font-size:12px;font-weight:700;color:var(--text-3);">${list.length.toLocaleString()} รายการ${
         hrs ? ' · ' + (Math.round(hrs * 10) / 10).toLocaleString() + ' ชม.' : ''}</span>
@@ -14430,7 +14461,13 @@ function renderHistory() {
 
   // ตัวหารนับเฉพาะประเภทที่บทบาทนี้เห็นได้ ไม่งั้นช่างจะเห็น "แสดง 10 จาก 19" ทั้งที่อีก 9 รายการไม่ใช่ของตัวเองและเข้าถึงไม่ได้
   const totalVisible = forcedType ? all.filter(r => historyTypeMatches(r, forcedType)).length : all.length;
-  document.getElementById('history-count-label').textContent = `แสดง ${records.length} จาก ${totalVisible} รายการ`;
+  const label = document.getElementById('history-count-label');
+  // กรองอยู่วันเดียว = บอกให้เห็นชัดพร้อมทางออกกลับไปดูทุกวัน (ไม่ต้องไปล้างช่องวันที่เอง)
+  const oneDay = fromIso && fromIso === toIso;
+  label.innerHTML = `แสดง ${records.length} จาก ${totalVisible} รายการ`
+    + (oneDay ? ` · <b style="color:var(--accent);">เฉพาะวันที่ ${escapeHtmlAttr(fmtDateThai(parseISODate(fromIso)))}</b>
+        <button onclick="historyClearDay()" style="margin-left:6px;padding:1px 9px;border-radius:99px;cursor:pointer;
+                font-size:11px;font-weight:800;border:1px solid var(--accent);background:transparent;color:var(--accent);">× ดูทุกวัน</button>` : '');
 }
 
 // ─── งานค้าง (หน้า Pending) ────────────────────────────────────────────────
