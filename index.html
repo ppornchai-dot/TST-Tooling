@@ -5303,6 +5303,14 @@ function addDaysIso(iso, days) {
   return toISODate(d);
 }
 function fmtDateThai(d) { return `${d.getDate()} ${THAI_MONTHS_ABBR[d.getMonth()]} ${d.getFullYear() + 543}`; }
+// วันที่ในตารางทะเบียน (เช่น "แต่งล่าสุด") — เก็บเป็น ISO (2026-09-04) เพราะช่องกรอกเป็น input type=date
+// แต่เวลาแสดงต้องเป็น วัน เดือน ปี แบบไทย (4 ก.ย. 2569) ให้เหมือนวันที่ที่อื่นทั้งระบบ
+// ค่าที่ไม่ใช่ ISO (ข้อมูลเก่าที่พิมพ์เป็นข้อความไทยไว้แล้ว) แสดงตามที่กรอกไว้เดิม
+function fmtIsoDateThai(v) {
+  const s = String(v == null ? '' : v).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s || '—';
+  return fmtDateThai(parseISODate(s));
+}
 function fmtDateThaiShort(d) { return `${d.getDate()} ${THAI_MONTHS_ABBR[d.getMonth()]}`; }
 function getMonday(d) {
   const date = new Date(d);
@@ -12883,7 +12891,7 @@ function renderRollTable(page) {
       <td class="muted">${r.regrind}</td>
       <td class="muted">${r.grindTime||'—'}</td>
       <td class="muted">${r.polishTime||'—'}</td>
-      <td class="muted">${r.lastService}</td>
+      <td class="muted">${escapeHtmlAttr(fmtIsoDateThai(r.lastService))}</td>
       <td>${statusChip(r.status)}</td>
       <td style="display:flex;gap:4px;">
         <button class="btn btn-ghost btn-sm" onclick="editRoll(${realIdx})">แก้ไข</button>
@@ -13367,7 +13375,7 @@ function renderSqTable(page) {
       <td>${r.machine}</td>
       <td>${r.location}</td>
       <td class="muted">${r.usage}</td>
-      <td class="muted">${r.lastService}</td>
+      <td class="muted">${escapeHtmlAttr(fmtIsoDateThai(r.lastService))}</td>
       <td>${statusChip(r.status)}</td>
       <td><button class="btn btn-ghost btn-sm">ดู</button></td>
     </tr>`).join('');
