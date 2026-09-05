@@ -5668,6 +5668,24 @@ function planTaskPieceBreakdown(t) {
 // จำนวนชิ้นของช่วงเวลาหนึ่ง — เทียบกับ "เวลาเต็มของ Roll ชิ้นนั้น" (เวลาเต็ม = 1 ชิ้น)
 // เช่น Roll ที่ใช้เวลาเต็ม 100 นาที ถูกแบ่งเป็น 40 + 60 นาที = 0.4 ชิ้น + 0.6 ชิ้น
 // ตัดเลข 0 ท้ายทศนิยมออกให้อ่านง่าย (0.40 → 0.4, 1.00 → 1)
+// บรรทัด "ทำจริง N นาที" ใต้เวลามาตรฐานในตารางรายชิ้น — คิดจากเวลาเริ่ม–จบที่กดไว้จริง
+// ต้องมีทั้งเวลาเริ่มและเวลาจบจริงถึงจะคิดได้ (กดเริ่มแล้วยังไม่จบ = ยังไม่รู้ว่าใช้เวลาเท่าไร)
+// std = เวลามาตรฐานทั้งชิ้น เอาไว้บอกว่าเกิน/ไม่เกินไปเท่าไร
+function actualPieceMinutesHtml(show, entry, std) {
+  if (!show || !entry || !entry.startTime || !entry.endTime) return '';
+  const mins = actualMinutesBetween(entry.startTime, entry.endTime);
+  if (mins == null) return '';
+  const stdNum = parseFloat(std);
+  const diff = isFinite(stdNum) ? Math.round(mins - stdNum) : null;
+  const over = diff != null && diff > 0;
+  const tip = 'เวลาที่ใช้จริง ' + entry.startTime + ' – ' + entry.endTime + ' = ' + mins.toLocaleString() + ' นาที'
+    + (diff == null ? '' : (diff === 0 ? ' (เท่ามาตรฐานพอดี)'
+      : (over ? ' (เกินมาตรฐาน ' + diff.toLocaleString() + ' นาที)'
+              : ' (เร็วกว่ามาตรฐาน ' + Math.abs(diff).toLocaleString() + ' นาที)')));
+  return `<div title="${escapeHtmlAttr(tip)}" style="font-size:11px;font-weight:700;color:${over ? 'var(--amber)' : 'var(--green)'};">
+    ทำจริง ${escapeHtmlAttr(mins.toLocaleString())}${diff ? (over ? ' (+' + diff.toLocaleString() + ')' : ' (−' + Math.abs(diff).toLocaleString() + ')') : ''}</div>`;
+}
+
 function pieceCountText(minutes, fullMinutes) {
   const full = parseFloat(fullMinutes) || 0;
   const part = parseFloat(minutes) || 0;
@@ -5768,7 +5786,11 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
         <td>${typeChip}</td>
         <td class="muted" style="text-align:right;">${escapeHtmlAttr(String(s.minutes))}${
           (!isBreak && isSplitPiece && pieceCountText(s.minutes, p.fullMinutes))
-            ? `<div style="font-size:11px;font-weight:700;color:var(--accent);">${escapeHtmlAttr(pieceCountText(s.minutes, p.fullMinutes))}</div>` : ''}</td>
+            ? `<div style="font-size:11px;font-weight:700;color:var(--accent);">${escapeHtmlAttr(pieceCountText(s.minutes, p.fullMinutes))}</div>` : ''}${
+          // เวลาที่ใช้จริงของชิ้นนั้น (จากเวลาเริ่ม–จบที่กดไว้จริง) — วางไว้แถวที่โชว์เวลาจบจริง
+          // เทียบกับเวลามาตรฐานทั้งชิ้น (fullMinutes) ไม่ใช่เฉพาะส่วนที่ตัดมาแสดงในแถวนี้
+          // เกินมาตรฐาน = สีเหลือง · ไม่เกิน = สีเขียว จะได้เห็นทันทีว่าชิ้นไหนใช้เวลาเกิน
+          actualPieceMinutesHtml(interactive && isLastRow && !isBreak, pieceEntry, p.fullMinutes != null ? p.fullMinutes : s.minutes)}</td>
         <td class="muted">${escapeHtmlAttr(s.startTime || '—')}${actualStartSuffix}</td>
         <td class="muted">${escapeHtmlAttr(s.endTime || '—')}${endBadge}${actualEndSuffix}</td>
       </tr>`;
