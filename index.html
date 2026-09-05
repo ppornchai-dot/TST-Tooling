@@ -1422,10 +1422,7 @@ canvas{display:block;}
          PAGE: PRODUCTION BLOCK
     ══════════════════════════════════════════ -->
     <div class="page" id="page-standard">
-      <!-- แผน Block ข้างล่างเป็นกรอบของระบบ TST Production (คนละเว็บ) แทรกปุ่มเข้าไปในตารางไม่ได้
-           จึงวางแถบดูสถานะชุด Roll ไว้เหนือกรอบ — ดูแผนเครื่องไหนก็กดเครื่องนั้น -->
-      <div id="prodblock-rollstatus-bar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;"></div>
-      <iframe id="prodblock-external-iframe" title="Production Block" style="width:100%;height:calc(100vh - 163px);border:none;border-radius:8px;background:var(--bg-panel);display:block;"></iframe>
+      <iframe id="prodblock-external-iframe" title="Production Block" style="width:100%;height:calc(100vh - 125px);border:none;border-radius:8px;background:var(--bg-panel);display:block;"></iframe>
     </div>
 
 
@@ -2090,10 +2087,7 @@ function showPage(id) {
   if (id === 'pending') renderPending();
   if (id === 'prodWeight') renderProdWeight();
   if (id === 'rollLife') renderRollLife();
-  if (id === 'standard') {
-    loadProdBlockIframe();
-    if (typeof renderProdBlockRollStatusBar === 'function') renderProdBlockRollStatusBar();
-  }
+  if (id === 'standard') loadProdBlockIframe();
 }
 
 // หน้า Block ดึงจากระบบ TST Production ด้วยลิงก์แชร์แบบดูอย่างเดียว เข้าได้เลยไม่ต้องล็อกอิน
@@ -14989,191 +14983,6 @@ function prodBlockAutoColor(id) {
 // แถบงานของ 1 entry ในวันเดียว — isFirst/isLast คือวันแรก/วันสุดท้ายจริงของ entry นี้ทั้งหมด
 // rowStart/rowEnd คือวันแรก/วันสุดท้ายของ "แถบ" ในแถวสัปดาห์นี้ (จันทร์/เสาร์ หรือ isFirst/isLast)
 // ถ้า rowStart แต่ไม่ใช่ isFirst แปลว่าแถบต่อเนื่องมาจากแถวก่อนหน้า → แสดงลูกศร ‹ เช่นเดียวกับ rowEnd/isLast → ›
-// ─── ดูสถานะชุด Roll จากหน้า Production Block ────────────────────────────────
-// หน้า Block เป็นกรอบ (iframe) ของระบบ TST Production ซึ่งเป็นคนละเว็บ เราแทรกปุ่มเข้าไป
-// ข้างในไม่ได้ (cross-origin) จึงทำแถบปุ่มไว้เหนือกรอบแทน — กำลังดูแผนของเครื่องไหน
-// ก็กดเครื่องนั้นเพื่อดูว่าชุด Roll ที่ใส่อยู่พร้อมแค่ไหน ใช้รอบการแต่งไปกี่ % แล้ว
-// (อ่านอย่างเดียว ตัวเลขชุดเดียวกับทะเบียน Tooling / หน้าอายุ Roll)
-let rollStatusScope = null;   // { kind:'machine'|'size', key }
-
-function openRollStatusForMachine(machine) {
-  rollStatusScope = { kind: 'machine', key: machine };
-  openRollStatusModal();
-}
-
-function openRollStatusForSize(sizeLabel) {
-  if (!sizeLabel) return;
-  rollStatusScope = { kind: 'size', key: sizeLabel };
-  openRollStatusModal();
-}
-
-function openRollStatusModal() {
-  ensureRollLifeFg();   // ต้องมีน้ำหนักผลิตมาคิด % รอบการแต่ง (โหลดเสร็จแล้ววาดใหม่ให้เอง)
-  let ov = document.getElementById('rollstatus-overlay');
-  if (!ov) {
-    ov = document.createElement('div');
-    ov.id = 'rollstatus-overlay';
-    ov.className = 'modal-overlay';
-    ov.onclick = e => { if (e.target === ov) closeRollStatus(); };
-    ov.innerHTML = `<div class="modal" style="max-width:640px;">
-      <div class="modal-head">
-        <h3 id="rollstatus-title">สถานะชุด Roll</h3>
-        <button class="modal-close" onclick="closeRollStatus()">✕</button>
-      </div>
-      <div class="modal-body" id="rollstatus-body"></div>
-      <div class="modal-footer" style="justify-content:flex-end;">
-        <button class="btn btn-ghost" onclick="closeRollStatus()">ปิด</button>
-      </div>
-    </div>`;
-    document.body.appendChild(ov);
-  }
-  ov.classList.add('open');
-  renderRollStatusModal();
-  // ยอดผลิตยังโหลดอยู่ — วาดซ้ำเมื่อได้ข้อมูล จะได้เห็น % รอบการแต่งโดยไม่ต้องปิดเปิดใหม่
-  if (rollLifeFgLoading) {
-    const t = setInterval(() => {
-      const open = document.getElementById('rollstatus-overlay');
-      if (!open || !open.classList.contains('open')) { clearInterval(t); return; }
-      if (!rollLifeFgLoading) { clearInterval(t); renderRollStatusModal(); }
-    }, 700);
-  }
-}
-
-function closeRollStatus() {
-  const ov = document.getElementById('rollstatus-overlay');
-  if (ov) ov.classList.remove('open');
-  rollStatusScope = null;
-}
-
-// การ์ดสถานะของชุด Roll หนึ่งชุด (Size Roll + ชุดสี) — ใช้ตัวเลข/เกณฑ์ชุดเดียวกับหน้าอายุ Roll
-function rollStatusCardHtml(cat, setName, colorKey, note) {
-  const catColor = ROLL_SET_SECTION_COLORS[cat] || 'var(--text-2)';
-  if (!setName) {
-    return `<div style="border:1px solid var(--border-light);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
-      <b style="color:${catColor};">${escapeHtmlAttr(cat)}</b>
-      <span class="muted" style="margin-left:8px;font-size:12px;">${escapeHtmlAttr(note || 'ไม่มีชุดที่ใช้งานอยู่')}</span></div>`;
-  }
-  const key = colorKey || NO_COLOR_KEY;
-  const st = rollColorStatusFor(setName, key);
-  const meta = ROLL_COLOR_STATUS_META[st] || ROLL_COLOR_STATUS_META.ready;
-  // ป้ายเครื่องบอกว่า "ตอนนี้อยู่บนเครื่องไหน" จึงติดเฉพาะชุดที่กำลังใช้งานจริง
-  // ชุดที่ปลดออกมาแล้วยังมีเครื่องล่าสุดค้างอยู่ในข้อมูล ถ้าโชว์ด้วยจะอ่านเป็นว่ายังใส่อยู่
-  const machine = st === 'inuse' ? rollColorActiveMachineFor(setName, key) : null;
-  const u = rollUsageForSetColor(setName, key);
-  const band = rollUsageBand(u.prodPct);
-  const dressPlan = plannedFinishForRollColor(setName, key, 'cnc');
-  const polishPlan = plannedFinishForRollColor(setName, key, 'polish');
-  const rolls = toolingData.roll.filter(r => r.set === setName && (r.color || NO_COLOR_KEY) === key);
-  const measured = rolls.filter(rollHasCurrentOd).length;
-  const planLine = (label, p) => !p ? '' :
-    `<div style="font-size:11.5px;color:${p.done ? 'var(--green)' : 'var(--accent)'};font-weight:700;">${
-      p.done ? '✓ ' + label + 'เสร็จแล้ว ' : 'วางแผน' + label + 'เสร็จ '}${escapeHtmlAttr(fmtDateThai(parseISODate(p.date)))}</div>`;
-  return `<div style="border:1px solid var(--border-light);border-left:4px solid ${catColor};border-radius:8px;padding:10px 12px;margin-bottom:8px;">
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      <b style="color:${catColor};font-size:13px;">${escapeHtmlAttr(cat)}</b>
-      <span style="font-size:13px;font-weight:700;">${escapeHtmlAttr(setName)}</span>
-      <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--text-2);">
-        <span style="width:10px;height:10px;border-radius:50%;background:${inUseColorDot(setName, key)};box-shadow:inset 0 0 0 1px rgba(0,0,0,.3);"></span>
-        ${escapeHtmlAttr(rollColorLabelFor(setName, key))}</span>
-      <span style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;">
-        ${machine ? `<span style="font-size:11px;font-weight:800;padding:1px 8px;border-radius:99px;background:var(--accent);color:#fff;">${escapeHtmlAttr(machine)}</span>` : ''}
-        <span style="font-size:12px;font-weight:800;padding:2px 10px;border-radius:99px;background:${meta.bg};color:${meta.color};">${meta.label}</span>
-      </span>
-    </div>
-    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:7px;font-size:12px;color:var(--text-2);">
-      <span>จำนวน <b>${u.count.toLocaleString()}</b> ลูก${measured < u.count ? ` <span class="muted">(วัด OD แล้ว ${measured}/${u.count})</span>` : ''}</span>
-      <span>${u.producedTon != null && u.usedTon
-        ? `ใช้รอบการแต่งไป <b style="color:${band.color};">${escapeHtmlAttr(u.prodPct != null ? u.prodPct.toLocaleString(undefined, { maximumFractionDigits: 1 }) + '%' : '—')}</b>
-           <span class="muted">(${escapeHtmlAttr(u.producedTon.toLocaleString(undefined, { maximumFractionDigits: 2 }))} / ${escapeHtmlAttr(u.usedTon.toLocaleString())} ตัน)</span>`
-        : (rollLifeFgLoading ? '<span class="muted">กำลังโหลดน้ำหนักผลิต…</span>' : '<span class="muted">ยังไม่มีเกณฑ์รอบการแต่ง</span>')}</span>
-      ${u.leftTon != null ? `<span>เหลืออีก <b style="color:${u.leftTon <= 0 ? 'var(--red)' : 'var(--text-1)'};">${
-        escapeHtmlAttr(u.leftTon.toLocaleString(undefined, { maximumFractionDigits: 2 }))}</b> ตัน</span>` : ''}
-      ${u.dressReset ? `<span class="muted">เริ่มนับ ${escapeHtmlAttr(fmtDateThai(parseISODate(u.dressReset.from)))}</span>` : ''}
-    </div>
-    ${planLine('แต่ง', dressPlan)}${planLine('ขัด', polishPlan)}
-  </div>`;
-}
-
-// ชุดที่ "กำลังใช้งาน" อยู่บนเครื่องนั้น แยกตามหมวด — คืน { Forming:[{set,color}], ... }
-// เก็บเป็นลิสต์ ไม่ใช่ชุดเดียว เพราะถ้าเผลอตั้งสองชุดเป็นกำลังใช้งานที่เครื่องเดียวกัน
-// ต้องเห็นทั้งคู่จะได้รู้ว่าข้อมูลชนกัน ไม่ใช่ซ่อนอันหลังไปเงียบๆ
-function rollStatusSetsOnMachine(machine) {
-  const out = { Forming: [], Sizing: [], TH: [] };
-  getRollSets().forEach(s => {
-    if (!toolingData.roll.some(r => r.set === s)) return;
-    const cat = parseSizeRollName(s).category;
-    if (!out[cat]) return;
-    const color = inUseColorOnMachine(s, machine);
-    if (color) out[cat].push({ set: s, color });
-  });
-  return out;
-}
-
-// ชุดของ Size Roll ขนาดนั้น แยกตามหมวด — เอาชุดสีที่มี Roll จริงมาทุกชุด ไม่ใช่เฉพาะที่กำลังใช้งาน
-// เพราะคำถามของหน้านี้คือ "จะผลิตขนาดนี้ มีชุดไหนพร้อมให้ใส่บ้าง" — ชุดที่รอแต่ง/รอขัดก็ต้องเห็น
-// เรียงชุดที่กำลังใช้งานขึ้นก่อน แล้วตามด้วยชุดที่พร้อมใช้
-const ROLL_STATUS_SORT = { inuse: 0, ready: 1, waitpolish: 2, waitdress: 3, incomplete: 4, 'not-ready': 5 };
-function rollStatusSetsOfSize(sizeLabel) {
-  const out = { Forming: [], Sizing: [], TH: [] };
-  getRollSets().forEach(s => {
-    if (rollSetSizeGroupLabel(s) !== sizeLabel) return;
-    const cat = parseSizeRollName(s).category;
-    if (!out[cat]) return;
-    [...getSetPalette(s).map(c => c.key), NO_COLOR_KEY].forEach(key => {
-      if (!toolingData.roll.some(r => r.set === s && (r.color || NO_COLOR_KEY) === key)) return;
-      out[cat].push({ set: s, color: key });
-    });
-  });
-  Object.keys(out).forEach(cat => out[cat].sort((a, b) =>
-    (ROLL_STATUS_SORT[rollColorStatusFor(a.set, a.color)] ?? 9) -
-    (ROLL_STATUS_SORT[rollColorStatusFor(b.set, b.color)] ?? 9)));
-  return out;
-}
-
-function renderRollStatusModal() {
-  const body = document.getElementById('rollstatus-body');
-  const title = document.getElementById('rollstatus-title');
-  if (!body || !rollStatusScope) return;
-  const byCat = rollStatusScope.kind === 'machine'
-    ? rollStatusSetsOnMachine(rollStatusScope.key)
-    : rollStatusSetsOfSize(rollStatusScope.key);
-  if (title) title.textContent = rollStatusScope.kind === 'machine'
-    ? 'สถานะชุด Roll ที่ใส่อยู่ — เครื่อง ' + rollStatusScope.key
-    : 'สถานะชุด Roll — ' + rollStatusScope.key;
-  const emptyNote = rollStatusScope.kind === 'machine'
-    ? 'ไม่มีชุดที่ตั้งเป็น "กำลังใช้งาน" ของเครื่องนี้'
-    : 'ยังไม่มีชุด Roll ของหมวดนี้ในทะเบียน';
-  body.innerHTML = `<div style="font-size:12px;color:var(--text-3);line-height:1.6;margin-bottom:10px;">
-      ${rollStatusScope.kind === 'machine'
-        ? 'ชุดที่ตั้งไว้ว่า <b style="color:var(--text-1);">กำลังใช้งาน</b> อยู่บนเครื่องนี้ในทะเบียน Tooling'
-        : 'ทุกชุดสีของขนาดนี้ เรียง<b style="color:var(--text-1);">กำลังใช้งาน → พร้อมใช้</b>ขึ้นก่อน'} — ตัวเลขทั้งหมดชุดเดียวกับหน้าอายุ Roll (หน้าต่างนี้ดูอย่างเดียว)
-    </div>
-    ${['Forming', 'Sizing', 'TH'].map(cat => {
-      const hits = byCat[cat] || [];
-      if (!hits.length) return rollStatusCardHtml(cat, null, null, emptyNote);
-      return hits.map(hit => rollStatusCardHtml(cat, hit.set, hit.color, emptyNote)).join('');
-    }).join('')}`;
-}
-
-// แถบปุ่มเหนือกรอบ Production Block — เลือกเครื่อง หรือเลือกตาม Size Roll
-function renderProdBlockRollStatusBar() {
-  const el = document.getElementById('prodblock-rollstatus-bar');
-  if (!el) return;
-  const sizes = [...new Set(getRollSets().filter(s => toolingData.roll.some(r => r.set === s))
-    .map(rollSetSizeGroupLabel))].sort((a, b) => String(a).localeCompare(String(b), 'th'));
-  el.innerHTML = `<span style="font-size:12px;font-weight:800;color:var(--text-3);">ดูสถานะชุด Roll ที่จะใช้ผลิต</span>
-    ${ROLL_MACHINES.map(m => `<button onclick="${jsCallAttr('openRollStatusForMachine', m)}"
-      title="${escapeHtmlAttr('ดูชุด Roll ที่ใส่อยู่บนเครื่อง ' + m + ' — สถานะ · % รอบการแต่ง · แผนแต่ง/ขัด')}"
-      style="padding:4px 13px;border-radius:99px;cursor:pointer;font-size:12.5px;font-weight:800;white-space:nowrap;
-             border:1px solid var(--accent);background:var(--bg-card);color:var(--accent);">${escapeHtmlAttr(m)}</button>`).join('')}
-    <select onchange="openRollStatusForSize(this.value); this.value='';" class="form-select"
-      title="ดูสถานะชุด Roll ตามขนาดที่จะผลิต"
-      style="width:auto;min-width:190px;padding:4px 10px;font-size:12.5px;">
-      <option value="">— หรือเลือกตาม Size Roll —</option>
-      ${sizes.map(s => `<option value="${escapeHtmlAttr(s)}">${escapeHtmlAttr(s)}</option>`).join('')}
-    </select>`;
-}
-
 function prodBlockEntryChipHtml(e, isFirst, isLast, rowStart, rowEnd, isPmSlot) {
   const parts = [];
   if (e.forming.set) parts.push('F:' + escapeHtmlAttr(stripSizeRollCategory(e.forming.set)));
@@ -15325,7 +15134,6 @@ function renderProdBlock() {
   syncRollStatusWithProdBlock();
   renderProdBlockTabs();
   renderProdBlockCalendar();
-  renderProdBlockRollStatusBar();
 }
 
 function prodCellFormFields() {
