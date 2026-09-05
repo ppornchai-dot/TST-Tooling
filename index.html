@@ -1486,7 +1486,7 @@ canvas{display:block;}
       <!-- ปฏิทินย้อนหลัง: แต่ละวันเดินชุด Roll ขนาดไหน สีไหน (จากบันทึกชุดสีที่เดินรายวัน) -->
       <div class="card" style="margin-top:18px;">
         <div class="card-header" style="flex-wrap:wrap;row-gap:8px;">
-          <span class="card-title" style="font-size:17px;white-space:nowrap;">ปฏิทินชุด Roll ที่เดินงาน</span>
+          <span class="card-title" style="font-size:17px;white-space:nowrap;">ปฏิทินชุด Roll ที่ใช้งาน</span>
           <!-- ปุ่มสลับมุมมอง (แยกรายเครื่อง / รายวัน) — วางไว้บนหัวการ์ดให้เห็นตลอดทั้งสองมุมมอง -->
           <span id="inuse-cal-view-tabs" style="display:inline-flex;align-items:center;gap:5px;margin-left:12px;"></span>
           <span style="margin-left:auto;display:inline-flex;align-items:center;gap:8px;">
@@ -2351,7 +2351,7 @@ function dashRollStatusSortCmp(workType) {
 
 // เรนเดอร์การ์ด "ชุด Roll กำลังใช้งาน" และ "ชุด Roll พร้อมใช้งาน" ด้วยตัวเดียวกัน
 // ต่างกันแค่สถานะที่กรอง สีป้ายเครื่อง และข้อความตอนไม่มีข้อมูล
-// ─── ปฏิทินชุด Roll ที่เดินงานแต่ละวัน ────────────────────────────────────────
+// ─── ปฏิทินชุด Roll ที่ใช้งานแต่ละวัน ────────────────────────────────────────
 // ข้อมูลมาจาก rollRunColor ที่บันทึกไว้รายวัน (ชุดสีที่เดินของแต่ละ Size Roll)
 // รวมหลายหมวด (Forming/Sizing/TH) ของ Size เดียวกันเป็นบรรทัดเดียว ไม่งั้นช่องวันจะยาวเกินอ่านไม่ทัน
 let inUseCalMonth = null; // เดือนที่กำลังดู (วันที่ 1 ของเดือนนั้น)
@@ -10998,7 +10998,7 @@ function openRunColorBackfill(dateIso) {
   const list = runColorMissingByDate([dateIso], fgWeightByKeyDate)[0];
   const want = list ? list.sets : [];
   if (!want.length) { openRunColorPicker(dateIso, null); return; }   // ระบุครบแล้ว เปิดดูทั้งหมดแทน
-  openRunColorPicker(dateIso, { title: 'ชุด Roll ที่เดินงาน (ระบุย้อนหลัง)', info: running, sets: want });
+  openRunColorPicker(dateIso, { title: 'ชุด Roll ที่ใช้งาน (ระบุย้อนหลัง)', info: running, sets: want });
 }
 
 function openRunColorPromptFor(dateIso) {
@@ -11007,7 +11007,7 @@ function openRunColorPromptFor(dateIso) {
   // ชุดที่มีสีเดียวไม่ต้องถาม — ระบุให้เลย เหลือถามแต่ชุดที่มีหลายสีจริงๆ
   autoFillSingleColorRunColors([dateIso], fgWeightByKeyDate);
   markRunColorPromptAsked(dateIso, [...running.keys()]);
-  openRunColorPicker(dateIso, { title: 'ชุด Roll ที่เดินงาน', info: running, sets: [...running.keys()] });
+  openRunColorPicker(dateIso, { title: 'ชุด Roll ที่ใช้งาน', info: running, sets: [...running.keys()] });
   return true;
 }
 function openRunColorPromptToday() { return openRunColorPromptFor(toISODate(new Date())); }
