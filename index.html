@@ -2080,7 +2080,7 @@ function showPage(id) {
     // (เลื่อนไปดูเมื่อวาน แล้วสลับไปหน้าอื่น พอกลับมาต้องเป็นวันนี้
     //  ไม่งั้นเผลอดู/กดงานผิดวันโดยไม่ทันสังเกตว่ายังค้างอยู่วันเดิม)
     // goToDailyTask/goToDailyInsert ตั้งวันหลัง showPage จึงยังพาไปวันของงานนั้นได้ตามเดิม
-    dailyViewDate = dailyTodayIso();
+    dailyViewDate = dailyOpenDateIso();
     renderDailyTasks();
   }
   if (id === 'history') renderHistory();
@@ -13518,7 +13518,7 @@ function clampDailyTechDate(iso) {
 // ถ้าวันติดกันเป็นวันหยุด วันที่เลื่อนไปจะไม่ใช่ "เมื่อวาน/พรุ่งนี้" ตามปฏิทิน
 // จึงเปลี่ยนคำเป็น "วันทำงานก่อน/ถัดไป" ไม่ให้เข้าใจวันผิด
 function dailyRelativeDayLabel(iso) {
-  const today = dailyTodayIso();
+  const today = dailyOpenDateIso();
   if (iso === today) return 'วันนี้';
   const d = dailyTechDates();
   if (iso === d.prev) return iso === addDaysIso(today, -1) ? 'เมื่อวาน' : 'วันทำงานก่อน';
@@ -13529,6 +13529,15 @@ function dailyRelativeDayLabel(iso) {
 function isDailyTechRole() {
   const r = effectiveRole();
   return r === 'cnc' || r === 'polish' || r === 'operator';
+}
+
+// วันที่ที่หน้างานประจำวันควรเปิดมา / ปุ่ม "วันนี้" ควรพาไป
+// หัวหน้า–แอดมิน = วันตามปฏิทินจริง (เปิดตอน 07:52 ของวันที่ 5 ก็ต้องเห็นวันที่ 5)
+// ช่าง = "วันทำงาน" ที่พลิกตอน 08:00 (dailyTodayIso) เพราะกะดึก 20:00–08:00 คาบเที่ยงคืน
+//   ถ้าพลิกตามปฏิทินตอนเที่ยงคืน งานที่ช่างกะดึกกำลังทำอยู่จะหายจากหน้าจอกลางกะ
+//   และช่างถูกล็อกให้ดูได้แค่รอบวันของตัวเอง จึงย้อนกลับไปดูไม่ได้
+function dailyOpenDateIso() {
+  return isDailyTechRole() ? dailyTodayIso() : toISODate(new Date());
 }
 
 function applyDailyTechView() {
@@ -13946,7 +13955,7 @@ function dailyNav(dir) {
 }
 
 function dailyGoToday() {
-  dailyViewDate = dailyTodayIso();
+  dailyViewDate = dailyOpenDateIso();
   renderDailyTasks();
 }
 
@@ -13993,7 +14002,7 @@ function renderDailyDatePopup() {
   const year = dailyDatePopupMonth.getFullYear();
   const month = dailyDatePopupMonth.getMonth();
   const plannedDates = dailyDatesWithTasks();
-  const todayIso = dailyTodayIso();
+  const todayIso = dailyOpenDateIso();
   const selectedIso = dailyViewDate;
 
   const firstWeekday = new Date(year, month, 1).getDay();
@@ -14046,9 +14055,9 @@ document.addEventListener('click', function(ev) {
 
 // หน้าที่เปิดค้างไว้ข้ามจุดเปลี่ยนวันทำงาน (05:00 ที่กะดึกจบ) ต้องขยับตามเอง
 // ไม่งั้นช่างกะดึกที่เปิดหน้าไว้ทั้งกะจะค้างอยู่วันเดิมจนกว่าจะรีเฟรชเอง
-let lastDailyTodayIso = dailyTodayIso();
+let lastDailyTodayIso = dailyOpenDateIso();
 setInterval(() => {
-  const iso = dailyTodayIso();
+  const iso = dailyOpenDateIso();
   if (iso === lastDailyTodayIso) return;
   lastDailyTodayIso = iso;
   if (isDailyTechRole()) dailyViewDate = clampDailyTechDate(dailyViewDate);
