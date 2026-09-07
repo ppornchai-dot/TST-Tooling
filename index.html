@@ -1349,20 +1349,36 @@ canvas{display:block;}
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-sq-incomplete">0</span><span class="reg-kpi-lbl">ชุดไม่ครบ 2 ชิ้น</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--amber);" id="kpi-sq-nood">0</span><span class="reg-kpi-lbl">ยังไม่ได้วัด OD ปัจจุบัน</span></div>
         </div>
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">รายการ Roll SQ <span style="font-size:11px;font-weight:400;color:var(--text-3);">— 1 ชุดมี Roll 2 ชิ้น</span></span>
-            <button class="btn btn-primary btn-sm" onclick="openModal()">+ เพิ่ม SQ</button>
+        <!-- วางแบบเดียวกับแท็บ Roll: คอลัมน์ซ้ายเลือก Size SQ / ชุด · คอลัมน์ขวาเป็นรายการ Roll ของชุดนั้น -->
+        <div class="reg-registry-grid" style="display:grid;grid-template-columns:400px 1fr;gap:14px;align-items:start;">
+          <!-- COL 1: Size SQ → ชุด (ประเภท + ชุดสี) -->
+          <div class="card" style="position:sticky;top:70px;">
+            <div style="padding:12px 14px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:13px;font-weight:700;">Size SQ</span>
+              <button class="btn btn-primary btn-sm" onclick="openModal()" title="เพิ่มชุดใหม่ — 1 ชุดลง Roll 2 ชิ้นพร้อมกัน">+ เพิ่มชุด</button>
+            </div>
+            <div id="sq-set-list" style="max-height:620px;overflow-y:auto;padding:4px 8px 8px;"></div>
           </div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr>
-                <th>Size SQ</th><th>ประเภท</th><th>ชุดสี</th><th>ชิ้นที่</th><th>เดือน/ปี ที่ผลิต</th><th>OD Standard</th><th>OD ปัจจุบัน</th><th></th>
-              </tr></thead>
-              <tbody id="tbody-sq"></tbody>
-            </table>
+
+          <!-- COL 2: รายการ Roll ของชุดที่เลือก -->
+          <div class="card" style="min-width:0;overflow:hidden;">
+            <div style="padding:12px 16px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+              <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+                <span style="font-size:13px;font-weight:700;" id="sq-detail-title">Roll SQ ทั้งหมด</span>
+                <span style="font-size:11px;color:var(--text-3);" id="sq-detail-count"></span>
+              </div>
+              <span id="sq-detail-actions" style="display:flex;gap:8px;flex-wrap:wrap;"></span>
+            </div>
+            <div class="table-wrap" style="overflow-x:auto;">
+              <table>
+                <thead><tr>
+                  <th>Size SQ</th><th>ประเภท</th><th>ชุดสี</th><th>ชิ้นที่</th><th>เดือน/ปี ที่ผลิต</th><th title="ขนาดตอนใส่ครั้งแรก — ไม่เปลี่ยนตามการแต่ง">OD Standard</th><th title="ขนาดล่าสุดหลังแต่ง">OD ปัจจุบัน</th><th></th>
+                </tr></thead>
+                <tbody id="tbody-sq"></tbody>
+              </table>
+            </div>
+            <div class="tbl-footer" id="footer-sq"></div>
           </div>
-          <div class="tbl-footer" id="footer-sq"></div>
         </div>
       </div>
 
@@ -4867,7 +4883,7 @@ function saveModal() {
     // เปิดไปหน้าที่ชุดใหม่อยู่ (ตารางเรียงตาม Size/ประเภท/ชุดสี ไม่ได้ต่อท้ายสุดเสมอ)
     const pos = sqSets().findIndex(s => s.includes(recs[0]));
     pageState.sq = pos >= 0 ? Math.floor(pos / PAGE_SIZE) + 1 : 1;
-    renderSqTable(pageState.sq);
+    renderSqRegistry(pageState.sq);
   } else if (currentRegTab === 'saw') {
     toolingData.saw.push({
       id: vals[0]||'SW-NEW', name: vals[1]||'(ไม่มีชื่อ)',
@@ -13696,7 +13712,7 @@ function editSq(id) {
     toolingData.sq.forEach(x => { if (sqSetKey(x) === nowKey) x.madeYm = updated.madeYm; });
     persistState();
     closeModal();
-    renderSqTable(pageState.sq || 1);
+    renderSqRegistry(pageState.sq || 1);
   };
   const del = document.getElementById('modal-delete-btn');
   if (del) {
@@ -13715,7 +13731,7 @@ function deleteSqPiece(id) {
   toolingData.sq = toolingData.sq.filter(x => x.id !== id);
   persistState();
   sqClampPage();
-  renderSqTable(pageState.sq);
+  renderSqRegistry(pageState.sq);
 }
 
 // ลบทั้งชุด (ทุกชิ้นในชุดนั้น) — ปุ่ม ✕ ที่แถว เพราะ "ชุด" เป็นหน่วยที่ใช้งานจริง
@@ -13729,18 +13745,29 @@ function deleteSqSet(id) {
   toolingData.sq = toolingData.sq.filter(x => sqSetKey(x) !== key);
   persistState();
   sqClampPage();
-  renderSqTable(pageState.sq);
+  renderSqRegistry(pageState.sq);
 }
 
 function sqClampPage() {
-  const tp = Math.max(1, Math.ceil(sqSets().length / PAGE_SIZE));
+  // นับจากชุดที่กรองอยู่ ไม่ใช่ทั้งทะเบียน ไม่งั้นลบชุดสุดท้ายของหน้าแล้วจะค้างอยู่หน้าว่าง
+  const tp = Math.max(1, Math.ceil(sqVisibleSets().length / PAGE_SIZE));
   pageState.sq = Math.min(Math.max(1, pageState.sq || 1), tp);
+}
+
+// ชุดที่ตารางกำลังแสดง ตามที่เลือกไว้ในคอลัมน์ซ้าย — ชุดที่เลือกชนะขนาดที่เลือก (เจาะจงกว่า)
+// ใช้ร่วมกับ changePage เพื่อให้เลขหน้าสูงสุดคิดจากชุดที่กรองอยู่จริง ไม่ใช่ทั้งทะเบียน
+function sqVisibleSets(allSets) {
+  const sets = allSets || sqSets();
+  if (selectedSqSetKey) return sets.filter(s => sqSetKey(s[0]) === selectedSqSetKey);
+  if (selectedSqSize) return sets.filter(s => String(s[0].sizeSq || '').trim() === selectedSqSize);
+  return sets;
 }
 
 function renderSqTable(page) {
   const tbody = document.getElementById('tbody-sq');
   if (!tbody) return;
-  const sets = sqSets();
+  const allSets = sqSets();
+  const sets = sqVisibleSets(allSets);
   const shown = sets.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   tbody.innerHTML = shown.length ? shown.map(set => {
     const incomplete = set.length !== SQ_PIECES_PER_SET;
@@ -13768,19 +13795,170 @@ function renderSqTable(page) {
       </td>
     </tr>`;
     }).join('');
-  }).join('') : `<tr><td colspan="8" style="padding:28px;text-align:center;color:var(--text-3);">
-      ยังไม่มีรายการ Roll SQ — กด "+ เพิ่ม SQ" เพื่อเริ่มลงทะเบียน (1 ชุดลง Roll ${SQ_PIECES_PER_SET} ชิ้นพร้อมกัน)</td></tr>`;
+  }).join('') : `<tr><td colspan="8" style="padding:28px;text-align:center;color:var(--text-3);">${
+    allSets.length ? 'ไม่มีรายการในที่เลือกไว้ — กดหัวข้อขนาดซ้ำอีกครั้งเพื่อดูทุกขนาด'
+      : 'ยังไม่มีรายการ Roll SQ — กด "+ เพิ่มชุด" เพื่อเริ่มลงทะเบียน (1 ชุดลง Roll ' + SQ_PIECES_PER_SET + ' ชิ้นพร้อมกัน)'}</td></tr>`;
+
+  // หัวคอลัมน์ขวา: บอกว่ากำลังดูชุดไหน/ขนาดไหน และมีปุ่มเติมชิ้นที่ขาดให้ชุดที่ไม่ครบ
+  const titleEl = document.getElementById('sq-detail-title');
+  const countEl = document.getElementById('sq-detail-count');
+  const actEl = document.getElementById('sq-detail-actions');
+  const pieces = sets.reduce((n, s) => n + s.length, 0);
+  if (titleEl) {
+    const one = selectedSqSetKey ? sets[0] : null;
+    titleEl.textContent = one
+      ? (one[0].sizeSq || '') + ' ' + (one[0].kind || '') + ' · ' + sqColorMeta(one[0].color).label
+      : selectedSqSize ? 'Size SQ ' + selectedSqSize : 'Roll SQ ทั้งหมด';
+  }
+  if (countEl) countEl.textContent = sets.length ? sets.length + ' ชุด · Roll ' + pieces + ' ชิ้น' : '';
+  if (actEl) {
+    const one = (selectedSqSetKey && sets.length === 1) ? sets[0] : null;
+    actEl.innerHTML = (one && one.length < SQ_PIECES_PER_SET)
+      ? `<button class="btn btn-primary btn-sm" onclick="${jsCallAttr('addSqPieceToSet', sqSetKey(one[0]))}"
+           title="ชุดนี้มี Roll ${one.length} ชิ้น ยังไม่ครบ ${SQ_PIECES_PER_SET} ชิ้น">+ เพิ่ม Roll ชิ้นที่ขาด</button>`
+      : `<button class="btn btn-primary btn-sm" onclick="openModal()" title="เพิ่มชุดใหม่ — 1 ชุดลง Roll ${SQ_PIECES_PER_SET} ชิ้นพร้อมกัน">+ เพิ่มชุด</button>`;
+  }
+
   const tp = Math.max(1, Math.ceil(sets.length / PAGE_SIZE));
   renderFooter('sq', sets.length, shown.length, page, tp);
-  // ตัวเลขบนแท็บนับเป็น "ชุด" เหมือนแท็บ Roll ที่นับเป็นชุด ไม่ใช่จำนวนลูก
-  document.getElementById('cnt-sq').textContent = sets.length;
+  // ตัวเลขบนแท็บและ KPI นับทั้งทะเบียนเสมอ ไม่ใช่แค่ที่กรองอยู่ (เกณฑ์เดียวกับแท็บ Roll)
+  document.getElementById('cnt-sq').textContent = allSets.length;
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v.toLocaleString(); };
-  set('kpi-sq-total', sets.length);
+  set('kpi-sq-total', allSets.length);
   set('kpi-sq-pieces', toolingData.sq.length);
-  set('kpi-sq-gs', sets.filter(s => s[0].kind === 'GS').length);
-  set('kpi-sq-gi', sets.filter(s => s[0].kind === 'GI').length);
-  set('kpi-sq-incomplete', sets.filter(s => s.length !== SQ_PIECES_PER_SET).length);
+  set('kpi-sq-gs', allSets.filter(s => s[0].kind === 'GS').length);
+  set('kpi-sq-gi', allSets.filter(s => s[0].kind === 'GI').length);
+  set('kpi-sq-incomplete', allSets.filter(s => s.length !== SQ_PIECES_PER_SET).length);
   set('kpi-sq-nood', toolingData.sq.filter(r => !sqHasCurrentOd(r)).length);
+}
+
+// ─── คอลัมน์ซ้าย: Size SQ → ชุด (วางแบบเดียวกับรายการ Size Roll ของแท็บ Roll) ────
+let selectedSqSize = null;    // Size SQ ที่เลือกอยู่ (null = ทุกขนาด)
+let selectedSqSetKey = null;  // ชุดที่เลือกอยู่ (null = ทุกชุดในขนาดนั้น)
+
+// จัดเป็น [ขนาด, [ชุด, ชุด, ...]] เรียงตามขนาด — ชุดในขนาดเดียวกันเรียง GS→GI แล้วตามจานสี
+function sqSizeGroups() {
+  const map = new Map();
+  sqSets().forEach(set => {
+    const size = String(set[0].sizeSq || '').trim() || '—';
+    if (!map.has(size)) map.set(size, []);
+    map.get(size).push(set);
+  });
+  return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], 'th', { numeric: true }));
+}
+
+// ขนาด/ชุดที่เลือกไว้อาจถูกลบไปแล้ว — ล้างทิ้งก่อนวาด ไม่งั้นตารางจะว่างเปล่าโดยไม่มีเหตุผลให้เห็น
+function sqClampSelection() {
+  if (selectedSqSetKey && !toolingData.sq.some(r => sqSetKey(r) === selectedSqSetKey)) selectedSqSetKey = null;
+  if (selectedSqSize && !toolingData.sq.some(r => String(r.sizeSq || '').trim() === selectedSqSize)) selectedSqSize = null;
+}
+
+function selectSqSize(size) {
+  // กดขนาดเดิมซ้ำ = ยกเลิกการกรอง กลับไปดูทุกขนาด (เหมือนกดปุ่มสลับ)
+  const same = selectedSqSize === size && !selectedSqSetKey;
+  selectedSqSize = same ? null : size;
+  selectedSqSetKey = null;
+  renderSqRegistry(pageState.sq = 1);
+}
+
+function selectSqSet(key) {
+  const same = selectedSqSetKey === key;
+  selectedSqSetKey = same ? null : key;
+  if (!same) {
+    const hit = toolingData.sq.find(r => sqSetKey(r) === key);
+    selectedSqSize = hit ? String(hit.sizeSq || '').trim() : null;
+  }
+  renderSqRegistry(pageState.sq = 1);
+}
+
+function renderSqSetList() {
+  const el = document.getElementById('sq-set-list');
+  if (!el) return;
+  const groups = sqSizeGroups();
+  if (!groups.length) {
+    el.innerHTML = `<div style="padding:18px 8px;color:var(--text-3);font-size:12.5px;line-height:1.6;">
+      ยังไม่มีชุด Roll SQ<br>กด "+ เพิ่มชุด" เพื่อเริ่มลงทะเบียน (1 ชุดลง Roll ${SQ_PIECES_PER_SET} ชิ้นพร้อมกัน)</div>`;
+    return;
+  }
+  let num = 0;
+  el.innerHTML = groups.map(([size, sets]) => {
+    const pieces = sets.reduce((n, s) => n + s.length, 0);
+    const sizeActive = selectedSqSize === size;
+    const header = `<div onclick="${jsCallAttr('selectSqSize', size)}" style="cursor:pointer;"
+      title="${escapeHtmlAttr('ดู Roll SQ ทุกชุดของขนาด ' + size + ' (กดซ้ำเพื่อดูทุกขนาด)')}">${
+      rollSetSectionHeaderHtml(escapeHtmlAttr(size), sets.length + ' ชุด · ' + pieces + ' ชิ้น',
+        sizeActive ? 'var(--accent)' : 'var(--text-1)', { keepCase: true, big: true })}</div>`;
+    return header + sets.map(set => {
+      const r = set[0];
+      const key = sqSetKey(r);
+      const cm = sqColorMeta(r.color);
+      const active = selectedSqSetKey === key;
+      const incomplete = set.length !== SQ_PIECES_PER_SET;
+      const measured = set.filter(sqHasCurrentOd).length;
+      num++;
+      return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+        <div onclick="${jsCallAttr('selectSqSet', key)}"
+          style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:6px;cursor:pointer;flex:1;min-width:0;
+                 background:${active ? 'var(--accent-glow)' : 'transparent'};
+                 color:${active ? 'var(--accent)' : 'var(--text-2)'};font-weight:${active ? '700' : '400'};transition:background .12s;"
+          title="${escapeHtmlAttr(size + ' ' + (r.kind || '') + ' · ' + cm.label + ' · Roll ' + set.length + ' ชิ้น'
+            + (measured < set.length ? ' (วัด OD แล้ว ' + measured + '/' + set.length + ')' : ''))}">
+          <span style="width:18px;height:18px;border-radius:50%;background:var(--bg-panel);color:var(--text-3);font-size:10px;
+                       font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${num}</span>
+          <span style="font-size:11px;font-weight:800;padding:1px 8px;border-radius:99px;flex-shrink:0;
+                       color:#fff;background:${SQ_KIND_COLORS[r.kind] || 'var(--text-2)'};">${escapeHtmlAttr(r.kind || '—')}</span>
+          <span style="width:9px;height:9px;border-radius:50%;background:${cm.dot};flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);"></span>
+          <span style="flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtmlAttr(cm.label)}</span>
+          ${incomplete ? `<span class="chip chip-amber" style="flex-shrink:0;" title="1 ชุดต้องมี Roll ${SQ_PIECES_PER_SET} ชิ้น">ไม่ครบ</span>` : ''}
+          <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;flex-shrink:0;">${set.length}</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;color:var(--red);"
+          onclick="${jsCallAttr('deleteSqSet', r.id)}" title="ลบทั้งชุด (${set.length} ชิ้น)">✕</button>
+      </div>`;
+    }).join('');
+  }).join('');
+}
+
+// เพิ่มชิ้นที่ขาดให้ชุดที่มีไม่ครบ 2 ชิ้น — ยืมฟอร์มแก้ไขทีละชิ้นมาใช้ โดยล็อกค่าของชุดไว้แล้ว
+function addSqPieceToSet(key) {
+  const set = sqSets().find(s => sqSetKey(s[0]) === key);
+  if (!set) return;
+  const used = new Set(set.map(x => Number(x.piece) || 0));
+  let piece = 1;
+  while (piece <= SQ_PIECES_PER_SET && used.has(piece)) piece++;
+  const base = set[0];
+  document.getElementById('modal-title').textContent =
+    'เพิ่ม Roll ชิ้นที่ ' + piece + ' — ' + (base.sizeSq || '') + ' ' + (base.kind || '') + ' · ' + sqColorMeta(base.color).label;
+  document.getElementById('modal-body').innerHTML = MODAL_FORMS.sqPiece.fields;
+  fillSqFormOptions();
+  document.getElementById('f-sq-size').value = base.sizeSq || '';
+  document.getElementById('f-sq-kind').value = base.kind || SQ_KINDS[0];
+  document.getElementById('f-sq-color').value = base.color || SQ_COLORS[0].key;
+  sqYmToForm(base.madeYm);
+  document.getElementById('f-sq-piece').value = String(piece);
+  document.getElementById('f-sq-odstd').value = base.odStd || '';
+  document.getElementById('f-sq-odcur').value = '';
+  document.getElementById('modal-overlay').classList.add('open');
+  document.querySelector('.modal-footer .btn-primary').onclick = function() {
+    const sizeSq = sqFormVal('f-sq-size');
+    if (!sizeSq) { alert('กรอก Size SQ ก่อน'); return; }
+    toolingData.sq.push({
+      id: newSqId(), sizeSq, kind: sqFormVal('f-sq-kind') || SQ_KINDS[0],
+      color: sqFormVal('f-sq-color') || SQ_COLORS[0].key, madeYm: sqYmFromForm(),
+      piece: Number(sqFormVal('f-sq-piece')) || piece,
+      odStd: sqFormVal('f-sq-odstd'), odCur: sqFormVal('f-sq-odcur'),
+    });
+    persistState();
+    closeModal();
+    renderSqRegistry(pageState.sq || 1);
+  };
+}
+
+// วาดทั้งแท็บ (คอลัมน์ซ้าย + ตาราง) — เรียกตัวนี้ทุกครั้งที่ข้อมูล SQ เปลี่ยน
+function renderSqRegistry(page) {
+  sqClampSelection();
+  renderSqSetList();
+  renderSqTable(page || pageState.sq || 1);
 }
 
 function renderSawTable(page) {
@@ -13830,7 +14008,8 @@ function renderSlitterTable(page) {
 function changePage(tab, page) {
   // สำหรับ roll ต้องนับจากรายการที่กรองอยู่จริง (computeRollViewData) ไม่ใช่ toolingData.roll ทั้งหมด
   // ไม่งั้นเลขหน้าสูงสุดที่ตรวจสอบจะคำนวณจากทุก Set/สีรวมกัน ทำให้กดไปหน้าที่เกินจริงของ Set ที่กรองอยู่ได้
-  const data = tab === 'roll' ? computeRollViewData() : toolingData[tab];
+  // sq ก็เหมือนกัน แต่หน่วยของหน้าคือ "ชุด" ไม่ใช่ชิ้น และกรองตาม Size SQ/ชุดที่เลือกในคอลัมน์ซ้าย
+  const data = tab === 'roll' ? computeRollViewData() : tab === 'sq' ? sqVisibleSets() : toolingData[tab];
   const max = Math.max(1, Math.ceil(data.length/PAGE_SIZE));
   if (page < 1 || page > max) return;
   pageState[tab] = page;
@@ -15101,7 +15280,7 @@ function deleteDailyChecklistTask(taskId) {
 
 // Render all tables on load
 renderRollTable(1);
-renderSqTable(1);
+renderSqRegistry(1);
 renderSawTable(1);
 renderSlitterTable(1);
 
