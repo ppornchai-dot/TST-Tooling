@@ -1348,6 +1348,7 @@ canvas{display:block;}
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--purple);" id="kpi-sq-gi">0</span><span class="reg-kpi-lbl">ชุดประเภท GI</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-sq-incomplete">0</span><span class="reg-kpi-lbl">ชุดไม่ครบ 2 ชิ้น</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--amber);" id="kpi-sq-nood">0</span><span class="reg-kpi-lbl">ยังไม่ได้วัด OD ปัจจุบัน</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-sq-expired">0</span><span class="reg-kpi-lbl">Roll ถึง OD หมดอายุ (ชิ้น)</span></div>
         </div>
         <!-- วางแบบเดียวกับแท็บ Roll: คอลัมน์ซ้ายเลือก Size SQ / ชุด · คอลัมน์ขวาเป็นรายการ Roll ของชุดนั้น -->
         <div class="reg-registry-grid" style="display:grid;grid-template-columns:400px 1fr;gap:14px;align-items:start;">
@@ -1372,7 +1373,7 @@ canvas{display:block;}
             <div class="table-wrap" style="overflow-x:auto;">
               <table>
                 <thead><tr>
-                  <th>Size SQ</th><th>ประเภท</th><th>ชุดสี</th><th title="ชิ้นงานในชุด — R = ขวา · L = ซ้าย">ชิ้นงาน</th><th title="รหัสประจำ Roll ลูกนั้น">รหัส Roll</th><th>เดือน/ปี ที่ผลิต</th><th title="ขนาดตอนใส่ครั้งแรก — ไม่เปลี่ยนตามการแต่ง">OD Standard</th><th title="ขนาดล่าสุดหลังแต่ง">OD ปัจจุบัน</th><th></th>
+                  <th>Size SQ</th><th>ประเภท</th><th>ชุดสี</th><th title="ชิ้นงานในชุด — R = ขวา · L = ซ้าย">ชิ้นงาน</th><th title="รหัสประจำ Roll ลูกนั้น">รหัส Roll</th><th>เดือน/ปี ที่ผลิต</th><th title="ขนาดตอนใส่ครั้งแรก — ไม่เปลี่ยนตามการแต่ง">OD Standard</th><th title="ขนาดล่าสุดหลังแต่ง">OD ปัจจุบัน</th><th title="OD ที่เล็กที่สุดที่ยังใช้ได้ — ถึงค่านี้แล้วต้องเปลี่ยนลูกใหม่">OD หมดอายุ</th><th></th>
                 </tr></thead>
                 <tbody id="tbody-sq"></tbody>
               </table>
@@ -4657,21 +4658,25 @@ const MODAL_FORMS = {
       <div class="modal-row full"><div style="font-size:12px;font-weight:800;color:var(--text-2);
         border-left:3px solid var(--accent);padding-left:8px;">รหัสและ OD ของแต่ละชิ้น — 1 ชุดมี Roll 2 ชิ้น (R และ L)</div></div>
       <!-- OD ปัจจุบันเว้นว่างไว้ได้ = ยังไม่ได้วัดหลังแต่ง (เกณฑ์เดียวกับ Ø ปัจจุบันของทะเบียน Roll) -->
-      <div class="modal-row three">
+      <div class="modal-row four">
         <div class="form-group"><label class="form-label">ชิ้น R · รหัส Roll</label>
           <input class="form-input" id="f-sq-code1" placeholder="เช่น SQ-2323-R"></div>
         <div class="form-group"><label class="form-label">ชิ้น R · OD Standard (mm)</label>
           <input class="form-input" id="f-sq-odstd1" type="number" step="0.01" placeholder="เช่น 120"></div>
         <div class="form-group"><label class="form-label">ชิ้น R · OD ปัจจุบัน (mm)</label>
           <input class="form-input" id="f-sq-odcur1" type="number" step="0.01" placeholder="ยังไม่วัด — เว้นว่างไว้ได้"></div>
+        <div class="form-group"><label class="form-label">ชิ้น R · OD หมดอายุ (mm)</label>
+          <input class="form-input" id="f-sq-odmin1" type="number" step="0.01" placeholder="เช่น 150"></div>
       </div>
-      <div class="modal-row three">
+      <div class="modal-row four">
         <div class="form-group"><label class="form-label">ชิ้น L · รหัส Roll</label>
           <input class="form-input" id="f-sq-code2" placeholder="เช่น SQ-2323-L"></div>
         <div class="form-group"><label class="form-label">ชิ้น L · OD Standard (mm)</label>
           <input class="form-input" id="f-sq-odstd2" type="number" step="0.01" placeholder="เช่น 120"></div>
         <div class="form-group"><label class="form-label">ชิ้น L · OD ปัจจุบัน (mm)</label>
           <input class="form-input" id="f-sq-odcur2" type="number" step="0.01" placeholder="ยังไม่วัด — เว้นว่างไว้ได้"></div>
+        <div class="form-group"><label class="form-label">ชิ้น L · OD หมดอายุ (mm)</label>
+          <input class="form-input" id="f-sq-odmin2" type="number" step="0.01" placeholder="เช่น 150"></div>
       </div>
       <datalist id="f-sq-size-list"></datalist>`
   },
@@ -4701,11 +4706,13 @@ const MODAL_FORMS = {
         <div class="form-group"><label class="form-label">ปีที่ผลิต (พ.ศ.)</label>
           <input class="form-input" id="f-sq-year" type="number" inputmode="numeric" placeholder="เช่น 2569"></div>
       </div>
-      <div class="modal-row">
+      <div class="modal-row three">
         <div class="form-group"><label class="form-label">OD Standard (mm)</label>
           <input class="form-input" id="f-sq-odstd" type="number" step="0.01" placeholder="เช่น 120"></div>
         <div class="form-group"><label class="form-label">OD ปัจจุบัน (mm)</label>
           <input class="form-input" id="f-sq-odcur" type="number" step="0.01" placeholder="ยังไม่วัด — เว้นว่างไว้ได้"></div>
+        <div class="form-group"><label class="form-label">OD หมดอายุ (mm)</label>
+          <input class="form-input" id="f-sq-odmin" type="number" step="0.01" placeholder="เช่น 150"></div>
       </div>
       <datalist id="f-sq-size-list"></datalist>`
   },
@@ -13685,17 +13692,29 @@ function sqHasCurrentOd(r) {
   return sqNum((r || {}).odCur) != null;
 }
 
+// ลูกนี้ถึง OD หมดอายุแล้วหรือยัง — ต้องมีทั้ง OD ปัจจุบันที่วัดแล้วและ OD หมดอายุที่กรอกไว้
+function sqOdExpired(r) {
+  const cur = sqNum((r || {}).odCur), min = sqNum((r || {}).odMin);
+  return cur != null && min != null && cur <= min;
+}
 // OD ปัจจุบันพร้อมส่วนที่สึกไปจาก Standard — ยังไม่วัดก็บอกตรงๆ ว่ายังไม่วัด ไม่เอา Standard มาใส่แทน
 // (เกณฑ์เดียวกับ Ø ปัจจุบันของทะเบียน Roll ที่เว้นว่างไว้เมื่อยังไม่ได้วัดหลังแต่ง)
+// ถึง OD หมดอายุแล้วขึ้นแดงพร้อมป้าย ไม่ต้องมานั่งเทียบเลขสองช่องเอง
 function sqOdCurHtml(r) {
-  const cur = sqNum(r.odCur), std = sqNum(r.odStd);
+  const cur = sqNum(r.odCur), std = sqNum(r.odStd), min = sqNum(r.odMin);
   if (cur == null) return '<span style="color:var(--text-3);">ยังไม่วัด</span>';
+  const expired = sqOdExpired(r);
   const txt = cur.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  if (std == null) return escapeHtmlAttr(txt);
+  const main = expired
+    ? `<b style="color:var(--red);">${escapeHtmlAttr(txt)}</b> <span class="chip chip-red"
+        title="${escapeHtmlAttr('ถึง OD หมดอายุ (' + min.toLocaleString() + ' mm) แล้ว — ต้องเปลี่ยนลูกใหม่')}">ถึงอายุ</span>`
+    : escapeHtmlAttr(txt);
+  if (std == null) return main;
   const worn = Math.round((std - cur) * 100) / 100;
-  if (worn <= 0) return escapeHtmlAttr(txt);
-  return `${escapeHtmlAttr(txt)} <span style="font-size:11px;font-weight:700;color:var(--amber);"
-    title="${escapeHtmlAttr('เล็กลงจาก OD Standard ' + std.toLocaleString() + ' mm')}">−${escapeHtmlAttr(worn.toLocaleString())}</span>`;
+  if (worn <= 0) return main;
+  return `${main} <span style="font-size:11px;font-weight:700;color:${expired ? 'var(--red)' : 'var(--amber)'};"
+    title="${escapeHtmlAttr('เล็กลงจาก OD Standard ' + std.toLocaleString() + ' mm'
+      + (min != null ? ' · เหลืออีก ' + (Math.round((cur - min) * 100) / 100).toLocaleString() + ' mm ถึง OD หมดอายุ' : ''))}">−${escapeHtmlAttr(worn.toLocaleString())}</span>`;
 }
 
 // เติมตัวเลือกในฟอร์ม (ประเภท/ชุดสี/รายการ Size SQ ที่มีอยู่) — เรียกทุกครั้งที่เปิดฟอร์ม
@@ -13759,6 +13778,7 @@ function readSqSetForm() {
       code: codes[i - 1],
       odStd: sqFormVal('f-sq-odstd' + i),
       odCur: sqFormVal('f-sq-odcur' + i),   // ว่าง = ยังไม่ได้วัด
+      odMin: sqFormVal('f-sq-odmin' + i),
     });
   }
   return out;
@@ -13780,6 +13800,7 @@ function editSq(id) {
   document.getElementById('f-sq-code').value = r.code || '';
   document.getElementById('f-sq-odstd').value = r.odStd || '';
   document.getElementById('f-sq-odcur').value = r.odCur || '';
+  document.getElementById('f-sq-odmin').value = r.odMin || '';
   document.getElementById('modal-overlay').classList.add('open');
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const sizeSq = sqFormVal('f-sq-size');
@@ -13796,7 +13817,7 @@ function editSq(id) {
     const updated = { ...r, sizeSq, kind: sqFormVal('f-sq-kind') || SQ_KINDS[0],
       color: sqFormVal('f-sq-color') || SQ_COLORS[0].key, madeYm: sqYmFromForm(),
       piece: Number(sqFormVal('f-sq-piece')) || 1, code: sqFormVal('f-sq-code'),
-      odStd: sqFormVal('f-sq-odstd'), odCur: sqFormVal('f-sq-odcur') };
+      odStd: sqFormVal('f-sq-odstd'), odCur: sqFormVal('f-sq-odcur'), odMin: sqFormVal('f-sq-odmin') };
     toolingData.sq[idx] = updated;
     // Size/ประเภท/ชุดสี/เดือน-ปีที่ผลิต เป็นค่าของ "ชุด" — แก้ที่ชิ้นไหนก็ต้องตรงกันทั้งชุด
     // ชุดชี้ด้วย setId แล้ว การเปลี่ยนขนาด/สีจึงไม่ทำให้ชุดแตกออกจากกันอีก
@@ -13885,13 +13906,14 @@ function renderSqTable(page) {
       <td class="muted" style="${dim}">${escapeHtmlAttr(fmtYmThai(r.madeYm))}</td>
       <td>${std != null ? escapeHtmlAttr(std.toLocaleString(undefined, { maximumFractionDigits: 2 })) : '<span style="color:var(--text-3);">—</span>'}</td>
       <td>${sqOdCurHtml(r)}</td>
+      <td>${sqNum(r.odMin) != null ? escapeHtmlAttr(sqNum(r.odMin).toLocaleString(undefined, { maximumFractionDigits: 2 })) : '<span style="color:var(--text-3);">—</span>'}</td>
       <td style="white-space:nowrap;">
         <button class="btn btn-ghost btn-sm" style="padding:4px 6px;" onclick="${jsCallAttr('editSq', r.id)}" title="แก้ไขชิ้นนี้">✏️</button>
         ${first ? `<button class="btn btn-ghost btn-sm" style="padding:4px 6px;color:var(--red);" onclick="${jsCallAttr('deleteSqSet', r.id)}" title="ลบทั้งชุด (${set.length} ชิ้น)">✕</button>` : ''}
       </td>
     </tr>`;
     }).join('');
-  }).join('') : `<tr><td colspan="9" style="padding:28px;text-align:center;color:var(--text-3);">${
+  }).join('') : `<tr><td colspan="10" style="padding:28px;text-align:center;color:var(--text-3);">${
     allSets.length ? 'ไม่มีรายการในที่เลือกไว้ — กดหัวข้อขนาดซ้ำอีกครั้งเพื่อดูทุกขนาด'
       : 'ยังไม่มีรายการ Roll SQ — กด "+ เพิ่มชุด" เพื่อเริ่มลงทะเบียน (1 ชุดลง Roll ' + SQ_PIECES_PER_SET + ' ชิ้นพร้อมกัน)'}</td></tr>`;
 
@@ -13926,6 +13948,7 @@ function renderSqTable(page) {
   set('kpi-sq-gi', allSets.filter(s => s[0].kind === 'GI').length);
   set('kpi-sq-incomplete', allSets.filter(s => s.length !== SQ_PIECES_PER_SET).length);
   set('kpi-sq-nood', toolingData.sq.filter(r => !sqHasCurrentOd(r)).length);
+  set('kpi-sq-expired', toolingData.sq.filter(sqOdExpired).length);
 }
 
 // ─── คอลัมน์ซ้าย: Size SQ → ชุด (วางแบบเดียวกับรายการ Size Roll ของแท็บ Roll) ────
@@ -14045,6 +14068,7 @@ function addSqPieceToSet(key) {
   document.getElementById('f-sq-code').value = '';   // รหัสเป็นของ Roll ลูกนั้น ไม่ลอกจากชิ้นแรก
   document.getElementById('f-sq-odstd').value = base.odStd || '';
   document.getElementById('f-sq-odcur').value = '';
+  document.getElementById('f-sq-odmin').value = base.odMin || '';   // เกณฑ์หมดอายุเป็นค่าของขนาด ลอกจากพี่น้องได้
   document.getElementById('modal-overlay').classList.add('open');
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const sizeSq = sqFormVal('f-sq-size');
@@ -14055,7 +14079,7 @@ function addSqPieceToSet(key) {
       id: newSqId(), setId: base.setId || sqSetKey(base), sizeSq, kind: sqFormVal('f-sq-kind') || SQ_KINDS[0],
       color: sqFormVal('f-sq-color') || SQ_COLORS[0].key, madeYm: sqYmFromForm(),
       piece: Number(sqFormVal('f-sq-piece')) || piece, code: sqFormVal('f-sq-code'),
-      odStd: sqFormVal('f-sq-odstd'), odCur: sqFormVal('f-sq-odcur'),
+      odStd: sqFormVal('f-sq-odstd'), odCur: sqFormVal('f-sq-odcur'), odMin: sqFormVal('f-sq-odmin'),
     });
     persistState();
     closeModal();
