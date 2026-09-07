@@ -4628,11 +4628,15 @@ const MODAL_FORMS = {
         <div class="form-group"><label class="form-label">ประเภท</label>
           <select class="form-select" id="f-sq-kind"></select></div>
       </div>
-      <div class="modal-row">
+      <!-- เดิมเป็น <input type="month"> ซึ่งช่องปีเป็น ค.ศ. พอกรอก พ.ศ. ลงไปตรงๆ ตารางจะบวก 543
+           ทับอีกชั้น (2558 → 3101) แยกเป็นเดือน + ปี พ.ศ. ให้กรอกตามที่พูดกันหน้างานได้เลย -->
+      <div class="modal-row three">
         <div class="form-group"><label class="form-label">ชุดสี</label>
           <select class="form-select" id="f-sq-color"></select></div>
-        <div class="form-group"><label class="form-label">เดือน/ปี ที่ผลิต</label>
-          <input class="form-input" id="f-sq-ym" type="month"></div>
+        <div class="form-group"><label class="form-label">เดือนที่ผลิต</label>
+          <select class="form-select" id="f-sq-mon"></select></div>
+        <div class="form-group"><label class="form-label">ปีที่ผลิต (พ.ศ.)</label>
+          <input class="form-input" id="f-sq-year" type="number" inputmode="numeric" placeholder="เช่น 2569"></div>
       </div>
       <div class="modal-row full"><div style="font-size:12px;font-weight:800;color:var(--text-2);
         border-left:3px solid var(--accent);padding-left:8px;">OD ของแต่ละชิ้น — 1 ชุดมี Roll 2 ชิ้น</div></div>
@@ -4664,8 +4668,12 @@ const MODAL_FORMS = {
       <div class="modal-row three">
         <div class="form-group"><label class="form-label">ชุดสี</label>
           <select class="form-select" id="f-sq-color"></select></div>
-        <div class="form-group"><label class="form-label">เดือน/ปี ที่ผลิต</label>
-          <input class="form-input" id="f-sq-ym" type="month"></div>
+        <div class="form-group"><label class="form-label">เดือนที่ผลิต</label>
+          <select class="form-select" id="f-sq-mon"></select></div>
+        <div class="form-group"><label class="form-label">ปีที่ผลิต (พ.ศ.)</label>
+          <input class="form-input" id="f-sq-year" type="number" inputmode="numeric" placeholder="เช่น 2569"></div>
+      </div>
+      <div class="modal-row">
         <div class="form-group"><label class="form-label">ชิ้นที่</label>
           <select class="form-select" id="f-sq-piece"><option value="1">1</option><option value="2">2</option></select></div>
       </div>
@@ -13510,13 +13518,40 @@ function sqColorMeta(key) {
 // สีประจำประเภท — ให้ GS/GI แยกออกจากกันได้ตั้งแต่กวาดตา
 const SQ_KIND_COLORS = { GS: 'var(--accent)', GI: 'var(--purple)' };
 
-// "2026-09" → "ก.ย. 2569" (ปี พ.ศ. เหมือนวันที่ที่อื่นในระบบ)
-function fmtYmThai(ym) {
-  const m = /^(\d{4})-(\d{2})$/.exec(String(ym || '').trim());
-  if (!m) return '—';
+// เดือน/ปีที่ผลิตเก็บเป็น "YYYY-MM" ปี ค.ศ. เหมือนวันที่อื่นทั้งระบบ แล้วแสดงเป็น พ.ศ.
+// รายการที่เผลอกรอกปี พ.ศ. ลงไปตรงๆ ตอนที่ช่องยังเป็น <input type="month"> จะมีปี >= 2400
+// ค้างอยู่ในข้อมูล — ถือว่านั่นคือ พ.ศ. ที่ผู้ใช้ตั้งใจ ไม่ต้องบวก 543 ซ้ำ (2558 ไม่ใช่ 3101)
+const YM_BE_OFFSET = 543;
+function ymYearBe(y) {
+  return y >= 2400 ? y : y + YM_BE_OFFSET;
+}
+function parseYm(ym) {
+  const m = /^(\d{4})-(\d{1,2})$/.exec(String(ym || '').trim());
+  if (!m) return null;
   const mi = Number(m[2]) - 1;
-  if (mi < 0 || mi > 11) return '—';
-  return THAI_MONTHS_ABBR[mi] + ' ' + (Number(m[1]) + 543);
+  if (mi < 0 || mi > 11) return null;
+  return { year: Number(m[1]), monthIdx: mi };
+}
+// "2026-09" → "ก.ย. 2569"
+function fmtYmThai(ym) {
+  const p = parseYm(ym);
+  return p ? THAI_MONTHS_ABBR[p.monthIdx] + ' ' + ymYearBe(p.year) : '—';
+}
+// อ่านเดือน + ปี พ.ศ. จากฟอร์ม → "YYYY-MM" ปี ค.ศ. (ว่างทั้งคู่ = ไม่ระบุ)
+function sqYmFromForm() {
+  const mon = Number(sqFormVal('f-sq-mon'));
+  const yearBe = Number(sqFormVal('f-sq-year'));
+  if (!mon || !yearBe) return '';
+  const yearAd = yearBe >= 2400 ? yearBe - YM_BE_OFFSET : yearBe;
+  return String(yearAd).padStart(4, '0') + '-' + String(mon).padStart(2, '0');
+}
+// เติมค่าที่เก็บไว้กลับลงฟอร์ม โดยแปลงปีเป็น พ.ศ. ให้ตรงกับที่ตารางแสดง
+function sqYmToForm(ym) {
+  const p = parseYm(ym);
+  const mon = document.getElementById('f-sq-mon');
+  const year = document.getElementById('f-sq-year');
+  if (mon) mon.value = p ? String(p.monthIdx + 1) : '';
+  if (year) year.value = p ? String(ymYearBe(p.year)) : '';
 }
 
 let sqIdSeq = 0;
@@ -13583,6 +13618,9 @@ function sqOdCurHtml(r) {
 
 // เติมตัวเลือกในฟอร์ม (ประเภท/ชุดสี/รายการ Size SQ ที่มีอยู่) — เรียกทุกครั้งที่เปิดฟอร์ม
 function fillSqFormOptions() {
+  const mon = document.getElementById('f-sq-mon');
+  if (mon) mon.innerHTML = '<option value="">— เดือน —</option>'
+    + THAI_MONTHS_ABBR.map((lb, i) => `<option value="${i + 1}">${lb}</option>`).join('');
   const kind = document.getElementById('f-sq-kind');
   if (kind) kind.innerHTML = SQ_KINDS.map(k => `<option value="${k}">${k}</option>`).join('');
   const color = document.getElementById('f-sq-color');
@@ -13603,7 +13641,7 @@ function readSqSetForm() {
   if (!sizeSq) { alert('กรอก Size SQ ก่อน'); return null; }
   const kind = sqFormVal('f-sq-kind') || SQ_KINDS[0];
   const color = sqFormVal('f-sq-color') || SQ_COLORS[0].key;
-  const madeYm = sqFormVal('f-sq-ym');
+  const madeYm = sqYmFromForm();
   const key = [sizeSq, kind, color].join('|');
   if (toolingData.sq.some(r => sqSetKey(r) === key)) {
     alert('มีชุดนี้อยู่แล้วในทะเบียน (' + sizeSq + ' ' + kind + ' · ' + sqColorMeta(color).label + ')\n'
@@ -13632,7 +13670,7 @@ function editSq(id) {
   document.getElementById('f-sq-size').value = r.sizeSq || '';
   document.getElementById('f-sq-kind').value = r.kind || SQ_KINDS[0];
   document.getElementById('f-sq-color').value = r.color || SQ_COLORS[0].key;
-  document.getElementById('f-sq-ym').value = r.madeYm || '';
+  sqYmToForm(r.madeYm);
   document.getElementById('f-sq-piece').value = String(r.piece || 1);
   document.getElementById('f-sq-odstd').value = r.odStd || '';
   document.getElementById('f-sq-odcur').value = r.odCur || '';
@@ -13641,7 +13679,7 @@ function editSq(id) {
     const sizeSq = sqFormVal('f-sq-size');
     if (!sizeSq) { alert('กรอก Size SQ ก่อน'); return; }
     const updated = { ...r, sizeSq, kind: sqFormVal('f-sq-kind') || SQ_KINDS[0],
-      color: sqFormVal('f-sq-color') || SQ_COLORS[0].key, madeYm: sqFormVal('f-sq-ym'),
+      color: sqFormVal('f-sq-color') || SQ_COLORS[0].key, madeYm: sqYmFromForm(),
       piece: Number(sqFormVal('f-sq-piece')) || 1,
       odStd: sqFormVal('f-sq-odstd'), odCur: sqFormVal('f-sq-odcur') };
     const wasKey = sqSetKey(r), nowKey = sqSetKey(updated);
