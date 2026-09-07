@@ -13620,6 +13620,14 @@ function sqSizeList() {
 
 // เรียง Size SQ → ประเภท (GS ก่อน GI ตาม SQ_KINDS) → ชุดสี (ตามลำดับจานสี) → ชิ้นที่
 // สองชิ้นของชุดเดียวกันจะได้อยู่ติดกันเสมอ เทียบ OD กันได้ในตาราง
+// ค่าที่เอาไปเรียงรอบผลิตได้ — ต้องแปลงปีให้เป็นฐานเดียวกันก่อน เพราะรายการที่ลงตอนที่ช่อง
+// ยังเป็น type=month มีปี พ.ศ. ค้างอยู่ (2558-08) ถ้าเทียบสตริงตรงๆ จะไปอยู่หลังปี ค.ศ. หมด
+function sqYmSortKey(ym) {
+  const p = parseYm(ym);
+  if (!p) return -1;   // ยังไม่ระบุรอบผลิต — ไว้ต้นกลุ่ม
+  const yearAd = p.year >= 2400 ? p.year - YM_BE_OFFSET : p.year;
+  return yearAd * 100 + p.monthIdx;
+}
 function sqSortedRows() {
   const kindIdx = k => { const i = SQ_KINDS.indexOf(k); return i < 0 ? SQ_KINDS.length : i; };
   const colorIdx = c => { const i = SQ_COLORS.findIndex(x => x.key === c); return i < 0 ? SQ_COLORS.length : i; };
@@ -13627,7 +13635,35 @@ function sqSortedRows() {
     String(a.sizeSq || '').localeCompare(String(b.sizeSq || ''), 'th', { numeric: true })
     || kindIdx(a.kind) - kindIdx(b.kind)
     || colorIdx(a.color) - colorIdx(b.color)
+    || sqYmSortKey(a.madeYm) - sqYmSortKey(b.madeYm)
     || (Number(a.piece) || 0) - (Number(b.piece) || 0));
+}
+
+// กลุ่มของ "สีเดียวกัน" = ขนาด + ประเภท + ชุดสี — ในกลุ่มนี้มีได้หลายชุด
+function sqColorGroupKey(r) {
+  const o = r || {};
+  return [String(o.sizeSq || '').trim(), o.kind || '', o.color || ''].join('|');
+}
+// ชุดนี้เป็นชุดที่เท่าไรของสีนั้น (เรียงตามรอบผลิต) และสีนั้นมีทั้งหมดกี่ชุด
+// คิดสดจากข้อมูล ไม่ได้เก็บเลขไว้ เพิ่ม/ลบชุดแล้วเลขเรียงใหม่ให้เองไม่มีเลขค้าง
+function sqSetOrdinalInfo(r) {
+  const gk = sqColorGroupKey(r);
+  const keys = [];
+  sqSortedRows().forEach(x => {
+    if (sqColorGroupKey(x) !== gk) return;
+    const k = sqSetKey(x);
+    if (!keys.includes(k)) keys.push(k);
+  });
+  const i = keys.indexOf(sqSetKey(r));
+  return { no: i < 0 ? 1 : i + 1, total: keys.length };
+}
+function sqSetOrdinalLabel(r) {
+  return 'ชุดที่ ' + sqSetOrdinalInfo(r).no;
+}
+// ชื่อเต็มของชุดสำหรับหัวเรื่อง/ข้อความยืนยัน — ขนาด ประเภท · สี ชุดที่ N · รอบผลิต
+function sqSetFullLabel(r) {
+  return (r.sizeSq || '') + ' ' + (r.kind || '') + ' · ' + sqColorMeta(r.color).label
+    + ' ' + sqSetOrdinalLabel(r) + ' · ' + fmtYmThai(r.madeYm);
 }
 
 // จัดเป็นชุด (เรียงแล้ว) — แบ่งหน้าตาม "ชุด" ไม่ใช่ตามชิ้น ไม่งั้นชุดหนึ่งจะถูกหักคาหน้า
@@ -13686,8 +13722,7 @@ function sqCodeConflictMsg(code, exceptId) {
   const own = sqCodeOwner(code, exceptId);
   if (!own) return null;
   return 'รหัส Roll "' + String(code).trim() + '" ถูกใช้อยู่แล้วที่ '
-    + (own.sizeSq || '') + ' ' + (own.kind || '') + ' · ' + sqColorMeta(own.color).label
-    + ' · ชิ้น ' + sqPieceLabel(own.piece);
+    + sqSetFullLabel(own) + ' · ชิ้น ' + sqPieceLabel(own.piece);
 }
 
 function sqFormVal(id) {
@@ -13734,7 +13769,7 @@ function editSq(id) {
   if (idx < 0) return;
   const r = toolingData.sq[idx];
   document.getElementById('modal-title').textContent =
-    'แก้ไข Roll SQ — ' + (r.sizeSq || '') + ' ' + (r.kind || '') + ' · ' + sqColorMeta(r.color).label + ' · ชิ้น ' + sqPieceLabel(r.piece || 1);
+    'แก้ไข Roll SQ — ' + sqSetFullLabel(r) + ' · ชิ้น ' + sqPieceLabel(r.piece || 1);
   document.getElementById('modal-body').innerHTML = MODAL_FORMS.sqPiece.fields;
   fillSqFormOptions();
   document.getElementById('f-sq-size').value = r.sizeSq || '';
@@ -13786,8 +13821,8 @@ function editSq(id) {
 function deleteSqPiece(id) {
   const r = toolingData.sq.find(x => x.id === id);
   if (!r) return;
-  if (!confirm('ลบเฉพาะชิ้น ' + sqPieceLabel(r.piece || 1) + ' ของชุด ' + (r.sizeSq || '') + ' ' + (r.kind || '')
-    + ' · ' + sqColorMeta(r.color).label + ' ?\nชุดนี้จะเหลือ Roll ไม่ครบ 2 ชิ้น')) return;
+  if (!confirm('ลบเฉพาะชิ้น ' + sqPieceLabel(r.piece || 1) + ' ของชุด ' + sqSetFullLabel(r)
+    + ' ?\nชุดนี้จะเหลือ Roll ไม่ครบ 2 ชิ้น')) return;
   toolingData.sq = toolingData.sq.filter(x => x.id !== id);
   persistState();
   sqClampPage();
@@ -13800,8 +13835,7 @@ function deleteSqSet(id) {
   if (!r) return;
   const key = sqSetKey(r);
   const n = toolingData.sq.filter(x => sqSetKey(x) === key).length;
-  if (!confirm('ลบทั้งชุด ' + (r.sizeSq || '') + ' ' + (r.kind || '') + ' · ' + sqColorMeta(r.color).label
-    + ' (Roll ' + n + ' ชิ้น) ?')) return;
+  if (!confirm('ลบทั้งชุด ' + sqSetFullLabel(r) + ' (Roll ' + n + ' ชิ้น) ?')) return;
   toolingData.sq = toolingData.sq.filter(x => sqSetKey(x) !== key);
   persistState();
   sqClampPage();
@@ -13843,7 +13877,8 @@ function renderSqTable(page) {
         color:#fff;background:${SQ_KIND_COLORS[r.kind] || 'var(--text-2)'};">${escapeHtmlAttr(r.kind || '—')}</span></td>
       <td style="${dim}"><span style="display:inline-flex;align-items:center;gap:6px;">
         <span style="width:10px;height:10px;border-radius:50%;background:${cm.dot};box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);"></span>
-        ${escapeHtmlAttr(cm.label)}</span></td>
+        ${escapeHtmlAttr(cm.label)}
+        <b style="color:var(--text-1);">${escapeHtmlAttr(sqSetOrdinalLabel(r))}</b></span></td>
       <td>${sqPieceChipHtml(r.piece || i + 1)}${
         first && incomplete ? ` <span class="chip chip-amber" title="1 ชุดต้องมี Roll ${SQ_PIECES_PER_SET} ชิ้น — ชุดนี้มี ${set.length} ชิ้น">ไม่ครบ</span>` : ''}</td>
       <td class="muted">${r.code ? escapeHtmlAttr(r.code) : '<span style="color:var(--text-3);">—</span>'}</td>
@@ -13868,8 +13903,7 @@ function renderSqTable(page) {
   if (titleEl) {
     const one = selectedSqSetKey ? sets[0] : null;
     titleEl.textContent = one
-      ? (one[0].sizeSq || '') + ' ' + (one[0].kind || '') + ' · ' + sqColorMeta(one[0].color).label
-        + ' · ' + fmtYmThai(one[0].madeYm)
+      ? sqSetFullLabel(one[0])
       : selectedSqSize ? 'Size SQ ' + selectedSqSize : 'Roll SQ ทั้งหมด';
   }
   if (countEl) countEl.textContent = sets.length ? sets.length + ' ชุด · Roll ' + pieces + ' ชิ้น' : '';
@@ -13963,8 +13997,8 @@ function renderSqSetList() {
           style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:6px;cursor:pointer;flex:1;min-width:0;
                  background:${active ? 'var(--accent-glow)' : 'transparent'};
                  color:${active ? 'var(--accent)' : 'var(--text-2)'};font-weight:${active ? '700' : '400'};transition:background .12s;"
-          title="${escapeHtmlAttr(size + ' ' + (r.kind || '') + ' · ' + cm.label
-            + ' · Roll ' + set.length + ' ชิ้น ('
+          title="${escapeHtmlAttr(sqSetFullLabel(r)
+            + ' — Roll ' + set.length + ' ชิ้น ('
               + set.map(x => sqPieceLabel(x.piece) + (x.code ? ' ' + x.code : '')).join(', ') + ')'
             + (measured < set.length ? ' · วัด OD แล้ว ' + measured + '/' + set.length : ''))}">
           <span style="width:18px;height:18px;border-radius:50%;background:var(--bg-panel);color:var(--text-3);font-size:10px;
@@ -13973,6 +14007,7 @@ function renderSqSetList() {
                        color:#fff;background:${SQ_KIND_COLORS[r.kind] || 'var(--text-2)'};">${escapeHtmlAttr(r.kind || '—')}</span>
           <span style="width:9px;height:9px;border-radius:50%;background:${cm.dot};flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);"></span>
           <span style="flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtmlAttr(cm.label)}
+            <b style="color:var(--text-1);">${escapeHtmlAttr(sqSetOrdinalLabel(r))}</b>
             <span style="color:var(--text-3);font-weight:400;">· ${escapeHtmlAttr(fmtYmThai(r.madeYm))}</span></span>
           ${incomplete ? `<span class="chip chip-amber" style="flex-shrink:0;" title="1 ชุดต้องมี Roll ${SQ_PIECES_PER_SET} ชิ้น">ไม่ครบ</span>` : ''}
           <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;flex-shrink:0;">${set.length}</span>
@@ -13999,7 +14034,7 @@ function addSqPieceToSet(key) {
   const piece = sqMissingPiece(set);
   const base = set[0];
   document.getElementById('modal-title').textContent =
-    'เพิ่ม Roll ชิ้น ' + sqPieceLabel(piece) + ' — ' + (base.sizeSq || '') + ' ' + (base.kind || '') + ' · ' + sqColorMeta(base.color).label;
+    'เพิ่ม Roll ชิ้น ' + sqPieceLabel(piece) + ' — ' + sqSetFullLabel(base);
   document.getElementById('modal-body').innerHTML = MODAL_FORMS.sqPiece.fields;
   fillSqFormOptions();
   document.getElementById('f-sq-size').value = base.sizeSq || '';
