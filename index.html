@@ -4679,6 +4679,14 @@ const MODAL_FORMS = {
   sqPiece: {
     title: 'แก้ไข Roll SQ',
     fields: `
+      <!-- รหัส Roll เป็นตัวชี้ตัว Roll ลูกนั้นตรงๆ จึงอยู่แถวแรกคู่กับชิ้นงาน (R/L)
+           แถวถัดไปเป็นค่าของ "ชุด" ที่ลูกนี้สังกัดอยู่ แล้วปิดท้ายด้วย OD ของลูกนี้ -->
+      <div class="modal-row">
+        <div class="form-group"><label class="form-label">รหัส Roll</label>
+          <input class="form-input" id="f-sq-code" placeholder="เช่น SQ-2323-R"></div>
+        <div class="form-group"><label class="form-label">ชิ้นงาน</label>
+          <select class="form-select" id="f-sq-piece"><option value="1">R (ขวา)</option><option value="2">L (ซ้าย)</option></select></div>
+      </div>
       <div class="modal-row">
         <div class="form-group"><label class="form-label">Size SQ</label>
           <input class="form-input" id="f-sq-size" list="f-sq-size-list" placeholder="เช่น 38x38"></div>
@@ -4692,12 +4700,6 @@ const MODAL_FORMS = {
           <select class="form-select" id="f-sq-mon"></select></div>
         <div class="form-group"><label class="form-label">ปีที่ผลิต (พ.ศ.)</label>
           <input class="form-input" id="f-sq-year" type="number" inputmode="numeric" placeholder="เช่น 2569"></div>
-      </div>
-      <div class="modal-row">
-        <div class="form-group"><label class="form-label">ชิ้นงาน</label>
-          <select class="form-select" id="f-sq-piece"><option value="1">R (ขวา)</option><option value="2">L (ซ้าย)</option></select></div>
-        <div class="form-group"><label class="form-label">รหัส Roll</label>
-          <input class="form-input" id="f-sq-code" placeholder="เช่น SQ-2323-R"></div>
       </div>
       <div class="modal-row">
         <div class="form-group"><label class="form-label">OD Standard (mm)</label>
