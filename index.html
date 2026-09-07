@@ -1372,7 +1372,7 @@ canvas{display:block;}
             <div class="table-wrap" style="overflow-x:auto;">
               <table>
                 <thead><tr>
-                  <th>Size SQ</th><th>ประเภท</th><th>ชุดสี</th><th title="ชิ้นงานในชุด — R = ขวา · L = ซ้าย">ชิ้นงาน</th><th>เดือน/ปี ที่ผลิต</th><th title="ขนาดตอนใส่ครั้งแรก — ไม่เปลี่ยนตามการแต่ง">OD Standard</th><th title="ขนาดล่าสุดหลังแต่ง">OD ปัจจุบัน</th><th></th>
+                  <th>Size SQ</th><th>ประเภท</th><th>ชุดสี</th><th title="ชิ้นงานในชุด — R = ขวา · L = ซ้าย">ชิ้นงาน</th><th title="รหัสประจำ Roll ลูกนั้น">รหัส Roll</th><th>เดือน/ปี ที่ผลิต</th><th title="ขนาดตอนใส่ครั้งแรก — ไม่เปลี่ยนตามการแต่ง">OD Standard</th><th title="ขนาดล่าสุดหลังแต่ง">OD ปัจจุบัน</th><th></th>
                 </tr></thead>
                 <tbody id="tbody-sq"></tbody>
               </table>
@@ -4655,15 +4655,19 @@ const MODAL_FORMS = {
           <input class="form-input" id="f-sq-year" type="number" inputmode="numeric" placeholder="เช่น 2569"></div>
       </div>
       <div class="modal-row full"><div style="font-size:12px;font-weight:800;color:var(--text-2);
-        border-left:3px solid var(--accent);padding-left:8px;">OD ของแต่ละชิ้น — 1 ชุดมี Roll 2 ชิ้น (R และ L)</div></div>
+        border-left:3px solid var(--accent);padding-left:8px;">รหัสและ OD ของแต่ละชิ้น — 1 ชุดมี Roll 2 ชิ้น (R และ L)</div></div>
       <!-- OD ปัจจุบันเว้นว่างไว้ได้ = ยังไม่ได้วัดหลังแต่ง (เกณฑ์เดียวกับ Ø ปัจจุบันของทะเบียน Roll) -->
-      <div class="modal-row">
+      <div class="modal-row three">
+        <div class="form-group"><label class="form-label">ชิ้น R · รหัส Roll</label>
+          <input class="form-input" id="f-sq-code1" placeholder="เช่น SQ-2323-R"></div>
         <div class="form-group"><label class="form-label">ชิ้น R · OD Standard (mm)</label>
           <input class="form-input" id="f-sq-odstd1" type="number" step="0.01" placeholder="เช่น 120"></div>
         <div class="form-group"><label class="form-label">ชิ้น R · OD ปัจจุบัน (mm)</label>
           <input class="form-input" id="f-sq-odcur1" type="number" step="0.01" placeholder="ยังไม่วัด — เว้นว่างไว้ได้"></div>
       </div>
-      <div class="modal-row">
+      <div class="modal-row three">
+        <div class="form-group"><label class="form-label">ชิ้น L · รหัส Roll</label>
+          <input class="form-input" id="f-sq-code2" placeholder="เช่น SQ-2323-L"></div>
         <div class="form-group"><label class="form-label">ชิ้น L · OD Standard (mm)</label>
           <input class="form-input" id="f-sq-odstd2" type="number" step="0.01" placeholder="เช่น 120"></div>
         <div class="form-group"><label class="form-label">ชิ้น L · OD ปัจจุบัน (mm)</label>
@@ -4692,6 +4696,8 @@ const MODAL_FORMS = {
       <div class="modal-row">
         <div class="form-group"><label class="form-label">ชิ้นงาน</label>
           <select class="form-select" id="f-sq-piece"><option value="1">R (ขวา)</option><option value="2">L (ซ้าย)</option></select></div>
+        <div class="form-group"><label class="form-label">รหัส Roll</label>
+          <input class="form-input" id="f-sq-code" placeholder="เช่น SQ-2323-R"></div>
       </div>
       <div class="modal-row">
         <div class="form-group"><label class="form-label">OD Standard (mm)</label>
@@ -13658,6 +13664,20 @@ function fillSqFormOptions() {
   if (list) list.innerHTML = sqSizeList().map(s => `<option value="${escapeHtmlAttr(s)}"></option>`).join('');
 }
 
+// รายการที่ใช้รหัสนี้อยู่แล้ว (ไม่นับตัวเอง) — เว้นรหัสว่างไว้ได้ ไม่ถือว่าซ้ำ
+function sqCodeOwner(code, exceptId) {
+  const c = String(code || '').trim().toLowerCase();
+  if (!c) return null;
+  return toolingData.sq.find(r => r.id !== exceptId && String(r.code || '').trim().toLowerCase() === c) || null;
+}
+function sqCodeConflictMsg(code, exceptId) {
+  const own = sqCodeOwner(code, exceptId);
+  if (!own) return null;
+  return 'รหัส Roll "' + String(code).trim() + '" ถูกใช้อยู่แล้วที่ '
+    + (own.sizeSq || '') + ' ' + (own.kind || '') + ' · ' + sqColorMeta(own.color).label
+    + ' · ชิ้น ' + sqPieceLabel(own.piece);
+}
+
 function sqFormVal(id) {
   return String(((document.getElementById(id) || {}).value) || '').trim();
 }
@@ -13676,10 +13696,23 @@ function readSqSetForm() {
       + 'ถ้าจะแก้ค่า OD ให้กดปุ่ม ✏️ ที่แถวของชุดนั้น');
     return null;
   }
+  const codes = [];
+  for (let i = 1; i <= SQ_PIECES_PER_SET; i++) {
+    const code = sqFormVal('f-sq-code' + i);
+    const clash = sqCodeConflictMsg(code);
+    if (clash) { alert(clash); return null; }
+    codes.push(code);
+  }
+  const nonEmpty = codes.filter(Boolean).map(c => c.toLowerCase());
+  if (new Set(nonEmpty).size !== nonEmpty.length) {
+    alert('รหัส Roll ของชิ้น R และ L ซ้ำกัน — แต่ละลูกต้องมีรหัสของตัวเอง');
+    return null;
+  }
   const out = [];
   for (let i = 1; i <= SQ_PIECES_PER_SET; i++) {
     out.push({
       id: newSqId(), sizeSq, kind, color, madeYm, piece: i,
+      code: codes[i - 1],
       odStd: sqFormVal('f-sq-odstd' + i),
       odCur: sqFormVal('f-sq-odcur' + i),   // ว่าง = ยังไม่ได้วัด
     });
@@ -13700,15 +13733,18 @@ function editSq(id) {
   document.getElementById('f-sq-color').value = r.color || SQ_COLORS[0].key;
   sqYmToForm(r.madeYm);
   document.getElementById('f-sq-piece').value = String(r.piece || 1);
+  document.getElementById('f-sq-code').value = r.code || '';
   document.getElementById('f-sq-odstd').value = r.odStd || '';
   document.getElementById('f-sq-odcur').value = r.odCur || '';
   document.getElementById('modal-overlay').classList.add('open');
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const sizeSq = sqFormVal('f-sq-size');
     if (!sizeSq) { alert('กรอก Size SQ ก่อน'); return; }
+    const clash = sqCodeConflictMsg(sqFormVal('f-sq-code'), r.id);
+    if (clash) { alert(clash); return; }
     const updated = { ...r, sizeSq, kind: sqFormVal('f-sq-kind') || SQ_KINDS[0],
       color: sqFormVal('f-sq-color') || SQ_COLORS[0].key, madeYm: sqYmFromForm(),
-      piece: Number(sqFormVal('f-sq-piece')) || 1,
+      piece: Number(sqFormVal('f-sq-piece')) || 1, code: sqFormVal('f-sq-code'),
       odStd: sqFormVal('f-sq-odstd'), odCur: sqFormVal('f-sq-odcur') };
     const wasKey = sqSetKey(r), nowKey = sqSetKey(updated);
     toolingData.sq[idx] = updated;
@@ -13798,6 +13834,7 @@ function renderSqTable(page) {
         ${escapeHtmlAttr(cm.label)}</span></td>
       <td>${sqPieceChipHtml(r.piece || i + 1)}${
         first && incomplete ? ` <span class="chip chip-amber" title="1 ชุดต้องมี Roll ${SQ_PIECES_PER_SET} ชิ้น — ชุดนี้มี ${set.length} ชิ้น">ไม่ครบ</span>` : ''}</td>
+      <td class="muted">${r.code ? escapeHtmlAttr(r.code) : '<span style="color:var(--text-3);">—</span>'}</td>
       <td class="muted" style="${dim}">${escapeHtmlAttr(fmtYmThai(r.madeYm))}</td>
       <td>${std != null ? escapeHtmlAttr(std.toLocaleString(undefined, { maximumFractionDigits: 2 })) : '<span style="color:var(--text-3);">—</span>'}</td>
       <td>${sqOdCurHtml(r)}</td>
@@ -13807,7 +13844,7 @@ function renderSqTable(page) {
       </td>
     </tr>`;
     }).join('');
-  }).join('') : `<tr><td colspan="8" style="padding:28px;text-align:center;color:var(--text-3);">${
+  }).join('') : `<tr><td colspan="9" style="padding:28px;text-align:center;color:var(--text-3);">${
     allSets.length ? 'ไม่มีรายการในที่เลือกไว้ — กดหัวข้อขนาดซ้ำอีกครั้งเพื่อดูทุกขนาด'
       : 'ยังไม่มีรายการ Roll SQ — กด "+ เพิ่มชุด" เพื่อเริ่มลงทะเบียน (1 ชุดลง Roll ' + SQ_PIECES_PER_SET + ' ชิ้นพร้อมกัน)'}</td></tr>`;
 
@@ -13914,7 +13951,8 @@ function renderSqSetList() {
                  background:${active ? 'var(--accent-glow)' : 'transparent'};
                  color:${active ? 'var(--accent)' : 'var(--text-2)'};font-weight:${active ? '700' : '400'};transition:background .12s;"
           title="${escapeHtmlAttr(size + ' ' + (r.kind || '') + ' · ' + cm.label
-            + ' · Roll ' + set.length + ' ชิ้น (' + set.map(x => sqPieceLabel(x.piece)).join(', ') + ')'
+            + ' · Roll ' + set.length + ' ชิ้น ('
+              + set.map(x => sqPieceLabel(x.piece) + (x.code ? ' ' + x.code : '')).join(', ') + ')'
             + (measured < set.length ? ' · วัด OD แล้ว ' + measured + '/' + set.length : ''))}">
           <span style="width:18px;height:18px;border-radius:50%;background:var(--bg-panel);color:var(--text-3);font-size:10px;
                        font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${num}</span>
@@ -13955,16 +13993,19 @@ function addSqPieceToSet(key) {
   document.getElementById('f-sq-color').value = base.color || SQ_COLORS[0].key;
   sqYmToForm(base.madeYm);
   document.getElementById('f-sq-piece').value = String(piece);
+  document.getElementById('f-sq-code').value = '';   // รหัสเป็นของ Roll ลูกนั้น ไม่ลอกจากชิ้นแรก
   document.getElementById('f-sq-odstd').value = base.odStd || '';
   document.getElementById('f-sq-odcur').value = '';
   document.getElementById('modal-overlay').classList.add('open');
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const sizeSq = sqFormVal('f-sq-size');
     if (!sizeSq) { alert('กรอก Size SQ ก่อน'); return; }
+    const clash = sqCodeConflictMsg(sqFormVal('f-sq-code'));
+    if (clash) { alert(clash); return; }
     toolingData.sq.push({
       id: newSqId(), sizeSq, kind: sqFormVal('f-sq-kind') || SQ_KINDS[0],
       color: sqFormVal('f-sq-color') || SQ_COLORS[0].key, madeYm: sqYmFromForm(),
-      piece: Number(sqFormVal('f-sq-piece')) || piece,
+      piece: Number(sqFormVal('f-sq-piece')) || piece, code: sqFormVal('f-sq-code'),
       odStd: sqFormVal('f-sq-odstd'), odCur: sqFormVal('f-sq-odcur'),
     });
     persistState();
