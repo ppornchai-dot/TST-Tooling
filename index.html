@@ -5408,15 +5408,43 @@ function shiftChipClass(shiftKey) {
   return shiftKey === 'night' ? 'chip-purple' : shiftKey === 'both' ? 'chip-cyan' : 'chip-amber';
 }
 
-// กะที่ "เวลาเริ่มจริง" ตกอยู่ — งานกะ both ต้องดูจากเวลาที่กดเริ่ม ไม่ใช่จาก t.shift ที่คลุมทั้งสองกะ
-// คืน 'other' ถ้าอยู่นอกหน้าต่างกะทั้งสอง (17:00–20:00) เช่นกดเริ่มงานคาบช่วงส่งกะ
-function shiftKeyForTime(hhmm) {
+function hhmmToMinOfDay(hhmm) {
   const m = /^(\d{1,2}):(\d{2})/.exec(String(hhmm || ''));
-  if (!m) return null;
-  const min = (+m[1]) * 60 + (+m[2]);
-  if (isMinuteInWindow(min, SHIFTS.morning.windows[0])) return 'morning';
-  if (isMinuteInWindow(min, SHIFTS.night.windows[0])) return 'night';
-  return 'other';
+  return m ? (+m[1]) * 60 + (+m[2]) : null;
+}
+
+// ช่วง OT บนหน้าปัดของประเภทงานนั้น — ต่อท้ายเวลาเลิกกะปกติของทุกกะที่ประเภทนั้นทำ
+// ยาวเท่าโควตา OT (งานขัด Roll 17:00–23:00 · งาน CNC 17:00–20:00 และ 05:00–08:00)
+function otWindowsFor(workType) {
+  const cap = otCapMaxMinFor(workType);
+  if (!cap) return [];
+  return planDayEndShiftsFor(workType).map(k => {
+    const w = ((SHIFTS[k] || {}).windows || [])[0];
+    return w ? { shiftKey: k, startMin: w.endMin % 1440, endMin: (w.endMin + cap) % 1440 } : null;
+  }).filter(Boolean);
+}
+
+// กะที่ "เวลาเริ่มจริง" นับเป็นของ — ช่วง OT ถือเป็นของกะที่มันต่อท้าย (เกณฑ์เดียวกับ taskSessionShiftKey)
+// ต้องยึดประเภทงานด้วย เพราะทีมขัด Roll ไม่มีกะดึก 20:00 ของงานขัดคือ OT ต่อจากกะเช้า
+function owningShiftKeyForTime(hhmm, workType) {
+  const min = hhmmToMinOfDay(hhmm);
+  if (min == null) return null;
+  const shift = SHIFTS[planContinueShiftFor(workType || 'cnc')] || SHIFTS.both;
+  return windowKeyAt(shift, min) || mostRecentShiftKeyBefore(shift, min);
+}
+
+// หัวข้อกลุ่มในหน้าประวัติที่เวลานี้ตกอยู่ สำหรับประเภทงานนั้น — กะปกติ / ช่วง OT ต่อท้ายกะ / นอกทุกช่วง
+// เดิมดูแต่เวลาบนนาฬิกาโดยไม่สนประเภทงาน งานขัด Roll ที่เริ่ม 20:27 จึงถูกจัดเป็น "กะดึก"
+// ทั้งที่ทีมขัดไม่มีกะดึกเลย — เวลานั้นคือช่วง OT ที่ต่อจากกะเช้ามา (OT ได้ถึง 23:00)
+function historyShiftKeyForTime(hhmm, workType) {
+  const min = hhmmToMinOfDay(hhmm);
+  if (min == null) return null;
+  const allowed = planWorkTypeShifts(workType || 'cnc');
+  const inShift = ['morning', 'night'].find(k =>
+    allowed.includes(k) && isMinuteInWindow(min, SHIFTS[k].windows[0]));
+  if (inShift) return inShift;
+  const ot = otWindowsFor(workType || 'cnc').find(w => isMinuteInWindow(min, w));
+  return ot ? 'ot_' + ot.shiftKey : 'other';
 }
 
 // ลำดับเวลาภายใน "วันทำงาน" หนึ่ง โดยยึด 08:00 เป็นจุดเริ่ม แล้วไล่ต่อเนื่องไปจนจบกะดึกตอน 05:00 ของวันถัดไป
@@ -5431,11 +5459,37 @@ function historyDayOrderMin(hhmm) {
 }
 
 const HISTORY_SHIFT_META = {
-  morning: { label: 'กะเช้า', range: '08:00 – 17:00', color: 'var(--amber)',  bg: 'var(--amber-dim)' },
-  night:   { label: 'กะดึก',  range: '20:00 – 05:00', color: 'var(--purple)', bg: 'var(--purple-dim)' },
-  other:   { label: 'นอกเวลากะ', range: '',           color: 'var(--text-2)', bg: 'var(--bg-panel)' },
-  unknown: { label: 'ไม่มีเวลาเริ่มงาน', range: '',    color: 'var(--text-3)', bg: 'var(--bg-panel)' },
+  morning:    { label: 'กะเช้า', range: '08:00 – 17:00', color: 'var(--amber)',  bg: 'var(--amber-dim)' },
+  night:      { label: 'กะดึก',  range: '20:00 – 05:00', color: 'var(--purple)', bg: 'var(--purple-dim)' },
+  // ช่วง OT ไม่ใช่กะ — ช่วงเวลาบอกเป็นตัวเลขไม่ได้ตายตัว เพราะแต่ละประเภทงาน OT ได้ยาวไม่เท่ากัน
+  // (งานขัด Roll ถึง 23:00 · งาน CNC ถึง 20:00) จึงคิดจากประเภทงานที่อยู่ในกลุ่มนั้นตอนวาดหัวข้อ
+  ot_morning: { label: 'OT ต่อจากกะเช้า', range: '',     color: 'var(--accent)', bg: 'var(--accent-glow)' },
+  ot_night:   { label: 'OT ต่อจากกะดึก',  range: '',     color: 'var(--accent)', bg: 'var(--accent-glow)' },
+  other:      { label: 'นอกเวลากะ', range: '',           color: 'var(--text-2)', bg: 'var(--bg-panel)' },
+  unknown:    { label: 'ไม่มีเวลาเริ่มงาน', range: '',    color: 'var(--text-3)', bg: 'var(--bg-panel)' },
 };
+
+// ลำดับของหัวข้อกลุ่มภายใน "วันทำงาน" เดียว เรียงตามเวลาจริง (08:00 → 08:00 ของวันถัดไป)
+// ต้องฝังลงใน sortKey ไม่ใช่ปล่อยให้เรียงด้วยเวลานาฬิกาล้วน เพราะช่วง OT ของงานขัด (17:00–23:00)
+// คาบทับกะดึกของงาน CNC (20:00–05:00) ถ้าเรียงด้วยเวลาล้วน แถวสองกลุ่มจะสลับฟันปลากัน
+// แล้วหัวข้อกลุ่มเดิมถูกพิมพ์ซ้ำหลายรอบ พร้อมยอดรวมของทั้งวันติดไปทุกรอบ
+const HISTORY_SHIFT_RANK = { unknown: '0', morning: '1', ot_morning: '2', night: '3', ot_night: '4', other: '5' };
+function historyShiftRank(shiftKey) {
+  return HISTORY_SHIFT_RANK[shiftKey] || '5';
+}
+
+// ช่วงเวลา OT บนหน้าปัดของกลุ่ม OT หนึ่ง — เอาประเภทงานที่ OT ได้ยาวสุดในกลุ่มเป็นตัวกำหนดเวลาเลิก
+function historyOtRangeText(shiftKey, list) {
+  const base = String(shiftKey || '').slice(3); // ตัด 'ot_' ออก เหลือกะที่ช่วงนี้ต่อท้าย
+  const win = ((SHIFTS[base] || {}).windows || [])[0];
+  if (!win) return '';
+  let cap = 0;
+  new Set(list.map(x => x.typeKey)).forEach(wt => {
+    if (planWorkTypeAllowsShift(wt, base)) cap = Math.max(cap, otCapMaxMinFor(wt));
+  });
+  if (!cap) return '';
+  return planMinToHHMM(win.endMin) + ' – ' + planMinToHHMM(win.endMin + cap);
+}
 
 // ช่วง OT ของกะนั้นในวันทำงานนั้น — ใช้เติมท้ายหัวข้อกะในหน้าประวัติ
 // ยึด "นาที OT ที่แผนใช้จริง" (otMinutesByShift) ไม่ใช่โควตาที่กรอกไว้ — วันที่กรอกโควตา OT ไว้
@@ -6195,14 +6249,17 @@ function addPlanTaskOnDate(dateIso, workType, shiftKey) {
 // แต่กินเวลาช่างจริง จึงต้องเห็นในหน้าวางแผนทุกมุมมอง ไม่ใช่เห็นแค่หน้างานประจำวัน
 // date ว่าง = งานที่ทำซ้ำทุกวัน · ไม่ระบุประเภท = ถือเป็นงานแต่ง Roll (CNC) เหมือนหน้างานประจำวัน
 // shiftKey ส่งมาเมื่อหมวดนั้นแยกกะ (CNC เช้า/ดึก) — ยึดกะจากเวลาที่เริ่มจริง ไม่รู้ก็ไปกะแรก
+// ใช้ owningShiftKeyForTime ที่นับช่วง OT เป็นของกะที่มันต่อท้าย — ไม่งั้นงานแทรกที่เริ่มตอน OT
+// (17:00–20:00) ไม่ตรงกับหมวดกะไหนเลย แล้วหายไปจากตารางทั้งสองกะ
 function planInsertTasksFor(iso, sectionKey, shiftKey) {
   const shifts = planDayEndShiftsFor('cnc');
   return (dailyChecklistTasks || []).filter(t => {
     if (t.date && t.date !== iso) return false;
-    if ((t.workType === 'polish' ? 'polish' : 'cnc') !== sectionKey) return false;
+    const wt = t.workType === 'polish' ? 'polish' : 'cnc';
+    if (wt !== sectionKey) return false;
     if (!shiftKey) return true;
     const at = ((dailyActualTimes[iso] || {})[t.id] || {}).startTime || t.time || null;
-    return (shiftKeyForTime(at) || shifts[0]) === shiftKey;
+    return (owningShiftKeyForTime(at, wt) || shifts[0]) === shiftKey;
   });
 }
 
@@ -14344,6 +14401,7 @@ function collectHistoryRecords() {
       const actual = (dailyActualTimes[dateIso] || {})[t.id] || {};
       const startAt = actual.startTime || null;
       const endAt = actual.endTime || null;
+      const sk = historyShiftKeyForTime(startAt, wt) || 'unknown';
       records.push({
         date: dateIso, wo: t.id, typeKey: wt,
         typeLabel: (wt === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)') + ' · งานแทรก',
@@ -14355,8 +14413,8 @@ function collectHistoryRecords() {
         result: st === 'done' ? 'สำเร็จ' : 'กำลังทำ',
         resultChip: st === 'done' ? 'chip-green' : 'chip-blue', resultNote: '',
         // จัดกลุ่มตามกะจากเวลาที่กดเริ่มจริง เหมือนงานตามแผน — ไม่มีเวลาเริ่มจึงไม่เดากะ
-        shiftKey: shiftKeyForTime(startAt) || 'unknown',
-        sortKey: dateIso + ' ' + String(historyDayOrderMin(startAt) + 1).padStart(4, '0') + ' ' + String(t.id),
+        shiftKey: sk,
+        sortKey: dateIso + ' ' + historyShiftRank(sk) + ' ' + String(historyDayOrderMin(startAt) + 1).padStart(4, '0') + ' ' + String(t.id),
       });
     });
   });
@@ -14388,6 +14446,8 @@ function collectHistoryRecords() {
         const seq = order.indexOf(idxNum);
         const override = t.rollMinutesOverride ? t.rollMinutesOverride[rollIdx] : null;
         const minutes = override != null ? override : (roll ? (parseFloat(roll[field]) || 0) : 0);
+        const sk = historyShiftKeyForTime(entry.startTime, t.workType)
+          || (t.shift === 'both' ? 'unknown' : (t.shift || 'unknown'));
         records.push({
           date: dateIso, wo: taskId, typeKey: t.workType,
           typeLabel: t.workType === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)',
@@ -14409,8 +14469,8 @@ function collectHistoryRecords() {
           endTime: entry.endTime || null,
           result: meta.label, resultChip: meta.chip, resultNote: outcome.note || '',
           // กะยึดเวลาที่กดเริ่มจริง ถ้าไม่มีเวลาเริ่มจึงถอยไปใช้กะของงานตามแผน
-          shiftKey: shiftKeyForTime(entry.startTime) || (entry.startTime ? 'other' : (t.shift === 'both' ? 'unknown' : (t.shift || 'unknown'))),
-          sortKey: dateIso + ' ' + String(historyDayOrderMin(entry.startTime) + 1).padStart(4, '0') + ' ' + String(seq).padStart(3, '0'),
+          shiftKey: sk,
+          sortKey: dateIso + ' ' + historyShiftRank(sk) + ' ' + String(historyDayOrderMin(entry.startTime) + 1).padStart(4, '0') + ' ' + String(seq).padStart(3, '0'),
         });
       });
     });
@@ -14513,11 +14573,14 @@ function renderHistory() {
   const shiftHeader = (shiftKey, list) => {
     const m = HISTORY_SHIFT_META[shiftKey] || HISTORY_SHIFT_META.unknown;
     const hrs = list.reduce((s, x) => s + (x.hours || 0), 0);
-    const otText = plannedOtRangeText(shiftKey, (list[0] || {}).date, new Set(list.map(x => x.typeKey)));
+    const isOt = String(shiftKey).startsWith('ot_');
+    // กลุ่ม OT ช่วงเวลาคิดจากประเภทงานในกลุ่ม และไม่ต้องติดป้าย OT ซ้ำ เพราะตัวกลุ่มคือช่วง OT อยู่แล้ว
+    const rangeText = isOt ? historyOtRangeText(shiftKey, list) : m.range;
+    const otText = isOt ? '' : plannedOtRangeText(shiftKey, (list[0] || {}).date, new Set(list.map(x => x.typeKey)));
     return `<tr><td colspan="8" style="background:${m.bg};padding:6px 12px;border-left:4px solid ${m.color};">
       <span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:800;color:${m.color};">
         <span style="width:8px;height:8px;border-radius:50%;background:${m.color};"></span>${escapeHtmlAttr(m.label)}
-        ${m.range ? `<span style="font-weight:600;opacity:.8;">${m.range}</span>` : ''}
+        ${rangeText ? `<span style="font-weight:600;opacity:.8;">${escapeHtmlAttr(rangeText)}</span>` : ''}
         ${otText ? `<span style="font-weight:700;font-size:11.5px;padding:1px 7px;border-radius:99px;background:${m.color};color:#fff;">${escapeHtmlAttr(otText)}</span>` : ''}
       </span>
       <span style="float:right;font-size:11px;font-weight:700;color:${m.color};opacity:.85;">${list.length.toLocaleString()} รายการ${
