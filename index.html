@@ -3997,12 +3997,13 @@ function renderDashboardRollWeight() {
       <span style="width:9px;height:9px;border-radius:50%;background:${color};flex-shrink:0;"></span>${label}
       <span style="margin-left:auto;font-size:12px;font-weight:800;color:${color};opacity:.85;">${list.length} ชุด</span>
     </div>
-    ${list.map(g => { const plan = plannedFinishForRollColor(g.set, g.colorKey, 'cnc'); return `<div onclick="${jsCallAttr('goToRollSetColor', g.set, g.colorKey)}"
+    ${list.map(g => { const plan = plannedFinishForRollColor(g.set, g.colorKey, 'cnc'); return `<div onclick="${jsCallAttr('openRollStatusQuickPick', g.set, g.colorKey)}"
       style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:8px;cursor:pointer;
              border:1px solid ${color};background:${bg};margin-bottom:6px;transition:filter .12s;"
       onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
       title="${escapeHtmlAttr('ผลิต ' + (g.producedTon || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })
-        + ' / ' + (g.usedTon || 0).toLocaleString() + ' ตันต่อรอบ' + (g.carryTon ? ' (รวมยกมา ' + g.carryTon.toLocaleString() + ')' : ''))}">
+        + ' / ' + (g.usedTon || 0).toLocaleString() + ' ตันต่อรอบ' + (g.carryTon ? ' (รวมยกมา ' + g.carryTon.toLocaleString() + ')' : '')
+        + ' — กดเพื่อเลือกสถานะของชุดนี้ (หรือเปิดดูในทะเบียน Tooling)')}">
       <span style="width:9px;height:9px;border-radius:50%;background:${g.dot};flex-shrink:0;"></span>
       <span style="flex:1;min-width:0;">
         <span style="display:block;font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(g.set)}</span>
@@ -4012,6 +4013,12 @@ function renderDashboardRollWeight() {
           ${g.leftTon != null && g.leftTon > 0 ? 'เหลือ ' + escapeHtmlAttr(g.leftTon.toLocaleString(undefined, { maximumFractionDigits: 2 })) + ' ตัน'
             : 'เกินมา ' + escapeHtmlAttr(Math.abs(g.leftTon || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })) + ' ตัน'}</span>
       </span>
+      <!-- สถานะปัจจุบันของชุด — การ์ดนี้จัดกลุ่มตาม % ไม่ได้จัดตามสถานะเหมือนการ์ดอื่น
+           ถ้าไม่โชว์ไว้ พอกดเปลี่ยนสถานะจากการ์ดนี้แล้วแถวจะไม่มีอะไรเปลี่ยนให้เห็นเลย -->
+      ${(() => { const m = ROLL_COLOR_STATUS_META[rollColorStatusFor(g.set, g.colorKey)] || ROLL_COLOR_STATUS_META.ready;
+        return `<span style="flex:0 0 auto;font-size:11px;font-weight:800;white-space:nowrap;padding:2px 8px;border-radius:99px;
+          background:${m.bg};color:${m.color};box-shadow:inset 0 0 0 1px ${m.color};"
+          title="${escapeHtmlAttr('สถานะตอนนี้: ' + m.label)}">${escapeHtmlAttr(m.short)}</span>`; })()}
       <!-- วางแผนแต่ง Roll ไว้แล้วหรือยัง — ชุดที่น้ำหนักใกล้หมดต้องรู้ว่ามีคิวแต่งรออยู่ไหม
            ยังไม่วางแผนขึ้นเป็นคำเตือน เพราะเป็นชุดที่ต้องรีบจัดคิว -->
       <span style="flex:0 0 auto;font-size:11px;font-weight:800;white-space:nowrap;padding:2px 8px;border-radius:99px;
@@ -12718,6 +12725,8 @@ function setRollColorStatusFor(setName, colorKey, status) {
   updateRollKpi();
   renderDashboardInUseRoll();
   renderDashboardWorkingRoll();
+  // การ์ดน้ำหนักเฝ้าระวังโชว์สถานะของชุดด้วย และกดเปลี่ยนสถานะจากการ์ดนั้นได้ ต้องวาดใหม่ให้เห็นผลทันที
+  renderDashboardRollWeight();
   if (cleared.length) openReleasedStatusDialog(cleared,
     'ตั้ง ' + setName + ' · ' + rollColorLabelFor(setName, colorKey) + ' เป็นกำลังใช้งาน จึงปลดชุดเดิมของเครื่องเดียวกันในหมวด '
     + (parseSizeRollName(setName).category || '') + ' ออก', revert);
