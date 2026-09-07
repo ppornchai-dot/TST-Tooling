@@ -1339,23 +1339,23 @@ canvas{display:block;}
 
       <!-- ── TAB: SQ ── -->
       <div class="reg-panel" id="regpanel-sq">
+        <!-- KPI เดิมเป็นเลขตัวอย่างที่ฝังไว้ในหน้า (48/36/9/3) ไม่เคยตรงกับข้อมูลจริง — ตอนนี้นับจากทะเบียน -->
         <div class="reg-kpi-row">
-          <div class="reg-kpi"><span class="reg-kpi-val">48</span><span class="reg-kpi-lbl">รายการทั้งหมด</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--green);">36</span><span class="reg-kpi-lbl">พร้อมใช้</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--amber);">9</span><span class="reg-kpi-lbl">ซ่อมบำรุง</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);">3</span><span class="reg-kpi-lbl">หมดอายุ</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" id="kpi-sq-total">0</span><span class="reg-kpi-lbl">รายการทั้งหมด</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--accent);" id="kpi-sq-gs">0</span><span class="reg-kpi-lbl">ประเภท GS</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--purple);" id="kpi-sq-gi">0</span><span class="reg-kpi-lbl">ประเภท GI</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--amber);" id="kpi-sq-nood">0</span><span class="reg-kpi-lbl">ยังไม่ได้วัด OD ปัจจุบัน</span></div>
         </div>
         <div class="card">
           <div class="card-header">
-            <span class="card-title">รายการ SQ</span>
+            <span class="card-title">รายการ Roll SQ</span>
             <button class="btn btn-primary btn-sm" onclick="openModal()">+ เพิ่ม SQ</button>
           </div>
           <div class="table-wrap">
             <table>
               <thead><tr>
-                <th>รหัส</th><th>ชื่อ / ประเภท</th><th>ขนาด (mm)</th><th>วัสดุ</th><th>เครื่องที่ใช้</th><th>ตำแหน่งเก็บ</th><th>รอบการใช้งาน</th><th>บำรุงล่าสุด</th><th>สถานะ</th><th></th>
+                <th>Size SQ</th><th>ประเภท</th><th>ชุดสี</th><th>เดือน/ปี ที่ผลิต</th><th>OD Standard</th><th>OD ปัจจุบัน</th><th></th>
               </tr></thead>
-              <tbody>
               <tbody id="tbody-sq"></tbody>
             </table>
           </div>
@@ -4300,7 +4300,9 @@ function renderToolingStatusTable() {
       <td>${statusBadges(statusStepsFor(cat.key, items))}</td>
       <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--text-2);">${total}</td>
       <td>
-        ${cat.key === 'roll' ? rollStatusBar(items) : `<div style="display:flex;align-items:center;gap:7px;">
+        ${cat.key === 'roll' ? rollStatusBar(items)
+          : !items.some(r => r.status) ? '<span style="color:var(--text-3);font-size:12px;">—</span>'
+          : `<div style="display:flex;align-items:center;gap:7px;">
           <div style="width:54px;background:var(--bg-panel);border-radius:4px;height:6px;overflow:hidden;">
             <div style="height:100%;width:${pct}%;background:${pctCol};border-radius:4px;"></div>
           </div>
@@ -4613,29 +4615,29 @@ const MODAL_FORMS = {
   },
   sq: {
     title: 'เพิ่ม Roll SQ ใหม่',
+    // ช่องทั้งหมดตรงกับคอลัมน์ในตาราง — Size SQ / ประเภท / ชุดสี / เดือน-ปีที่ผลิต / OD Standard / OD ปัจจุบัน
+    // ตัวเลือกประเภทและชุดสีสร้างจาก SQ_KINDS / SQ_COLORS จุดเดียว จะได้ไม่หลุดกันกับตาราง
     fields: `
       <div class="modal-row">
-        <div class="form-group"><label class="form-label">รหัส</label><input class="form-input" placeholder="SQ-0000"></div>
-        <div class="form-group"><label class="form-label">ชื่อ / ประเภท</label><input class="form-input" placeholder="เช่น Guide Roll (Entry)"></div>
-      </div>
-      <div class="modal-row three">
-        <div class="form-group"><label class="form-label">ขนาด (mm)</label><input class="form-input" placeholder="เช่น Ø80×120"></div>
-        <div class="form-group"><label class="form-label">วัสดุ</label><input class="form-input" placeholder="เช่น Carbide"></div>
-        <div class="form-group"><label class="form-label">เครื่องที่ใช้</label><input class="form-input" placeholder="เช่น SQ Mill-01"></div>
+        <div class="form-group"><label class="form-label">Size SQ</label>
+          <input class="form-input" id="f-sq-size" list="f-sq-size-list" placeholder="เช่น 38x38"></div>
+        <div class="form-group"><label class="form-label">ประเภท</label>
+          <select class="form-select" id="f-sq-kind"></select></div>
       </div>
       <div class="modal-row">
-        <div class="form-group"><label class="form-label">ตำแหน่งเก็บ</label><input class="form-input" placeholder="เช่น SQ-A-01"></div>
-        <div class="form-group"><label class="form-label">รอบการใช้งาน (ตัน)</label><input class="form-input" type="number" placeholder="0"></div>
+        <div class="form-group"><label class="form-label">ชุดสี</label>
+          <select class="form-select" id="f-sq-color"></select></div>
+        <div class="form-group"><label class="form-label">เดือน/ปี ที่ผลิต</label>
+          <input class="form-input" id="f-sq-ym" type="month"></div>
       </div>
       <div class="modal-row">
-        <div class="form-group"><label class="form-label">บำรุงรักษาล่าสุด</label><input class="form-input" type="date"></div>
-        <div class="form-group"><label class="form-label">สถานะ</label>
-          <select class="form-select">
-            <option>พร้อมใช้</option><option>ใช้งานอยู่</option>
-            <option>ซ่อมบำรุง</option><option>มีปัญหา</option><option>หมดอายุ</option>
-          </select>
-        </div>
-      </div>`
+        <div class="form-group"><label class="form-label">OD Standard (mm)</label>
+          <input class="form-input" id="f-sq-odstd" type="number" step="0.01" placeholder="เช่น 120"></div>
+        <!-- เว้นว่างไว้ได้ = ยังไม่ได้วัดหลังแต่ง (เกณฑ์เดียวกับ Ø ปัจจุบันของทะเบียน Roll) -->
+        <div class="form-group"><label class="form-label">OD ปัจจุบัน (mm)</label>
+          <input class="form-input" id="f-sq-odcur" type="number" step="0.01" placeholder="ยังไม่วัด — เว้นว่างไว้ได้"></div>
+      </div>
+      <datalist id="f-sq-size-list"></datalist>`
   },
   saw: {
     title: 'เพิ่มใบเลื่อยใหม่',
@@ -4718,6 +4720,7 @@ function openModal() {
   document.getElementById('modal-body').innerHTML = form.fields;
   document.getElementById('modal-overlay').classList.add('open');
   if (currentRegTab === 'roll') populateColorSelect(selectedRollSet, selectedRollColor);
+  if (currentRegTab === 'sq') fillSqFormOptions();
 }
 
 function closeModal() {
@@ -4811,16 +4814,14 @@ function saveModal() {
     selectedRollRow = newRoll;
     renderRollTable(targetPage);
   } else if (currentRegTab === 'sq') {
-    toolingData.sq.push({
-      id: vals[0]||'SQ-NEW', name: vals[1]||'(ไม่มีชื่อ)',
-      size: vals[2]||'—', material: vals[3]||'—',
-      machine: vals[4]||'—', location: vals[5]||'—',
-      usage: (vals[6]||'0')+' ตัน', lastService: vals[7]||'—',
-      status: vals[8]||'พร้อมใช้'
-    });
-    const lastPage = Math.ceil(toolingData.sq.length / PAGE_SIZE);
-    pageState.sq = lastPage;
-    renderSqTable(lastPage);
+    const rec = readSqForm();
+    if (!rec) return;                 // ไม่ได้กรอก Size SQ — readSqForm เตือนแล้ว ไม่ปิดโมดัลทิ้งข้อมูล
+    toolingData.sq.push(rec);
+    // ไม่ต้องเรียก persistState() ที่นี่ — ท้ายฟังก์ชันนี้เรียกให้ทุกแท็บอยู่แล้ว
+    // เปิดไปหน้าที่รายการใหม่อยู่ (ตารางเรียงตาม Size/ประเภท/ชุดสี ไม่ได้ต่อท้ายสุดเสมอ)
+    const pos = sqSortedRows().indexOf(rec);
+    pageState.sq = pos >= 0 ? Math.floor(pos / PAGE_SIZE) + 1 : 1;
+    renderSqTable(pageState.sq);
   } else if (currentRegTab === 'saw') {
     toolingData.saw.push({
       id: vals[0]||'SW-NEW', name: vals[1]||'(ไม่มีชื่อ)',
@@ -13452,25 +13453,182 @@ function deleteRoll(idx) {
   persistState();
 }
 
+// ─── ทะเบียน Roll SQ ─────────────────────────────────────────────────────────
+// 1 รายการ = Roll SQ หนึ่งลูก แยกด้วย Size SQ + ประเภท (GS/GI) + ชุดสี
+// เดิมแท็บนี้เป็นโครงเปล่าที่ยืมรูปแบบของทะเบียนทั่วไปมา (รหัส/วัสดุ/ตำแหน่งเก็บ/สถานะ)
+// ซึ่งไม่ตรงกับที่หน้างานใช้จริงเลย จึงรื้อคอลัมน์เป็น 6 ช่องนี้
+const SQ_KINDS = ['GS', 'GI'];
+// ใช้ค่าสีเดียวกับ DEFAULT_ROLL_COLORS ของทะเบียน Roll จุดสีสองแท็บจะได้เหมือนกัน
+const SQ_COLORS = [
+  { key: 'blue',   label: 'สีฟ้า',  dot: '#3B82F6' },
+  { key: 'purple', label: 'สีม่วง', dot: '#5E44B0' },
+  { key: 'red',    label: 'สีแดง',  dot: '#C03030' },
+  { key: 'gold',   label: 'สีทอง',  dot: '#A97806' },
+];
+function sqColorMeta(key) {
+  return SQ_COLORS.find(c => c.key === key) || { key: '', label: 'ไม่ระบุสี', dot: '#9CA3AF' };
+}
+// สีประจำประเภท — ให้ GS/GI แยกออกจากกันได้ตั้งแต่กวาดตา
+const SQ_KIND_COLORS = { GS: 'var(--accent)', GI: 'var(--purple)' };
+
+// "2026-09" → "ก.ย. 2569" (ปี พ.ศ. เหมือนวันที่ที่อื่นในระบบ)
+function fmtYmThai(ym) {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(ym || '').trim());
+  if (!m) return '—';
+  const mi = Number(m[2]) - 1;
+  if (mi < 0 || mi > 11) return '—';
+  return THAI_MONTHS_ABBR[mi] + ' ' + (Number(m[1]) + 543);
+}
+
+let sqIdSeq = 0;
+function newSqId() {
+  // ไม่ได้โชว์เป็นคอลัมน์ ใช้อ้างอิงแถวตอนแก้ไข/ลบเท่านั้น จึงขอแค่ไม่ซ้ำกัน
+  sqIdSeq++;
+  return 'SQ-' + Date.now().toString(36) + '-' + sqIdSeq;
+}
+
+// Size SQ ที่มีอยู่แล้วในทะเบียน — ใช้เป็นตัวช่วยเติมในฟอร์ม ไม่ต้องพิมพ์ซ้ำและไม่พิมพ์เพี้ยน
+function sqSizeList() {
+  return [...new Set(toolingData.sq.map(r => String(r.sizeSq || '').trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'th', { numeric: true }));
+}
+
+// เรียง Size SQ → ประเภท (GS ก่อน GI ตาม SQ_KINDS) → ชุดสี (ตามลำดับจานสี) → เดือน/ปีที่ผลิต
+// รายการของขนาดเดียวกันจะได้อยู่ติดกัน อ่านเทียบ OD กันได้ในตาราง
+function sqSortedRows() {
+  const kindIdx = k => { const i = SQ_KINDS.indexOf(k); return i < 0 ? SQ_KINDS.length : i; };
+  const colorIdx = c => { const i = SQ_COLORS.findIndex(x => x.key === c); return i < 0 ? SQ_COLORS.length : i; };
+  return toolingData.sq.slice().sort((a, b) =>
+    String(a.sizeSq || '').localeCompare(String(b.sizeSq || ''), 'th', { numeric: true })
+    || kindIdx(a.kind) - kindIdx(b.kind)
+    || colorIdx(a.color) - colorIdx(b.color)
+    || String(a.madeYm || '').localeCompare(String(b.madeYm || '')));
+}
+
+function sqNum(v) {
+  const n = parseFloat(String(v == null ? '' : v).replace(/,/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+function sqHasCurrentOd(r) {
+  return sqNum((r || {}).odCur) != null;
+}
+
+// OD ปัจจุบันพร้อมส่วนที่สึกไปจาก Standard — ยังไม่วัดก็บอกตรงๆ ว่ายังไม่วัด ไม่เอา Standard มาใส่แทน
+// (เกณฑ์เดียวกับ Ø ปัจจุบันของทะเบียน Roll ที่เว้นว่างไว้เมื่อยังไม่ได้วัดหลังแต่ง)
+function sqOdCurHtml(r) {
+  const cur = sqNum(r.odCur), std = sqNum(r.odStd);
+  if (cur == null) return '<span style="color:var(--text-3);">ยังไม่วัด</span>';
+  const txt = cur.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  if (std == null) return escapeHtmlAttr(txt);
+  const worn = Math.round((std - cur) * 100) / 100;
+  if (worn <= 0) return escapeHtmlAttr(txt);
+  return `${escapeHtmlAttr(txt)} <span style="font-size:11px;font-weight:700;color:var(--amber);"
+    title="${escapeHtmlAttr('เล็กลงจาก OD Standard ' + std.toLocaleString() + ' mm')}">−${escapeHtmlAttr(worn.toLocaleString())}</span>`;
+}
+
+// เติมตัวเลือกในฟอร์ม (ประเภท/ชุดสี/รายการ Size SQ ที่มีอยู่) — เรียกทุกครั้งที่เปิดฟอร์ม
+function fillSqFormOptions() {
+  const kind = document.getElementById('f-sq-kind');
+  if (kind) kind.innerHTML = SQ_KINDS.map(k => `<option value="${k}">${k}</option>`).join('');
+  const color = document.getElementById('f-sq-color');
+  if (color) color.innerHTML = SQ_COLORS.map(c =>
+    `<option value="${c.key}">${escapeHtmlAttr(c.label)}</option>`).join('');
+  const list = document.getElementById('f-sq-size-list');
+  if (list) list.innerHTML = sqSizeList().map(s => `<option value="${escapeHtmlAttr(s)}"></option>`).join('');
+}
+
+// อ่านค่าจากฟอร์มเป็น 1 รายการ — คืน null ถ้าไม่ได้กรอก Size SQ (ช่องเดียวที่ขาดไม่ได้
+// เพราะเป็นตัวบอกว่าเป็นลูกของขนาดไหน ถ้าปล่อยว่างแถวนั้นจะกลายเป็นรายการไร้ที่อยู่)
+function readSqForm(existingId) {
+  const g = id => String(((document.getElementById(id) || {}).value) || '').trim();
+  const sizeSq = g('f-sq-size');
+  if (!sizeSq) { alert('กรอก Size SQ ก่อน'); return null; }
+  const odStd = g('f-sq-odstd'), odCur = g('f-sq-odcur');
+  return {
+    id: existingId || newSqId(),
+    sizeSq,
+    kind: g('f-sq-kind') || SQ_KINDS[0],
+    color: g('f-sq-color') || SQ_COLORS[0].key,
+    madeYm: g('f-sq-ym') || '',
+    odStd: odStd || '',
+    odCur: odCur || '',   // ว่าง = ยังไม่ได้วัด
+  };
+}
+
+function editSq(id) {
+  const idx = toolingData.sq.findIndex(x => x.id === id);
+  if (idx < 0) return;
+  const r = toolingData.sq[idx];
+  document.getElementById('modal-title').textContent = 'แก้ไข Roll SQ — ' + (r.sizeSq || '') + ' ' + (r.kind || '');
+  document.getElementById('modal-body').innerHTML = MODAL_FORMS.sq.fields;
+  fillSqFormOptions();
+  document.getElementById('f-sq-size').value = r.sizeSq || '';
+  document.getElementById('f-sq-kind').value = r.kind || SQ_KINDS[0];
+  document.getElementById('f-sq-color').value = r.color || SQ_COLORS[0].key;
+  document.getElementById('f-sq-ym').value = r.madeYm || '';
+  document.getElementById('f-sq-odstd').value = r.odStd || '';
+  document.getElementById('f-sq-odcur').value = r.odCur || '';
+  document.getElementById('modal-overlay').classList.add('open');
+  document.querySelector('.modal-footer .btn-primary').onclick = function() {
+    const updated = readSqForm(r.id);
+    if (!updated) return;
+    toolingData.sq[idx] = updated;
+    persistState();
+    closeModal();
+    renderSqTable(pageState.sq || 1);
+  };
+  const del = document.getElementById('modal-delete-btn');
+  if (del) {
+    del.style.display = '';
+    del.textContent = '🗑 ลบรายการ';
+    del.onclick = function() { closeModal(); deleteSq(r.id); };
+  }
+}
+
+function deleteSq(id) {
+  const r = toolingData.sq.find(x => x.id === id);
+  if (!r) return;
+  if (!confirm('ลบ Roll SQ ' + (r.sizeSq || '') + ' ' + (r.kind || '') + ' · ' + sqColorMeta(r.color).label + ' ?')) return;
+  toolingData.sq = toolingData.sq.filter(x => x.id !== id);
+  persistState();
+  const tp = Math.max(1, Math.ceil(toolingData.sq.length / PAGE_SIZE));
+  pageState.sq = Math.min(pageState.sq || 1, tp);
+  renderSqTable(pageState.sq);
+}
+
 function renderSqTable(page) {
-  const data = toolingData.sq;
-  const rows = data.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
-  document.getElementById('tbody-sq').innerHTML = rows.map(r=>`
-    <tr>
-      <td class="muted">${r.id}</td>
-      <td><strong>${r.name}</strong></td>
-      <td>${r.size}</td>
-      <td>${r.material}</td>
-      <td>${r.machine}</td>
-      <td>${r.location}</td>
-      <td class="muted">${r.usage}</td>
-      <td class="muted">${escapeHtmlAttr(fmtIsoDateThai(r.lastService))}</td>
-      <td>${statusChip(r.status)}</td>
-      <td><button class="btn btn-ghost btn-sm">ดู</button></td>
-    </tr>`).join('');
-  const tp = Math.max(1, Math.ceil(data.length/PAGE_SIZE));
+  const tbody = document.getElementById('tbody-sq');
+  if (!tbody) return;
+  const data = sqSortedRows();
+  const rows = data.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  tbody.innerHTML = rows.length ? rows.map(r => {
+    const cm = sqColorMeta(r.color);
+    const std = sqNum(r.odStd);
+    return `<tr>
+      <td><strong>${escapeHtmlAttr(r.sizeSq || '—')}</strong></td>
+      <td><span style="font-size:11.5px;font-weight:800;padding:2px 9px;border-radius:99px;
+        color:#fff;background:${SQ_KIND_COLORS[r.kind] || 'var(--text-2)'};">${escapeHtmlAttr(r.kind || '—')}</span></td>
+      <td><span style="display:inline-flex;align-items:center;gap:6px;">
+        <span style="width:10px;height:10px;border-radius:50%;background:${cm.dot};box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);"></span>
+        ${escapeHtmlAttr(cm.label)}</span></td>
+      <td class="muted">${escapeHtmlAttr(fmtYmThai(r.madeYm))}</td>
+      <td>${std != null ? escapeHtmlAttr(std.toLocaleString(undefined, { maximumFractionDigits: 2 })) : '<span style="color:var(--text-3);">—</span>'}</td>
+      <td>${sqOdCurHtml(r)}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-ghost btn-sm" style="padding:4px 6px;" onclick="${jsCallAttr('editSq', r.id)}" title="แก้ไขรายการนี้">✏️</button>
+        <button class="btn btn-ghost btn-sm" style="padding:4px 6px;color:var(--red);" onclick="${jsCallAttr('deleteSq', r.id)}" title="ลบรายการนี้">✕</button>
+      </td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="7" style="padding:28px;text-align:center;color:var(--text-3);">
+      ยังไม่มีรายการ Roll SQ — กด "+ เพิ่ม SQ" เพื่อเริ่มลงทะเบียน</td></tr>`;
+  const tp = Math.max(1, Math.ceil(data.length / PAGE_SIZE));
   renderFooter('sq', data.length, rows.length, page, tp);
   document.getElementById('cnt-sq').textContent = data.length;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v.toLocaleString(); };
+  set('kpi-sq-total', data.length);
+  set('kpi-sq-gs', data.filter(r => r.kind === 'GS').length);
+  set('kpi-sq-gi', data.filter(r => r.kind === 'GI').length);
+  set('kpi-sq-nood', data.filter(r => !sqHasCurrentOd(r)).length);
 }
 
 function renderSawTable(page) {
