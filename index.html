@@ -13598,8 +13598,18 @@ function newSqId() {
 }
 
 // คีย์ของ "ชุด" — ชุดสีเป็นตัวแยกชุดในลานเหมือนทะเบียน Roll ส่วนเดือน/ปีที่ผลิตเป็นค่าของชุด ไม่ใช่ตัวแยก
+// คีย์ของชุด = setId ที่ออกให้ตอนสร้างชุด
+// รายการเก่าที่ลงไว้ก่อนมี setId ยังจับกลุ่มด้วยขนาด+ประเภท+สีเหมือนเดิม (ตอนนั้นมีชุดเดียวต่อสี)
+// จะถูกออก setId ให้ทั้งชุดเองเมื่อกดแก้ไขครั้งถัดไป — ไม่ต้องไปรื้อข้อมูลที่ลงไว้แล้ว
 function sqSetKey(r) {
-  return [String((r || {}).sizeSq || '').trim(), (r || {}).kind || '', (r || {}).color || ''].join('|');
+  const o = r || {};
+  if (o.setId) return o.setId;
+  return 'legacy|' + [String(o.sizeSq || '').trim(), o.kind || '', o.color || ''].join('|');
+}
+let sqSetIdSeq = 0;
+function newSqSetId() {
+  sqSetIdSeq++;
+  return 'SQS-' + Date.now().toString(36) + '-' + sqSetIdSeq;
 }
 
 // Size SQ ที่มีอยู่แล้วในทะเบียน — ใช้เป็นตัวช่วยเติมในฟอร์ม ไม่ต้องพิมพ์ซ้ำและไม่พิมพ์เพี้ยน
@@ -13692,12 +13702,8 @@ function readSqSetForm() {
   const kind = sqFormVal('f-sq-kind') || SQ_KINDS[0];
   const color = sqFormVal('f-sq-color') || SQ_COLORS[0].key;
   const madeYm = sqYmFromForm();
-  const key = [sizeSq, kind, color].join('|');
-  if (toolingData.sq.some(r => sqSetKey(r) === key)) {
-    alert('มีชุดนี้อยู่แล้วในทะเบียน (' + sizeSq + ' ' + kind + ' · ' + sqColorMeta(color).label + ')\n'
-      + 'ถ้าจะแก้ค่า OD ให้กดปุ่ม ✏️ ที่แถวของชุดนั้น');
-    return null;
-  }
+  // ไม่กันชุดซ้ำแล้ว — ขนาด+ประเภท+สีเดียวกันมีได้หลายชุด แยกกันด้วยรอบผลิตและรหัส Roll
+  // (ที่ยังกันอยู่คือรหัส Roll ซ้ำ ซึ่งเป็นตัวชี้ Roll ลูกนั้นจริงๆ)
   const codes = [];
   for (let i = 1; i <= SQ_PIECES_PER_SET; i++) {
     const code = sqFormVal('f-sq-code' + i);
@@ -13710,10 +13716,11 @@ function readSqSetForm() {
     alert('รหัส Roll ของชิ้น R และ L ซ้ำกัน — แต่ละลูกต้องมีรหัสของตัวเอง');
     return null;
   }
+  const setId = newSqSetId();
   const out = [];
   for (let i = 1; i <= SQ_PIECES_PER_SET; i++) {
     out.push({
-      id: newSqId(), sizeSq, kind, color, madeYm, piece: i,
+      id: newSqId(), setId, sizeSq, kind, color, madeYm, piece: i,
       code: codes[i - 1],
       odStd: sqFormVal('f-sq-odstd' + i),
       odCur: sqFormVal('f-sq-odcur' + i),   // ว่าง = ยังไม่ได้วัด
@@ -13744,22 +13751,25 @@ function editSq(id) {
     if (!sizeSq) { alert('กรอก Size SQ ก่อน'); return; }
     const clash = sqCodeConflictMsg(sqFormVal('f-sq-code'), r.id);
     if (clash) { alert(clash); return; }
+    // ชุดเก่าที่ยังไม่มี setId — ออกให้ทั้งชุดตอนนี้ (ทุกชิ้นที่จับกลุ่มอยู่ด้วยกัน)
+    // ต้องทำก่อนแก้ค่า ไม่งั้นพอเปลี่ยนขนาด/สี คีย์แบบเก่าจะเปลี่ยนแล้วหาพี่น้องไม่เจอ
+    const groupKey = sqSetKey(r);
+    if (!r.setId) {
+      const sid = newSqSetId();
+      toolingData.sq.forEach(x => { if (sqSetKey(x) === groupKey) x.setId = sid; });
+    }
     const updated = { ...r, sizeSq, kind: sqFormVal('f-sq-kind') || SQ_KINDS[0],
       color: sqFormVal('f-sq-color') || SQ_COLORS[0].key, madeYm: sqYmFromForm(),
       piece: Number(sqFormVal('f-sq-piece')) || 1, code: sqFormVal('f-sq-code'),
       odStd: sqFormVal('f-sq-odstd'), odCur: sqFormVal('f-sq-odcur') };
-    const wasKey = sqSetKey(r), nowKey = sqSetKey(updated);
     toolingData.sq[idx] = updated;
-    // ย้าย Size/ประเภท/ชุดสี ของชิ้นนี้ = ย้ายทั้งชุด อีกชิ้นต้องตามไปด้วย ไม่ปล่อยให้ชุดแตกเป็นสองที่
-    if (wasKey !== nowKey) {
-      toolingData.sq.forEach(x => {
-        if (x !== updated && sqSetKey(x) === wasKey) {
-          x.sizeSq = updated.sizeSq; x.kind = updated.kind; x.color = updated.color;
-        }
-      });
-    }
-    // เดือน/ปีที่ผลิตเป็นค่าของชุด แก้ที่ชิ้นไหนก็ให้ตรงกันทั้งชุด
-    toolingData.sq.forEach(x => { if (sqSetKey(x) === nowKey) x.madeYm = updated.madeYm; });
+    // Size/ประเภท/ชุดสี/เดือน-ปีที่ผลิต เป็นค่าของ "ชุด" — แก้ที่ชิ้นไหนก็ต้องตรงกันทั้งชุด
+    // ชุดชี้ด้วย setId แล้ว การเปลี่ยนขนาด/สีจึงไม่ทำให้ชุดแตกออกจากกันอีก
+    toolingData.sq.forEach(x => {
+      if (x !== updated && sqSetKey(x) === sqSetKey(updated)) {
+        x.sizeSq = updated.sizeSq; x.kind = updated.kind; x.color = updated.color; x.madeYm = updated.madeYm;
+      }
+    });
     persistState();
     closeModal();
     renderSqRegistry(pageState.sq || 1);
@@ -13859,6 +13869,7 @@ function renderSqTable(page) {
     const one = selectedSqSetKey ? sets[0] : null;
     titleEl.textContent = one
       ? (one[0].sizeSq || '') + ' ' + (one[0].kind || '') + ' · ' + sqColorMeta(one[0].color).label
+        + ' · ' + fmtYmThai(one[0].madeYm)
       : selectedSqSize ? 'Size SQ ' + selectedSqSize : 'Roll SQ ทั้งหมด';
   }
   if (countEl) countEl.textContent = sets.length ? sets.length + ' ชุด · Roll ' + pieces + ' ชิ้น' : '';
@@ -13961,7 +13972,8 @@ function renderSqSetList() {
           <span style="font-size:11px;font-weight:800;padding:1px 8px;border-radius:99px;flex-shrink:0;
                        color:#fff;background:${SQ_KIND_COLORS[r.kind] || 'var(--text-2)'};">${escapeHtmlAttr(r.kind || '—')}</span>
           <span style="width:9px;height:9px;border-radius:50%;background:${cm.dot};flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);"></span>
-          <span style="flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtmlAttr(cm.label)}</span>
+          <span style="flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtmlAttr(cm.label)}
+            <span style="color:var(--text-3);font-weight:400;">· ${escapeHtmlAttr(fmtYmThai(r.madeYm))}</span></span>
           ${incomplete ? `<span class="chip chip-amber" style="flex-shrink:0;" title="1 ชุดต้องมี Roll ${SQ_PIECES_PER_SET} ชิ้น">ไม่ครบ</span>` : ''}
           <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;flex-shrink:0;">${set.length}</span>
         </div>
@@ -14005,7 +14017,7 @@ function addSqPieceToSet(key) {
     const clash = sqCodeConflictMsg(sqFormVal('f-sq-code'));
     if (clash) { alert(clash); return; }
     toolingData.sq.push({
-      id: newSqId(), sizeSq, kind: sqFormVal('f-sq-kind') || SQ_KINDS[0],
+      id: newSqId(), setId: base.setId || sqSetKey(base), sizeSq, kind: sqFormVal('f-sq-kind') || SQ_KINDS[0],
       color: sqFormVal('f-sq-color') || SQ_COLORS[0].key, madeYm: sqYmFromForm(),
       piece: Number(sqFormVal('f-sq-piece')) || piece, code: sqFormVal('f-sq-code'),
       odStd: sqFormVal('f-sq-odstd'), odCur: sqFormVal('f-sq-odcur'),
