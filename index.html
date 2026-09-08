@@ -2073,6 +2073,9 @@ function closeMobileSidebar() {
 }
 
 function showPage(id) {
+  // หน้าที่อยู่ก่อนหน้านี้ — ต้องเก็บไว้ก่อน เพราะ currentPage ถูกทับด้านล่าง
+  // ใช้แยกว่า "ผู้ใช้เปลี่ยนหน้ามาจริง" หรือ "แค่วาดหน้าเดิมใหม่" (ดูบล็อกของหน้างานประจำวัน)
+  const cameFrom = currentPage;
   closeMobileSidebar(); // เลือกหน้าจากเมนูบนมือถือแล้วให้เมนูหุบกลับอัตโนมัติ
   syncRollStatusWithProdBlock();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -2100,7 +2103,14 @@ function showPage(id) {
     // (เลื่อนไปดูเมื่อวาน แล้วสลับไปหน้าอื่น พอกลับมาต้องเป็นวันนี้
     //  ไม่งั้นเผลอดู/กดงานผิดวันโดยไม่ทันสังเกตว่ายังค้างอยู่วันเดิม)
     // goToDailyTask/goToDailyInsert ตั้งวันหลัง showPage จึงยังพาไปวันของงานนั้นได้ตามเดิม
-    dailyViewDate = dailyOpenDateIso();
+    //
+    // แต่ต้องรีเซ็ตเฉพาะตอน "เปลี่ยนหน้ามาจริง" เท่านั้น — refreshAfterCloudUpdate()
+    // เรียก showPage(currentPage) เพื่อวาดหน้าเดิมใหม่ทุกครั้งที่ข้อมูลจาก cloud เข้ามา
+    // ถ้ารีเซ็ตด้วย ช่างที่กำลังดู/กดงานของวันอื่น (เช่นตามเก็บงานค้างของเมื่อวาน)
+    // จะถูกเด้งกลับมาวันปัจจุบันกลางคัน — เกิดบ่อยตอนกดเริ่ม/จบงาน เพราะจังหวะนั้นมีการเขียน
+    // แล้วอีเวนต์ realtime ของการเขียนนั้นเองอาจมาถึงก่อนที่ cloudUpdatedAt จะถูกอัปเดต
+    // (ตัวกันอีเวนต์ของตัวเองจึงไม่ทัน) แล้ววาดหน้าใหม่ทั้งหน้า
+    if (cameFrom !== 'daily') dailyViewDate = dailyOpenDateIso();
     renderDailyTasks();
   }
   if (id === 'history') renderHistory();
