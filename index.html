@@ -9540,10 +9540,12 @@ function setRollSetStatus(setName, status) {
 // ใช้กับ KPI "จำนวนชุด Roll" ด้านบนของหน้าทะเบียน Tooling — ไม่มี key = ค่าเริ่มต้น 'ready'
 // short = ป้ายสั้นสำหรับดรอปดาวน์บนแถวทะเบียน Roll ที่พื้นที่แคบ — ความกว้างของ <select>
 // ถูกกำหนดโดยตัวเลือกที่ยาวที่สุด ถ้าใช้ label เต็มจะเบียดชื่อชุดสีจนถูกตัดด้วย ...
+// ยกเว้น inuse ที่ผู้ใช้ขอให้เขียนเต็มว่า "กำลังใช้งาน" (คำว่า "ใช้งาน" ลอยๆ อ่านกำกวม)
+// จึงขยายความกว้าง <select> ใน rollRowStatusSelectHtml เป็น 100px ให้พอดีกับคำนี้
 const ROLL_COLOR_STATUS_META = {
   // optBg = สีพื้นแบบทึบสำหรับ <option> ในรายการดรอปดาวน์ ต้องทึบเพราะ bg ปกติเป็น rgba จาง
   // (alpha 0.10–0.22) ซึ่งซ้อนบนพื้นขาวของรายการแล้วแทบมองไม่เห็นสี
-  inuse:      { label: 'กำลังใช้งาน',      short: 'ใช้งาน',   color: 'var(--inuse)',          bg: 'var(--inuse-dim)',          optBg: '#E4EFC7' },
+  inuse:      { label: 'กำลังใช้งาน',      short: 'กำลังใช้งาน', color: 'var(--inuse)',       bg: 'var(--inuse-dim)',          optBg: '#E4EFC7' },
   ready:      { label: 'พร้อมใช้งาน',      short: 'พร้อมใช้', color: 'var(--green)',          bg: 'var(--green-dim)',          optBg: '#D8EFE4' },
   waitdress:  { label: 'รอแต่ง',           short: 'รอแต่ง',   color: 'var(--red)',            bg: 'var(--red-dim)',            optBg: '#F8DADA' },
   waitpolish: { label: 'รอขัด',            short: 'รอขัด',    color: 'var(--st-waitpolish)',  bg: 'var(--st-waitpolish-dim)',  optBg: '#F6EFBE' },
@@ -12777,7 +12779,7 @@ function rollRowStatusSelectHtml(setName, colorKey) {
   const call = `setRollColorStatusFor('${jsEsc(setName)}','${jsEsc(colorKey)}', this.value)`;
   return `<select class="form-select" onchange="${escapeHtmlAttr(call)}"
     title="${escapeHtmlAttr('สถานะของชุดสีนี้: ' + m.label + ' — ใช้นับใน KPI จำนวนชุด Roll ด้านบน')}"
-    style="width:74px;flex-shrink:0;padding:2px 4px;font-size:10.5px;font-weight:700;border-radius:6px;
+    style="width:100px;flex-shrink:0;padding:2px 4px;font-size:10.5px;font-weight:700;border-radius:6px;
            background:${m.bg};color:${m.color};border:1px solid ${m.color};">
     ${Object.entries(ROLL_COLOR_STATUS_META).map(([k, meta]) =>
       // ใส่สีให้ทุกตัวเลือกในรายการเลย ไม่ต้องเลือกก่อนแล้วค่อยเห็นสี
