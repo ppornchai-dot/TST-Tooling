@@ -1442,7 +1442,11 @@ canvas{display:block;}
          PAGE: PRODUCTION BLOCK
     ══════════════════════════════════════════ -->
     <div class="page" id="page-standard">
-      <iframe id="prodblock-external-iframe" title="Production Block" style="width:100%;height:calc(100vh - 125px);border:none;border-radius:8px;background:var(--bg-panel);display:block;"></iframe>
+      <!-- แผนผลิตด้านล่างเป็นกรอบของระบบ TST Production (คนละเว็บ) แทรกอะไรเข้าไปในการ์ดงานไม่ได้
+           หน้าภายในของเขามีบล็อก "ลูกรีดพร้อม" แล้ว แต่หน้าที่แชร์มาให้เราฝังยังไม่มี
+           จึงทำแผงเดียวกันไว้เหนือกรอบ (ดู renderProdBlockRollReady) -->
+      <div id="prodblock-rollready" style="margin-bottom:8px;"></div>
+      <iframe id="prodblock-external-iframe" title="Production Block" style="width:100%;height:calc(100vh - 284px);border:none;border-radius:8px;background:var(--bg-panel);display:block;"></iframe>
     </div>
 
 
@@ -2117,7 +2121,10 @@ function showPage(id) {
   if (id === 'pending') renderPending();
   if (id === 'prodWeight') renderProdWeight();
   if (id === 'rollLife') renderRollLife();
-  if (id === 'standard') loadProdBlockIframe();
+  if (id === 'standard') {
+    loadProdBlockIframe();
+    if (typeof renderProdBlockRollReady === 'function') renderProdBlockRollReady();
+  }
 }
 
 // หน้า Block ดึงจากระบบ TST Production ด้วยลิงก์แชร์แบบดูอย่างเดียว เข้าได้เลยไม่ต้องล็อกอิน
@@ -12817,6 +12824,8 @@ function setRollColorStatusFor(setName, colorKey, status) {
   renderDashboardWorkingRoll();
   // การ์ดน้ำหนักเฝ้าระวังโชว์สถานะของชุดด้วย และกดเปลี่ยนสถานะจากการ์ดนั้นได้ ต้องวาดใหม่ให้เห็นผลทันที
   renderDashboardRollWeight();
+  // แผง "ลูกรีดพร้อม" หน้า Production Block อ่านสถานะชุดเหมือนกัน ต้องตามไปด้วย
+  renderProdBlockRollReady();
   if (cleared.length) openReleasedStatusDialog(cleared,
     'ตั้ง ' + setName + ' · ' + rollColorLabelFor(setName, colorKey) + ' เป็นกำลังใช้งาน จึงปลดชุดเดิมของเครื่องเดียวกันในหมวด '
     + (parseSizeRollName(setName).category || '') + ' ออก', revert);
@@ -15836,10 +15845,116 @@ function renderProdBlockCalendar() {
   grid.innerHTML = html;
 }
 
+// ─── แผง "ลูกรีดพร้อม" เหนือกรอบ Production Block ───────────────────────────
+// หน้า Block ข้างล่างเป็นกรอบของระบบ TST Production (คนละเว็บ) แทรกเข้าไปในการ์ดงานไม่ได้
+// หน้าภายในของเขามีบล็อกลูกรีดพร้อมแล้ว แต่หน้าที่แชร์มาให้เราฝังยังไม่มี
+// จึงทำแผงเดียวกันไว้เหนือกรอบ ใช้รูปแบบเดียวกับการ์ดของเขา (Forming/Sizing/TH + สี + สถานะ + เครื่อง)
+// ข้อมูลเป็นของทะเบียน Tooling เองทั้งหมด อ่านสด ไม่ได้ยิงไปที่ระบบ Production
+const ROLL_READY_CATS = ['Forming', 'Sizing', 'TH'];
+// สถานะที่ถือว่าพร้อมเดินได้ — เกณฑ์เดียวกับคอลัมน์ is_ready ของ view roll_set_status
+// ที่ฝ่ายผลิตดึงไปใช้ จะได้ไม่มีทางที่สองที่ตอบไม่เหมือนกัน
+const ROLL_READY_OK = ['inuse', 'ready'];
+function rollReadyIsOk(status) { return ROLL_READY_OK.includes(status); }
+
+const ROLL_READY_COLLAPSE_KEY = 'tst-tooling-rollready-collapsed';
+let rollReadyCollapsed = false;
+try { rollReadyCollapsed = localStorage.getItem(ROLL_READY_COLLAPSE_KEY) === '1'; } catch (e) {}
+function toggleRollReadyPanel() {
+  rollReadyCollapsed = !rollReadyCollapsed;
+  try { localStorage.setItem(ROLL_READY_COLLAPSE_KEY, rollReadyCollapsed ? '1' : '0'); } catch (e) {}
+  renderProdBlockRollReady();
+}
+
+// ชุดที่ตั้งว่า "กำลังใช้งาน" อยู่บนเครื่องนั้น แยกตามหมวด — คืนลิสต์เพราะถ้าเผลอตั้งซ้ำ
+// สองชุดในหมวดเดียวกันของเครื่องเดียวกัน ต้องเห็นทั้งคู่ ไม่ใช่ซ่อนอันหลังไปเงียบๆ
+function rollReadySetsOnMachine(machine) {
+  const out = { Forming: [], Sizing: [], TH: [] };
+  getRollSets().forEach(s => {
+    if (!toolingData.roll.some(r => r.set === s)) return;
+    const cat = parseSizeRollName(s).category;
+    if (!out[cat]) return;
+    const color = inUseColorOnMachine(s, machine);
+    if (color) out[cat].push({ set: s, color });
+  });
+  return out;
+}
+
+function rollReadyRowHtml(cat, hit) {
+  if (!hit) {
+    return `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12px;">
+      <span style="flex:0 0 58px;font-weight:800;color:var(--text-3);">${cat}</span>
+      <span style="color:var(--text-3);">— ยังไม่ได้ตั้งชุดที่ใช้งาน</span></div>`;
+  }
+  const st = rollColorStatusFor(hit.set, hit.color);
+  const meta = ROLL_COLOR_STATUS_META[st] || ROLL_COLOR_STATUS_META.ready;
+  const ok = rollReadyIsOk(st);
+  return `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12px;">
+    <span style="flex:0 0 58px;font-weight:800;color:var(--text-2);">${cat}</span>
+    <span style="display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;">
+      <span style="width:9px;height:9px;border-radius:50%;background:${inUseColorDot(hit.set, hit.color)};
+                   box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);"></span>
+      <span style="color:var(--text-2);">${escapeHtmlAttr(rollColorLabelFor(hit.set, hit.color))}</span></span>
+    <span style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;">
+      <span style="font-weight:800;color:${ok ? 'var(--green)' : meta.color};white-space:nowrap;"
+        title="${escapeHtmlAttr(hit.set)}">${ok ? '✓ ' : ''}${meta.label}</span>
+    </span></div>`;
+}
+
+function prodBlockRollReadyHtml() {
+  const cards = ROLL_MACHINES.map(m => {
+    const byCat = rollReadySetsOnMachine(m);
+    // ขนาดที่ใส่อยู่บนเครื่องนี้ — ถ้าทั้งสามหมวดเป็นขนาดเดียวกันโชว์ชื่อขนาด
+    // ถ้าไม่ตรงกัน (เช่นหมวด Forming ยืมของขนาดอื่นมาใช้ร่วม) บอกว่า "หลายขนาด" ไม่เดาว่าเป็นขนาดไหน
+    const sizes = [...new Set(ROLL_READY_CATS.flatMap(c => byCat[c].map(x => rollSetSizeGroupLabel(x.set))))];
+    const sizeLabel = sizes.length === 1 ? sizes[0] : (sizes.length ? 'หลายขนาด' : '—');
+    const flat = ROLL_READY_CATS.flatMap(c => byCat[c].map(x => ({ cat: c, ...x })));
+    const allOk = flat.length === ROLL_READY_CATS.length
+      && flat.every(x => rollReadyIsOk(rollColorStatusFor(x.set, x.color)));
+    const edge = flat.length === 0 ? 'var(--border-light)' : (allOk ? 'var(--green)' : 'var(--amber)');
+    const bg = flat.length === 0 ? 'var(--bg-card)' : (allOk ? 'var(--green-dim)' : 'var(--amber-dim)');
+    const rows = ROLL_READY_CATS.map(c => {
+      const hits = byCat[c];
+      if (!hits.length) return rollReadyRowHtml(c, null);
+      return hits.map(hh => rollReadyRowHtml(c, hh)).join('');
+    }).join('');
+    return `<div style="border:1px solid ${edge};border-left:4px solid ${edge};border-radius:9px;
+                background:${bg};padding:9px 11px;min-width:0;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;min-width:0;">
+        <span style="font-size:12.5px;font-weight:800;color:#fff;background:var(--accent);
+                     padding:2px 10px;border-radius:6px;flex-shrink:0;">${m}</span>
+        <span style="font-size:11.5px;font-weight:700;color:var(--text-2);overflow:hidden;
+                     text-overflow:ellipsis;white-space:nowrap;">${escapeHtmlAttr(sizeLabel)}</span>
+        <span style="margin-left:auto;flex-shrink:0;font-size:11px;font-weight:800;
+                     color:${flat.length === 0 ? 'var(--text-3)' : (allOk ? 'var(--green)' : 'var(--amber)')};">${
+          flat.length === 0 ? 'ไม่มีข้อมูล' : (allOk ? 'พร้อมครบ' : 'ยังไม่พร้อม')}</span>
+      </div>
+      ${rows}
+    </div>`;
+  }).join('');
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:9px;">${cards}</div>`;
+}
+
+function renderProdBlockRollReady() {
+  const el = document.getElementById('prodblock-rollready');
+  if (!el) return;
+  const caret = rollReadyCollapsed ? '▸' : '▾';
+  el.innerHTML = `<div onclick="toggleRollReadyPanel()" title="กดเพื่อย่อ/ขยายแผงนี้"
+      style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:6px 2px;user-select:none;">
+      <span style="width:13px;color:var(--text-3);font-size:12px;">${caret}</span>
+      <span style="font-size:13px;font-weight:800;color:var(--text-1);">🎬 ลูกรีดพร้อม</span>
+      <span style="font-size:11px;color:var(--text-3);">ชุด Roll ที่ตั้งว่ากำลังใช้งานอยู่บนแต่ละเครื่อง — ข้อมูลชุดเดียวกับที่ฝ่ายผลิตดึงไปแสดงบนการ์ดงาน</span>
+    </div>
+    ${rollReadyCollapsed ? '' : prodBlockRollReadyHtml()}`;
+  // ย่อแผงแล้วคืนพื้นที่ให้กรอบแผนผลิตด้านล่าง
+  const frame = document.getElementById('prodblock-external-iframe');
+  if (frame) frame.style.height = rollReadyCollapsed ? 'calc(100vh - 170px)' : 'calc(100vh - 284px)';
+}
+
 function renderProdBlock() {
   syncRollStatusWithProdBlock();
   renderProdBlockTabs();
   renderProdBlockCalendar();
+  renderProdBlockRollReady();
 }
 
 function prodCellFormFields() {
