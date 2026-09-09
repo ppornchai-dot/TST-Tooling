@@ -5880,7 +5880,7 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
       const isFirstRow = si === (firstWorkIdx === -1 ? 0 : firstWorkIdx);
       const isLastRow = si === segs.length - 1;
       // ช่วงย่อยที่ไม่รู้กะ (แถวสำรองตอนไม่มี segments) ให้ยึดกะจริงของงานนั้นแทน ไม่งั้นกะดึกจะขึ้น (+1 วัน) ทั้งที่ยังเป็นกะเดิม
-      const endBadge = endDayBadge(endDayOffset(s.shiftKey || taskSessionShiftKey(t), s.startDate, s.startTime, s.endDate, s.endTime));
+      const endBadge = endDayBadge(endDayOffset(s.shiftKey || taskSessionShiftKey(t), s.startDate, s.startTime, s.endDate, s.endTime, t.workType));
       const shiftChip = s.shiftKey ? `<span class="chip ${shiftChipClass(s.shiftKey)}">${SHIFTS[s.shiftKey].label}</span>` : '—';
       const typeMeta = s.type ? PLAN_TIME_TYPE_META[s.type] : null;
       const typeChip = typeMeta ? `<span class="chip ${typeMeta.chip}">${typeMeta.icon}${typeMeta.label}</span>` : '—';
@@ -6539,7 +6539,7 @@ function planCalendarChip(t, editable, extraStyle) {
   // เวลาเริ่ม–จบของงานชิ้นนั้น (งานที่ถูกตัดข้ามวัน = เวลาของส่วนที่อยู่ในวันนั้น)
   // ต่อท้าย (+N วัน) เมื่อเวลาจบเลยรอบกะของวันนั้นไปจริง เกณฑ์เดียวกับป้ายในตารางรายวัน
   const hasTime = t.startTime && t.startTime !== '—' && t.endTime && t.endTime !== '—';
-  const dayOff = hasTime ? endDayOffset(taskSessionShiftKey(t), t.date, t.startTime, t.endDate || t.date, t.endTime) : 0;
+  const dayOff = hasTime ? endDayOffset(taskSessionShiftKey(t), t.date, t.startTime, t.endDate || t.date, t.endTime, t.workType) : 0;
   const timeText = hasTime ? t.startTime + '–' + t.endTime + (dayOff > 0 ? ' (+' + dayOff + ' วัน)' : '') : '';
   const timeHtml = timeText ? `<span class="pcc-time">${escapeHtmlAttr(timeText)}</span>` : '';
   // ปฏิทินรวมทั้ง CNC และขัด Roll ไว้ด้วยกันแล้ว ติดไอคอนประเภทงานไว้หน้าชื่อชุดให้แยกออกด้วยตาเปล่า
@@ -6602,7 +6602,7 @@ function planMergedCalendarChip(group, editable, extraStyle) {
   const hasColor = color && color !== '—';
   const total = group.reduce((n, t) => n + planTaskRollCount(t), 0);
   const sub = (hasColor ? color + ' · ' : '') + total + ' Roll';
-  const dayOff = endDayOffset(taskSessionShiftKey(last), last.date, last.startTime, last.endDate || last.date, last.endTime);
+  const dayOff = endDayOffset(taskSessionShiftKey(last), last.date, last.startTime, last.endDate || last.date, last.endTime, last.workType);
   const timeText = first.startTime + '–' + last.endTime + (dayOff > 0 ? ' (+' + dayOff + ' วัน)' : '');
   const typeIcon = first.workType === 'polish' ? '✦ ' : '⚙ ';
   const typeLabel = (PLAN_WORKTYPE_META[first.workType] || {}).label || '';
@@ -7687,10 +7687,19 @@ function computePlanPieceSchedule(startDate, startTime, pieceMinutesList, shiftK
 // หา "วันที่ของกะจริง" สำหรับ "แสดงผล" เท่านั้น (ไม่ใช่ค่าที่เก็บ/ใช้คำนวณตารางซ้ำ) ให้งานที่เริ่มกลางช่วงกะดึกแบบข้ามเที่ยงคืนมาแล้ว
 // (เช่น ต่อเวลามาเริ่ม 02:30 ซึ่งจริงๆ เป็นช่วงท้ายของกะดึกที่เริ่มตั้งแต่ 20:00 เมื่อคืนก่อนหน้า) ให้ไปโผล่ในมุมมองรายวัน/หน้างานประจำวันของ "วันก่อนหน้า" แทนที่จะเป็นวันปฏิทินตามเวลาที่เห็น
 // สำคัญ: ห้ามเอาค่าที่ได้ไปเขียนทับ t.date ที่เก็บไว้จริง เพราะ computePlanEnd/resequencePlanTask/autoFixPlanSequencing ยังต้องใช้ t.date เดิม (วันปฏิทินจริง) ในการคำนวณตารางซ้ำให้ถูกต้อง
-function sessionOwningDate(rawDate, rawTime, shiftKeyOfSession) {
+function sessionOwningDate(rawDate, rawTime, shiftKeyOfSession, workType) {
+  const min = hhmmToMinOfDay(rawTime);
+  if (min == null) return rawDate;
   if (shiftKeyOfSession === 'night') {
-    const [h, m] = rawTime.split(':').map(Number);
-    if (!Number.isNaN(h) && !Number.isNaN(m) && (h * 60 + m) < 20 * 60) return addDaysIso(rawDate, -1);
+    return min < 20 * 60 ? addDaysIso(rawDate, -1) : rawDate;
+  }
+  // งานที่เริ่มในช่วง OT ที่ลามข้ามเที่ยงคืน (งานขัด Roll ตั้ง OT ได้ถึง 05:00) เป็นงานของวันทำงานก่อนหน้า
+  // เกณฑ์เดียวกับงานกะดึกที่เลยเที่ยงคืน — ไม่งั้นงานที่ทำในช่วง OT ของเมื่อวานจะไปโผล่ใต้วันถัดไป
+  // และตัวนับเวลาว่างท้ายวันจะไม่เห็นงานนี้ (รายงานว่ายังว่างทั้งที่ถูกเติมไปแล้ว)
+  if (shiftKeyOfSession === 'morning' && workType) {
+    const win = (SHIFTS.morning.windows || [])[0];
+    const otEndMin = win ? win.endMin + otCapMaxMinFor(workType) : 0;
+    if (otEndMin > 1440 && min < otEndMin - 1440) return addDaysIso(rawDate, -1);
   }
   return rawDate;
 }
@@ -7707,10 +7716,10 @@ function taskSessionShiftKey(t) {
 // จำนวน "วันทำงาน" ที่เวลาจบเลยไปจากวันของงาน — ใช้ตัดสินว่าจะขึ้นป้าย "(+N วัน)" ท้ายเวลาจบไหม
 // กะดึกข้ามเที่ยงคืนเป็นเรื่องปกติของรอบกะเดียวกัน (20:00–05:00 แล้วต่อ OT ได้ถึง 08:20) ยังเป็นกะของวันเดิม
 // ไม่ใช่ "วันถัดไป" จึงไม่ต้องขึ้นป้ายให้สับสน — ขึ้นเฉพาะตอนงานยาวจนเลยรอบกะนั้นไปจริง ๆ เช่นไปโผล่กะดึกของอีกวัน
-function endDayOffset(shiftKeyOfSession, startDate, startTime, endDate, endTime) {
+function endDayOffset(shiftKeyOfSession, startDate, startTime, endDate, endTime, workType) {
   if (!startDate || !endDate || !endTime) return 0;
-  const a = sessionOwningDate(startDate, startTime || '00:00', shiftKeyOfSession);
-  const b = sessionOwningDate(endDate, endTime, shiftKeyOfSession);
+  const a = sessionOwningDate(startDate, startTime || '00:00', shiftKeyOfSession, workType);
+  const b = sessionOwningDate(endDate, endTime, shiftKeyOfSession, workType);
   const diff = Math.round((parseISODate(b) - parseISODate(a)) / 86400000);
   return diff > 0 ? diff : 0;
 }
@@ -7719,11 +7728,11 @@ function endDayBadge(n) {
 }
 // ป้าย "(+N วัน)" ของงานหนึ่ง — ยึดกะจริงที่งานนั้นเริ่ม (งาน "2 กะ" ดูจากเวลาเริ่ม)
 function taskEndDayBadge(t) {
-  return endDayBadge(endDayOffset(taskSessionShiftKey(t), t.date, t.startTime, t.endDate || t.date, t.endTime));
+  return endDayBadge(endDayOffset(taskSessionShiftKey(t), t.date, t.startTime, t.endDate || t.date, t.endTime, t.workType));
 }
 // "วันที่" ที่ควรใช้แสดงงานนี้ในมุมมองรายวัน/หน้างานประจำวัน (ดู sessionOwningDate) — คำนวณสดทุกครั้ง ไม่แตะ t.date ที่เก็บไว้จริง
 function taskDisplayDate(t) {
-  return sessionOwningDate(t.date, t.startTime || '', taskSessionShiftKey(t));
+  return sessionOwningDate(t.date, t.startTime || '', taskSessionShiftKey(t), t.workType);
 }
 
 // pieceMinutesListOverride (ถ้ามี) ใช้แทนเวลาแต่ง/ขัด Roll เต็มจากทะเบียน Tooling — ใช้ตอนวางแผนต่อของชิ้นที่ทำค้างไว้บางส่วนแล้ว (เหลือน้อยกว่าเวลาเต็ม)
