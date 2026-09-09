@@ -6646,8 +6646,12 @@ function planCalendarChipForGroup(group, iso, editable, withDeleteBtn) {
       + (withDeleteBtn && editable ? `<button title="ลบ" onclick="${jsCallAttr('deletePlanTask', t.id)}" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:11px;padding:0;flex:0 0 auto;">✕</button>` : ''),
       editable);
   }
-  // กลุ่มที่ยุบรวมไม่ให้ลาก และไม่มีปุ่มลบ — ทั้งสองอย่างเป็นการสั่งรายใบ ต้องไปทำที่แผนของวัน
-  return `<div class="plan-drag-item">${planMergedCalendarChip(group, editable, 'flex:1;min-width:0;')}</div>`;
+  // กลุ่มที่ยุบรวมยังลากได้ — ลากทีเดียวยกไปทั้งกลุ่ม (data-taskids เก็บ id ทุกใบตามลำดับ)
+  // ส่วนปุ่มลบไม่มีให้ เพราะเป็นคำสั่งรายใบ ต้องไปลบที่แผนของวัน
+  const gids = group.map(t => t.id).join(',');
+  const gchip = planMergedCalendarChip(group, editable, 'flex:1;min-width:0;');
+  if (!editable || planDeleteMode || group[0].date !== iso) return `<div class="plan-drag-item">${gchip}</div>`;
+  return `<div class="plan-drag-item" data-taskid="${escapeHtmlAttr(group[0].id)}" data-taskids="${escapeHtmlAttr(gids)}" data-shift="${escapeHtmlAttr(group[0].shift || '')}" data-draggable="1"><span class="plan-drag-grip" title="ลากขึ้น–ลงเพื่อสลับลำดับก่อน–หลัง หรือลากไปวางวันอื่นเพื่อย้ายวัน (ยกไปทั้งกลุ่ม ${group.length} รายการ)">⋮⋮</span>${gchip}</div>`;
 }
 
 function renderPlanWeek() {
@@ -6774,6 +6778,8 @@ function onPlanDragDown(ev) {
   if (!zone) return;
   ev.preventDefault();
   planDrag = { item, zone, shift: item.dataset.shift, taskId: item.dataset.taskid,
+    // ชิปที่ยุบรวมหลายใบ — ยกไปทั้งกลุ่มตามลำดับที่แสดงอยู่
+    groupIds: (item.dataset.taskids || item.dataset.taskid || '').split(',').filter(Boolean),
     // มุมมองรายวันใส่ data-section มาด้วย (หมวด+กะ) — สลับลำดับได้เฉพาะในหมวดเดียวกัน
     section: item.dataset.section || null,
     sourceDay: zone.dataset.day, moved: false };
@@ -6838,9 +6844,10 @@ function onPlanDragUp() {
   const task = planTasks.find(t => t.id === d.taskId);
   if (!zone || !zone.dataset.day || !task) { renderCurrentPlanView(); return; }
   const targetDay = zone.dataset.day;
+  // ชิปที่ยุบรวมนับเป็นหลาย id ตามลำดับ ไม่งั้นใบหลังของกลุ่มจะไม่ถูกจัดเวลาใหม่และค้างเวลาเดิม
   const ids = [...zone.querySelectorAll('.plan-drag-item[data-draggable]')]
     .filter(n => n.dataset.shift === d.shift && (!d.section || n.dataset.section === d.section))
-    .map(n => n.dataset.taskid);
+    .flatMap(n => (n.dataset.taskids || n.dataset.taskid || '').split(',').filter(Boolean));
 
   // เริ่มไล่เวลาจาก "ต้นกะของวันนั้น" เสมอ ไม่ยกเวลาเดิมของงานอื่นในวันนั้นมาเป็นจุดตั้งต้น
   // (ถ้ายึดเวลาของงานที่มีอยู่ เช่น 20:00 งานที่ลากเข้ามาจะเริ่ม 20:00 แล้วดันงานเดิมข้ามไปวันถัดไป)
@@ -6857,13 +6864,23 @@ function onPlanDragUp() {
   // เดิมทุกกรณีวิ่งเข้า resequencePlanDayShift ซึ่งเริ่มไล่จาก "ต้นกะ" และนับแต่งานกะเดียวกัน
   // งานกะเช้าที่ลากมาวางในวันที่มีแต่งาน 2 กะ จึงได้ 08:00 แล้วไปแทรกเป็นงานแรกของวัน
   if (targetDay < todayIso || d.appended) {
-    task.date = targetDay;
-    task.startTime = planAppendStartOnDay(task.workType, targetDay, d.shift, task.id);
-    const computed = computePlanEnd(task.date, task.startTime, task.totalTime, planTaskSchedShift(task), task.otCapMinutesByShift || {});
-    task.endTime = computed.time;
-    task.endDate = computed.date || task.date;
-    task.otMinutes = computed.otMinutes || 0;
-    task.otMinutesByShift = computed.otMinutesByShift || {};
+    // ชิปที่ยุบรวมมีหลายใบ — วางต่อท้ายวันแล้วไล่เวลาต่อกันไปทั้งกลุ่มตามลำดับเดิม
+    const moving = (d.groupIds && d.groupIds.length ? d.groupIds : [d.taskId])
+      .map(id => planTasks.find(t => t.id === id)).filter(Boolean);
+    const movingIds = new Set(moving.map(t => t.id));
+    // หาเวลาต่อท้ายวันโดยไม่นับงานที่กำลังยกมาเอง (ไม่งั้นใบที่สองจะต่อจากเวลาเดิมของใบแรก)
+    let cursor = { date: targetDay, time: planAppendStartOnDayExcept(task.workType, targetDay, d.shift, movingIds) };
+    moving.forEach(t => {
+      t.date = cursor.date;
+      t.startTime = cursor.time;
+      const sched = planTaskSchedShift(t);
+      const computed = computePlanEnd(t.date, t.startTime, t.totalTime, sched, t.otCapMinutesByShift || {});
+      t.endTime = computed.time;
+      t.endDate = computed.date || t.date;
+      t.otMinutes = computed.otMinutes || 0;
+      t.otMinutesByShift = computed.otMinutesByShift || {};
+      cursor = nextValidPlanContinuePoint(sched, t.endDate, t.endTime, t.otCapMinutesByShift, t.workType);
+    });
   } else {
     resequencePlanDayShift(targetDay, d.shift, ids, anchor);
   }
@@ -6889,6 +6906,17 @@ function onPlanDragUp() {
 // แล้วไปแทรกเป็นงานแรกของวัน ทั้งที่ผู้ใช้ต้องการวางต่อท้าย
 // ไม่ใช้ planQueueEndFor เพราะตัวนั้นเป็นตัวช่วยวางแผน ถ้าเวลาล้นกะจะดันไปเริ่มวันถัดไปให้
 // ซึ่งขัดกับความตั้งใจ (ผู้ใช้ชี้วันมาแล้ว จะย้ายไปวันอื่นไม่ได้) — เลยเวลากะไปนับเป็น OT ตามจริง
+// เหมือน planAppendStartOnDay แต่ยกเว้นได้หลายงาน — ใช้ตอนลากชิปที่ยุบรวมหลายใบไปวางวันอื่น
+function planAppendStartOnDayExcept(workType, dateIso, shiftKey, excludeIds) {
+  let last = null;
+  planTasks.forEach(t => {
+    if ((excludeIds && excludeIds.has(t.id)) || t.workType !== workType) return;
+    if (taskDisplayDate(t) !== dateIso) return;
+    if ((t.endDate || t.date) !== dateIso || !t.endTime || t.endTime === '—') return;
+    if (!last || t.endTime > last) last = t.endTime;
+  });
+  return last || (SHIFTS[shiftKey] || SHIFTS.morning).start;
+}
 function planAppendStartOnDay(workType, dateIso, shiftKey, excludeId) {
   let last = null;
   planTasks.forEach(t => {
