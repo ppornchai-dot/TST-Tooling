@@ -6555,6 +6555,101 @@ function planCalendarChip(t, editable, extraStyle) {
   return `<span class="chip plan-cal-chip ${prog.chip}" style="${extraStyle || ''}${editable ? 'cursor:pointer;' : ''}" ${editable ? `onclick="openPlanTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(fullTitle)}"><span class="pcc-set">${typeIcon}${escapeHtmlAttr(t.rollSet)}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span>${timeHtml}</span>`;
 }
 
+// ─── รวมชิปงานของชุด Roll เดียวกัน สีเดียวกัน ที่เดินต่อเวลากันพอดี ─────────────
+// แผนที่วางไว้สองรายการติดกัน (เช่น GS 4"x2" Sizing สีฟ้า 08:00–08:34 แล้ว 08:34–09:40)
+// อ่านเหมือนงานซ้ำสองใบ ทั้งที่เป็นการเดินต่อเนื่องของชุดเดียว จึงยุบเป็นชิปเดียว
+// เงื่อนไขที่ต้องตรงกันหมดจึงยุบ — ตั้งไว้แคบโดยตั้งใจ เพราะการยุบคือการซ่อนของสองใบไว้ใบเดียว
+//   · ประเภทงาน · ชุด Roll · ชุดสี · กะ  (ยุบข้ามกะไม่ได้ ตารางแยกหัวข้อตามกะอยู่)
+//   · เวลาต่อกันพอดี (เวลาจบของใบก่อน = เวลาเริ่มของใบถัดไป)
+//   · ความคืบหน้าเท่ากัน — ถ้าใบหนึ่งทำแล้วอีกใบยังไม่ทำ ต้องเห็นแยกกัน ไม่ใช่กลืนเป็นสีเดียว
+function planChipMergeable(a, b) {
+  if (!a || !b) return false;
+  if (a.workType !== b.workType || a.rollSet !== b.rollSet) return false;
+  if ((a.rollColor || '') !== (b.rollColor || '')) return false;
+  if ((a.shift || '') !== (b.shift || '')) return false;
+  if (!a.endTime || !b.startTime || a.endTime === '—' || b.startTime === '—') return false;
+  if (a.endTime !== b.startTime) return false;
+  // เวลาจบของใบก่อนต้องอยู่วันเดียวกับที่ใบถัดไปเริ่ม (งานที่จบข้ามเที่ยงคืนจึงไม่ถูกยุบผิดใบ)
+  if ((a.endDate || a.date) !== b.date) return false;
+  return planTaskProgressState(a) === planTaskProgressState(b);
+}
+
+// จัดลิสต์งานของวัน/หมวดนั้นเป็นกลุ่ม — กลุ่มละ 1 ใบคือปกติ, มากกว่านั้นคือยุบรวม
+// ไล่ตามลำดับที่แสดงอยู่จริงเท่านั้น (ไม่จัดเรียงใหม่) จะได้ไม่ยุบใบที่ไม่ได้อยู่ติดกันบนหน้าจอ
+function planChipGroups(tasks) {
+  const out = [];
+  (tasks || []).forEach(t => {
+    const cur = out.length ? out[out.length - 1] : null;
+    if (cur && planChipMergeable(cur[cur.length - 1], t)) cur.push(t);
+    else out.push([t]);
+  });
+  return out;
+}
+
+// จำนวน Roll ของงานหนึ่งใบ — ใช้ rollIds เป็นหลัก ถอยไปอ่านตัวเลขจาก rollId ("5 Roll") ถ้าไม่มี
+function planTaskRollCount(t) {
+  if (Array.isArray(t.rollIds)) return t.rollIds.length;
+  const m = /(\d+)/.exec(String(t.rollId || ''));
+  return m ? Number(m[1]) : 0;
+}
+
+// ยุบหลายใบเป็นชิปเดียว — กดแล้วเปิดแผนของวันนั้นเพื่อแก้ไข/ลบรายใบได้ตามปกติ
+// (ไม่เปิดฟอร์มแก้ไขใบใดใบหนึ่งให้เอง เพราะเดาไม่ได้ว่าผู้ใช้หมายถึงใบไหน)
+function planMergedCalendarChip(group, editable, extraStyle) {
+  const first = group[0], last = group[group.length - 1];
+  const prog = PLAN_PROGRESS_META[planTaskProgressState(first)] || PLAN_PROGRESS_META.wait;
+  const color = planRollColorLabel(first);
+  const hasColor = color && color !== '—';
+  const total = group.reduce((n, t) => n + planTaskRollCount(t), 0);
+  const sub = (hasColor ? color + ' · ' : '') + total + ' Roll';
+  const dayOff = endDayOffset(taskSessionShiftKey(last), last.date, last.startTime, last.endDate || last.date, last.endTime);
+  const timeText = first.startTime + '–' + last.endTime + (dayOff > 0 ? ' (+' + dayOff + ' วัน)' : '');
+  const typeIcon = first.workType === 'polish' ? '✦ ' : '⚙ ';
+  const typeLabel = (PLAN_WORKTYPE_META[first.workType] || {}).label || '';
+  const detail = group.map(t => '· ' + t.startTime + '–' + t.endTime + '  ' + planTaskRollCount(t) + ' Roll').join('\n');
+  const fullTitle = `[${prog.label}] ${typeLabel} · ${SHIFTS[first.shift]?.label || ''} — ${first.rollSet}`
+    + `${hasColor ? ' · ' + color : ''} — รวม ${group.length} รายการที่เดินต่อกัน ${total} Roll\n${detail}`;
+  const ids = group.map(t => t.id);
+  if (planDeleteMode) {
+    // ยุบอยู่ = ติ๊กทีเดียวได้ทั้งกลุ่ม (ถือว่าเลือกอยู่เมื่อถูกเลือกครบทุกใบ)
+    const picked = ids.every(id => planDeleteSelected.has(id));
+    return `<span class="chip plan-cal-chip ${prog.chip}${picked ? ' pcc-picked' : ' pcc-pickable'}" style="${extraStyle || ''}cursor:pointer;"
+      onclick="${jsCallAttr('togglePlanDeleteSelectGroup', ids.join(','))}"
+      title="${escapeHtmlAttr((picked ? 'เลือกอยู่ทั้งกลุ่ม — คลิกเพื่อยกเลิก' : 'คลิกเพื่อเลือกลบทั้งกลุ่ม') + ' · ' + fullTitle)}"><span class="pcc-set">${picked ? '☑ ' : '☐ '}${typeIcon}${escapeHtmlAttr(first.rollSet)}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span><span class="pcc-time">${escapeHtmlAttr(timeText)}</span></span>`;
+  }
+  return `<span class="chip plan-cal-chip ${prog.chip}" style="${extraStyle || ''}cursor:pointer;"
+    onclick="${jsCallAttr('planOpenDay', first.date)}"
+    title="${escapeHtmlAttr(fullTitle + '\n\nคลิกเพื่อเปิดแผนของวันนี้ (แก้ไข/ลบรายรายการได้ที่นั่น)')}"><span class="pcc-set">${typeIcon}${escapeHtmlAttr(first.rollSet)}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}<span style="opacity:.75;"> ×${group.length}</span></span><span class="pcc-time">${escapeHtmlAttr(timeText)}</span></span>`;
+}
+
+function togglePlanDeleteSelectGroup(idsCsv) {
+  if (!planDeleteMode) return;
+  const ids = String(idsCsv || '').split(',').filter(Boolean);
+  const allPicked = ids.every(id => planDeleteSelected.has(id));
+  ids.forEach(id => { if (allPicked) planDeleteSelected.delete(id); else planDeleteSelected.add(id); });
+  updatePlanDeleteBar();
+  renderCurrentPlanView();
+}
+
+function planOpenDay(iso) {
+  if (!iso) return;
+  planViewDate = parseISODate(iso);
+  switchPlanView('day');
+}
+
+// ชิปของกลุ่มหนึ่ง — กลุ่มเดียวใบเดียวใช้ชิปเดิมทั้งดุ้น (ลาก/แก้ไข/ลบ ได้เหมือนเดิมทุกอย่าง)
+function planCalendarChipForGroup(group, iso, editable, withDeleteBtn) {
+  if (group.length === 1) {
+    const t = group[0];
+    return planDragWrap(t, iso,
+      planCalendarChip(t, editable, 'flex:1;min-width:0;')
+      + (withDeleteBtn && editable ? `<button title="ลบ" onclick="${jsCallAttr('deletePlanTask', t.id)}" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:11px;padding:0;flex:0 0 auto;">✕</button>` : ''),
+      editable);
+  }
+  // กลุ่มที่ยุบรวมไม่ให้ลาก และไม่มีปุ่มลบ — ทั้งสองอย่างเป็นการสั่งรายใบ ต้องไปทำที่แผนของวัน
+  return `<div class="plan-drag-item">${planMergedCalendarChip(group, editable, 'flex:1;min-width:0;')}</div>`;
+}
+
 function renderPlanWeek() {
   const monday = getMonday(planViewDate);
   const days = Array.from({length: 7}, (_, i) => { const d = new Date(monday); d.setDate(d.getDate() + i); return d; });
@@ -6575,9 +6670,9 @@ function renderPlanWeek() {
       + '<tr style="vertical-align:top;">' + days.map(d => {
         const iso = toISODate(d);
         const tasks = (partsByDate.get(iso) || []).filter(t => planTaskSectionKey(t) === s.key);
-        const items = tasks.map(t => planDragWrap(t, iso,
-          `${planCalendarChip(t, editable, 'flex:1;min-width:0;')}${editable ? `<button title="ลบ" onclick="deletePlanTask('${t.id}')" style="border:none;background:none;color:var(--text-3);cursor:pointer;font-size:11px;padding:0;flex:0 0 auto;">✕</button>` : ''}`,
-          editable)).join('');
+        // ยุบงานของชุด/สีเดียวกันที่เดินต่อเวลากันพอดีให้เป็นชิปเดียว (ดู planChipGroups)
+        const items = planChipGroups(tasks)
+          .map(g => planCalendarChipForGroup(g, iso, editable, true)).join('');
         // งานแทรกของวันนั้น (หมวดเดียวกัน) — ต่อท้ายชิปงานตามแผน
         const inserts = planInsertTasksFor(iso, s.key, null).map(t => planInsertChipHtml(iso, t)).join('');
         return `<td onclick="planOpenDayFromCell(event, '${iso}')" style="min-width:110px;cursor:pointer;"
@@ -6636,7 +6731,9 @@ function renderPlanMonth() {
       const offLabel = holidayName || '';
       const tasks = (partsByDate.get(iso) || []).filter(t => planTaskSectionKey(t) === s.key);
       // งานแทรกของวันนั้น (หมวดเดียวกัน) — ต่อท้ายชิปงานตามแผน เห็นในปฏิทินรายเดือนด้วย
-      const chips = tasks.map(t => planDragWrap(t, iso, planCalendarChip(t, editable, 'flex:1;min-width:0;'), editable)).join('')
+      // ยุบงานของชุด/สีเดียวกันที่เดินต่อเวลากันพอดีให้เป็นชิปเดียว (ดู planChipGroups)
+      const chips = planChipGroups(tasks)
+          .map(g => planCalendarChipForGroup(g, iso, editable, false)).join('')
         + planInsertTasksFor(iso, s.key, null).map(t => planInsertChipHtml(iso, t)).join('');
       html += `<div onclick="planOpenDayFromCell(event, '${iso}')"
         style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;cursor:pointer;${dayOffBg}${offLabel ? 'display:flex;flex-direction:column;' : ''}"
