@@ -9069,6 +9069,23 @@ function shiftEndWithOtMin(shiftKey, otCaps, workType) {
   return best;
 }
 
+// จุดเวลา (atDate, atTime) ยังอยู่ใน "วันทำงาน" dateIso ไหม
+// ต้องคิดแบบวันทำงาน ไม่ใช่วันปฏิทิน เพราะ OT ของงานขัด Roll ต่อจากกะเช้าไปได้ถึง 05:00
+// ของเช้าวันถัดไป — sessionOwningDate ถอยวันให้เฉพาะกะดึก กะเช้าที่ลาม OT ข้ามเที่ยงคืน
+// จึงถูกตัดสินว่าเป็นของวันถัดไป ทำให้ตัวดึงงานมาเติมมองว่า "เวลาไม่พอ" ทั้งที่ยังว่างอยู่จริง
+// (อาการ: ตั้งเลิกงาน 05:00 แล้วแผนยังหยุดแค่ก่อนเที่ยงคืน งานที่เหลือไปกองวันถัดไป)
+function planTimeInWorkingDay(dateIso, shiftKey, workType, atDate, atTime, otCaps) {
+  if (!atDate || !atTime) return false;
+  if (taskDisplayDate({ date: atDate, startTime: atTime, shift: shiftKey }) === dateIso) return true;
+  if (atDate !== addDaysIso(dateIso, 1)) return false;      // ไกลกว่าเช้าวันถัดไป ไม่ใช่วันทำงานเดียวกันแล้ว
+  const min = hhmmToMinOfDay(atTime);
+  if (min == null) return false;
+  const caps = {};
+  ['morning', 'night'].forEach(k => { caps[k] = Math.min(Math.max(0, (otCaps || {})[k] || 0), otCapMaxMinFor(workType)); });
+  // เทียบในสเกลเดียวกับ planDayFreeTail: เวลาที่เลยเที่ยงคืนไปแล้วบวก 1440
+  return min + 1440 <= shiftEndWithOtMin(shiftKey, caps, workType);
+}
+
 // จุดที่ยังว่างต่อท้ายงานสุดท้ายของวันนั้น — คืน null ถ้าเต็มแล้วหรือไม่มีงานในวันนั้นเลย
 function planDayFreeTail(workType, dateIso, shiftKey, otCaps) {
   const last = planLastTaskOnDay(workType, dateIso, shiftKey);
@@ -9077,8 +9094,8 @@ function planDayFreeTail(workType, dateIso, shiftKey, otCaps) {
   const caps = {};
   ['morning', 'night'].forEach(k => { caps[k] = Math.min(Math.max(0, (otCaps || {})[k] || 0), otCapMaxMinFor(workType)); });
   const anchor = nextValidPlanContinuePoint(shiftKey, last.endDate || dateIso, last.endTime, caps, workType);
-  // จุดต่อเวลายังอยู่ใน "วันทำงาน" เดียวกันไหม (งานกะดึกที่เลยเที่ยงคืนยังนับเป็นวันเดิม)
-  if (taskDisplayDate({ date: anchor.date, startTime: anchor.time, shift: shiftKey }) !== dateIso) return null;
+  // จุดต่อเวลายังอยู่ใน "วันทำงาน" เดียวกันไหม (กะดึกที่เลยเที่ยงคืน และ OT กะเช้าที่ลามถึง 05:00)
+  if (!planTimeInWorkingDay(dateIso, shiftKey, workType, anchor.date, anchor.time, caps)) return null;
   const m = /^(\d{1,2}):(\d{2})$/.exec(anchor.time);
   if (!m) return null;
   const min = (+m[1]) * 60 + (+m[2]);
@@ -9096,12 +9113,12 @@ function planDayFreeTail(workType, dateIso, shiftKey, otCaps) {
 // ตัวไล่คิว (autoFixPlanSequencing) จะไปดันงานที่เหลือทั้งแผนต่อกันเป็นพรวน โครงกะเช้า/กะดึกที่วางไว้พังทั้งอาทิตย์
 // นาทีทำงานที่ยัดลงช่วงเวลาที่เหลือของวันนั้นได้มากที่สุด (หักเวลาพัก/ช่วงนอกกะให้แล้ว)
 // ค้นด้วยการลองคำนวณเวลาจบ เพราะ computePlanEnd เป็นตัวเดียวที่รู้เรื่องพักเที่ยง/พักก่อน OT ครบ
-function planPullFitMinutes(startDate, startTime, shiftKey, caps, dateIso, maxMin) {
+function planPullFitMinutes(startDate, startTime, shiftKey, caps, dateIso, maxMin, workType) {
   const fits = x => {
     if (x <= 0) return true;
     const c = computePlanEnd(startDate, startTime, x, shiftKey, caps);
     if (!c.time) return false;
-    return taskDisplayDate({ date: c.date || startDate, startTime: c.time, shift: shiftKey }) === dateIso;
+    return planTimeInWorkingDay(dateIso, shiftKey, workType, c.date || startDate, c.time, caps);
   };
   let lo = 0, hi = Math.max(0, Math.floor(maxMin));
   while (lo < hi) {
@@ -9126,14 +9143,14 @@ function planPullPieceFit(cand, startDate, startTime, shiftKey, caps, dateIso) {
     if (!(mins[i] > 0)) continue;               // ชิ้นที่ยังไม่กรอกเวลาในทะเบียน ข้ามไป
     const c = computePlanEnd(cd, ct, mins[i], shiftKey, caps);
     const endDate = c.time ? (c.date || cd) : null;
-    const wholeFits = !!c.time && taskDisplayDate({ date: endDate, startTime: c.time, shift: shiftKey }) === dateIso;
+    const wholeFits = !!c.time && planTimeInWorkingDay(dateIso, shiftKey, cand.workType, endDate, c.time, caps);
     if (wholeFits) {
       taken.push({ idx: ids[i], minutes: mins[i], whole: true });
       cd = endDate; ct = c.time;
       continue;
     }
     // ชิ้นนี้ทั้งชิ้นไม่พอ — เอามาเท่าที่ทำได้จริงในเวลาที่เหลือ
-    const slice = planPullFitMinutes(cd, ct, shiftKey, caps, dateIso, mins[i] - 1);
+    const slice = planPullFitMinutes(cd, ct, shiftKey, caps, dateIso, mins[i] - 1, cand.workType);
     if (slice >= PLAN_PULL_MIN_SLICE) {
       const c2 = computePlanEnd(cd, ct, slice, shiftKey, caps);
       taken.push({ idx: ids[i], minutes: slice, whole: false });
@@ -9177,7 +9194,7 @@ function planPullForwardPlan(workType, dateIso, shiftKey, otCaps) {
   let curDate = tail.date, curTime = tail.time;
   for (let i = 0; i < later.length; i++) {
     const cand = later[i];
-    if (taskDisplayDate({ date: curDate, startTime: curTime, shift: shiftKey }) !== dateIso) break;
+    if (!planTimeInWorkingDay(dateIso, shiftKey, workType, curDate, curTime, tail.caps)) break;
     const mm = /^(\d{1,2}):(\d{2})$/.exec(curTime);
     if (!mm) break;
     // งานที่ดึงมาต้องใช้โควตา OT ของวันปลายทาง ไม่ใช่ของวันต้นทาง (กัน OT ข้ามวัน)
