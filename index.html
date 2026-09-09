@@ -1633,6 +1633,16 @@ canvas{display:block;}
          PAGE: DAILY TASKS
     ══════════════════════════════════════════ -->
     <div class="page" id="page-daily">
+      <!-- ช่างขัด Roll ไม่พอ ช่าง CNC ที่ว่างเข้ามาช่วยได้ — แต่บทบาทล็อกให้เห็นแต่งานประเภทตัวเอง
+           ปุ่มนี้เปิดให้เห็นงานขัด Roll ด้วย แล้วเลื่อนไปที่หัวข้อนั้นให้เลย (ดู toggleHelpPolish)
+           โผล่เฉพาะบทบาทช่าง CNC — บทบาทอื่นเห็นงานทั้งสองประเภทอยู่แล้ว -->
+      <div id="daily-help-polish-wrap" style="display:none;margin-bottom:14px;">
+        <button id="daily-help-polish-btn" onclick="toggleHelpPolish()"
+          style="display:inline-flex;align-items:center;gap:10px;border:none;cursor:pointer;
+                 font-family:inherit;font-size:17px;font-weight:800;padding:14px 22px;border-radius:12px;
+                 box-shadow:0 2px 8px rgba(0,0,0,.16);transition:filter .12s;"
+          onmouseover="this.style.filter='brightness(1.06)'" onmouseout="this.style.filter='none'"></button>
+      </div>
 
       <!-- เอาปุ่มกรอง ทั้งหมด/CNC/ขัด Roll ออกแล้ว — ตารางแบ่งหัวข้อเป็น 2 ประเภทงานให้เห็นทั้งคู่ในหน้าเดียว
            ช่าง CNC / ช่างขัด Roll ยังเห็นเฉพาะประเภทของตัวเอง ผ่าน forcedWorkTypeForRole() -->
@@ -14512,12 +14522,67 @@ function finishDailyTask(idx, workerId) {
   });
 }
 
+// ─── ช่าง CNC เข้าไปทำงานขัด Roll ───────────────────────────────────────────
+// วันที่งานแต่ง Roll ว่าง ช่าง CNC เข้ามาช่วยขัด Roll ได้ แต่บทบาทล็อกให้เห็นแต่งานประเภทของตัวเอง
+// จึงมองไม่เห็นงานขัดเลยและกดเริ่ม/จบงานไม่ได้ — ปุ่มนี้เปิดให้เห็นงานทั้งสองประเภท
+// เก็บใน localStorage ไม่ใช่ในข้อมูลกลาง เพราะเป็นเรื่องของเครื่องที่ช่างคนนั้นใช้อยู่
+// (ไม่ต้องเขียนขึ้นคลาวด์ ไม่ชนกับเครื่องอื่น และไม่ไปเปลี่ยนสิ่งที่ช่างคนอื่นเห็น)
+const HELP_POLISH_KEY = 'tst-tooling-help-polish';
+let helpPolishOn = false;
+try { helpPolishOn = localStorage.getItem(HELP_POLISH_KEY) === "1"; } catch (e) {}
+// มีผลเฉพาะบทบาทช่าง CNC — บทบาทอื่นไม่ได้ถูกล็อกด้วยเรื่องนี้อยู่แล้ว
+function helpPolishActive() {
+  return helpPolishOn && effectiveRole() === 'cnc';
+}
+function toggleHelpPolish() {
+  helpPolishOn = !helpPolishOn;
+  try { localStorage.setItem(HELP_POLISH_KEY, helpPolishOn ? "1" : "0"); } catch (e) {}
+  refreshHelpPolishBtn();
+  // หน้าที่เนื้อหาขึ้นกับประเภทงานที่เห็นได้ ต้องวาดใหม่ ไม่ใช่แค่หน้าที่เปิดอยู่
+  if (document.getElementById('tbody-daily')) renderDailyTasks();
+  try { renderCurrentPlanView(); } catch (e) {}
+  if (document.getElementById('tbody-history')) { try { renderHistory(); } catch (e) {} }
+  // เปิดแล้วเลื่อนไปที่หัวข้องานขัด Roll ให้เลย ไม่ต้องไล่หาเอง
+  if (helpPolishOn) setTimeout(scrollToDailyPolishSection, 60);
+}
+// เลื่อนจอไปที่หัวข้อ "ขัด Roll" ในตารางงานประจำวัน
+function scrollToDailyPolishSection() {
+  const row = document.querySelector('#tbody-daily tr[data-daily-section="polish"]');
+  if (!row) return;
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  // กะพริบหัวข้อสั้นๆ ให้รู้ว่าพาไปที่ไหน
+  const cell = row.querySelector('td');
+  if (!cell) return;
+  const prev = cell.style.boxShadow;
+  cell.style.boxShadow = 'inset 0 0 0 3px var(--purple)';
+  setTimeout(() => { cell.style.boxShadow = prev; }, 1400);
+}
+function refreshHelpPolishBtn() {
+  const wrap = document.getElementById('daily-help-polish-wrap');
+  const b = document.getElementById('daily-help-polish-btn');
+  if (!wrap || !b) return;
+  const show = effectiveRole() === 'cnc';
+  wrap.style.display = show ? '' : 'none';
+  if (!show) return;
+  if (helpPolishOn) {
+    b.innerHTML = '<span style="font-size:20px;">✓</span> กำลังช่วยงานขัด Roll — กดเพื่อออก';
+    b.style.background = 'var(--purple)';
+    b.style.color = '#fff';
+    b.title = 'กำลังเห็นงานขัด Roll ด้วย — กดเพื่อกลับไปดูเฉพาะงานแต่ง Roll ของตัวเอง';
+  } else {
+    b.innerHTML = '<span style="font-size:20px;">✦</span> เข้าไปทำงานขัด Roll';
+    b.style.background = 'var(--purple)';
+    b.style.color = '#fff';
+    b.title = 'ว่างจากงานแต่ง Roll แล้วมาช่วยขัด Roll — กดแล้วจะเห็นงานขัด Roll และพาไปที่หัวข้อนั้นให้';
+  }
+}
 // ช่าง CNC เห็นเฉพาะงานแต่ง Roll และช่างขัด Roll เห็นเฉพาะงานขัด — คืน null ถ้าไม่ถูกจำกัด (admin/หัวหน้า/ช่างเครื่อง)
 // ใช้ทั้งหน้างานประจำวันและหน้าวางแผน แทนปุ่มกรองประเภทงานที่เอาออกไปแล้วทั้งสองหน้า
 // (เกณฑ์เดียวกับ forcedHistoryTypeForRole ของหน้าประวัติ)
+// ช่าง CNC ที่กด "เข้าไปทำงานขัด Roll" ไว้ ถือว่าไม่ถูกจำกัด จึงเห็นงานทั้งสองประเภท
 function forcedWorkTypeForRole() {
   const r = effectiveRole();
-  if (r === 'cnc') return 'cnc';
+  if (r === 'cnc') return helpPolishActive() ? null : 'cnc';
   if (r === 'polish') return 'polish';
   return null;
 }
@@ -15095,7 +15160,7 @@ function renderDailyTasks() {
       if (!ids.length) return s + (getDailyStatus(it.key) === 'done' ? 1 : 0);
       return s + ids.filter(idx => getDailyPieceEntry(it.key, idx).status === 'done').length;
     }, 0);
-    return `<tr><td colspan="12" style="background:${meta.bg};padding:9px 12px;border-left:4px solid ${meta.color};border-top:2px solid ${meta.color};">
+    return `<tr data-daily-section="${escapeHtmlAttr(meta.key)}"><td colspan="12" style="background:${meta.bg};padding:9px 12px;border-left:4px solid ${meta.color};border-top:2px solid ${meta.color};">
       <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:${meta.color};">
         <span aria-hidden="true">${meta.icon}</span>${escapeHtmlAttr(meta.label)}
       </span>
@@ -15300,7 +15365,7 @@ function historyTypeMatches(r, filter) {
 // ช่าง CNC เห็นประวัติเฉพาะงานแต่ง Roll และช่างขัด Roll เห็นเฉพาะงานขัด Roll — คืน null ถ้าไม่ถูกจำกัด (admin/หัวหน้า/ช่างเครื่อง)
 function forcedHistoryTypeForRole() {
   const r = effectiveRole();
-  if (r === 'cnc') return 'cnc';
+  if (r === 'cnc') return helpPolishActive() ? null : 'cnc';
   if (r === 'polish') return 'polish';
   return null;
 }
@@ -16671,6 +16736,7 @@ function applyRoleUI() {
   // เนื้อหาของหน้าเหล่านี้ขึ้นกับบทบาท (หัวข้อที่เห็น / กางรายชิ้น / ขนาดปุ่ม / สิทธิ์แก้ไข)
   // เดิม applyRoleUI() แค่สลับคลาสกับซ่อนปุ่ม ไม่ได้สั่งเรนเดอร์ใหม่ — กด "ดูเป็น" เปลี่ยนบทบาทแล้ว
   // ตารางงานประจำวันจึงค้างเป็นของบทบาทเดิม (ยังมีลูกศร ยังเห็นหัวข้ออีกประเภท ปุ่มยังเล็ก)
+  refreshHelpPolishBtn();
   if (document.getElementById('tbody-daily')) renderDailyTasks();
   if (document.getElementById('tbody-history')) renderHistory();
   renderDashboardInUseRoll();
