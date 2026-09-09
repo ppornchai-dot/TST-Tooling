@@ -6650,7 +6650,7 @@ function planCalendarChipForGroup(group, iso, editable, withDeleteBtn) {
   // ส่วนปุ่มลบไม่มีให้ เพราะเป็นคำสั่งรายใบ ต้องไปลบที่แผนของวัน
   const gids = group.map(t => t.id).join(',');
   const gchip = planMergedCalendarChip(group, editable, 'flex:1;min-width:0;');
-  if (!editable || planDeleteMode || group[0].date !== iso) return `<div class="plan-drag-item">${gchip}</div>`;
+  if (!editable || planDeleteMode || taskDisplayDate(group[0]) !== iso) return `<div class="plan-drag-item">${gchip}</div>`;
   return `<div class="plan-drag-item" data-taskid="${escapeHtmlAttr(group[0].id)}" data-taskids="${escapeHtmlAttr(gids)}" data-shift="${escapeHtmlAttr(group[0].shift || '')}" data-draggable="1"><span class="plan-drag-grip" title="ลากขึ้น–ลงเพื่อสลับลำดับก่อน–หลัง หรือลากไปวางวันอื่นเพื่อย้ายวัน (ยกไปทั้งกลุ่ม ${group.length} รายการ)">⋮⋮</span>${gchip}</div>`;
 }
 
@@ -6762,10 +6762,13 @@ function renderPlanMonth() {
 // ใช้ pointer events เพื่อให้ลากได้ทั้งด้วยเมาส์และนิ้ว (HTML5 drag-and-drop ใช้บนมือถือไม่ได้)
 let planDrag = null;
 
-// ครอบงานด้วยแถวที่ลากได้ — ลากได้เฉพาะงานที่ "เริ่มจริง" ในวันนั้น
-// งานที่ล้นมาจากวันก่อนหน้าไม่ให้ลาก เพราะเวลาเริ่มของมันถูกกำหนดจากวันต้นทาง ต้องไปสลับที่วันนั้น
+// ครอบงานด้วยแถวที่ลากได้ — ลากได้เฉพาะงานที่เป็นของ "วันทำงาน" ของช่องนั้น
+// ต้องเทียบด้วยวันทำงาน (taskDisplayDate) ไม่ใช่วันปฏิทินที่เก็บไว้ (t.date)
+// เพราะงานที่ทำในช่วง OT หลังเที่ยงคืน (งานขัด Roll ถึง 05:00 หรืองานกะดึก) เก็บวันเป็นวันถัดไป
+// แต่ถูกแสดงในช่องของวันทำงานก่อนหน้า เทียบด้วย t.date จะไม่มีที่จับลากให้เลย
+// (ส่วนของงานที่ถูกตัดข้ามวันมี date ของตัวเองอยู่แล้ว จึงลากได้เหมือนเดิมทุกกรณี)
 function planDragWrap(t, iso, innerHtml, editable) {
-  if (!editable || planDeleteMode || t.date !== iso) return `<div class="plan-drag-item">${innerHtml}</div>`;
+  if (!editable || planDeleteMode || taskDisplayDate(t) !== iso) return `<div class="plan-drag-item">${innerHtml}</div>`;
   return `<div class="plan-drag-item" data-taskid="${escapeHtmlAttr(t.id)}" data-shift="${escapeHtmlAttr(t.shift || '')}" data-draggable="1"><span class="plan-drag-grip" title="ลากขึ้น–ลงเพื่อสลับลำดับก่อน–หลัง หรือลากไปวางวันอื่นเพื่อย้ายวัน">⋮⋮</span>${innerHtml}</div>`;
 }
 
