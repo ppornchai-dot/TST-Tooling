@@ -14549,7 +14549,8 @@ function toggleHelpPolish() {
 function scrollToDailyPolishSection() {
   const row = document.querySelector('#tbody-daily tr[data-daily-section="polish"]');
   if (!row) return;
-  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const r = row.getBoundingClientRect();
+  if (r.top < 0 || r.bottom > innerHeight) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
   // กะพริบหัวข้อสั้นๆ ให้รู้ว่าพาไปที่ไหน
   const cell = row.querySelector('td');
   if (!cell) return;
@@ -14565,24 +14566,25 @@ function refreshHelpPolishBtn() {
   wrap.style.display = show ? '' : 'none';
   if (!show) return;
   if (helpPolishOn) {
-    b.innerHTML = '<span style="font-size:20px;">✓</span> กำลังช่วยงานขัด Roll — กดเพื่อออก';
+    b.innerHTML = '<span style="font-size:20px;">✓</span> อยู่ฝั่งงานขัด Roll — กดกลับไปแต่ง Roll';
     b.style.background = 'var(--purple)';
     b.style.color = '#fff';
-    b.title = 'กำลังเห็นงานขัด Roll ด้วย — กดเพื่อกลับไปดูเฉพาะงานแต่ง Roll ของตัวเอง';
+    b.title = 'กำลังดูคิวงานขัด Roll — กดเพื่อกลับไปดูงานแต่ง Roll (CNC) ของตัวเอง';
   } else {
     b.innerHTML = '<span style="font-size:20px;">✦</span> เข้าไปทำงานขัด Roll';
     b.style.background = 'var(--purple)';
     b.style.color = '#fff';
-    b.title = 'ว่างจากงานแต่ง Roll แล้วมาช่วยขัด Roll — กดแล้วจะเห็นงานขัด Roll และพาไปที่หัวข้อนั้นให้';
+    b.title = 'ว่างจากงานแต่ง Roll แล้วมาช่วยขัด Roll — กดแล้วจะสลับไปดูคิวงานขัด Roll';
   }
 }
 // ช่าง CNC เห็นเฉพาะงานแต่ง Roll และช่างขัด Roll เห็นเฉพาะงานขัด — คืน null ถ้าไม่ถูกจำกัด (admin/หัวหน้า/ช่างเครื่อง)
 // ใช้ทั้งหน้างานประจำวันและหน้าวางแผน แทนปุ่มกรองประเภทงานที่เอาออกไปแล้วทั้งสองหน้า
 // (เกณฑ์เดียวกับ forcedHistoryTypeForRole ของหน้าประวัติ)
-// ช่าง CNC ที่กด "เข้าไปทำงานขัด Roll" ไว้ ถือว่าไม่ถูกจำกัด จึงเห็นงานทั้งสองประเภท
+// ช่าง CNC ที่กด "เข้าไปทำงานขัด Roll" ไว้ = ย้ายไปทำงานขัด จึงเห็นงานขัดอย่างเดียว
+// (ไม่ใช่เห็นทั้งสองประเภท — ตอนอยู่ฝั่งขัดก็ควรเห็นแต่คิวงานขัด กดปุ่มเดิมเพื่อกลับมาฝั่ง CNC)
 function forcedWorkTypeForRole() {
   const r = effectiveRole();
-  if (r === 'cnc') return helpPolishActive() ? null : 'cnc';
+  if (r === 'cnc') return helpPolishActive() ? 'polish' : 'cnc';
   if (r === 'polish') return 'polish';
   return null;
 }
@@ -15365,7 +15367,7 @@ function historyTypeMatches(r, filter) {
 // ช่าง CNC เห็นประวัติเฉพาะงานแต่ง Roll และช่างขัด Roll เห็นเฉพาะงานขัด Roll — คืน null ถ้าไม่ถูกจำกัด (admin/หัวหน้า/ช่างเครื่อง)
 function forcedHistoryTypeForRole() {
   const r = effectiveRole();
-  if (r === 'cnc') return helpPolishActive() ? null : 'cnc';
+  if (r === 'cnc') return helpPolishActive() ? 'polish' : 'cnc';
   if (r === 'polish') return 'polish';
   return null;
 }
