@@ -9240,7 +9240,10 @@ function planPullForwardPlan(workType, dateIso, shiftKey, otCaps) {
     curDate = fit.endDate;
     curTime = fit.endTime;
     if (!whole) break;                          // ดึงมาได้บางส่วน = วันนี้เต็มแล้ว
-    if (curDate !== dateIso) break; // งานนี้ลากข้ามวันไปแล้ว = วันนี้เต็ม
+    // เดิมหยุดทันทีเมื่อจุดต่อเวลาเลยไปเป็นวันปฏิทินถัดไป (curDate !== dateIso)
+    // ใช้ได้ตอน OT ไม่เคยข้ามเที่ยงคืน แต่ตอนนี้งานขัด Roll ตั้ง OT ได้ถึง 05:00
+    // การข้ามเที่ยงคืนเป็นเรื่องปกติและยังเหลือเวลา OT อีกหลายชั่วโมง
+    // ปล่อยให้ตัวตรวจหัวรอบถัดไป (planTimeInWorkingDay + shiftAllowsMinute) เป็นคนตัดสินว่าหมดเวลาจริงไหม
   }
   return { tail, moves };
 }
