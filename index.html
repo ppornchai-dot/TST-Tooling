@@ -2343,6 +2343,28 @@ function rollFinishTagHtml(e, workType) {
       : 'ยังไม่ได้วางแผน'}</span>`;
 }
 
+// ป้ายชุดสีที่เห็นชัด — พื้นเป็น "สีจริง" ของชุดนั้น ไม่ใช่จุดเล็กกับตัวหนังสือสีเทา
+// เดิมเป็นจุด 9px + ชื่อสีตัวจาง กวาดตาบนการ์ดที่มี 4 แถวเรียงกันแล้วแยกสีไม่ออก
+// ตัวอักษรสลับขาว/ดำตามความสว่างของสี — สีเหลือง/สีทองสว่างมาก ตัวขาวบนพื้นเหลืองอ่านไม่ออก
+function rollColorPillHtml(dot, label, opts) {
+  const o = opts || {};
+  const hex = String(dot == null ? '' : dot).trim();
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  let fg = '#fff';
+  if (m) {
+    const n = parseInt(m[1], 16);
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    // ความสว่างแบบถ่วงน้ำหนักการรับรู้ของตา (ไม่ใช่ค่าเฉลี่ยดิบ) เขียวถ่วงมากสุด
+    const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    fg = lum > 0.62 ? '#1A1A1A' : '#fff';
+  }
+  return `<span style="display:inline-block;flex-shrink:0;white-space:nowrap;
+    font-size:${o.size || 12}px;font-weight:800;letter-spacing:.01em;padding:${o.pad || '3px 11px'};border-radius:99px;
+    background:${hex || 'var(--text-3)'};color:${fg};
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.25), 0 1px 2px rgba(0,0,0,.14);"
+    title="${escapeHtmlAttr('ชุดสี ' + (label || ''))}">${escapeHtmlAttr(label || '')}</span>`;
+}
+
 function dashRollInUseChipHtml(e, badgeColor, rowBg, plannedWorkType) {
   const machineLabel = e.machines.length ? e.machines.join('/') : '—';
   // การ์ดรอแต่ง/รอขัด: บอกท้ายแถวว่าวางแผนไว้เสร็จวันไหน (หรือยังไม่ได้วางแผน)
@@ -2353,9 +2375,8 @@ function dashRollInUseChipHtml(e, badgeColor, rowBg, plannedWorkType) {
     onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
     title="กดเพื่อเลือกสถานะของชุดนี้ (หรือเปิดดูในทะเบียน Tooling)">
     <span style="font-size:15px;font-weight:800;color:#fff;background:${badgeColor || 'var(--accent)'};padding:3px 11px;border-radius:6px;flex-shrink:0;letter-spacing:.02em;">${escapeHtmlAttr(machineLabel)}</span>
-    <span style="width:9px;height:9px;border-radius:50%;background:${e.dot};flex-shrink:0;"></span>
     <span style="font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(e.set)}</span>
-    <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr(e.colorLabel)}</span>
+    ${rollColorPillHtml(e.dot, e.colorLabel)}
     ${finishHtml}
   </div>`;
 }
@@ -4044,10 +4065,9 @@ function renderDashboardRollWeight() {
       title="${escapeHtmlAttr('ผลิต ' + (g.producedTon || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })
         + ' / ' + (g.usedTon || 0).toLocaleString() + ' ตันต่อรอบ' + (g.carryTon ? ' (รวมยกมา ' + g.carryTon.toLocaleString() + ')' : '')
         + ' — กดเพื่อเลือกสถานะของชุดนี้ (หรือเปิดดูในทะเบียน Tooling)')}">
-      <span style="width:9px;height:9px;border-radius:50%;background:${g.dot};flex-shrink:0;"></span>
       <span style="flex:1;min-width:0;">
         <span style="display:block;font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(g.set)}</span>
-        <span style="display:block;font-size:11px;color:var(--text-3);">${escapeHtmlAttr(g.colorLabel)} ·
+        <span style="display:block;font-size:11px;color:var(--text-3);margin-top:2px;">${rollColorPillHtml(g.dot, g.colorLabel, { size: 10.5, pad: '2px 9px' })} ·
           ผลิต ${escapeHtmlAttr((g.producedTon || 0).toLocaleString(undefined, { maximumFractionDigits: 2 }))} /
           ${escapeHtmlAttr((g.usedTon || 0).toLocaleString())} ตัน ·
           ${g.leftTon != null && g.leftTon > 0 ? 'เหลือ ' + escapeHtmlAttr(g.leftTon.toLocaleString(undefined, { maximumFractionDigits: 2 })) + ' ตัน'
