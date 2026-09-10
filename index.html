@@ -8302,10 +8302,50 @@ function refreshPlanTaskEndTimes() {
   return anyChanged;
 }
 
+// วันที่ตั้งเวลาเลิกงานไว้ (เช่นงานขัด Roll ถึง 05:00) ต้องถูกวางงานให้เต็มถึงเวลานั้นก่อน
+// ส่วนที่เหลือค่อยไปวันถัดไป — เดิมต้องกดบันทึกในฟอร์มเวลาเลิกงานเองทุกครั้ง
+// ช่องว่างท้าย OT จึงค้างไว้ แล้วงานไปกองวันถัดไปทั้งที่วันนี้ยังทำได้อีกหลายชั่วโมง
+//
+// ทำเฉพาะวันที่ผู้ใช้ "ตั้งเวลาเลิกงานไว้เอง" เท่านั้น = คำสั่งว่าวันนั้นทำถึงเวลานี้
+// วันที่ไม่ได้ตั้งไม่แตะ (ไม่มีโควตา OT อยู่แล้ว) · วันที่ผ่านไปแล้วไม่แตะ (เป็นบันทึกของสิ่งที่ทำไปจริง)
+//
+// การเติมวันหนึ่งทำให้วันถัดไปว่างลง แล้ววันถัดไปก็ดึงของวันถัดๆ ไปต่อเป็นทอด
+// จึงต้องกวาดซ้ำจนไม่มีอะไรขยับ (fixed point) ให้จบภายในการเรียกครั้งเดียว
+// ไม่งั้นแผนจะขยับทีละนิดทุกครั้งที่เปิดหน้า ซึ่งน่ากลัวกว่าการขยับครั้งเดียวจบ
+function autoFillPlanDayTails() {
+  if (!canEditPlan()) return false;
+  const today = dailyTodayIso();
+  let any = false;
+  let sweep = 0;
+  let movedThisSweep = true;
+  while (movedThisSweep && sweep++ < 40) {
+    movedThisSweep = false;
+    Object.keys(planDayEndTime || {}).sort().forEach(dateIso => {
+      if (dateIso < today) return;
+      Object.keys(planDayEndTime[dateIso] || {}).forEach(workType => {
+        if (!PLAN_WORKTYPE_META[workType]) return;
+        planDayEndShiftsFor(workType).forEach(shiftKey => {
+          if (!planDayEndFor(dateIso, workType, shiftKey)) return;   // กะนี้ไม่ได้ตั้งเวลาเลิกงานไว้
+          let guard = 0;
+          while (guard++ < 30) {
+            const caps = planDayCapsFor(dateIso, workType);
+            if (!pullWorkIntoFreeTail(workType, dateIso, shiftKey, caps, true).length) break;
+            any = true;
+            movedThisSweep = true;
+          }
+        });
+      });
+    });
+  }
+  return any;
+}
+
 function tidyPlanAfterStateLoad() {
   let changed = false;
   if (refreshPlanTaskEndTimes()) changed = true;
   if (autoFixPlanSequencing()) changed = true;
+  // เติม OT ให้เต็มก่อนรวมงาน — เติมแล้วงานชุดเดียวกันมักมาต่อกันสนิทพอดี ให้ตัวรวมเก็บทีเดียว
+  if (autoFillPlanDayTails()) changed = true;
   if (mergeAdjacentPlanTasks()) changed = true;
   if (changed) persistState();
   return changed;
