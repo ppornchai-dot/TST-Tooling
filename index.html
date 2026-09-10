@@ -45,6 +45,9 @@
   --green-dim:rgba(21,128,80,0.10);
   --red:#C03030;
   --red-dim:rgba(192,48,48,0.10);
+  /* เกินรอบการแต่งไปแล้ว (หมดอายุ) — ต้องเข้มกว่า "ใกล้หมดอายุ" ให้แยกออกจากกันได้ทันทีที่กวาดตา */
+  --red-deep:#8B1220;
+  --red-deep-dim:rgba(139,18,32,0.12);
   --purple:#5E44B0;
   --purple-dim:rgba(94,68,176,0.10);
   --text-1:#162030;
@@ -270,6 +273,7 @@ body{
 .kpi-card.amber::before{background:var(--amber);}
 .kpi-card.green::before{background:var(--green);}
 .kpi-card.red::before{background:var(--red);}
+.kpi-card.reddeep::before{background:var(--red-deep);}
 .kpi-label{font-size:11px;font-weight:600;color:var(--text-3);letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px;}
 .kpi-value{font-size:32px;font-weight:800;color:var(--text-1);font-variant-numeric:tabular-nums;line-height:1;}
 .kpi-change{font-size:11px;color:var(--text-3);margin-top:6px;display:flex;align-items:center;gap:4px;}
@@ -284,6 +288,7 @@ body{
 .kpi-icon.amber{background:var(--amber-dim);}
 .kpi-icon.green{background:var(--green-dim);}
 .kpi-icon.red{background:var(--red-dim);}
+.kpi-icon.reddeep{background:var(--red-deep-dim);}
 
 /* ─── GRID LAYOUTS ───────────────────────────── */
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;}
@@ -1561,10 +1566,21 @@ canvas{display:block;}
 
     <div class="page" id="page-rollLife">
 
-      <div class="kpi-grid" style="margin-top:14px;">
+      <!-- 5 การ์ดแล้ว ถ้าบังคับ 5 คอลัมน์ตายตัว จอที่ไม่กว้างพอจะบีบชื่อชุดในการ์ดเหลือไม่กี่ตัวอักษร
+           auto-fit จึงเรียง 5 ใบเรียงเดียวเมื่อจอกว้างพอ และตัดลงบรรทัดใหม่เองเมื่อไม่พอ -->
+      <div class="kpi-grid" style="margin-top:14px;grid-template-columns:repeat(auto-fit,minmax(212px,1fr));">
+        <!-- เกินรอบการแต่งไปแล้ว — แยกออกจาก "ใกล้หมดอายุ" เพราะคนละความหมายในการลงมือทำ
+             ใกล้หมดอายุ = ต้องรีบจัดคิวแต่ง · หมดอายุ = เดินเกินรอบไปแล้ว ต้องแต่งทันที
+             เดิมรวมอยู่การ์ดเดียวกัน ชุดที่ 113% กับ 91% จึงดูเท่ากันหมด -->
+        <div class="kpi-card reddeep">
+          <div class="kpi-icon reddeep"><svg width="18" height="18" fill="none" stroke="var(--red-deep)" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div>
+          <div class="kpi-label" title="ผลิตไปแล้วเกิน 100% ของน้ำหนักต่อรอบการแต่ง — เดินเกินรอบไปแล้ว">หมดอายุ (&gt; 100%)</div>
+          <div class="kpi-value" id="rolllife-kpi-expired" style="color:var(--red-deep);">0</div>
+          <div id="rolllife-kpi-expired-list" style="margin-top:4px;font-size:11px;line-height:1.5;color:var(--red-deep);"></div>
+        </div>
         <div class="kpi-card red">
           <div class="kpi-icon red"><svg width="18" height="18" fill="none" stroke="var(--red)" stroke-width="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/></svg></div>
-          <div class="kpi-label" title="ผลิตไปแล้วเกิน 90% ของน้ำหนักต่อรอบการแต่ง">ใกล้หมดอายุ (&gt; 90%)</div>
+          <div class="kpi-label" title="ผลิตไปแล้ว 90.1–100% ของน้ำหนักต่อรอบการแต่ง">ใกล้หมดอายุ (90.1–100%)</div>
           <div class="kpi-value" id="rolllife-kpi-critical">0</div>
           <!-- รายชื่อชุดที่เข้าเกณฑ์ ตัวเล็กใต้ตัวเลข (ดู renderRollLife) -->
           <div id="rolllife-kpi-critical-list" style="margin-top:4px;font-size:11px;line-height:1.5;color:var(--red);"></div>
@@ -12182,19 +12198,22 @@ function rollLifeChip(pct) {
 }
 
 // เกณฑ์ % การใช้รอบการแต่ง (ผลิตไปแล้ว ÷ น้ำหนักต่อรอบการแต่ง) — ที่เดียวสำหรับทั้งสีในตารางและ KPI ด้านบน
-// ไม่เกิน 80% = ปกติ, เกิน 80–90% = เฝ้าระวัง, เกิน 90% = ใกล้หมดอายุ
+// ไม่เกิน 80% = ปกติ, เกิน 80–90% = เฝ้าระวัง, เกิน 90–100% = ใกล้หมดอายุ, เกิน 100% = หมดอายุ
 // pct = null คือยังไม่ได้กรอกน้ำหนักต่อรอบการแต่งในทะเบียน Tooling จึงคิด % ไม่ได้
 const ROLL_USAGE_BANDS = {
   nospec: { key: 'nospec', label: 'ยังไม่กำหนดเกณฑ์', color: 'var(--text-1)' },
   ok:     { key: 'ok',     label: 'ปกติ',            color: 'var(--green)' },
   warn:   { key: 'warn',   label: 'เฝ้าระวัง',        color: 'var(--amber)' },
   critical:{ key: 'critical', label: 'ใกล้หมดอายุ',   color: 'var(--red)' },
+  // เดินเกินน้ำหนักต่อรอบการแต่งไปแล้ว — ไม่ใช่ "ใกล้" หมดแล้วจริง ต้องแยกชั้นให้เห็น
+  expired:{ key: 'expired', label: 'หมดอายุ',        color: 'var(--red-deep)' },
 };
 function rollUsageBand(pct) {
   if (pct == null) return ROLL_USAGE_BANDS.nospec;
   if (pct <= 80) return ROLL_USAGE_BANDS.ok;
   if (pct <= 90) return ROLL_USAGE_BANDS.warn;
-  return ROLL_USAGE_BANDS.critical;
+  if (pct <= 100) return ROLL_USAGE_BANDS.critical;
+  return ROLL_USAGE_BANDS.expired;
 }
 
 function toggleRollLifeSpec() {
@@ -12690,14 +12709,15 @@ function renderRollLife() {
 
   // KPI นับเป็น "ชุด" ให้ตรงกับตาราง ไม่ขึ้นกับตัวกรอง เพื่อให้เห็นภาพรวมจริงเสมอ
   // ยึด % การใช้รอบการแต่ง (คอลัมน์น้ำหนักผลิต) ผ่าน rollUsageBand เกณฑ์เดียวกับสีในตาราง
-  const bandCount = { nospec: 0, ok: 0, warn: 0, critical: 0 };
+  const bandCount = { nospec: 0, ok: 0, warn: 0, critical: 0, expired: 0 };
   all.forEach(g => { bandCount[rollUsageBand(g.prodPct).key]++; });
+  document.getElementById('rolllife-kpi-expired').textContent = bandCount.expired;
   document.getElementById('rolllife-kpi-critical').textContent = bandCount.critical;
   document.getElementById('rolllife-kpi-warn').textContent = bandCount.warn;
   document.getElementById('rolllife-kpi-ok').textContent = bandCount.ok;
   document.getElementById('rolllife-kpi-nospec').textContent = bandCount.nospec;
 
-  // บอกใต้ตัวเลขว่าเป็นชุดไหน — 2 การ์ดที่ต้องลงมือทำ (ใกล้หมดอายุ/เฝ้าระวัง) เท่านั้น
+  // บอกใต้ตัวเลขว่าเป็นชุดไหน — 3 การ์ดที่ต้องลงมือทำ (หมดอายุ/ใกล้หมดอายุ/เฝ้าระวัง) เท่านั้น
   // เรียง % มากไปน้อย ตัวที่ใกล้หมดที่สุดอยู่บนสุด กดชื่อแล้วเด้งไปดูในทะเบียน Tooling ได้
   const bandListHtml = bandKey => {
     const list = all.filter(g => rollUsageBand(g.prodPct).key === bandKey)
@@ -12712,6 +12732,8 @@ function renderRollLife() {
         escapeHtmlAttr(parseSizeRollName(g.set).category || '')} · ${escapeHtmlAttr(g.colorLabel)}</span></span>
       <b style="flex:0 0 auto;">${g.prodPct}%</b></div>`).join('');
   };
+  const expList = document.getElementById('rolllife-kpi-expired-list');
+  if (expList) expList.innerHTML = bandListHtml('expired');
   const critList = document.getElementById('rolllife-kpi-critical-list');
   if (critList) critList.innerHTML = bandListHtml('critical');
   const warnList = document.getElementById('rolllife-kpi-warn-list');
