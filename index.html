@@ -14865,35 +14865,47 @@ async function finishDailyPiece(taskId, rollIdx, workerId) {
                     + 'จบงานโดยไม่บันทึกขนาดหรือไม่?\n'
                     + '(กด "ยกเลิก" เพื่อกลับไปกรอกขนาด — ขนาดนี้ใช้คิดอายุ Roll)')) return;
   }
-  const dateMap = dailyPieceStatus[dailyStatusDateFor(taskId)] || (dailyPieceStatus[dailyStatusDateFor(taskId)] = {});
-  const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
-  const prevEntry = getDailyPieceEntry(taskId, rollIdx);
-  taskMap[rollIdx] = needsMeasuredSize
-    ? { ...prevEntry, status: 'done', endTime: nowHHMM(), measuredSize: size, registryDiameter: roll ? roll.diameter : null,
-        odStandard: roll ? (String(roll.diameterStd || '').trim() || String(roll.diameter || '').trim() || null) : null }
-    : { ...prevEntry, status: 'done', endTime: nowHHMM() };
-  if (needsMeasuredSize) {
-    rollSizeLogSeq++;
-    rollSizeLog.push({
-      id: 'RSL-' + String(rollSizeLogSeq).padStart(4, '0'),
-      taskId, rollIdx, rollId: roll ? roll.id : null, rollName: roll ? roll.name : '—',
-      date: dailyViewDate, measuredSize: size, registryDiameter: roll ? roll.diameter : null,
-    });
-    // อัปเดตทะเบียนหลัง push ล็อกแล้ว เพื่อให้ registryDiameter ในล็อกยังเป็น "ค่าก่อนแต่ง"
-    applyMeasuredSizeToRegistry(roll, size, dailyViewDate, true);
-  }
-  const allDone = (task.rollIds || []).every(idx => getDailyPieceEntry(taskId, idx).status === 'done');
-  const dayMap = dailyStatusByDate[dailyStatusDateFor(taskId)] || (dailyStatusByDate[dailyStatusDateFor(taskId)] = {});
-  if (allDone) {
-    dayMap[taskId] = 'done';
-    maybeAutoContinueDailyPlan(dailyViewDate);
-  }
-  persistState();
-  renderDailyTasks();
-  // OD ในทะเบียนเปลี่ยน → หน้าทะเบียน/อายุ Roll/การ์ดน้ำหนักต้องอัปเดตตาม
-  if (currentPage === 'registry') { renderRollSetList(); renderRollColorList(); }
-  if (currentPage === 'rollLife') renderRollLife();
-  updateRollKpi();
+  // จับเวลาครั้งเดียวนอก withCloudRetry — ถ้าเขียนชนแล้วต้องทำซ้ำ ต้องได้เวลาเดิม ไม่ใช่เวลาที่ทำซ้ำ
+  const endAt = nowHHMM();
+  // ต้องอยู่ใน withCloudRetry เหมือนตอนกดเริ่มงาน (startDailyPiece)
+  // ไม่งั้นถ้ามีเครื่องอื่นเขียนแทรกเข้ามาก่อน การเขียนนี้จะถูกปฏิเสธ ระบบดึงข้อมูลใหม่มาทับ
+  // แล้วสถานะที่เพิ่งกดหายไปเงียบๆ — อาการที่เห็นคือกดเริ่มแล้วจบงาน สักพักเด้งกลับเป็น "เริ่มงาน" ใหม่
+  // ตัวที่ต้องทำซ้ำคือส่วนแก้ข้อมูลเท่านั้น ช่องกรอกขนาด OD ถามไปแล้วข้างบน จะไม่ถามซ้ำ
+  withCloudRetry(() => {
+    // ข้อมูลถูกแทนทั้งชุดตอนดึงของใหม่มา ตัว task/roll ที่จับไว้ก่อนหน้าจึงเป็นวัตถุคนละตัวกับในข้อมูลใหม่
+    // ต้องหาใหม่ทุกครั้งที่ทำซ้ำ ไม่งั้นจะไปแก้วัตถุที่ไม่อยู่ในทะเบียนแล้ว (ค่าที่แก้หายไปเฉยๆ)
+    const t2 = planTasks.find(x => x.id === taskId) || task;
+    const roll2 = getMatchingRollsForPlan(t2.rollSet, t2.rollColor)[rollIdx];
+    const dateMap = dailyPieceStatus[dailyStatusDateFor(taskId)] || (dailyPieceStatus[dailyStatusDateFor(taskId)] = {});
+    const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
+    const prevEntry = getDailyPieceEntry(taskId, rollIdx);
+    taskMap[rollIdx] = needsMeasuredSize
+      ? { ...prevEntry, status: 'done', endTime: endAt, measuredSize: size, registryDiameter: roll2 ? roll2.diameter : null,
+          odStandard: roll2 ? (String(roll2.diameterStd || '').trim() || String(roll2.diameter || '').trim() || null) : null }
+      : { ...prevEntry, status: 'done', endTime: endAt };
+    if (needsMeasuredSize) {
+      rollSizeLogSeq++;
+      rollSizeLog.push({
+        id: 'RSL-' + String(rollSizeLogSeq).padStart(4, '0'),
+        taskId, rollIdx, rollId: roll2 ? roll2.id : null, rollName: roll2 ? roll2.name : '—',
+        date: dailyViewDate, measuredSize: size, registryDiameter: roll2 ? roll2.diameter : null,
+      });
+      // อัปเดตทะเบียนหลัง push ล็อกแล้ว เพื่อให้ registryDiameter ในล็อกยังเป็น "ค่าก่อนแต่ง"
+      applyMeasuredSizeToRegistry(roll2, size, dailyViewDate, true);
+    }
+    const allDone = (t2.rollIds || []).every(idx => getDailyPieceEntry(taskId, idx).status === 'done');
+    const dayMap = dailyStatusByDate[dailyStatusDateFor(taskId)] || (dailyStatusByDate[dailyStatusDateFor(taskId)] = {});
+    if (allDone) {
+      dayMap[taskId] = 'done';
+      maybeAutoContinueDailyPlan(dailyViewDate);
+    }
+    persistState();
+    renderDailyTasks();
+    // OD ในทะเบียนเปลี่ยน → หน้าทะเบียน/อายุ Roll/การ์ดน้ำหนักต้องอัปเดตตาม
+    if (currentPage === 'registry') { renderRollSetList(); renderRollColorList(); }
+    if (currentPage === 'rollLife') renderRollLife();
+    updateRollKpi();
+  });
 }
 // พักงานชิ้นนี้ — ต้องระบุเหตุผลเสมอ (ยกเลิก/ปล่อยว่างไม่พักงาน) บันทึกเป็นล็อกแยกไว้ทุกครั้งที่พัก แม้จะกดทำต่อแล้วก็ตาม
 // แก้ขนาด OD ที่บันทึกไปแล้วของชิ้นที่จบงานแล้ว (งานแต่ง Roll/CNC เท่านั้น — งานขัด Roll ไม่ได้บันทึกขนาด)
@@ -14913,23 +14925,30 @@ async function editDailyPieceSize(taskId, rollIdx, workerId) {
   const oldSize = prevEntry.measuredSize;
   if (String(size).trim() === String(oldSize || '').trim()) return; // ค่าเดิม ไม่ต้องบันทึกซ้ำ
 
-  const dateMap = dailyPieceStatus[dailyStatusDateFor(taskId)] || (dailyPieceStatus[dailyStatusDateFor(taskId)] = {});
-  const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
-  taskMap[rollIdx] = { ...prevEntry, measuredSize: String(size).trim(),
-    odStandard: prevEntry.odStandard
-      || (roll ? (String(roll.diameterStd || '').trim() || String(roll.diameter || '').trim() || null) : null) };
-  rollSizeLogSeq++;
-  rollSizeLog.push({
-    id: 'RSL-' + String(rollSizeLogSeq).padStart(4, '0'),
-    taskId, rollIdx, rollId: roll ? roll.id : null, rollName: roll ? roll.name : '—',
-    date: dailyViewDate, measuredSize: String(size).trim(), registryDiameter: roll ? roll.diameter : null,
-    correctedFrom: oldSize == null ? null : String(oldSize), correctedBy: effectiveUserName(), correctedAt: nowHHMM(),
+  const correctedAt = nowHHMM();
+  // ต้องทำซ้ำได้ถ้าเขียนชนกับเครื่องอื่น ไม่งั้นค่าที่แก้หายไปเงียบๆ (เหมือน finishDailyPiece)
+  withCloudRetry(() => {
+    const t2 = planTasks.find(x => x.id === taskId) || task;
+    const roll2 = getMatchingRollsForPlan(t2.rollSet, t2.rollColor)[rollIdx];
+    const prev2 = getDailyPieceEntry(taskId, rollIdx);
+    const dateMap = dailyPieceStatus[dailyStatusDateFor(taskId)] || (dailyPieceStatus[dailyStatusDateFor(taskId)] = {});
+    const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
+    taskMap[rollIdx] = { ...prev2, measuredSize: String(size).trim(),
+      odStandard: prev2.odStandard
+        || (roll2 ? (String(roll2.diameterStd || '').trim() || String(roll2.diameter || '').trim() || null) : null) };
+    rollSizeLogSeq++;
+    rollSizeLog.push({
+      id: 'RSL-' + String(rollSizeLogSeq).padStart(4, '0'),
+      taskId, rollIdx, rollId: roll2 ? roll2.id : null, rollName: roll2 ? roll2.name : '—',
+      date: dailyViewDate, measuredSize: String(size).trim(), registryDiameter: roll2 ? roll2.diameter : null,
+      correctedFrom: oldSize == null ? null : String(oldSize), correctedBy: effectiveUserName(), correctedAt,
+    });
+    // แก้ค่าที่วัดผิด — ทะเบียนต้องตามไปด้วย แต่ไม่นับรอบการแต่งเพิ่ม (เป็นการแก้ค่าเดิม ไม่ใช่แต่งใหม่)
+    applyMeasuredSizeToRegistry(roll2, size, dailyViewDate, false);
+    persistState();
+    renderDailyTasks();
+    if (currentPage === 'registry') { renderRollSetList(); renderRollColorList(); }
   });
-  // แก้ค่าที่วัดผิด — ทะเบียนต้องตามไปด้วย แต่ไม่นับรอบการแต่งเพิ่ม (เป็นการแก้ค่าเดิม ไม่ใช่แต่งใหม่)
-  applyMeasuredSizeToRegistry(roll, size, dailyViewDate, false);
-  persistState();
-  renderDailyTasks();
-  if (currentPage === 'registry') { renderRollSetList(); renderRollColorList(); }
 }
 
 async function pauseDailyPiece(taskId, rollIdx, workerId) {
@@ -14937,18 +14956,21 @@ async function pauseDailyPiece(taskId, rollIdx, workerId) {
   const reason = await voicePrompt('เหตุผลที่พักงานชิ้นนี้ (จำเป็นต้องระบุ):', 'พิมพ์ หรือกด 🎤 แล้วพูด');
   if (reason === null) return; // กดยกเลิก — ไม่พักงาน
   if (!reason.trim()) { alert('กรุณาระบุเหตุผลที่พักงาน'); return; }
-  const dateMap = dailyPieceStatus[dailyStatusDateFor(taskId)] || (dailyPieceStatus[dailyStatusDateFor(taskId)] = {});
-  const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
-  const prevEntry = getDailyPieceEntry(taskId, rollIdx);
   const pausedAt = nowHHMM();
-  taskMap[rollIdx] = { ...prevEntry, status: 'paused', pauseReason: reason.trim(), pausedAt };
-  dailyPauseLogSeq++;
-  dailyPauseLog.push({
-    id: 'PL-' + String(dailyPauseLogSeq).padStart(4, '0'),
-    taskId, rollIdx, date: dailyViewDate, reason: reason.trim(), pausedAt,
+  // ต้องทำซ้ำได้ถ้าเขียนชนกับเครื่องอื่น ไม่งั้นการพักงานหายไปเงียบๆ (เหมือน finishDailyPiece)
+  withCloudRetry(() => {
+    const dateMap = dailyPieceStatus[dailyStatusDateFor(taskId)] || (dailyPieceStatus[dailyStatusDateFor(taskId)] = {});
+    const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
+    const prevEntry = getDailyPieceEntry(taskId, rollIdx);
+    taskMap[rollIdx] = { ...prevEntry, status: 'paused', pauseReason: reason.trim(), pausedAt };
+    dailyPauseLogSeq++;
+    dailyPauseLog.push({
+      id: 'PL-' + String(dailyPauseLogSeq).padStart(4, '0'),
+      taskId, rollIdx, date: dailyViewDate, reason: reason.trim(), pausedAt,
+    });
+    persistState();
+    renderDailyTasks();
   });
-  persistState();
-  renderDailyTasks();
 }
 // กดทำต่อหลังพักงาน — กลับไปสถานะ "กำลังทำ" ตามเดิม เหตุผลที่พักครั้งนั้นยังอยู่ใน dailyPauseLog เป็นประวัติ
 function resumeDailyPiece(taskId, rollIdx, workerId) {
@@ -16889,6 +16911,16 @@ async function initCloudSync() {
         // ถ้าไม่ข้าม จะ applyState + วาดทุกหน้าใหม่ซ้ำอีกรอบทั้งที่ข้อมูลเหมือนเดิม
         // ผลคือกดเลือกอะไรทีเดียวแล้วหน้าจอกระพริบ/เด้งสองครั้ง (ในหน้าน้ำหนักผลิตเห็นชัดสุด)
         if (payload.new.updated_at && payload.new.updated_at === cloudUpdatedAt) return;
+        // ยังมีสิ่งที่เครื่องนี้เพิ่งกดค้างรอเขียน/กำลังเขียนอยู่ — ห้ามเอาข้อมูลจากเครื่องอื่นมาทับจังหวะนี้
+        // ถ้าทับ สิ่งที่เพิ่งกดจะหายจากหน่วยความจำก่อนถูกส่งขึ้นไป แล้วรอบเขียนถัดไปจะส่งข้อมูล
+        // ที่ไม่มีรายการนั้นขึ้นไปแบบ "เขียนสำเร็จ" (เพราะ cloudUpdatedAt ถูกอัปเดตไปแล้ว)
+        // รายการจึงหายเงียบๆ ไม่มีแม้แต่คำเตือน — อาการที่เห็นคือกดเริ่ม/จบงานแล้วเด้งกลับเป็นยังไม่เริ่ม
+        // ข้ามไปเฉยๆ แล้วปล่อยให้รอบเขียนนั้นชนกับของใหม่เอง (cloudUpdatedAt ยังเป็นค่าเก่า)
+        // จะเข้าทางแก้ชนที่ดึงของใหม่ลงมาแล้วทำรายการที่เพิ่งกดซ้ำให้บนข้อมูลใหม่
+        if (cloudWriteInFlight || cloudWritePending) {
+          if (!cloudWriteInFlight) flushCloudWrite();   // กันของที่ค้างรออยู่ไม่ถูกส่ง แล้วอีเวนต์ถูกข้ามไปเรื่อยๆ
+          return;
+        }
         cloudUpdatedAt = payload.new.updated_at || cloudUpdatedAt;
         applyState(payload.new.data);
         syncRollStatusWithProdBlock();
@@ -16912,7 +16944,8 @@ initCloudSync();
 // ดึงข้อมูลล่าสุดใหม่เมื่อเครื่องกลับมาใช้งาน — มือถือที่พักจอไว้นานมักหลุด realtime แล้วถือข้อมูลเก่าไว้
 // ถ้าไม่ดึงใหม่ การกดบันทึกครั้งถัดไปจะกลายเป็นเขียนของเก่าทับ (ซึ่งตอนนี้จะถูกปฏิเสธและเตือน แต่ผู้ใช้ต้องทำงานซ้ำ)
 async function pullCloudState() {
-  if (!supabaseClient || !cloudSyncReady || cloudWriteInFlight) return;
+  // มีของค้างรอเขียนอยู่ก็ยังไม่ดึง — ด้วยเหตุผลเดียวกับตัวข้ามอีเวนต์ realtime ข้างล่าง
+  if (!supabaseClient || !cloudSyncReady || cloudWriteInFlight || cloudWritePending) return;
   // กำลังกรอกฟอร์ม/เลือกค่าในโมดัลอยู่ อย่า re-render ขัดจังหวะ
   if (document.querySelector('.modal-overlay.open')) return;
   try {
