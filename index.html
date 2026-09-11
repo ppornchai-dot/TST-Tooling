@@ -6173,12 +6173,12 @@ function planSectionHeaderRow(s, colSpan, stat, addForIso) {
           + (addForIso && planSectionSpanText(stat, addForIso) ? ' · ' + escapeHtmlAttr(planSectionSpanText(stat, addForIso)) : '')
           : 'ไม่มีงาน'}</span>
       ${addForIso && canEditPlan() ? (() => {
-        // ปุ่มเติมเวลาว่าง — โชว์เฉพาะตอนที่วัน+กะนั้นยังมีเวลาว่างท้ายวันตั้งแต่ 1 ชม. ขึ้นไป
+        // ปุ่มเติมเวลาว่าง — โชว์เมื่อเวลาที่เหลือมากพอที่ตัวดึงงานจะวางอะไรลงไปได้จริง
         const wt = s.key;
         const shiftKey = s.shiftKey || planDayEndShiftsFor(wt)[0] || 'morning';
         let tail = null;
         try { tail = planDayFreeTail(wt, addForIso, shiftKey, planDayCapsFor(addForIso, wt)); } catch (e) { tail = null; }
-        if (!tail || tail.freeMinutes < 60) return '';
+        if (!tail || tail.freeMinutes < PLAN_FILL_MIN_FREE) return '';
         return `<button class="btn btn-ghost" onclick="${jsCallAttr('planFillFreeTailNow', addForIso, wt, shiftKey)}"
             title="ดึงงานของวันถัดไปมาวางต่อ ให้เต็มเวลาที่เหลือของวันนี้ (เท่าที่ทำได้จริง)"
             style="font-size:14px;font-weight:800;padding:9px 16px;border-radius:9px;line-height:1.2;white-space:nowrap;
@@ -6226,6 +6226,15 @@ function planSectionHeaderRow(s, colSpan, stat, addForIso) {
     </span>
   </td></tr>`;
 }
+// เวลาว่างท้ายวันขั้นต่ำที่ "ปุ่มเติมเวลาว่าง" จะโผล่ และที่ยอมดึงงานมาเติมเมื่อผู้ใช้กดปุ่มเอง
+// ตัวดึงงานตัดงานมาเป็นชิ้น/เศษชิ้นได้ละเอียดถึง PLAN_PULL_MIN_SLICE (10 นาที) อยู่แล้ว
+// เดิมตั้งไว้ 1 ชม. ทั้งตัวปุ่มและตัวดึง ช่องว่าง 40 นาทีท้ายกะดึก (งานจบ 04:20 กะเลิก 05:00)
+// จึงไม่มีปุ่มให้กดเลย ทั้งที่ยังเติมได้จริง — ผู้ใช้เห็นแต่ว่า "เวลายังเหลือแต่ไม่มีปุ่ม"
+const PLAN_FILL_MIN_FREE = 10;
+// การเติมอัตโนมัติ (ตอนโหลดข้อมูล/หลังบันทึกงาน) ยังใช้ 1 ชม. เหมือนเดิม
+// ไม่ลดลงมาด้วย เพราะไม่ควรไปรื้อแผนเองเพราะเศษเวลาไม่กี่นาทีที่เกิดจากการปัดเวลาแต่ละงาน
+const PLAN_AUTO_FILL_MIN_FREE = 60;
+
 // ปุ่ม ⏱ เวลาเลิกงาน (OT) และ 👤 ผู้ปฏิบัติงาน ของ "วันนั้น" แบบย่อ ใช้ในช่องวันของมุมมองรายสัปดาห์/รายเดือน
 // ใช้หน้าต่างตัวเดียวกับมุมมองรายวัน แต่ไม่ระบุกะ (onlyShift ว่าง) จึงตั้งได้ทุกกะของประเภทงานนั้นในหน้าต่างเดียว
 // เพราะสองมุมมองนี้ไม่ได้แยกหัวข้อเป็นกะเช้า/กะดึกเหมือนมุมมองรายวัน
@@ -6255,12 +6264,12 @@ function planDayCellSettingsHtml(iso, workType, color, bg, inline) {
   if (editable) shifts.forEach(k => {
     let tail = null;
     try { tail = planDayFreeTail(workType, iso, k, planDayCapsFor(iso, workType)); } catch (e) { tail = null; }
-    if (!tail || tail.freeMinutes < 60) return;
+    if (!tail || tail.freeMinutes < PLAN_FILL_MIN_FREE) return;
     freeMin = Math.max(freeMin, tail.freeMinutes);
     freeTip.push(SHIFTS[k].label + ' ว่าง ' + tail.time + '–' + tail.untilTime
       + ' (' + formatMinutesAsHm(tail.freeMinutes).replace('≈ ', '') + ')');
   });
-  const fillBtn = freeMin >= 60
+  const fillBtn = freeMin >= PLAN_FILL_MIN_FREE
     ? chip('⤵', formatMinutesAsHm(freeMin).replace('≈ ', ''),
         'ดึงงานถัดไปมาวางต่อให้เต็มเวลาที่เหลือของวันนี้ — ' + freeTip.join(' · '),
         true, jsCallAttr('planFillDayNow', iso, workType))
@@ -6296,9 +6305,9 @@ function planFillBlockReason(dateIso, workType, caps) {
     const tail = planDayFreeTail(workType, dateIso, sh, caps);
     return Math.max(m, tail ? tail.freeMinutes : 0);
   }, 0);
-  if (freeMax < 60) {
+  if (freeMax < PLAN_FILL_MIN_FREE) {
     lines.push(freeMax > 0
-      ? 'เวลาว่างท้ายวันเหลือ ' + freeMax + ' นาที (น้อยกว่า 1 ชม. จึงไม่ดึงมาเติม)'
+      ? 'เวลาว่างท้ายวันเหลือ ' + freeMax + ' นาที (น้อยกว่า ' + PLAN_FILL_MIN_FREE + ' นาที จึงไม่ดึงมาเติม)'
       : 'วันนี้ไม่มีเวลาว่างท้ายวันเหลือแล้ว — เพิ่มเวลา OT ก่อนถ้าต้องการทำต่อ');
     return lines.join('\n');
   }
@@ -6330,7 +6339,7 @@ function planFillDayNow(dateIso, workType) {
   const caps = planDayCapsFor(dateIso, workType);
   const all = [];
   planDayEndShiftsFor(workType).forEach(sh => {
-    pullWorkIntoFreeTail(workType, dateIso, sh, caps, true).forEach(mv => all.push(mv));
+    pullWorkIntoFreeTail(workType, dateIso, sh, caps, true, PLAN_FILL_MIN_FREE).forEach(mv => all.push(mv));
   });
   if (!all.length) {
     alert(planFillBlockReason(dateIso, workType, caps));
@@ -6352,9 +6361,9 @@ function planFillDayNow(dateIso, workType) {
 function planFillFreeTailNow(dateIso, workType, shiftKey) {
   if (!canEditPlan()) return;
   const caps = planDayCapsFor(dateIso, workType);
-  const moves = pullWorkIntoFreeTail(workType, dateIso, shiftKey, caps, true);
+  const moves = pullWorkIntoFreeTail(workType, dateIso, shiftKey, caps, true, PLAN_FILL_MIN_FREE);
   if (!moves.length) {
-    alert('ไม่มีงานของวันถัดไปที่ดึงมาเติมได้ในเวลาที่เหลือ\n(เวลาว่างน้อยกว่า 1 ชม. หรือวันถัดไปไม่มีงานที่ยังไม่ได้เริ่ม)');
+    alert(planFillBlockReason(dateIso, workType, caps));
     return;
   }
   persistState();
@@ -9161,7 +9170,9 @@ function savePlanDayEnd() {
   // ไม่ต้องถามอีก (เดิมถามด้วย confirm ถ้าไม่กดตกลงก็ไม่เกิดอะไร แล้วเข้าใจว่าระบบไม่ทำงาน)
   // prevCaps ไว้บอกในรายงานว่าเป็นการเพิ่มเวลาหรือไม่
   const increased = shifts.some(k => (caps[k] != null ? caps[k] : 0) > (prevCaps[k] || 0));
-  const pulled = pullWorkIntoFreeTail(workType, dateIso, mainShiftKey, caps, true);
+  // ผู้ใช้กดบันทึกเวลาเลิกงานเอง = สั่งมาแล้วว่าจะทำถึงเวลานี้ จึงเติมให้แม้ช่องว่างจะไม่ถึง 1 ชม.
+  // (เพิ่ม OT ไป 40 นาทีแล้วไม่มีอะไรเกิดขึ้นเลย จะดูเหมือนปุ่มเสีย)
+  const pulled = pullWorkIntoFreeTail(workType, dateIso, mainShiftKey, caps, true, PLAN_FILL_MIN_FREE);
   persistState();
   renderCurrentPlanView();
   closeModal();
@@ -9454,11 +9465,14 @@ function applyPlanPullForward(workType, shiftKey, moves) {
 // (ผู้ใช้สั่งไว้ว่าเพิ่ม OT แล้วให้ดึงงานวันถัดไปมาวางต่อให้เต็มเวลา) แล้วรายงานว่าดึงอะไรมา
 // ส่วนกรณีอื่น (ลดเวลาเลิกงาน / บันทึกงานใหม่แล้วมีเวลาเหลือ) ยังถามก่อนเหมือนเดิม
 // คืนรายการงานที่ดึงมาจริง (ว่าง = ไม่มีอะไรถูกย้าย)
-function pullWorkIntoFreeTail(workType, dateIso, shiftKey, otCaps, auto) {
+// minFree = ช่องว่างท้ายวันขั้นต่ำที่ยอมดึงงานมาเติม — ไม่ส่งมาถือเป็นการเติมอัตโนมัติ (1 ชม.)
+// ตอนผู้ใช้กดปุ่มเติมเองจะส่ง PLAN_FILL_MIN_FREE มา เพราะสั่งมาเองแล้วว่าจะเติมช่องว่างนั้น
+function pullWorkIntoFreeTail(workType, dateIso, shiftKey, otCaps, auto, minFree) {
   if (!canEditPlan()) return [];
   const { tail, moves } = planPullForwardPlan(workType, dateIso, shiftKey, otCaps);
-  // ช่องว่างท้ายวันน้อยกว่า 1 ชม. ไม่ต้องกวน (เศษเวลาจากการปัดเวลาแต่ละงาน)
-  if (!tail || tail.freeMinutes < 60 || !moves.length) return [];
+  // ช่องว่างท้ายวันเล็กเกินไป ไม่ต้องกวน (เศษเวลาจากการปัดเวลาแต่ละงาน)
+  const floor = minFree == null ? PLAN_AUTO_FILL_MIN_FREE : minFree;
+  if (!tail || tail.freeMinutes < floor || !moves.length) return [];
   if (auto) { applyPlanPullForward(workType, shiftKey, moves); return moves; }
   const shown = moves.slice(0, 4).map(mv => '• ' + mv.label
     + ' (' + fmtDateThai(parseISODate(mv.fromDate)) + ' → ' + mv.startTime + '–' + mv.endTime
