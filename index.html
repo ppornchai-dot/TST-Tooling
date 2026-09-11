@@ -5062,9 +5062,23 @@ function nextValidPlanContinuePoint(shift, date, time, otCaps, workType) {
       targetTime = targetTime === '17:00' ? '20:00' : '08:00';
     }
   }
-  while (isPlanDayOff(targetDate)) {
-    targetDate = addDaysIso(targetDate, 1);
-    targetTime = '08:00';
+  // เวลาหลังเที่ยงคืนของกะดึก (เช่น 04:20 ของวันอาทิตย์) ยังเป็นเวลาทำงานของ "วันทำงาน" วันเสาร์
+  // ถ้าเช็ควันหยุดด้วยวันในปฏิทินตรงๆ จะเห็นเป็นวันอาทิตย์แล้วโดดข้ามไปทั้งที่กะนั้นยังไม่จบ
+  // (อาการ: งานกะดึกที่จบ 04:20 คืนวันเสาร์ งานถัดไปถูกเด้งไปวันจันทร์ 08:00 หายจากคอลัมน์วันเสาร์เลย
+  //  แล้วดูเหมือนลากมาต่อกันไม่ได้ ทั้งที่ในกะยังเหลือเวลาถึง 05:00)
+  const owningDay = shift === 'both'
+    // sessionOwningDate ไม่ครอบ 'both' — ก่อนเริ่มกะเช้าถือเป็นคืนของวันก่อนหน้า
+    ? (hhmmToMinOfDay(targetTime) < 8 * 60 ? addDaysIso(targetDate, -1) : targetDate)
+    : sessionOwningDate(targetDate, targetTime, shift, workType);
+  if (isPlanDayOff(owningDay)) {
+    // ต้องข้ามวันหยุดจริงๆ — ขยับไปวันทำงานถัดไปจากวันทำงานนั้น ไม่ใช่จากวันในปฏิทิน
+    let day = owningDay;
+    do { day = addDaysIso(day, 1); } while (isPlanDayOff(day));
+    targetDate = day;
+    // เริ่มที่ต้นกะของงานนั้นเอง ไม่ใช่ 08:00 เสมอ — งานกะดึกที่ถูกเลื่อนไปวันถัดไปต้องเริ่ม 20:00
+    // ถ้าให้เป็น 08:00 งานกะดึกจะถูกนับเป็นของวันทำงานก่อนหน้า (taskDisplayDate)
+    // แล้วชิปไปโผล่คนละวันกับที่ผู้ใช้ลากวางไว้
+    targetTime = (SHIFTS[shift] || SHIFTS.morning).start || '08:00';
   }
   return { date: targetDate, time: targetTime };
 }
