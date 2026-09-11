@@ -1851,6 +1851,16 @@ canvas{display:block;}
     ══════════════════════════════════════════ -->
     <div class="page" id="page-history">
 
+      <!-- ปุ่มเปิด/ปิดปฏิทิน — อยู่บนซ้ายสุดของหน้าและตัวใหญ่ ให้เห็นตั้งแต่เปิดหน้ามาว่าดูแบบปฏิทินได้
+           (เดิมเป็นปุ่มเล็กในหัวการ์ด พอปิดปฏิทินไปแล้วแทบไม่มีใครหาเจอว่าเปิดกลับมายังไง) -->
+      <div style="margin-bottom:12px;">
+        <button id="history-cal-toggle" onclick="toggleHistoryCal()"
+          style="display:inline-flex;align-items:center;gap:10px;border:none;cursor:pointer;
+                 font-family:inherit;font-size:17px;font-weight:800;padding:14px 22px;border-radius:12px;
+                 box-shadow:0 2px 8px rgba(0,0,0,.16);transition:filter .12s;"
+          onmouseover="this.style.filter='brightness(1.06)'" onmouseout="this.style.filter='none'"></button>
+      </div>
+
       <!-- แยกดูตามประเภทงาน — ใช้ปุ่มแท็บแบบเดียวกับหน้างานประจำวัน/วางแผน แทน dropdown เดิม เพื่อให้เห็นและสลับได้ทันที -->
       <div class="mobile-wrap" style="display:flex;gap:8px;margin-bottom:12px;">
         <button class="btn btn-ghost history-type-btn" data-histtype="" aria-pressed="true" onclick="switchHistoryType('')">ทั้งหมด <span class="history-type-count" data-count-for=""></span></button>
@@ -1873,7 +1883,7 @@ canvas{display:block;}
       <!-- ปฏิทินงานที่ทำไปแล้ว — เห็นภาพรวมทั้งเดือนว่าวันไหนแต่ง/ขัดชุดไหนไปบ้าง
            ตารางด้านล่างดูทีละรายการซึ่งต้องเลื่อนหาเอง เลยไม่เห็นว่าเดือนนี้วันไหนว่างวันไหนแน่น
            ใช้ตัวกรองประเภทงาน/คำค้นหาชุดเดียวกับตาราง ตัวเลขจึงตรงกันเสมอ -->
-      <div class="card" style="margin-bottom:16px;">
+      <div class="card" style="margin-bottom:16px;" id="history-cal-card">
         <div class="card-header" style="flex-wrap:wrap;row-gap:8px;">
           <span class="card-title" style="font-size:17px;white-space:nowrap;">ปฏิทินการแต่ง Roll / ขัด Roll</span>
           <span style="margin-left:auto;display:inline-flex;align-items:center;gap:8px;">
@@ -1881,10 +1891,9 @@ canvas{display:block;}
             <span id="history-cal-label" style="font-size:14px;font-weight:800;min-width:120px;text-align:center;"></span>
             <button class="btn btn-ghost btn-sm" onclick="historyCalNav(1)" title="เดือนถัดไป">›</button>
             <button class="btn btn-ghost btn-sm" onclick="historyCalToday()">เดือนนี้</button>
-            <button class="btn btn-ghost btn-sm" id="history-cal-toggle" onclick="toggleHistoryCal()">ซ่อน</button>
           </span>
         </div>
-        <div style="padding:12px 14px;" id="history-cal-wrap">
+        <div style="padding:12px 14px;">
           <div id="history-cal-body"></div>
         </div>
       </div>
@@ -15579,10 +15588,20 @@ function renderHistoryCalendar(records, fromIso, toIso) {
   const year = m.getFullYear(), month = m.getMonth();
   const label = document.getElementById('history-cal-label');
   if (label) label.textContent = THAI_MONTHS_FULL[month] + ' ' + (year + 543);
-  const wrap = document.getElementById('history-cal-wrap');
+  // ปิดแล้วซ่อนทั้งการ์ด ไม่ใช่ซ่อนแต่เนื้อใน — ไม่งั้นเหลือแถบหัวการ์ดเปล่าๆ คาอยู่
+  const card = document.getElementById('history-cal-card');
   const toggle = document.getElementById('history-cal-toggle');
-  if (wrap) wrap.style.display = historyCalOpen ? '' : 'none';
-  if (toggle) toggle.textContent = historyCalOpen ? 'ซ่อน' : 'แสดง';
+  if (card) card.style.display = historyCalOpen ? '' : 'none';
+  if (toggle) {
+    toggle.innerHTML = historyCalOpen
+      ? '<span style="font-size:20px;">✓</span> แสดงรูปแบบปฏิทิน <span style="font-size:14px;font-weight:700;opacity:.85;">— กดเพื่อซ่อน</span>'
+      : '<span style="font-size:20px;">🗓</span> แสดงรูปแบบปฏิทิน';
+    toggle.style.background = 'var(--accent)';
+    toggle.style.color = '#fff';
+    toggle.title = historyCalOpen
+      ? 'กำลังแสดงปฏิทินการแต่ง Roll / ขัด Roll — กดเพื่อซ่อนแล้วดูเฉพาะตาราง'
+      : 'กดเพื่อดูงานทั้งเดือนเป็นปฏิทิน ว่าวันไหนแต่ง/ขัดชุดไหนไปบ้าง';
+  }
   if (!historyCalOpen) return;   // ปิดอยู่ — ไม่ต้องเสียเวลาวาด
 
   const byDate = {};
