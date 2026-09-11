@@ -1870,6 +1870,25 @@ canvas{display:block;}
       </div>
 
 
+      <!-- ปฏิทินงานที่ทำไปแล้ว — เห็นภาพรวมทั้งเดือนว่าวันไหนแต่ง/ขัดชุดไหนไปบ้าง
+           ตารางด้านล่างดูทีละรายการซึ่งต้องเลื่อนหาเอง เลยไม่เห็นว่าเดือนนี้วันไหนว่างวันไหนแน่น
+           ใช้ตัวกรองประเภทงาน/คำค้นหาชุดเดียวกับตาราง ตัวเลขจึงตรงกันเสมอ -->
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-header" style="flex-wrap:wrap;row-gap:8px;">
+          <span class="card-title" style="font-size:17px;white-space:nowrap;">ปฏิทินการแต่ง Roll / ขัด Roll</span>
+          <span style="margin-left:auto;display:inline-flex;align-items:center;gap:8px;">
+            <button class="btn btn-ghost btn-sm" onclick="historyCalNav(-1)" title="เดือนก่อนหน้า">‹</button>
+            <span id="history-cal-label" style="font-size:14px;font-weight:800;min-width:120px;text-align:center;"></span>
+            <button class="btn btn-ghost btn-sm" onclick="historyCalNav(1)" title="เดือนถัดไป">›</button>
+            <button class="btn btn-ghost btn-sm" onclick="historyCalToday()">เดือนนี้</button>
+            <button class="btn btn-ghost btn-sm" id="history-cal-toggle" onclick="toggleHistoryCal()">ซ่อน</button>
+          </span>
+        </div>
+        <div style="padding:12px 14px;" id="history-cal-wrap">
+          <div id="history-cal-body"></div>
+        </div>
+      </div>
+
       <div class="card">
         <!-- ตรึงหัวตารางไว้ตอนเลื่อนดูประวัติย้อนหลัง (ดูคลาส .table-wrap-sticky) -->
         <div class="table-wrap table-wrap-sticky">
@@ -15452,6 +15471,8 @@ function collectHistoryRecords() {
           // (บันทึกเก่าก่อนมีช่องนี้) ก็อ่านจากทะเบียนตัวปัจจุบันแทน
           odStandard: entry.odStandard || (roll ? String(roll.diameterStd || '').trim() || null : null),
           rollSetName: t.rollSet || null,
+          // คีย์ชุดสีดิบ — ปฏิทินหน้านี้ใช้หาสีจริงของชุด (rollColorLabelFor/inUseColorDot ต้องใช้คีย์ ไม่ใช่ชื่อไทย)
+          rollColorKey: t.rollColor || null,
           who: workerName(t.workerId),
           // บันทึกที่ถูกย้ายวันไปแล้วไม่นับชั่วโมง — ชิ้นเดียวกันถูกนับอีกครั้งในวันที่ย้ายไป
           // ถ้านับทั้งสองที่ ยอด "ชม." ของวันเดิมจะบวมขึ้นจากงานที่ไม่ได้ทำในวันนั้น
@@ -15501,6 +15522,184 @@ function switchHistoryType(key) {
   renderHistory();
 }
 
+// ─── ปฏิทินประวัติการทำงาน (แต่ง Roll / ขัด Roll) ─────────────────────────────
+// ตารางประวัติดูทีละรายการ ต้องเลื่อนหาเองว่าเดือนนี้วันไหนทำอะไรไปบ้าง
+// ปฏิทินนี้เอาบันทึกชุดเดียวกันมาวางเป็นเดือน — หนึ่งบรรทัดในช่องวัน = ชุด Roll หนึ่งชุดของงานประเภทหนึ่ง
+// ใช้ตัวกรองประเภทงาน/คำค้นหาเดียวกับตาราง ตัวเลขทั้งสองที่จึงตรงกันเสมอ
+// ส่วนช่วงวันที่ด้านบนไม่กรองปฏิทิน (ปฏิทินมีปุ่มเลือกเดือนของตัวเอง) แต่จะไฮไลต์วันที่เลือกอยู่ให้เห็น
+const HISTORY_CAL_TYPE = {
+  cnc:    { icon: '⚙', label: 'แต่ง Roll (CNC)', color: 'var(--accent)', bg: 'var(--accent-glow)' },
+  polish: { icon: '✦', label: 'ขัด Roll',        color: 'var(--purple)', bg: 'var(--purple-dim)' },
+};
+let historyCalMonth = null;   // เดือนที่กำลังดู (วันที่ 1 ของเดือนนั้น)
+// เปิด/ปิดค้างไว้ตามเครื่อง — บางคนใช้หน้านี้ค้นรายการอย่างเดียว ไม่อยากให้ปฏิทินดันตารางลงไป
+// เก็บใน localStorage ไม่ใช่ข้อมูลกลาง เพราะเป็นความชอบของเครื่องที่ใช้ ไม่ใช่ข้อมูลงาน
+let historyCalOpen = true;
+try { historyCalOpen = localStorage.getItem('tst-tooling-history-cal') !== '0'; } catch (e) {}
+
+function historyCalMonthDate() {
+  if (!historyCalMonth) {
+    const t = parseISODate(dailyTodayIso());
+    historyCalMonth = new Date(t.getFullYear(), t.getMonth(), 1);
+  }
+  return historyCalMonth;
+}
+function historyCalNav(dir) {
+  const m = historyCalMonthDate();
+  historyCalMonth = new Date(m.getFullYear(), m.getMonth() + dir, 1);
+  renderHistory();
+}
+function historyCalToday() {
+  const t = parseISODate(dailyTodayIso());
+  historyCalMonth = new Date(t.getFullYear(), t.getMonth(), 1);
+  renderHistory();
+}
+function toggleHistoryCal() {
+  historyCalOpen = !historyCalOpen;
+  try { localStorage.setItem('tst-tooling-history-cal', historyCalOpen ? '1' : '0'); } catch (e) {}
+  renderHistory();
+}
+// กดวันในปฏิทิน = ดูเฉพาะวันนั้นในตารางด้านล่าง · กดวันเดิมซ้ำ = เลิกกรอง
+// (ตั้งค่าในช่องวันที่ด้านบนโดยตรง เพื่อให้เห็นว่าตารางถูกกรองอยู่ด้วยอะไร และล้างเองได้จากที่เดิม)
+function historyCalPickDay(iso) {
+  const f = document.getElementById('history-date-from');
+  const t = document.getElementById('history-date-to');
+  if (!f || !t) return;
+  const same = f.value === iso && t.value === iso;
+  f.value = same ? '' : iso;
+  t.value = same ? '' : iso;
+  renderHistory();
+}
+
+// records = บันทึกที่กรองประเภทงาน/คำค้นหาแล้ว แต่ยังไม่กรองช่วงวันที่ (ปฏิทินต้องเห็นทั้งเดือน)
+function renderHistoryCalendar(records, fromIso, toIso) {
+  const el = document.getElementById('history-cal-body');
+  if (!el) return;
+  const m = historyCalMonthDate();
+  const year = m.getFullYear(), month = m.getMonth();
+  const label = document.getElementById('history-cal-label');
+  if (label) label.textContent = THAI_MONTHS_FULL[month] + ' ' + (year + 543);
+  const wrap = document.getElementById('history-cal-wrap');
+  const toggle = document.getElementById('history-cal-toggle');
+  if (wrap) wrap.style.display = historyCalOpen ? '' : 'none';
+  if (toggle) toggle.textContent = historyCalOpen ? 'ซ่อน' : 'แสดง';
+  if (!historyCalOpen) return;   // ปิดอยู่ — ไม่ต้องเสียเวลาวาด
+
+  const byDate = {};
+  records.forEach(r => { (byDate[r.date] = byDate[r.date] || []).push(r); });
+
+  // รวมบันทึกรายชิ้นเป็นบรรทัดเดียวต่อ (ประเภทงาน + ชุด Roll + ชุดสี) — ไม่งั้นวันที่ทำ 16 ชิ้นจะมี 16 บรรทัดในช่องเดียว
+  const groupsFor = list => {
+    const map = new Map();
+    list.forEach(r => {
+      const set = r.rollSetName || null;
+      const key = r.typeKey + '|' + (set || '~ins') + '|' + (r.rollColorKey || '');
+      let g = map.get(key);
+      if (!g) { g = { typeKey: r.typeKey, set, colorKey: r.rollColorKey || null, items: [] }; map.set(key, g); }
+      g.items.push(r);
+    });
+    // งานแต่ง Roll ขึ้นก่อนงานขัด แล้วเรียงตามชื่อชุด — ลำดับเดียวกันทุกวัน กวาดตาข้ามวันได้
+    return [...map.values()].sort((a, b) =>
+      a.typeKey !== b.typeKey ? (a.typeKey === 'cnc' ? -1 : 1)
+        : String(a.set || '').localeCompare(String(b.set || ''), 'th'));
+  };
+
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const leading = new Date(year, month, 1).getDay();   // 0 = อาทิตย์
+  const today = dailyTodayIso();
+  const dayNames = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+  const monthTotal = { cnc: 0, polish: 0, days: 0, hours: 0 };
+
+  let cells = '';
+  for (let i = 0; i < leading; i++) cells += '<div style="min-height:74px;"></div>';
+  for (let d = 1; d <= daysInMonth; d++) {
+    const iso = toISODate(new Date(year, month, d));
+    const list = byDate[iso] || [];
+    const holidayName = (companyHolidays.find(x => x.date === iso) || {}).name || null;
+    const isOff = new Date(year, month, d).getDay() === 0 || holidayName;
+    const isToday = iso === today;
+    const picked = !!fromIso && fromIso === iso && toIso === iso;
+    // อยู่ในช่วงวันที่ที่กรองตารางอยู่ (กรองเป็นช่วง ไม่ใช่วันเดียว) — ทำเส้นใต้บางๆ ให้รู้ว่าตารางนับวันนี้ด้วย
+    const inRange = (!fromIso || iso >= fromIso) && (!toIso || iso <= toIso) && (!!fromIso || !!toIso);
+    list.forEach(r => {
+      if (monthTotal[r.typeKey] != null) monthTotal[r.typeKey]++;
+      monthTotal.hours += r.hours || 0;
+    });
+    if (list.length) monthTotal.days++;
+
+    const rows = groupsFor(list).map(g => {
+      const meta = HISTORY_CAL_TYPE[g.typeKey] || { icon: '•', label: g.typeKey, color: 'var(--text-2)' };
+      const dot = g.set && g.colorKey ? inUseColorDot(g.set, g.colorKey) : null;
+      const colorName = g.set && g.colorKey ? rollColorLabelFor(g.set, g.colorKey) : '';
+      // ชื่อชุดเต็มคือ 'GI 4"x4" (100x100) Forming' ซึ่งยาวเกินช่องวันมาก โดนตัดเหลือ 'GI 4"x4" (100x1…'
+      // จึงตัดขนาดมิลออก (อยู่ในทูลทิปแล้ว) และย่อหมวดเป็นป้าย F/S/T แบบเดียวกับปฏิทินชุด Roll ที่ใช้งาน
+      const setShort = g.set ? inUseCalSizeShort(rollSetGroupDisplayName(g.set)) : 'งานแทรก';
+      const cat = g.set ? (parseSizeRollName(g.set).category || '') : '';
+      const n = g.items.length;
+      const notDone = g.items.filter(x => x.result !== 'สำเร็จ');
+      const hrs = g.items.reduce((s, x) => s + (x.hours || 0), 0);
+      const who = [...new Set(g.items.map(x => x.who).filter(x => x && x !== '—'))];
+      const tips = [meta.label + ' · ' + (g.set || 'งานแทรก') + (colorName ? ' · ' + colorName : ''),
+        n + ' ชิ้น' + (hrs ? ' · ' + (Math.round(hrs * 10) / 10).toLocaleString() + ' ชม.' : '')];
+      if (who.length) tips.push('ผู้ดำเนินการ ' + who.join(', '));
+      // สรุปผลที่ไม่ใช่ "สำเร็จ" ไว้ในทูลทิป (พักงาน/ย้ายวัน/ไม่ได้ปิดงาน) — ในช่องวันมีที่แค่จุดเตือน
+      if (notDone.length) {
+        const byResult = {};
+        notDone.forEach(x => { byResult[x.result] = (byResult[x.result] || 0) + 1; });
+        tips.push(Object.keys(byResult).map(k => k + ' ' + byResult[k] + ' ชิ้น').join(' · '));
+      }
+      return `<div title="${escapeHtmlAttr(tips.join('\n'))}"
+        style="display:flex;align-items:center;gap:4px;font-size:10.5px;line-height:1.45;margin-top:2px;">
+        <span style="font-size:9px;font-weight:800;padding:0 4px;border-radius:3px;line-height:1.6;flex-shrink:0;
+               background:${meta.color};color:#fff;">${meta.icon}</span>
+        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2);font-weight:600;">${
+          escapeHtmlAttr(setShort)}</span>
+        ${cat ? `<span title="${escapeHtmlAttr(cat)}" style="font-size:9px;font-weight:800;color:var(--text-3);flex-shrink:0;">${
+          escapeHtmlAttr(ROLL_CAT_ABBR[cat] || cat)}</span>` : ''}
+        ${dot ? `<span style="width:9px;height:9px;border-radius:3px;flex-shrink:0;background:${dot};
+               box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);"></span>` : ''}
+        ${notDone.length ? '<span style="color:var(--amber);font-weight:800;flex-shrink:0;" title="มีชิ้นที่ยังไม่สำเร็จ">•</span>' : ''}
+        <span style="margin-left:auto;flex-shrink:0;font-weight:800;color:${meta.color};">${n}</span>
+      </div>`;
+    }).join('');
+
+    cells += `<div onclick="historyCalPickDay('${iso}')"
+        title="${escapeHtmlAttr((holidayName ? 'วันหยุด: ' + holidayName + ' — ' : '')
+          + (list.length ? list.length + ' ชิ้น' : 'ไม่มีประวัติ') + ' — กดเพื่อดูเฉพาะวันนี้ในตารางด้านล่าง')}"
+        style="min-height:74px;min-width:0;overflow:hidden;padding:6px 7px;border-radius:6px;cursor:pointer;
+               border:1px solid ${picked ? 'var(--accent)' : 'var(--border-light)'};
+               ${isOff ? 'background:#FDF3D8;' : (picked ? 'background:var(--accent-glow);' : '')}
+               ${picked ? 'box-shadow:inset 0 0 0 2px var(--accent);' : (inRange ? 'box-shadow:inset 0 -3px 0 var(--accent-glow);' : '')}
+               ${isToday ? 'outline:2px dashed var(--accent);outline-offset:-2px;' : ''}">
+      <div style="display:flex;align-items:center;gap:5px;">
+        <strong style="font-size:12px;${isToday ? 'color:var(--accent);' : ''}">${d}</strong>
+        ${list.length ? `<span style="font-size:10px;color:var(--text-3);margin-left:auto;">${list.length} ชิ้น</span>` : ''}
+      </div>
+      ${rows || `<div style="font-size:10.5px;color:var(--text-3);margin-top:3px;">${isOff ? 'วันหยุด' : '—'}</div>`}
+    </div>`;
+  }
+
+  const sum = `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:11.5px;margin-bottom:9px;">
+      <span style="display:inline-flex;align-items:center;gap:5px;font-weight:800;color:var(--accent);">
+        <span style="font-size:9px;padding:0 4px;border-radius:3px;line-height:1.6;background:var(--accent);color:#fff;">⚙</span>
+        แต่ง Roll ${monthTotal.cnc.toLocaleString()} ชิ้น</span>
+      <span style="display:inline-flex;align-items:center;gap:5px;font-weight:800;color:var(--purple);">
+        <span style="font-size:9px;padding:0 4px;border-radius:3px;line-height:1.6;background:var(--purple);color:#fff;">✦</span>
+        ขัด Roll ${monthTotal.polish.toLocaleString()} ชิ้น</span>
+      <span style="color:var(--text-3);">มีงาน ${monthTotal.days} วัน${
+        monthTotal.hours ? ' · รวม ' + (Math.round(monthTotal.hours * 10) / 10).toLocaleString() + ' ชม.' : ''}</span>
+      <span style="margin-left:auto;color:var(--text-3);">ตัวเลขท้ายบรรทัด = จำนวนชิ้น · <b style="color:var(--amber);">•</b> = มีชิ้นที่ยังไม่สำเร็จ ·
+        กดวันเพื่อดูเฉพาะวันนั้นในตารางด้านล่าง (กดซ้ำเพื่อยกเลิก)</span>
+    </div>`;
+
+  el.innerHTML = sum + `<div style="overflow-x:auto;"><div style="min-width:980px;">
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px;">
+        ${dayNames.map(n => `<div style="text-align:center;font-size:11px;font-weight:800;color:var(--text-3);">${n}</div>`).join('')}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;">${cells}</div>
+    </div></div>`;
+}
+
 function renderHistory() {
   const tbody = document.getElementById('tbody-history');
   if (!tbody) return;
@@ -15526,6 +15725,11 @@ function renderHistory() {
     el.textContent = inScope.filter(r => historyTypeMatches(r, key)).length.toLocaleString();
   });
   refreshHistoryTypeButtons();
+
+  // ปฏิทินใช้ตัวกรองประเภทงาน/คำค้นหาเดียวกับตาราง แต่ไม่กรองช่วงวันที่ — มันมีปุ่มเลือกเดือนของตัวเอง
+  // ถ้ากรองด้วย ตอนกดเลือกวันเดียวปฏิทินจะว่างทั้งเดือนเหลือวันเดียว กดวันอื่นต่อไม่ได้
+  renderHistoryCalendar(all.filter(r => historyTypeMatches(r, typeFilter)
+    && (!search || `${r.wo} ${r.tooling} ${r.detail} ${r.who}`.toLowerCase().includes(search))), fromIso, toIso);
 
   const records = all.filter(r => {
     if (fromIso && r.date < fromIso) return false;
