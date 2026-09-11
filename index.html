@@ -9237,9 +9237,36 @@ function planTimeInWorkingDay(dateIso, shiftKey, workType, atDate, atTime, otCap
   return min + 1440 <= shiftEndWithOtMin(shiftKey, caps, workType);
 }
 
+// งานของ "วันทำงานก่อนหน้า" ที่ลากยาวมาจบในวันนี้ — ยังกินเวลาของวันนี้จริง แต่ planLastTaskOnDay ไม่เห็น
+// (planLastTaskOnDay เทียบด้วย taskDisplayDate ซึ่งเป็นวันเจ้าของงาน ไม่ใช่วันที่งานนั้นไปกินเวลาอยู่)
+// เช่นงานกะดึกของวันที่ 12 ที่ลากมาจบ 13:40 ของวันที่ 14 — วันที่ 14 ถูกมองว่าไม่มีงานเลย
+// ทั้งที่เช้าถูกใช้ไปถึง 13:40 ผลคือไม่มีเวลาว่างท้ายวันให้เติม และปุ่มเติมก็ไม่โผล่
+function planDaySpillEndTask(workType, dateIso, shiftKey) {
+  let best = null;
+  planTasks.forEach(t => {
+    if (t.workType !== workType || !t.endTime || t.endTime === '—') return;
+    if (taskDisplayDate(t) === dateIso) return;            // ตัวที่ planLastTaskOnDay เห็นอยู่แล้ว
+    const endDate = t.endDate || t.date;
+    if (endDate !== dateIso) return;                       // ไม่ได้มาจบในวันนี้
+    const min = hhmmToMinOfDay(t.endTime);
+    if (min == null) return;
+    // เวลาจบต้องตกอยู่ในหน้าต่างของกะที่ถาม และต้องเป็นเวลาของ "วันทำงาน" วันนี้จริงๆ
+    // (งานที่จบ 04:20 ของวันที่ 13 เป็นกะดึกของวันที่ 12 ไม่ใช่ของวันที่ 13 — ต้องไม่นับ)
+    if (!(SHIFTS[shiftKey] || SHIFTS.morning).windows.some(w => isMinuteInWindow(min, w))) return;
+    if (sessionOwningDate(endDate, t.endTime, shiftKey, workType) !== dateIso) return;
+    const key = endDate + ' ' + t.endTime;
+    if (!best || key > best.key) best = { key, t };
+  });
+  return best ? best.t : null;
+}
+
 // จุดที่ยังว่างต่อท้ายงานสุดท้ายของวันนั้น — คืน null ถ้าเต็มแล้วหรือไม่มีงานในวันนั้นเลย
 function planDayFreeTail(workType, dateIso, shiftKey, otCaps) {
-  const last = planLastTaskOnDay(workType, dateIso, shiftKey);
+  const own = planLastTaskOnDay(workType, dateIso, shiftKey);
+  const spill = planDaySpillEndTask(workType, dateIso, shiftKey);
+  // งานไหนจบทีหลังก็ใช้ตัวนั้นเป็นจุดเริ่มของเวลาว่าง ไม่งั้นจะไปวางทับงานที่ล้นมา
+  const keyOf = t => (t.endDate || t.date) + ' ' + t.endTime;
+  const last = !own ? spill : (!spill ? own : (keyOf(spill) > keyOf(own) ? spill : own));
   if (!last || !last.endTime || last.endTime === '—') return null;
   // ใช้โควตา OT ของวันนั้นตามที่ตั้งไว้เท่านั้น (ผู้เรียกส่งมาจาก planDayCapsFor / ฟอร์มเวลาเลิกงาน)
   const caps = {};
