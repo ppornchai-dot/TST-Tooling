@@ -3392,6 +3392,9 @@ function openInUseRollPicker() {
            เลื่อนดูรายการชุด Roll ยาวๆ แล้วยังเห็นว่ากำลังตั้งของเครื่องไหนอยู่ และสลับเครื่องได้ทันที -->
       <div style="flex:0 0 auto;padding:14px 22px 0;">
         <div id="inuse-picker-tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;"></div>
+        <!-- คำสั่งว่า "ต้องเลือกชุดของขนาดไหน" ต้องอยู่นอกกล่องที่เลื่อน ไม่งั้นพอเลื่อนลงไปหาแถวก็มองไม่เห็นแล้ว
+             (อาการเดิม: เลื่อนลงไปกดสีของชุดที่เห็นก่อน ซึ่งไม่ใช่ขนาดที่ระบบรออยู่ หน้าต่างเลยเด้งซ้ำไม่จบ) -->
+        <div id="inuse-picker-pending"></div>
         <input class="form-input" id="inuse-picker-search" placeholder="ค้นหา Size Roll เช่น 75x38 หรือ Forming"
                oninput="renderInUseRollPicker()" autocomplete="off">
       </div>
@@ -3408,6 +3411,11 @@ function openInUseRollPicker() {
   inUsePickerNotice = ''; // เปิดใหม่ต้องไม่เจอข้อความจากครั้งก่อนค้างอยู่
   renderInUseRollPicker();
   ov.classList.add('open');
+  // เลื่อนไปที่แถวที่ระบบรอให้เลือกเลย — รายการยาวหลายสิบชุด ถ้าไม่พาไปก็ต้องไล่หาเอง
+  setTimeout(() => {
+    const row = document.querySelector('#inuse-picker-body [data-awaited="1"]');
+    if (row) row.scrollIntoView({ block: 'center' });
+  }, 30);
 }
 
 function closeInUseRollPicker() {
@@ -3671,20 +3679,28 @@ function renderInUseRollPicker() {
   }).join('');
 
   // รายการที่ Production Block เปลี่ยน Size แล้วแต่ยังไม่ได้เลือก — ชี้ให้ตรงว่าต้องเลือกหมวดไหนของเครื่องไหน
-  const pending = pendingSizeChanges();
+  // กันไว้อีกชั้น: รายการที่เลือกครบแล้วต้องไม่ติดป้าย "รอเลือก" ค้าง ไม่ว่าจะถูกตัดออกจากคิวแล้วหรือยัง
+  const pending = pendingSizeChanges().filter(e => !sizeChangeEntryResolved(e));
   const snoozeBtn = document.getElementById('inuse-picker-snooze');
   if (snoozeBtn) snoozeBtn.style.display = pending.length ? '' : 'none';
   const pendingHere = pending.filter(e => e.machine === inUsePickerMachine);
-  const pendingHtml = !pending.length ? '' : `<div style="font-size:12px;font-weight:700;color:var(--inuse);background:var(--inuse-dim);
-      border:1px solid var(--inuse);border-radius:8px;padding:8px 11px;margin-bottom:12px;line-height:1.55;">
+  // ขนาดที่ต้องเลือกของเครื่องที่กำลังดูอยู่ รวมเป็นชื่อเดียว (ปกติทั้ง 3 หมวดเป็นขนาดเดียวกัน)
+  const pendingSizes = [...new Set(pendingHere.map(e => fgKeyLabel(e.fgKey)))].join(', ');
+  const pendingHtml = !pending.length ? '' : `<div style="font-size:12.5px;font-weight:700;color:var(--inuse);background:var(--inuse-dim);
+      border:1px solid var(--inuse);border-radius:8px;padding:9px 12px;margin-bottom:10px;line-height:1.55;">
       ⚠ Production Block เปลี่ยน Size แล้ว — ยังต้องเลือกอีก ${pending.length} รายการ<br>
-      ${(pendingHere.length ? pendingHere : pending).map(e =>
-        `เครื่อง <b>${escapeHtmlAttr(e.machine)}</b> · หมวด <b>${escapeHtmlAttr(e.category)}</b> → เลือกชุดของ <b>${escapeHtmlAttr(fgKeyLabel(e.fgKey))}</b>`
-      ).join('<br>')}
-      ${pendingHere.length ? '' : '<br><span style="font-weight:600;">(ไม่มีของเครื่องที่กำลังดูอยู่ — สลับแท็บเครื่องด้านบน)</span>'}
+      ${pendingHere.length
+        ? `เครื่อง <b>${escapeHtmlAttr(inUsePickerMachine)}</b> ต้องเลือกชุดของ <b style="font-size:14px;">${escapeHtmlAttr(pendingSizes)}</b>
+           ในหมวด <b>${escapeHtmlAttr(pendingHere.map(e => e.category).join(' · '))}</b>
+           <br><span style="font-weight:600;">แถวที่ต้องเลือกมีป้าย <span style="background:var(--amber);color:#fff;padding:0 5px;border-radius:4px;">รอเลือก</span> กำกับไว้ — กดสีในแถวนั้น</span>`
+        : pending.map(e => `เครื่อง <b>${escapeHtmlAttr(e.machine)}</b> · หมวด <b>${escapeHtmlAttr(e.category)}</b> → เลือกชุดของ <b>${escapeHtmlAttr(fgKeyLabel(e.fgKey))}</b>`).join('<br>')
+          + '<br><span style="font-weight:600;">(ไม่มีของเครื่องที่กำลังดูอยู่ — สลับแท็บเครื่องด้านบน)</span>'}
     </div>`;
+  // วางไว้นอกกล่องที่เลื่อน จะได้เห็นตลอดแม้เลื่อนลงไปหาแถว
+  const pendingBox = document.getElementById('inuse-picker-pending');
+  if (pendingBox) pendingBox.innerHTML = pendingHtml;
 
-  body.innerHTML = pendingHtml + `
+  body.innerHTML = `
     <div style="font-size:12px;color:var(--text-3);line-height:1.6;margin-bottom:${inUsePickerNotice ? '8' : '12'}px;">
       แสดงเฉพาะ Size Roll ที่ผูกกับ <b style="color:var(--text-1);">${escapeHtmlAttr(machineLabel(inUsePickerMachine))}</b>
       — แตะสีเพื่อตั้งว่าชุดนั้น <b style="color:var(--inuse);">กำลังใช้งานที่เครื่องนี้</b> แตะสีเดิมซ้ำเพื่อยกเลิก<br>
@@ -3701,7 +3717,8 @@ function renderInUseRollPicker() {
       return `<div data-cat="${escapeHtmlAttr(label)}" style="margin-bottom:6px;">
         ${rollSetSectionHeaderHtml(label, `${chosen}/${sets.length}`, ROLL_SET_SECTION_COLORS[label], { sticky: true })}
         ${inUseCategoryConflictHtml(label, inUsePickerMachine === INUSE_UNASSIGNED ? null : inUsePickerMachine)}
-        ${sets.length ? sets.map(s => inUsePickerRowHtml(s, inUsePickerMachine)).join('')
+        ${sets.length ? sets.map(s => inUsePickerRowHtml(s, inUsePickerMachine,
+            pendingHere.some(e => e.category === label && rollSetFgKey(s) === e.fgKey))).join('')
           : `<div style="padding:4px;color:var(--text-3);font-size:12px;">ไม่มีชุดของหมวดนี้ผูกกับเครื่องนี้</div>`}
       </div>`;
     }).join('')}`;
@@ -3732,7 +3749,9 @@ function inUseCategoryConflictHtml(catLabel, onlyMachine) {
   </div>`;
 }
 
-function inUsePickerRowHtml(setName, machine) {
+// awaited = แถวนี้คือชุดของขนาดที่ระบบรอให้เลือกอยู่ (Production Block เปลี่ยน Size ไปแล้ว)
+// ต้องชี้ให้ชัดเป็นรายแถว ไม่งั้นในรายการที่มีหลายสิบชุดจะไม่รู้ว่าต้องกดแถวไหน
+function inUsePickerRowHtml(setName, machine, awaited) {
   const machines = rollSetMachines[setName] || [];
   const palette = getSetPalette(setName);
   // แสดงเฉพาะสีที่มี Roll อยู่จริงในชุดนี้ ไม่ยกทั้งจานสีมาให้เลือกสีที่ไม่มีของ
@@ -3758,14 +3777,16 @@ function inUsePickerRowHtml(setName, machine) {
         <span style="opacity:.65;font-weight:600;">${n}</span>${on ? ' ✓' : ''}</button>`;
     }).join('');
 
-  return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 6px;border-bottom:1px solid var(--border-light);
-      ${selectedColor ? 'background:var(--inuse-dim);border-radius:6px;' : ''}">
+  return `<div ${awaited ? 'data-awaited="1"' : ''} style="display:flex;align-items:flex-start;gap:10px;padding:8px 6px;border-bottom:1px solid var(--border-light);
+      ${selectedColor ? 'background:var(--inuse-dim);border-radius:6px;' : ''}
+      ${awaited ? 'background:var(--amber-dim);border-radius:6px;box-shadow:inset 0 0 0 2px var(--amber);' : ''}">
     <span style="flex:0 0 40px;font-size:11px;font-weight:800;color:${machines.length ? '#fff' : 'var(--text-3)'};
                  background:${machines.length ? 'var(--accent)' : 'transparent'};border:1px solid ${machines.length ? 'var(--accent)' : 'var(--border)'};
                  border-radius:5px;padding:2px 0;text-align:center;"
       title="${escapeHtmlAttr(machines.length > 1 ? 'ชุดนี้ผูกไว้ ' + machines.join(' และ ') + ' — เลือกได้จากแท็บของทั้งสองเครื่อง' : 'เครื่องที่ผูกไว้')}">${machines.length ? escapeHtmlAttr(machines.join('/')) : '—'}</span>
     <span style="flex:1;min-width:0;">
-      <span style="display:block;font-size:12px;font-weight:700;color:var(--text-1);margin-bottom:5px;">${escapeHtmlAttr(setName)}</span>
+      <span style="display:block;font-size:12px;font-weight:700;color:var(--text-1);margin-bottom:5px;">${escapeHtmlAttr(setName)}${
+        awaited ? '<span style="margin-left:7px;font-size:11px;font-weight:800;padding:1px 7px;border-radius:99px;background:var(--amber);color:#fff;">รอเลือก</span>' : ''}</span>
       <span style="display:flex;flex-wrap:wrap;gap:5px;">${chips || '<span style="font-size:11px;color:var(--text-3);">ไม่มี Roll ในชุดนี้</span>'}</span>
       ${elsewhereMachine ? `<span style="display:block;font-size:10px;color:var(--text-3);margin-top:4px;">
         กำลังใช้อยู่ที่เครื่อง ${escapeHtmlAttr(elsewhereMachine)} — แตะสีที่นี่เพื่อย้ายมาเครื่องนี้</span>` : ''}
@@ -4021,10 +4042,13 @@ function rollColorLabelFor(setName, colorKey) {
 
 function afterInUseRollChange() {
   persistState();
+  // ตัดรายการที่เพิ่งถูกเลือกออกจากคิว "ก่อน" วาดหน้าต่างเลือกใหม่
+  // ไม่งั้นแถวที่เพิ่งเลือกจะยังติดป้าย "รอเลือก" อยู่ ผู้ใช้กดซ้ำเพราะคิดว่าไม่ติด
+  // แล้วกลายเป็นการปลดชุดนั้นออก (แตะสีเดิมซ้ำ = ยกเลิก) หน้าต่างจึงเด้งถามอีกรอบไม่จบ
+  renderDashboardSizeChangeAlert(); // เลือกชุดแล้วรายการที่ค้างต้องหายออกจากแถบเตือนทันที
   renderInUseRollPicker();
   renderDashboardInUseRoll();
   renderDashboardWorkingRoll();
-  renderDashboardSizeChangeAlert(); // เลือกชุดแล้วรายการที่ค้างต้องหายออกจากแถบเตือนทันที
   if (typeof renderRollColorList === 'function' && currentPage === 'registry') { renderRollSetList(); renderRollColorList(); }
   updateRollKpi();
 }
