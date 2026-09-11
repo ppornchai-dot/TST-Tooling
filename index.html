@@ -3908,7 +3908,10 @@ let releasedStatusPending = []; // [{ set, colorKey, colorLabel }]
 // ต้องเก็บก่อนแก้ทุกครั้ง ไม่ใช่แค่ของชุดที่ถูกปลด เพราะการสลับแก้ทั้งชุดใหม่และชุดเก่าพร้อมกัน
 let releasedStatusRevert = null;
 function snapshotRollStatusState() {
-  return { status: JSON.stringify(rollColorStatus), machine: JSON.stringify(rollColorActiveMachine) };
+  // เก็บคิว "รอเลือกชุด" ไปด้วย — ตอนกดยกเลิกแล้วคืนสถานะกลับ คิวต้องกลับมาค้างเหมือนเดิม
+  // ไม่งั้นจะกลายเป็นว่าชุดกลับไปเป็นของเดิมแต่คิวถูกเคลียร์ไปแล้ว (ข้อมูลสองที่ไม่ตรงกัน)
+  return { status: JSON.stringify(rollColorStatus), machine: JSON.stringify(rollColorActiveMachine),
+           queue: JSON.stringify(rollSizeChangeQueue) };
 }
 
 function openReleasedStatusDialog(cleared, reasonText, revertSnapshot) {
@@ -3929,16 +3932,23 @@ function openReleasedStatusDialog(cleared, reasonText, revertSnapshot) {
         <div id="released-status-reason" style="font-size:12px;color:var(--text-3);line-height:1.6;margin-bottom:12px;"></div>
         <div id="released-status-list"></div>
       </div>
-      <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;">
-        <button class="btn btn-ghost" id="released-status-cancel" onclick="cancelReleasedStatuses()">ยกเลิก</button>
-        <button class="btn btn-primary" onclick="saveReleasedStatuses()">บันทึกสถานะ</button>
+      <!-- ป้ายปุ่มต้องบอกผลลัพธ์ให้ชัด — เดิมเขียนแค่ "ยกเลิก" ซึ่งอ่านได้ว่า "ข้ามคำถามนี้"
+           แต่ของจริงคือย้อนการเปลี่ยนชุดที่เพิ่งกดไปทั้งหมด แล้วหน้าต่างเลือกชุดก็เด้งกลับมาอีก -->
+      <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+        <button class="btn btn-ghost" id="released-status-cancel" onclick="cancelReleasedStatuses()"
+          style="color:var(--red);border-color:var(--red);"
+          title="ย้อนกลับไปเหมือนก่อนกด — ชุดเดิมกลับมาเป็นกำลังใช้งานที่เครื่องนี้">↩ ยกเลิกการเปลี่ยนชุด</button>
+        <button class="btn btn-primary" onclick="saveReleasedStatuses()"
+          title="บันทึกสถานะของชุดที่ถูกปลด แล้วยืนยันการเปลี่ยนชุด">✓ บันทึก แล้วเปลี่ยนชุด</button>
       </div>
     </div>`;
     document.body.appendChild(ov);
   }
   document.getElementById('released-status-reason').innerHTML = escapeHtmlAttr(reasonText || '')
     + '<br>เลือกสถานะต่อไปของชุดเหล่านี้ก่อน จะได้ไม่ค้างเป็น "พร้อมใช้งาน" ทั้งที่ยังไม่ได้แต่ง/ขัด'
-    + '<br><b>กด "ยกเลิก" = ไม่เปลี่ยนอะไรเลย</b> ชุดเดิมกลับมาเป็นกำลังใช้งานที่เครื่องเดิมเหมือนก่อนกด';
+    + '<br><b style="color:var(--green);">กด "บันทึก แล้วเปลี่ยนชุด" เพื่อให้การเปลี่ยนชุดมีผลจริง</b>'
+    + '<br><b style="color:var(--red);">กด "ยกเลิกการเปลี่ยนชุด" = ย้อนทั้งหมด</b> ชุดที่เพิ่งเลือกจะไม่ถูกตั้ง '
+    + 'และชุดเดิมกลับมาเป็นกำลังใช้งานที่เครื่องเดิม (หน้าต่างเลือกชุดจะเด้งถามอีก)';
   ensureRollLifeFg(); // ต้องมีน้ำหนักผลิตมาแสดงประกอบการตัดสินใจ (โหลดเสร็จแล้ววาดรายการใหม่ให้)
   renderReleasedStatusList();
   ov.classList.add('open');
@@ -3993,6 +4003,7 @@ function cancelReleasedStatuses() {
   if (releasedStatusRevert) {
     rollColorStatus = JSON.parse(releasedStatusRevert.status);
     rollColorActiveMachine = JSON.parse(releasedStatusRevert.machine);
+    if (releasedStatusRevert.queue) rollSizeChangeQueue = JSON.parse(releasedStatusRevert.queue);
     persistState();
   }
   releasedStatusPending = [];
