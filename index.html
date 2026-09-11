@@ -6298,37 +6298,48 @@ function planDayCapsFor(dateIso, workType) {
 // ทำไมเติมไม่ได้ — บอกเหตุผลจริงของวันนั้น ไม่ใช่ข้อความรวมๆ ให้ไปเดาเอง
 // ("งานวันถัดไปก็มี ทำไมไม่ดึงมา" ส่วนใหญ่เป็นเพราะเวลาว่างไม่ถึง 1 ชม.
 //  หรือเป็นงานคนละชุด Roll ซึ่งงาน CNC ไม่สลับชุดกลางวันให้เอง)
+// ต้องแยกดูทีละกะ เพราะ "ชุด Roll ที่อยู่บนเครื่อง" ของกะเช้ากับกะดึกเป็นคนละตัวได้
+// (เดิมดูของ shifts[0] = กะเช้าตัวเดียว แล้วเอาไปอธิบายช่องว่างที่จริง ๆ อยู่ในกะดึก
+//  เคสจริง: กะเช้าจบด้วยชุด GI 50x25 ซึ่งยังมีงานเหลือ แต่กะดึกจบด้วยชุด GS 47x23 ที่ไม่มีงานเหลือแล้ว
+//  ข้อความเลยบอกว่า "เวลาไม่พอสำหรับชิ้นถัดไป" ทั้งที่ว่างตั้ง 380 นาที — คนละสาเหตุกับที่บล็อกอยู่จริง)
 function planFillBlockReason(dateIso, workType, caps) {
   const shifts = planDayEndShiftsFor(workType);
-  const lines = ['ไม่มีงานที่ดึงมาเติมได้ในเวลาที่เหลือของวันนี้'];
-  const freeMax = shifts.reduce((m, sh) => {
-    const tail = planDayFreeTail(workType, dateIso, sh, caps);
-    return Math.max(m, tail ? tail.freeMinutes : 0);
-  }, 0);
-  if (freeMax < PLAN_FILL_MIN_FREE) {
-    lines.push(freeMax > 0
-      ? 'เวลาว่างท้ายวันเหลือ ' + freeMax + ' นาที (น้อยกว่า ' + PLAN_FILL_MIN_FREE + ' นาที จึงไม่ดึงมาเติม)'
-      : 'วันนี้ไม่มีเวลาว่างท้ายวันเหลือแล้ว — เพิ่มเวลา OT ก่อนถ้าต้องการทำต่อ');
-    return lines.join('\n');
-  }
+  const head = 'ไม่มีงานที่ดึงมาเติมได้ในเวลาที่เหลือของวันนี้';
+  const sameSetOnly = !!(PLAN_WORKTYPE_META[workType] || {}).fillSameSetOnly;
   const later = planTasks.filter(t => t.workType === workType && !planTaskIsSettled(t)
     && t.endTime && t.endTime !== '—' && taskDisplayDate(t) > dateIso)
     .sort((a, b) => (taskDisplayDate(a) + a.startTime).localeCompare(taskDisplayDate(b) + b.startTime));
-  if (!later.length) {
-    lines.push('มีเวลาว่าง ' + freeMax + ' นาที แต่ไม่มีงานที่ยังไม่ได้เริ่มอยู่หลังจากวันนี้');
-    return lines.join('\n');
+
+  const parts = [];
+  let freeMax = 0, blockedBySet = false;
+  shifts.forEach(sh => {
+    const tail = planDayFreeTail(workType, dateIso, sh, caps);
+    if (!tail) return;
+    freeMax = Math.max(freeMax, tail.freeMinutes);
+    if (tail.freeMinutes < PLAN_FILL_MIN_FREE) return;
+    const head2 = (shifts.length > 1 ? SHIFTS[sh].label + ' ' : '')
+      + 'ว่าง ' + tail.time + '–' + tail.untilTime + ' (' + tail.freeMinutes + ' นาที)';
+    if (!later.length) { parts.push(head2 + ' แต่ไม่มีงานที่ยังไม่ได้เริ่มอยู่หลังจากวันนี้'); return; }
+    // เกณฑ์เดียวกับ planPullForwardPlan เป๊ะ ๆ ไม่งั้นเหตุผลที่บอกจะไม่ตรงกับตัวที่บล็อกจริง
+    const lastHere = planLastTaskOnDay(workType, dateIso, sh)
+      || (planWorkTypeAllowsShift(workType, 'both') ? planLastTaskOnDay(workType, dateIso, 'both') : null);
+    const sameSetLeft = lastHere && later.some(t => t.rollSet === lastHere.rollSet && t.rollColor === lastHere.rollColor);
+    if (sameSetOnly && lastHere && !sameSetLeft) {
+      blockedBySet = true;
+      parts.push(head2 + ' แต่งานที่เหลือเป็นชุด Roll อื่น — ช่วงนี้ตั้งชุด ' + lastHere.rollSet
+        + (lastHere.rollColor ? ' · ' + rollColorLabelFor(lastHere.rollSet, lastHere.rollColor) : '') + ' อยู่บนเครื่อง');
+      return;
+    }
+    parts.push(head2 + ' แต่เวลาไม่พอสำหรับชิ้นถัดไปของงาน ' + later[0].rollSet);
+  });
+
+  if (!parts.length) {
+    return head + '\n' + (freeMax > 0
+      ? 'เวลาว่างท้ายวันเหลือ ' + freeMax + ' นาที (น้อยกว่า ' + PLAN_FILL_MIN_FREE + ' นาที จึงไม่ดึงมาเติม)'
+      : 'วันนี้ไม่มีเวลาว่างท้ายวันเหลือแล้ว — เพิ่มเวลา OT ก่อนถ้าต้องการทำต่อ');
   }
-  const lastHere = planLastTaskOnDay(workType, dateIso, shifts[0])
-    || (planWorkTypeAllowsShift(workType, 'both') ? planLastTaskOnDay(workType, dateIso, 'both') : null);
-  const sameSetOnly = !!(PLAN_WORKTYPE_META[workType] || {}).fillSameSetOnly;
-  const sameSetLeft = lastHere && later.some(t => t.rollSet === lastHere.rollSet && t.rollColor === lastHere.rollColor);
-  if (sameSetOnly && lastHere && !sameSetLeft) {
-    lines.push('มีเวลาว่าง ' + freeMax + ' นาที และมีงานวันถัดไปอยู่ (' + later[0].rollSet + ')');
-    lines.push('แต่เป็นชุด Roll อื่น — วันนี้ตั้งชุด ' + lastHere.rollSet + ' อยู่บนเครื่อง');
-    lines.push('งานแต่ง Roll (CNC) ไม่สลับชุดกลางวันให้เอง ถ้าต้องการให้ย้ายมาจริง ให้ลากงานนั้นมา หรือแก้วันของงานนั้นเอง');
-    return lines.join('\n');
-  }
-  lines.push('มีเวลาว่าง ' + freeMax + ' นาที แต่ไม่พอสำหรับชิ้นถัดไปของงาน ' + later[0].rollSet);
+  const lines = [head, ...parts];
+  if (blockedBySet) lines.push('งานแต่ง Roll (CNC) ไม่สลับชุดกลางวันให้เอง ถ้าต้องการให้ย้ายมาจริง ให้ลากงานนั้นมา หรือแก้วันของงานนั้นเอง');
   return lines.join('\n');
 }
 
