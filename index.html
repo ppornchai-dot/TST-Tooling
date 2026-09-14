@@ -2604,6 +2604,40 @@ function inUseDayMachineInfo(iso, setName, colorKey, machineMap, running) {
 // (ดึงวันต่อวันตาม loadFgRunningOn เดิม ไม่รวบเป็นช่วงเดียว เพราะ API ส่งวันข้างเคียงติดมาด้วยเป็นบางครั้ง)
 const INUSE_CAL_FETCH_CHUNK = 8;
 let inUseCalFetching = false;
+// บันทึกชุดสีที่เดินให้อัตโนมัติ สำหรับวันที่ไม่มีการเปลี่ยน Roll — ยกค่าของวันก่อนหน้ามาระบุไว้เลย
+// เขียนเป็นค่าที่ "ระบุจริง" (rollRunColor) ไม่ใช่แค่แสดงผล ทุกหน้าที่อ่านค่านี้จึงเห็นตรงกัน
+// และกลายเป็นจุดตั้งต้นของวันถัดไปด้วย ไม่ต้องไล่ยกทอดยาวจากวันเดียวทุกครั้ง
+//
+// เงื่อนไขครบทุกข้อเท่านั้นจึงเขียน:
+//   1) วันนั้นมียอดผลิตจริงของชุดนั้น (ไม่ใช่เดาว่าน่าจะเดิน)
+//   2) ยังไม่เคยระบุชุดสีของชุดนั้นในวันนั้น (ที่ระบุไว้เองชนะเสมอ ไม่เขียนทับ)
+//   3) วันก่อนหน้าเคยระบุไว้ และไม่มีการเปลี่ยน Roll คั่น (ดู rollChangedBetween)
+//   4) ไม่เกินวันนี้ และไม่ย้อนไปก่อนวันที่บันทึกไว้ล่าสุด — เปิดดูเดือนเก่าแล้วไม่ไปเขียนประวัติเอง
+function autoRecordCarriedRunColors(isoList) {
+  if (!canEditPlan()) return 0;   // คนที่แก้แผนไม่ได้ ไม่ควรเขียนข้อมูลกลาง
+  const today = dailyTodayIso();
+  const recorded = Object.keys(rollRunColor || {}).filter(d => Object.keys(rollRunColor[d] || {}).length).sort();
+  const lastRecorded = recorded[recorded.length - 1];
+  if (!lastRecorded) return 0;    // ยังไม่เคยบันทึกอะไรเลย ไม่มีอะไรให้ยกมา
+  let changed = 0;
+  // ไล่จากวันเก่าไปใหม่ วันที่เพิ่งเขียนจะกลายเป็นต้นทางของวันถัดไปได้เลย
+  [...new Set(isoList || [])].sort().forEach(iso => {
+    if (!iso || iso > today || iso < lastRecorded) return;
+    if (!fgRunningCache[iso]) return;             // ยังไม่มียอดผลิตของวันนั้น ไม่รู้ว่าเดินอะไรอยู่
+    inUseRunningSetsSafe(iso).forEach((info, set) => {
+      if ((rollRunColor[iso] || {})[set]) return;
+      if (!toolingData.roll.some(r => r.set === set)) return;
+      const prev = prevDayRunColorFor(iso, set);
+      if (!prev || !prev.key) return;
+      if (rollChangedBetween(set, prev.from, iso)) return;
+      (rollRunColor[iso] = rollRunColor[iso] || {})[set] = prev.key;
+      changed++;
+    });
+  });
+  if (changed) persistState();
+  return changed;
+}
+
 async function inUseCalPrefetchMachines(isoList) {
   if (inUseCalFetching) return;
   let pending;
@@ -2617,6 +2651,7 @@ async function inUseCalPrefetchMachines(isoList) {
     }
   } catch (e) { /* loadFgRunningOn เก็บ error ลงแคชเองแล้ว ที่นี่แค่ไม่ให้ค้างสถานะกำลังดึง */ }
   inUseCalFetching = false;
+  autoRecordCarriedRunColors(isoList);   // ยอดผลิตมาครบแล้ว จึงรู้ว่าวันไหนเดินชุดไหนจริง
   renderInUseCalendar();
 }
 
@@ -3636,6 +3671,8 @@ async function refreshSizeChangeWatch(force) {
   const today = toISODate(new Date());
   if (force) delete fgRunningCache[today];
   await loadFgRunningOn(today);
+  // วันนี้เดินชุดเดิมอยู่และไม่มีการเปลี่ยน Roll → ระบุชุดสีให้เลย ไม่ต้องรอให้เปิดหน้าปฏิทิน
+  autoRecordCarriedRunColors([today]);
   syncRollSizeChangeQueue(today);
   renderDashboardSizeChangeAlert();
   // แถบบนหน้าน้ำหนักผลิตอ่านจากแคชก้อนเดียวกัน — ดึงใหม่แล้วต้องวาดใหม่ ไม่งั้นค้างของเก่า
