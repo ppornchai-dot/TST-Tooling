@@ -2491,22 +2491,52 @@ function inUseRunningSetsSafe(iso) {
   try { return runningRollSetsOn(iso); } catch (e) { return new Map(); }
 }
 
+// มี "รายการเปลี่ยน Roll" ของหมวดเดียวกันบนเครื่องเดียวกันแทรกเข้ามาระหว่างสองวันนี้ไหม
+// ไม่มี = Roll ชุดเดิมยังอยู่บนเครื่อง ค่าที่ยกมาจากวันก่อนจึงเป็นค่าที่แน่นอน ไม่ใช่การเดา
+// ยึดรายการเปลี่ยน Roll ในหน้า Production Block เป็นหลักฐาน เพราะนั่นคือที่ที่บันทึกการเปลี่ยนจริง
+function rollChangedBetween(setName, fromIso, toIso) {
+  const cat = (parseSizeRollName(setName).category || '').toLowerCase();
+  if (!cat || !fromIso || !toIso) return true;   // ไม่รู้หมวด/ไม่มีวันอ้างอิง — ไม่ฟันธง ถือว่าเปลี่ยน
+  const machines = rollSetMachines[setName] || [];
+  // 1) รายการเปลี่ยน Roll ที่บันทึกไว้ในหน้า Production Block (หลักฐานตรงที่สุด ถ้ามีการกรอกไว้)
+  const byBlock = (prodBlockEntries || []).some(e => {
+    if (machines.length && !machines.includes(e.machine)) return false;
+    if (!(e.startDate > fromIso && e.startDate <= toIso)) return false;
+    const ref = e[cat];
+    return !!(ref && ref.set && ref.set !== setName);   // ขึ้นชุดอื่นในหมวดเดียวกัน = เปลี่ยน Roll แล้ว
+  });
+  if (byBlock) return true;
+  // 2) ชุดนี้ถูกแต่งแล้วกดเริ่มนับรอบใหม่ในช่วงนั้น = ถอด Roll ลงไปแต่งแล้วใส่กลับ ถือว่าเปลี่ยน
+  //    จำเป็นต้องมีข้อนี้ เพราะรายการเปลี่ยน Roll ในหน้า Production Block ไม่ได้ถูกกรอกไว้ทุกครั้ง
+  //    ถ้าดูแต่ข้อ 1 ตัวตรวจจะตอบว่า "ไม่เปลี่ยน" เสมอ แล้วยกชุดสีเดิมมาเรื่อยๆ โดยไม่มีอะไรมาหยุด
+  return Object.keys(rollDressReset || {}).some(k => {
+    if (k.slice(0, k.lastIndexOf('|')) !== setName) return false;
+    const f = (rollDressReset[k] || {}).from;
+    return !!f && f > fromIso && f <= toIso;
+  });
+}
+
 function inUseDayRunGroups(iso, running) {
   const byDate = rollRunColor[iso] || {};
   const groups = new Map();
-  const add = (set, colorKey, inferred) => {
+  const add = (set, colorKey, inferred, carried) => {
     if (!colorKey) return;
     const label = rollSetSizeGroupLabel(set);
     if (!groups.has(label)) groups.set(label, []);
     const list = groups.get(label);
     if (list.some(x => x.set === set)) return;   // ที่บันทึกไว้ชนะค่าที่อนุมาน
-    list.push({ set, cat: parseSizeRollName(set).category || '—', colorKey, inferred });
+    list.push({ set, cat: parseSizeRollName(set).category || '—', colorKey, inferred, carried: carried || null });
   };
   Object.keys(byDate).forEach(set => add(set, byDate[set], false));
   (running || inUseRunningSetsSafe(iso)).forEach((info, set) => {
     if (byDate[set]) return;
     const used = [...new Set(toolingData.roll.filter(r => r.set === set).map(r => r.color || NO_COLOR_KEY))];
     if (!used.length) return;
+    // ชุด Roll เดิมที่ยังอยู่บนเครื่อง: ยกชุดสีของวันก่อนหน้ามาใช้เลย ไม่ต้องให้ยืนยันซ้ำทุกวัน
+    // ใช้ได้เมื่อไม่มีรายการเปลี่ยน Roll คั่นระหว่างวันนั้นกับวันนี้เท่านั้น
+    // (บันทึกของวันก่อนแม่นกว่าสถานะ "กำลังใช้งาน" ในทะเบียน ซึ่งเปลี่ยนไปตามการปลด/ตั้งชุดหลังแต่งเสร็จ)
+    const prev = prevDayRunColorFor(iso, set);
+    if (prev && prev.key && !rollChangedBetween(set, prev.from, iso)) { add(set, prev.key, false, prev.from); return; }
     const res = resolveRunColorForWeight(iso, set, used);
     if (res.key) add(set, res.key, true);
   });
@@ -3028,6 +3058,10 @@ function renderInUseCalendar() {
       });
       const machine = machines.sort().join('/') || null;
       const detail = ordered.map(x => x.cat + ' ' + rollColorLabelFor(x.set, x.colorKey) + (x.inferred ? '*' : '')).join(' · ');
+      // ยกชุดสีมาจากวันก่อนเพราะไม่มีรายการเปลี่ยน Roll คั่น — บอกไว้ในทูลทิป ไม่ให้เป็นค่าที่มาแบบเงียบๆ
+      const carriedFrom = [...new Set(ordered.map(x => x.carried).filter(Boolean))].sort().pop();
+      const carriedNote = carriedFrom
+        ? ' · ยกชุดสีมาจาก ' + fmtDateThai(parseISODate(carriedFrom)) + ' (ไม่มีรายการเปลี่ยน Roll คั่น)' : '';
       // * = ยังไม่ได้บันทึกชุดสีของวันนั้น ระบบอนุมานให้จากยอดผลิต — เครื่องหมายเดียวกับตารางน้ำหนัก
       const anyInferred = ordered.some(x => x.inferred);
       // ป้ายหมวด F/S/T พื้นเป็นสีชุด Roll ที่เดินของหมวดนั้น — เห็นทั้งหมวดและสีในบรรทัดเดียว
@@ -3054,7 +3088,7 @@ function renderInUseCalendar() {
         : -1;
       const showGuessMark = isGuess && guessIdx >= 0;
       const guessAttr = guessIdx >= 0 ? ` onclick="event.stopPropagation();confirmInUseCalRow('${guessIdx}')"` : '';
-      return `<div${guessAttr} title="${escapeHtmlAttr(sizeLabel + machineNote + ' — ' + detail +
+      return `<div${guessAttr} title="${escapeHtmlAttr(sizeLabel + machineNote + ' — ' + detail + carriedNote +
           (tonText ? ' · ยอดผลิตวันนั้น ' + tonText : '') +
           (noFgMachine ? ' (ยอดนี้ไม่ได้ระบุเครื่องในระบบ Production — เครื่องที่เห็นเป็นค่าที่ระบบเดา)' : '') +
           (showGuessMark ? ' · ระบบเดาให้ — กดแถวนี้เพื่อยืนยันว่าเดินชุดนี้จริง'
