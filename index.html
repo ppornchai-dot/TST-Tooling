@@ -3159,6 +3159,17 @@ function lastRunDateForRollColor(setName, colorKey) {
   return latest;
 }
 
+// วันทำงานที่เป็นเจ้าของ "เวลาที่งานจบ" — กะดึก/OT ที่เลยเที่ยงคืนยังเป็นงานของวันก่อนหน้า
+// วันหนึ่งของโรงงานจบตอนกะเช้าวันถัดไปเริ่ม (08:00) ไม่ใช่ตอนเที่ยงคืน
+// (งานกะดึกเสาร์ 20:00–01:40 เก็บ endDate เป็นวันอาทิตย์ตามปฏิทิน ถ้าเอาไปแสดงตรงๆ
+//  จะขึ้นว่า "แต่งเสร็จวันอาทิตย์" ทั้งที่วันอาทิตย์ไม่มีใครทำงาน — งานจริงจบคืนวันเสาร์)
+function planFinishWorkingDate(endDateIso, endTimeHHMM) {
+  if (!endDateIso) return endDateIso;
+  const min = hhmmToMinOfDay(endTimeHHMM);
+  // ก่อน 08:00 = ยังเป็นคืนของวันก่อนหน้า · ตั้งแต่ 08:00 ไปแล้ว = งานของวันนั้นจริงๆ
+  return (min != null && min < 8 * 60) ? addDaysIso(endDateIso, -1) : endDateIso;
+}
+
 function plannedFinishForRollColor(setName, colorKey, workType) {
   const want = colorKey || NO_COLOR_KEY;
   // ตัดรอบ: งานที่จบไปก่อนวันที่ชุดนี้ถูกใช้งานล่าสุด เป็นของรอบก่อน ไม่นับเป็นสถานะของรอบปัจจุบัน
@@ -3172,7 +3183,8 @@ function plannedFinishForRollColor(setName, colorKey, workType) {
     if (sinceRun && endDate < sinceRun) return;
     found = true;
     const key = endDate + ' ' + (t.endTime || '');
-    if (!planned || key > planned.key) planned = { key, date: endDate };
+    // เรียงหางานที่จบทีหลังสุดด้วยเวลาปฏิทินจริง แต่เวลาเอาไปแสดงใช้ "วันทำงาน" ที่เป็นเจ้าของ
+    if (!planned || key > planned.key) planned = { key, date: planFinishWorkingDate(endDate, t.endTime) };
     if (planTaskProgressState(t) === 'done') {
       const d = taskDisplayDate(t); // วันที่ความคืบหน้าถูกบันทึกไว้ = วันที่ทำจริง
       if (!actual || d > actual) actual = d;
