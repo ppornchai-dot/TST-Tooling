@@ -5276,6 +5276,8 @@ let dailyChecklistSeq = 0;
 const DAILY_STATUS_META = {
   done:        {label:'สำเร็จ',      chip:'chip-green'},
   in_progress: {label:'กำลังทำ',     chip:'chip-blue'},
+  // งานแทรกพักงานได้เหมือนงานตามแผนรายชิ้น (ดู pauseDailyTask) — ใช้ชิปสีเดียวกับพักงานรายชิ้น
+  paused:      {label:'พักงาน',      chip:'chip-amber'},
   pending:     {label:'รอดำเนินการ', chip:'chip-amber'},
   overdue:     {label:'เลยเวลา',     chip:'chip-red'},
 };
@@ -14826,6 +14828,41 @@ function finishDailyTask(idx, workerId) {
   });
 }
 
+// พักงานแทรก — ต้องระบุเหตุผลเสมอ เก็บลง dailyPauseLog ก้อนเดียวกับการพักงานรายชิ้น
+// (rollIdx = null เพราะงานแทรกไม่มีชิ้นย่อย) เวลาที่พักเก็บไว้ในเวลาจริงของงานนั้น
+async function pauseDailyTask(idx, workerId) {
+  if (!canActOnDailyItem(workerId)) return;
+  const reason = await voicePrompt('เหตุผลที่พักงานนี้ (จำเป็นต้องระบุ):', 'พิมพ์ หรือกด 🎤 แล้วพูด');
+  if (reason === null) return;                         // กดยกเลิก — ไม่พักงาน
+  if (!reason.trim()) { alert('กรุณาระบุเหตุผลที่พักงาน'); return; }
+  const pausedAt = nowHHMM();                          // จับเวลาครั้งเดียว ทำซ้ำตอนเขียนชนแล้วได้ค่าเดิม
+  withCloudRetry(() => {
+    const dayMap = dailyStatusByDate[dailyStatusDateFor(idx)] || (dailyStatusByDate[dailyStatusDateFor(idx)] = {});
+    dayMap[idx] = 'paused';
+    const timesMap = dailyActualTimes[dailyStatusDateFor(idx)] || (dailyActualTimes[dailyStatusDateFor(idx)] = {});
+    timesMap[idx] = { ...(timesMap[idx] || {}), pauseReason: reason.trim(), pausedAt };
+    dailyPauseLogSeq++;
+    dailyPauseLog.push({
+      id: 'PL-' + String(dailyPauseLogSeq).padStart(4, '0'),
+      taskId: idx, rollIdx: null, date: dailyViewDate, reason: reason.trim(), pausedAt,
+    });
+    persistState();
+    renderDailyTasks();
+  });
+}
+// กดทำต่อหลังพักงาน — กลับไป "กำลังทำ" เหตุผลที่พักครั้งนั้นยังอยู่ใน dailyPauseLog เป็นประวัติ
+function resumeDailyTask(idx, workerId) {
+  if (!canActOnDailyItem(workerId)) return;
+  withCloudRetry(() => {
+    const dayMap = dailyStatusByDate[dailyStatusDateFor(idx)] || (dailyStatusByDate[dailyStatusDateFor(idx)] = {});
+    dayMap[idx] = 'in_progress';
+    const timesMap = dailyActualTimes[dailyStatusDateFor(idx)] || (dailyActualTimes[dailyStatusDateFor(idx)] = {});
+    timesMap[idx] = { ...(timesMap[idx] || {}), pauseReason: null, pausedAt: null };
+    persistState();
+    renderDailyTasks();
+  });
+}
+
 // ─── ช่าง CNC เข้าไปทำงานขัด Roll ───────────────────────────────────────────
 // วันที่งานแต่ง Roll ว่าง ช่าง CNC เข้ามาช่วยขัด Roll ได้ แต่บทบาทล็อกให้เห็นแต่งานประเภทของตัวเอง
 // จึงมองไม่เห็นงานขัดเลยและกดเริ่ม/จบงานไม่ได้ — ปุ่มนี้เปิดให้เห็นงานทั้งสองประเภท
@@ -15428,11 +15465,16 @@ function renderDailyTasks() {
       // งานแทรกกดเริ่ม/จบงานได้เหมือนงานตามแผน — สถานะกับเวลาจริงเก็บที่เดียวกัน
       // (startDailyTask/finishDailyTask ยึด id ของงาน ไม่ได้ผูกกับงานตามแผนเท่านั้น)
       // เสร็จแล้วเหลือแค่ปุ่มแก้ไข/ลบ — ยกเลิกสถานะได้จากช่องติ๊กหน้าแถวเหมือนเดิม
+      // กำลังทำ = จบงาน + พักงาน · พักอยู่ = ทำต่อ (ชุดปุ่มเดียวกับงานตามแผนรายชิ้น)
       const actBtn = status === 'pending'
         ? `<button class="btn btn-ghost btn-sm daily-act daily-act-start" ${blockReason ? `disabled title="${blockReason} — เริ่มงานนี้ไม่ได้"` : ''} onclick="startDailyTask('${item.key}','${item.workerId || ''}')">▶ ${DL().start}</button>`
         : (status === 'in_progress'
           ? `<button class="btn btn-ghost btn-sm daily-act daily-act-finish" style="color:var(--accent);" ${blockReason ? `disabled title="${blockReason} — จบงานนี้ไม่ได้"` : ''} onclick="finishDailyTask('${item.key}','${item.workerId || ''}')">■ ${DL().finish}</button>`
-          : '');
+            + `<button class="btn btn-ghost btn-sm daily-act daily-act-pause" ${blockReason ? `disabled title="${blockReason} — พักงานนี้ไม่ได้"` : ''} onclick="pauseDailyTask('${item.key}','${item.workerId || ''}')">⏸ ${DL().pause}</button>`
+          : (status === 'paused'
+            ? `<span class="chip chip-amber" title="${escapeHtmlAttr(actual.pauseReason ? 'เหตุผล: ' + actual.pauseReason + (actual.pausedAt ? ' (พักเมื่อ ' + actual.pausedAt + ')' : '') : 'พักงานอยู่')}">⏸ ${DL().paused}</span> `
+              + `<button class="btn btn-ghost btn-sm daily-act daily-act-resume" style="color:var(--accent);" ${blockReason ? `disabled title="${blockReason} — ทำต่อไม่ได้"` : ''} onclick="resumeDailyTask('${item.key}','${item.workerId || ''}')">▶ ${DL().resume}</button>`
+            : ''));
       actions = `<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">${actBtn}<button class="btn btn-ghost btn-sm" onclick="openDailyChecklistModal('edit','${item.key}')">แก้ไข</button><button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteDailyChecklistTask('${item.key}')">ลบ</button></div>`;
     } else if (item.expandable) {
       // งานที่มีหลาย Roll ให้กดเริ่ม/จบงานแยกทีละชิ้นในตารางย่อยด้านล่างแทน ไม่มีปุ่มรวมตรงนี้
@@ -15600,7 +15642,8 @@ function collectHistoryRecords() {
     // จึงเห็นได้แค่ในแท็บ "ทั้งหมด" และไม่มีเวลาเริ่ม/จบ/ชั่วโมงทำงานให้ดู
     dailyChecklistTasks.filter(t => !t.date || t.date === dateIso).forEach(t => {
       const st = dayMap[t.id];
-      if (st !== 'done' && st !== 'in_progress') return;
+      // งานที่พักอยู่ต้องขึ้นประวัติด้วย ไม่งั้นงานที่เริ่มแล้วพักไว้จะหายไปจากประวัติทั้งที่ทำไปแล้วบางส่วน
+      if (st !== 'done' && st !== 'in_progress' && st !== 'paused') return;
       const wt = t.workType === 'polish' ? 'polish' : 'cnc';
       const actual = (dailyActualTimes[dateIso] || {})[t.id] || {};
       const startAt = actual.startTime || null;
@@ -15614,8 +15657,10 @@ function collectHistoryRecords() {
         // งานแทรกไม่มีเวลาตามแผน จึงไม่มี Standard — เห็นเวลาที่ใช้จริงจากบรรทัด "ทำจริง"
         hours: null, minutes: null,
         startTime: startAt || t.time || null, endTime: endAt,
-        result: st === 'done' ? 'สำเร็จ' : 'กำลังทำ',
-        resultChip: st === 'done' ? 'chip-green' : 'chip-blue', resultNote: '',
+        result: st === 'done' ? 'สำเร็จ' : (st === 'paused' ? 'พักงาน' : 'กำลังทำ'),
+        resultChip: st === 'done' ? 'chip-green' : (st === 'paused' ? 'chip-amber' : 'chip-blue'),
+        // เหตุผลที่พักงานโชว์ในช่องผลเหมือนงานตามแผนรายชิ้น จะได้รู้ว่าค้างเพราะอะไร
+        resultNote: st === 'paused' ? (actual.pauseReason || '') : '',
         // จัดกลุ่มตามกะจากเวลาที่กดเริ่มจริง เหมือนงานตามแผน — ไม่มีเวลาเริ่มจึงไม่เดากะ
         shiftKey: sk,
         sortKey: dateIso + ' ' + historyShiftRank(sk) + ' ' + String(historyDayOrderMin(startAt) + 1).padStart(4, '0') + ' ' + String(t.id),
