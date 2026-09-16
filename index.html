@@ -6980,7 +6980,12 @@ function renderPlanMonth() {
           <strong style="font-size:12px;flex-shrink:0;">${day}</strong>
           <span style="display:inline-flex;align-items:center;gap:4px;flex-shrink:0;margin-left:auto;">
             ${planDayCellSettingsHtml(iso, s.key, s.color, s.bg, true)}
-            ${editable ? `<button title="${escapeHtmlAttr('เพิ่มงาน' + s.label)}" onclick="${jsCallAttr('addPlanTaskOnDate', iso, s.key)}" style="border:none;background:none;color:${s.color};cursor:pointer;font-size:13px;line-height:1;padding:0;font-weight:800;flex-shrink:0;">+</button>` : ''}
+            <!-- ปุ่ม + ใช้หน้าตาเดียวกับปุ่ม ⏱/👤 (ดู chip() ใน planDayCellSettingsHtml)
+                 เดิมเป็นตัว + เปล่าๆ ไม่มีกรอบ อยู่ติดกันแล้วดูไม่เป็นปุ่มเหมือนอีกสองอัน -->
+            ${editable ? `<button class="btn btn-ghost btn-sm" title="${escapeHtmlAttr('เพิ่มงาน' + s.label)}"
+              onclick="${jsCallAttr('addPlanTaskOnDate', iso, s.key)}"
+              style="font-size:11px;font-weight:700;padding:2px 6px;border-radius:6px;line-height:1.35;white-space:nowrap;
+                     color:${s.color};border-color:${s.color};background:${s.bg};flex-shrink:0;">+</button>` : ''}
           </span>
         </div>
         ${offLabel ? `<div style="flex:1;display:flex;align-items:center;justify-content:center;min-height:42px;padding:2px 4px;
