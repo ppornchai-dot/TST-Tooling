@@ -6134,14 +6134,14 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
             <button class="btn btn-ghost btn-sm daily-act daily-act-pause" ${lockReason ? `disabled title="${lockReason} — พักงานนี้ไม่ได้"` : ''} onclick="pauseDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">⏸ ${DL().pause}</button>
           </div>`;
         } else {
-          // ชิ้นเดียวกันที่ทำต่อข้ามกะ (ถูกตัดไปอยู่คนละใบงาน) — ส่วนหลังต้องไม่มีปุ่ม "เริ่มงาน" อีกปุ่ม
-          // กะแรกกดเริ่มงานปุ่มเดียว พอหมดกะกดพักงาน กะถัดไปมากด "ทำต่อ" ที่ส่วนนี้
+          // ชิ้นเดียวกันที่ทำต่อข้ามกะ (ถูกตัดไปอยู่คนละใบงาน) — 1 ชิ้นมีปุ่ม "เริ่มงาน" ได้ปุ่มเดียว
+          // ปุ่มเริ่มงานอยู่ที่ส่วนแรกเท่านั้น ส่วนต่อๆ ไปเป็น "ทำต่อ" เสมอ ไม่ว่าส่วนแรกจะถูกกดหรือยัง
+          // (ส่วนแรกที่ไม่ได้ถูกกดเลยจะไม่ค้างเป็นงานให้ยกไปวันถัดไป เพราะตัวหางานค้าง
+          //  ถือว่าชิ้นนั้นทำแล้วถ้าจบงานในใบอื่นตั้งแต่วันนั้นเป็นต้นมา — ดู donePieceDatesByRoll)
           const prevPart = prevPieceTaskFor(t.__origin || t, rollIdx);
-          const prevStatus = prevPart
-            ? (pieceEntryFor(dailyStatusDateFor(prevPart.id), prevPart.id, rollIdx).status || 'pending') : 'pending';
-          inner = (prevPart && prevStatus !== 'pending')
+          inner = prevPart
             ? `<button class="btn btn-ghost btn-sm daily-act daily-act-resume" style="color:var(--accent);"
-                 title="${escapeHtmlAttr('ชิ้นนี้ทำค้างมาจากงานก่อนหน้า (' + prevPart.startTime + '–' + prevPart.endTime + ') — กดเพื่อทำต่อ')}"
+                 title="${escapeHtmlAttr('ชิ้นนี้ทำต่อจากงานก่อนหน้า (' + prevPart.startTime + '–' + prevPart.endTime + ') — กดเพื่อทำต่อ')}"
                  ${lockReason ? `disabled title="${lockReason} — ทำต่อไม่ได้"` : ''}
                  onclick="continueDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}','${prevPart.id}')">▶ ${DL().resume}</button>`
             : `<button class="btn btn-ghost btn-sm daily-act daily-act-start" ${lockReason ? `disabled title="${lockReason} — เริ่มงานนี้ไม่ได้"` : ''} onclick="startDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ ${DL().start}</button>`;
