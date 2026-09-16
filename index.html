@@ -6471,11 +6471,29 @@ function planFillBlockReason(dateIso, workType, caps) {
 
 // เติมเวลาว่างของวันนั้นทุกกะในครั้งเดียว — ใช้จากปุ่ม ⤵ ในช่องของวัน (ปฏิทินรายสัปดาห์/รายเดือน)
 // ช่องของวันไม่ได้แยกกะ จึงไล่เติมทุกกะของประเภทงานนั้นตามลำดับ (เช้าก่อน แล้วดึก)
+// เติมด้วยงานชุดเดิมซ้ำจนไม่มีอะไรเติมได้อีก
+// ต้องวนซ้ำ เพราะการเติมกะหนึ่งทำให้งานถูกยกมาข้างหน้า แล้วเปิดช่องว่างใหม่ที่ท้ายอีกกะ
+// (เคสจริง: เติมกะเช้าด้วยงานของกะดึกวันเดียวกัน กะดึกก็ว่างลง ต้องดึงของวันถัดไปมาเติมต่อ)
+// ถ้าเติมรอบเดียวแล้วหยุด จะกลายเป็นย้ายช่องว่างไปไว้ท้ายวันแทนที่จะเต็มทั้งวัน
+function planFillDaySameSetLoop(dateIso, workType, sink) {
+  let guard = 0, total = 0;
+  while (guard++ < 20) {
+    const caps = planDayCapsFor(dateIso, workType);
+    let moved = 0;
+    planDayEndShiftsFor(workType).forEach(sh => {
+      pullWorkIntoFreeTail(workType, dateIso, sh, caps, true, PLAN_FILL_MIN_FREE)
+        .forEach(mv => { sink.push(mv); moved++; total++; });
+    });
+    if (!moved) break;
+  }
+  return total;
+}
+
 // ไม่มีงานชุดเดิมเหลือให้เติมแล้ว แต่มีงานชุดอื่นที่ลงช่องว่างได้ — ถามก่อนว่าจะเปลี่ยนชุด Roll บนเครื่องไหม
 // ไม่ทำให้เองเงียบๆ เพราะเปลี่ยนชุด = ถอด/ใส่ Roll บนเครื่องจริง ต้องเป็นการตัดสินใจของคน
 // (การเติมอัตโนมัติตอนโหลดข้อมูล/ตั้งเวลาเลิกงาน ไม่ผ่านทางนี้ จึงยังไม่สลับชุดให้เองเหมือนเดิม)
 // คืน true = จัดการเรียบร้อยแล้ว (ไม่ว่าจะย้ายหรือผู้ใช้ตอบไม่) ผู้เรียกไม่ต้องขึ้นข้อความ "เติมไม่ได้" ซ้ำ
-function planFillAskOtherSet(dateIso, workType, caps, onlyShift) {
+function planFillAskOtherSet(dateIso, workType, caps, onlyShift, sink) {
   if (!(PLAN_WORKTYPE_META[workType] || {}).fillSameSetOnly) return false;  // ประเภทที่สลับชุดได้อยู่แล้ว
   const shifts = onlyShift ? [onlyShift] : planDayEndShiftsFor(workType);
   for (let i = 0; i < shifts.length; i++) {
@@ -6498,10 +6516,19 @@ function planFillAskOtherSet(dateIso, workType, caps, onlyShift) {
     if (!confirm(msg)) return true;
     const moved = pullWorkIntoFreeTail(workType, dateIso, sh, caps, true, PLAN_FILL_MIN_FREE, true);
     if (!moved.length) { alert('ย้ายไม่สำเร็จ — ข้อมูลเปลี่ยนไประหว่างนั้น ลองกดใหม่อีกครั้ง'); return true; }
+    if (sink) moved.forEach(mv => sink.push(mv));
+    // ชุดที่เพิ่งย้ายมากลายเป็นชุดที่อยู่บนเครื่องแล้ว — เติมต่อด้วยงานชุดเดียวกันจนเต็มทั้งวัน
+    const extra = [];
+    planFillDaySameSetLoop(dateIso, workType, extra);
+    if (sink) extra.forEach(mv => sink.push(mv));
     persistState();
     renderCurrentPlanView();
     renderDailyTasks();
-    alert('ดึงงานมาเติม ' + moved.length + ' รายการ — ต้องเปลี่ยนชุด Roll บนเครื่องตามนี้:\n' + lines.join('\n'));
+    alert('ดึงงานมาเติม ' + (moved.length + extra.length) + ' รายการ — ต้องเปลี่ยนชุด Roll บนเครื่องตามนี้:\n'
+      + lines.join('\n')
+      + (extra.length ? '\n' + extra.map(mv => '• ' + mv.label
+          + (mv.whole === false ? ' — ดึงมา ' + mv.pieceCount + '/' + mv.ofPieces + ' ชิ้น' : ' — ทั้งงาน')
+          + ' จาก ' + fmtDateThai(parseISODate(mv.fromDate)) + ' → ' + mv.startTime + '–' + mv.endTime).join('\n') : ''));
     return true;
   }
   return false;
@@ -6509,15 +6536,12 @@ function planFillAskOtherSet(dateIso, workType, caps, onlyShift) {
 
 function planFillDayNow(dateIso, workType) {
   if (!canEditPlan()) return;
-  const caps = planDayCapsFor(dateIso, workType);
   const all = [];
-  planDayEndShiftsFor(workType).forEach(sh => {
-    pullWorkIntoFreeTail(workType, dateIso, sh, caps, true, PLAN_FILL_MIN_FREE).forEach(mv => all.push(mv));
-  });
+  planFillDaySameSetLoop(dateIso, workType, all);   // เติมด้วยชุดเดิมจนหมดก่อน
+  // ยังเหลือช่องว่างและชุดเดิมหมดแล้ว — เสนอเติมด้วยชุดอื่นโดยถามก่อน (ตัวนั้นรายงานผลเอง)
+  if (planFillAskOtherSet(dateIso, workType, planDayCapsFor(dateIso, workType), null, all)) return;
   if (!all.length) {
-    // ชุดเดิมหมดแล้ว — เสนอเติมด้วยชุดอื่นโดยถามก่อน ไม่ได้ก็ค่อยบอกเหตุผล
-    if (planFillAskOtherSet(dateIso, workType, caps)) return;
-    alert(planFillBlockReason(dateIso, workType, caps));
+    alert(planFillBlockReason(dateIso, workType, planDayCapsFor(dateIso, workType)));
     return;
   }
   persistState();
@@ -6535,10 +6559,17 @@ function planFillDayNow(dateIso, workType) {
 // หรือตั้ง OT ไว้ก่อนหน้านี้แล้ว) จะได้ไม่ต้องไปกดตั้งเวลาเลิกงานใหม่เพื่อให้ระบบเติมให้
 function planFillFreeTailNow(dateIso, workType, shiftKey) {
   if (!canEditPlan()) return;
-  const caps = planDayCapsFor(dateIso, workType);
-  const moves = pullWorkIntoFreeTail(workType, dateIso, shiftKey, caps, true, PLAN_FILL_MIN_FREE);
+  // เติมซ้ำจนไม่มีอะไรเติมได้อีก ด้วยเหตุผลเดียวกับ planFillDaySameSetLoop
+  const moves = [];
+  let guard = 0;
+  while (guard++ < 20) {
+    const got = pullWorkIntoFreeTail(workType, dateIso, shiftKey, planDayCapsFor(dateIso, workType), true, PLAN_FILL_MIN_FREE);
+    if (!got.length) break;
+    got.forEach(mv => moves.push(mv));
+  }
   if (!moves.length) {
-    if (planFillAskOtherSet(dateIso, workType, caps, shiftKey)) return;
+    const caps = planDayCapsFor(dateIso, workType);
+    if (planFillAskOtherSet(dateIso, workType, caps, shiftKey, moves)) return;
     alert(planFillBlockReason(dateIso, workType, caps));
     return;
   }
