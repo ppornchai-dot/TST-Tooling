@@ -9682,7 +9682,9 @@ function applyPlanPullForward(workType, shiftKey, moves) {
       cleanup.push({ day: taskDisplayDate(t), shift: t.shift });   // ปิดช่องว่างที่เกิดจากงานเดิมสั้นลง
       return;
     }
-    cleanup.push({ day: mv.fromDate, shift: t.shift });
+    // ใช้ "วันทำงาน" ของงานต้นทาง ไม่ใช่วันปฏิทิน (mv.fromDate) — งานกะดึกที่เริ่มหลังเที่ยงคืน
+    // มีวันปฏิทินเป็นวันถัดไป ถ้าใช้วันปฏิทินจะไปจัดลำดับผิดวันทำงาน (เกณฑ์เดียวกับสาขาที่แตกงาน)
+    cleanup.push({ day: taskDisplayDate(t), shift: t.shift });
     touched.add(t.id);
     t.date = mv.date;
     t.startTime = mv.startTime;
@@ -9694,7 +9696,11 @@ function applyPlanPullForward(workType, shiftKey, moves) {
   // ไม่ทิ้งช่องว่างไว้หัววัน — ใช้กะของงานต้นทาง ไม่ใช่กะของวันเป้าหมาย
   cleanup.forEach(({ day, shift }) => {
     const rest = planTasks
-      .filter(t => t.workType === workType && t.date === day && t.shift === shift
+      // เทียบด้วย "วันทำงาน" ไม่ใช่วันปฏิทิน — ไม่งั้นบล็อกที่ถูกวางไว้ในกะดึกของวันก่อน
+      // (เช่นงานของวันที่ 17 ที่เริ่ม 01:20 ของวันที่ 18) จะถูกนับเป็นงานของวันที่ 18
+      // แล้วถูกจัดเวลาใหม่ไปเริ่ม 20:00 = ถูกดึงออกจากวันที่ 17 ทั้งที่ไม่มีใครสั่ง
+      // (อาการที่เห็น: เติมกะดึกวันก่อนไว้แล้ว พอเปิดหน้าใหม่ช่องว่างนั้นกลับมาอีก)
+      .filter(t => t.workType === workType && taskDisplayDate(t) === day && t.shift === shift
         && !planTaskIsSettled(t) && !touched.has(t.id))
       .sort((a, b) => {
         const ak = a.startTime || '', bk = b.startTime || '';
