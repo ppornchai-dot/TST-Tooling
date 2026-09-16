@@ -363,8 +363,10 @@ table.daily-tech-view > tbody > tr > td:nth-child(9):not([colspan]){display:none
 table.daily-tech-view .daily-act{padding:10px 16px;font-size:14.5px;font-weight:800;border-radius:9px;line-height:1.2;white-space:nowrap;}
 /* ปุ่ม "จบงาน"/"ทำต่อ" มี style="color:var(--accent)" ติดมาในแท็ก ซึ่งชนะคลาสเสมอ
    ถ้าไม่ทับด้วย !important ตัวอักษรจะเป็นสีเดียวกับพื้นที่เพิ่งใส่ให้ = อ่านไม่เห็นเลย */
-table.daily-tech-view .daily-act-start,
-table.daily-tech-view .daily-act-resume{background:var(--green);border:1px solid var(--green);color:#fff !important;}
+table.daily-tech-view .daily-act-start{background:var(--green);border:1px solid var(--green);color:#fff !important;}
+/* "ทำต่อ" ต้องดูต่างจาก "เริ่มงาน" ชัดเจน — เขียว = เริ่มของใหม่ · ม่วง = รับช่วงต่อของที่ค้างอยู่
+   (สองปุ่มนี้อยู่ติดกันในตารางเดียวกันบ่อย ถ้าสีเดียวกันช่างกดผิดปุ่มได้ง่าย) */
+table.daily-tech-view .daily-act-resume{background:var(--purple);border:1px solid var(--purple);color:#fff !important;}
 table.daily-tech-view .daily-act-finish{background:var(--accent);border:1px solid var(--accent);color:#fff !important;}
 table.daily-tech-view .daily-act-pause{background:var(--amber-dim);border:1px solid var(--amber);color:var(--amber) !important;}
 table.daily-tech-view .daily-act:disabled{opacity:.45;}
@@ -6127,7 +6129,7 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
           const canEditOD = t.workType !== 'polish';
           inner = `<span class="chip chip-green">✓ เสร็จ</span>${canEditOD ? ` <button class="btn btn-ghost btn-sm" ${lockReason ? `disabled title="${lockReason} — แก้ขนาดไม่ได้"` : 'title="แก้ขนาด OD ที่บันทึกไปแล้ว"'} onclick="editDailyPieceSize('${t.id}','${rollIdx}','${t.workerId || ''}')">✎ แก้ไข OD</button>` : ''}`;
         } else if (pieceStatus === 'paused') {
-          inner = `<span class="chip chip-amber">⏸ ${DL().paused}</span> <button class="btn btn-ghost btn-sm daily-act daily-act-resume" style="color:var(--accent);" ${lockReason ? `disabled title="${lockReason} — ทำต่อไม่ได้"` : ''} onclick="resumeDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ ${DL().resume}</button>`;
+          inner = `<span class="chip chip-amber">⏸ ${DL().paused}</span> <button class="btn btn-ghost btn-sm daily-act daily-act-resume" style="color:var(--purple);" ${lockReason ? `disabled title="${lockReason} — ทำต่อไม่ได้"` : ''} onclick="resumeDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ ${DL().resume}</button>`;
         } else if (pieceStatus === 'in_progress') {
           inner = `<div class="daily-act-wrap" style="display:flex;gap:4px;">
             <button class="btn btn-ghost btn-sm daily-act daily-act-finish" style="color:var(--accent);" ${lockReason ? `disabled title="${lockReason} — จบงานนี้ไม่ได้"` : ''} onclick="finishDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">■ ${DL().finish}</button>
@@ -6140,7 +6142,7 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
           //  ถือว่าชิ้นนั้นทำแล้วถ้าจบงานในใบอื่นตั้งแต่วันนั้นเป็นต้นมา — ดู donePieceDatesByRoll)
           const prevPart = prevPieceTaskFor(t.__origin || t, rollIdx);
           inner = prevPart
-            ? `<button class="btn btn-ghost btn-sm daily-act daily-act-resume" style="color:var(--accent);"
+            ? `<button class="btn btn-ghost btn-sm daily-act daily-act-resume" style="color:var(--purple);"
                  title="${escapeHtmlAttr('ชิ้นนี้ทำต่อจากงานก่อนหน้า (' + prevPart.startTime + '–' + prevPart.endTime + ') — กดเพื่อทำต่อ')}"
                  ${lockReason ? `disabled title="${lockReason} — ทำต่อไม่ได้"` : ''}
                  onclick="continueDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}','${prevPart.id}')">▶ ${DL().resume}</button>`
@@ -15665,7 +15667,7 @@ function renderDailyTasks() {
             + `<button class="btn btn-ghost btn-sm daily-act daily-act-pause" ${blockReason ? `disabled title="${blockReason} — พักงานนี้ไม่ได้"` : ''} onclick="pauseDailyTask('${item.key}','${item.workerId || ''}')">⏸ ${DL().pause}</button>`
           : (status === 'paused'
             ? `<span class="chip chip-amber" title="${escapeHtmlAttr(actual.pauseReason ? 'เหตุผล: ' + actual.pauseReason + (actual.pausedAt ? ' (พักเมื่อ ' + actual.pausedAt + ')' : '') : 'พักงานอยู่')}">⏸ ${DL().paused}</span> `
-              + `<button class="btn btn-ghost btn-sm daily-act daily-act-resume" style="color:var(--accent);" ${blockReason ? `disabled title="${blockReason} — ทำต่อไม่ได้"` : ''} onclick="resumeDailyTask('${item.key}','${item.workerId || ''}')">▶ ${DL().resume}</button>`
+              + `<button class="btn btn-ghost btn-sm daily-act daily-act-resume" style="color:var(--purple);" ${blockReason ? `disabled title="${blockReason} — ทำต่อไม่ได้"` : ''} onclick="resumeDailyTask('${item.key}','${item.workerId || ''}')">▶ ${DL().resume}</button>`
             : ''));
       actions = `<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">${actBtn}<button class="btn btn-ghost btn-sm" onclick="openDailyChecklistModal('edit','${item.key}')">แก้ไข</button><button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteDailyChecklistTask('${item.key}')">ลบ</button></div>`;
     } else if (item.expandable) {
