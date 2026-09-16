@@ -6471,6 +6471,42 @@ function planFillBlockReason(dateIso, workType, caps) {
 
 // เติมเวลาว่างของวันนั้นทุกกะในครั้งเดียว — ใช้จากปุ่ม ⤵ ในช่องของวัน (ปฏิทินรายสัปดาห์/รายเดือน)
 // ช่องของวันไม่ได้แยกกะ จึงไล่เติมทุกกะของประเภทงานนั้นตามลำดับ (เช้าก่อน แล้วดึก)
+// ไม่มีงานชุดเดิมเหลือให้เติมแล้ว แต่มีงานชุดอื่นที่ลงช่องว่างได้ — ถามก่อนว่าจะเปลี่ยนชุด Roll บนเครื่องไหม
+// ไม่ทำให้เองเงียบๆ เพราะเปลี่ยนชุด = ถอด/ใส่ Roll บนเครื่องจริง ต้องเป็นการตัดสินใจของคน
+// (การเติมอัตโนมัติตอนโหลดข้อมูล/ตั้งเวลาเลิกงาน ไม่ผ่านทางนี้ จึงยังไม่สลับชุดให้เองเหมือนเดิม)
+// คืน true = จัดการเรียบร้อยแล้ว (ไม่ว่าจะย้ายหรือผู้ใช้ตอบไม่) ผู้เรียกไม่ต้องขึ้นข้อความ "เติมไม่ได้" ซ้ำ
+function planFillAskOtherSet(dateIso, workType, caps, onlyShift) {
+  if (!(PLAN_WORKTYPE_META[workType] || {}).fillSameSetOnly) return false;  // ประเภทที่สลับชุดได้อยู่แล้ว
+  const shifts = onlyShift ? [onlyShift] : planDayEndShiftsFor(workType);
+  for (let i = 0; i < shifts.length; i++) {
+    const sh = shifts[i];
+    const plan = planPullForwardPlan(workType, dateIso, sh, caps, { allowOtherSet: true });
+    if (!plan.tail || plan.tail.freeMinutes < PLAN_FILL_MIN_FREE || !plan.moves.length) continue;
+    const lastHere = planLastTaskOnDay(workType, dateIso, sh)
+      || (planWorkTypeAllowsShift(workType, 'both') ? planLastTaskOnDay(workType, dateIso, 'both') : null);
+    const onMachine = lastHere
+      ? lastHere.rollSet + (lastHere.rollColor ? ' · ' + rollColorLabelFor(lastHere.rollSet, lastHere.rollColor) : '')
+      : '—';
+    const lines = plan.moves.map(mv => '• ' + mv.label
+      + (mv.whole === false ? ' — ดึงมา ' + mv.pieceCount + '/' + mv.ofPieces + ' ชิ้น' : ' — ทั้งงาน')
+      + ' จาก ' + fmtDateThai(parseISODate(mv.fromDate)) + ' → ' + mv.startTime + '–' + mv.endTime);
+    const msg = (shifts.length > 1 ? SHIFTS[sh].label + ' ' : '') + 'ว่าง ' + plan.tail.time + '–' + plan.tail.untilTime
+      + ' (' + formatMinutesAsHm(plan.tail.freeMinutes).replace('≈ ', '') + ')\n\n'
+      + 'ตอนนี้ตั้งชุด ' + onMachine + ' อยู่บนเครื่อง\n'
+      + 'งานที่เหลือเป็นชุดอื่น — ถ้าเติมช่องนี้ ต้องเปลี่ยนชุด Roll บนเครื่องจริงตามนี้:\n\n'
+      + lines.join('\n') + '\n\nยืนยันย้ายมาเติมไหม?';
+    if (!confirm(msg)) return true;
+    const moved = pullWorkIntoFreeTail(workType, dateIso, sh, caps, true, PLAN_FILL_MIN_FREE, true);
+    if (!moved.length) { alert('ย้ายไม่สำเร็จ — ข้อมูลเปลี่ยนไประหว่างนั้น ลองกดใหม่อีกครั้ง'); return true; }
+    persistState();
+    renderCurrentPlanView();
+    renderDailyTasks();
+    alert('ดึงงานมาเติม ' + moved.length + ' รายการ — ต้องเปลี่ยนชุด Roll บนเครื่องตามนี้:\n' + lines.join('\n'));
+    return true;
+  }
+  return false;
+}
+
 function planFillDayNow(dateIso, workType) {
   if (!canEditPlan()) return;
   const caps = planDayCapsFor(dateIso, workType);
@@ -6479,6 +6515,8 @@ function planFillDayNow(dateIso, workType) {
     pullWorkIntoFreeTail(workType, dateIso, sh, caps, true, PLAN_FILL_MIN_FREE).forEach(mv => all.push(mv));
   });
   if (!all.length) {
+    // ชุดเดิมหมดแล้ว — เสนอเติมด้วยชุดอื่นโดยถามก่อน ไม่ได้ก็ค่อยบอกเหตุผล
+    if (planFillAskOtherSet(dateIso, workType, caps)) return;
     alert(planFillBlockReason(dateIso, workType, caps));
     return;
   }
@@ -6500,6 +6538,7 @@ function planFillFreeTailNow(dateIso, workType, shiftKey) {
   const caps = planDayCapsFor(dateIso, workType);
   const moves = pullWorkIntoFreeTail(workType, dateIso, shiftKey, caps, true, PLAN_FILL_MIN_FREE);
   if (!moves.length) {
+    if (planFillAskOtherSet(dateIso, workType, caps, shiftKey)) return;
     alert(planFillBlockReason(dateIso, workType, caps));
     return;
   }
@@ -9482,7 +9521,10 @@ function planPullPieceFit(cand, startDate, startTime, shiftKey, caps, dateIso) {
   return { taken, endDate: cd, endTime: ct, ids, mins, scoped, allWhole };
 }
 
-function planPullForwardPlan(workType, dateIso, shiftKey, otCaps) {
+// opts.allowOtherSet = ยอมดึงงาน "คนละชุด Roll" มาเติมได้ (ใช้เฉพาะตอนผู้ใช้สั่งเองและยืนยันแล้ว)
+// เปลี่ยนชุดได้ครั้งเดียวต่อการเติมหนึ่งครั้ง — ของจริงคือถอด/ใส่ Roll บนเครื่อง ไม่ใช่สลับไปมาหลายรอบในวันเดียว
+function planPullForwardPlan(workType, dateIso, shiftKey, otCaps, opts) {
+  const allowOtherSet = !!(opts && opts.allowOtherSet);
   const tail = planDayFreeTail(workType, dateIso, shiftKey, otCaps);
   if (!tail) return { tail: null, moves: [] };
   // ลำดับในคิวจริง: วันทำงาน + ลำดับเวลาในวันนั้น (08:00 ไล่ไปจนถึง 05:00 ของเช้าวันถัดไป)
@@ -9499,7 +9541,7 @@ function planPullForwardPlan(workType, dateIso, shiftKey, otCaps) {
   // งานขัด Roll: สลับชุดได้ (ดู fillSameSetOnly ใน PLAN_WORKTYPE_META) แต่ยังเรียง
   // ชุดเดียวกันมาก่อน ให้งานของชุดเดิมต่อกันจนจบก่อนเริ่มชุดใหม่
   // วันที่ยังไม่มีงานเลย (lastHere = null) = ยังไม่ได้กำหนดว่าใส่ชุดไหน ดึงงานถัดไปในคิวได้ตามปกติ
-  const sameSetOnly = !!(PLAN_WORKTYPE_META[workType] || {}).fillSameSetOnly;
+  const sameSetOnly = !allowOtherSet && !!(PLAN_WORKTYPE_META[workType] || {}).fillSameSetOnly;
   const later = planTasks
     .filter(t => t.workType === workType && t.endTime && t.endTime !== '—' && !planTaskIsSettled(t)
       && queueKey(taskDisplayDate(t), t.startTime) > tailKey)
@@ -9512,8 +9554,14 @@ function planPullForwardPlan(workType, dateIso, shiftKey, otCaps) {
     });
   const moves = [];
   let curDate = tail.date, curTime = tail.time;
+  let switchedTo = null;   // ชุดใหม่ที่ยอมเปลี่ยนไปแล้วในรอบนี้ (allowOtherSet)
   for (let i = 0; i < later.length; i++) {
     const cand = later[i];
+    if (allowOtherSet && lastHere && !sameSetAsHere(cand)) {
+      const key = cand.rollSet + '|' + (cand.rollColor || '');
+      if (switchedTo && switchedTo !== key) break;   // เปลี่ยนชุดบนเครื่องได้ครั้งเดียวต่อการเติมหนึ่งครั้ง
+      switchedTo = key;
+    }
     if (!planTimeInWorkingDay(dateIso, shiftKey, workType, curDate, curTime, tail.caps)) break;
     const mm = /^(\d{1,2}):(\d{2})$/.exec(curTime);
     if (!mm) break;
@@ -9636,9 +9684,9 @@ function applyPlanPullForward(workType, shiftKey, moves) {
 // คืนรายการงานที่ดึงมาจริง (ว่าง = ไม่มีอะไรถูกย้าย)
 // minFree = ช่องว่างท้ายวันขั้นต่ำที่ยอมดึงงานมาเติม — ไม่ส่งมาถือเป็นการเติมอัตโนมัติ (1 ชม.)
 // ตอนผู้ใช้กดปุ่มเติมเองจะส่ง PLAN_FILL_MIN_FREE มา เพราะสั่งมาเองแล้วว่าจะเติมช่องว่างนั้น
-function pullWorkIntoFreeTail(workType, dateIso, shiftKey, otCaps, auto, minFree) {
+function pullWorkIntoFreeTail(workType, dateIso, shiftKey, otCaps, auto, minFree, allowOtherSet) {
   if (!canEditPlan()) return [];
-  const { tail, moves } = planPullForwardPlan(workType, dateIso, shiftKey, otCaps);
+  const { tail, moves } = planPullForwardPlan(workType, dateIso, shiftKey, otCaps, { allowOtherSet });
   // ช่องว่างท้ายวันเล็กเกินไป ไม่ต้องกวน (เศษเวลาจากการปัดเวลาแต่ละงาน)
   const floor = minFree == null ? PLAN_AUTO_FILL_MIN_FREE : minFree;
   if (!tail || tail.freeMinutes < floor || !moves.length) return [];
