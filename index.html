@@ -3437,11 +3437,13 @@ function confirmStatusDone(target) {
   // เขียน rollColorStatus ตรงๆ แล้วบันทึกครั้งเดียวท้ายสุด ไม่เรียก setRollColorStatusFor ทีละชุด
   // เพราะตัวนั้น persistState() ในตัว — ติ๊ก 14 ชุดจะยิงอัปโหลด 14 รอบ เสี่ยงชนกันกลางทาง
   // ปลอดภัยเพราะปลายทางเป็น 'ready'/'waitpolish' ไม่เข้ากฎ 1 เครื่อง 1 ชุดต่อหมวด (กฎนั้นใช้เฉพาะ 'inuse')
-  picked.forEach(k => {
-    if (to.status === 'ready') delete rollColorStatus[k]; // ไม่มีคีย์ = 'ready' (ดู rollColorStatusFor)
-    else rollColorStatus[k] = to.status;
+  withCloudRetry(() => {     // ติ๊กทีละหลายชุด ยิ่งต้องไม่ให้หายไปทั้งก้อนเพราะเขียนชน
+    picked.forEach(k => {
+      if (to.status === 'ready') delete rollColorStatus[k]; // ไม่มีคีย์ = 'ready' (ดู rollColorStatusFor)
+      else rollColorStatus[k] = to.status;
+    });
+    persistState();
   });
-  persistState();
   statusDoneSelected.clear();
   closeStatusDonePicker();
   renderRollSetList();
@@ -4101,18 +4103,22 @@ function cancelReleasedStatuses() {
 }
 
 function saveReleasedStatuses() {
-  releasedStatusPending.forEach((x, i) => {
+  // อ่านค่าที่เลือกไว้ก่อนเข้าวงทำซ้ำ — ตอนทำรายการซ้ำ กล่องถูกปิดไปแล้ว อ่านจากหน้าจอไม่ได้
+  const picked = releasedStatusPending.map((x, i) => {
     const sel = document.getElementById('released-status-' + i);
-    const status = sel ? sel.value : RELEASED_DEFAULT_STATUS;
-    const k = x.set + '|' + x.colorKey;
-    // 'ready' เป็นค่าตั้งต้นของระบบ เก็บเป็นการลบคีย์ (เกณฑ์เดียวกับ setRollColorStatusFor)
-    if (status === 'ready') delete rollColorStatus[k]; else rollColorStatus[k] = status;
+    return { k: x.set + '|' + x.colorKey, status: sel ? sel.value : RELEASED_DEFAULT_STATUS };
+  });
+  withCloudRetry(() => {
+    picked.forEach(p => {
+      // 'ready' เป็นค่าตั้งต้นของระบบ เก็บเป็นการลบคีย์ (เกณฑ์เดียวกับ setRollColorStatusFor)
+      if (p.status === 'ready') delete rollColorStatus[p.k]; else rollColorStatus[p.k] = p.status;
+    });
+    persistState();
   });
   releasedStatusPending = [];
   releasedStatusRevert = null; // บันทึกแล้วไม่ต้องคืนค่าอีก
   const ov = document.getElementById('released-status-overlay');
   if (ov) ov.classList.remove('open');
-  persistState();
   if (typeof renderInUseRollPicker === 'function' && document.getElementById('inuse-picker-body')) renderInUseRollPicker();
   renderDashboardInUseRoll();
   renderDashboardWorkingRoll();
@@ -10005,16 +10011,18 @@ const ROLL_SET_STATUS_META = {
 };
 function getRollSetStatus(setName) { return rollSetStatus[setName] || 'ready'; }
 function setRollSetStatus(setName, status) {
-  if (status === 'ready') delete rollSetStatus[setName]; else rollSetStatus[setName] = status;
-  // เปลี่ยนสถานะของ Size Roll ทั้งกลุ่มแล้ว ให้ทุกชุดสีในกลุ่มนี้เปลี่ยนสถานะตามไปด้วยอัตโนมัติ
-  getSetPalette(setName).forEach(c => {
-    const k = setName + '|' + c.key;
-    if (status === 'ready') delete rollColorStatus[k]; else rollColorStatus[k] = status;
+  withCloudRetry(() => {     // ทำซ้ำได้ ถ้าเขียนชนกับเครื่องอื่น (ตั้งเป็นค่านี้ ไม่ใช่สลับค่า)
+    if (status === 'ready') delete rollSetStatus[setName]; else rollSetStatus[setName] = status;
+    // เปลี่ยนสถานะของ Size Roll ทั้งกลุ่มแล้ว ให้ทุกชุดสีในกลุ่มนี้เปลี่ยนสถานะตามไปด้วยอัตโนมัติ
+    getSetPalette(setName).forEach(c => {
+      const k = setName + '|' + c.key;
+      if (status === 'ready') delete rollColorStatus[k]; else rollColorStatus[k] = status;
+    });
+    persistState();
+    renderRollSetList();
+    renderRollColorList();
+    updateRollKpi();
   });
-  persistState();
-  renderRollSetList();
-  renderRollColorList();
-  updateRollKpi();
 }
 
 // สถานะของแต่ละ "ชุดสี Roll" (Size Roll + สี = 1 ชุด) — ใช้เป็นตัวแทนสถานะของทั้งชุด ไม่อิงจากสถานะของ Roll ย่อยแต่ละตัว (r.status)
@@ -10041,10 +10049,14 @@ function getRollColorStatus(colorKey) { return rollColorStatusFor(selectedRollSe
 function setRollColorStatus(colorKey, status) {
   if (!selectedRollSet) return;
   const k = selectedRollSet + '|' + colorKey;
-  if (status === 'ready') delete rollColorStatus[k]; else rollColorStatus[k] = status;
-  persistState();
-  renderRollColorList();
-  updateRollKpi();
+  // ครอบตัวทำรายการซ้ำ — ถ้ามีเครื่องอื่นเขียนแทรกก่อน สถานะที่เพิ่งตั้งจะถูกทิ้งเงียบๆ
+  // (เป็นการ "ตั้งค่าให้เป็นค่านี้" ไม่ใช่สลับค่า ทำซ้ำจึงได้ผลเดิมเสมอ)
+  withCloudRetry(() => {
+    if (status === 'ready') delete rollColorStatus[k]; else rollColorStatus[k] = status;
+    persistState();
+    renderRollColorList();
+    updateRollKpi();
+  });
 }
 
 // เครื่องที่กำลังใช้ "ชุดสี Roll" นี้อยู่จริง — เลือกได้เฉพาะตอน Size Roll ผูกไว้กับมากกว่า 1 เครื่อง (เช่น P2/P3) เพื่อบอกว่าตอนนี้ใช้อยู่ที่เครื่องไหน
@@ -13287,20 +13299,25 @@ function rollRowStatusSelectHtml(setName, colorKey) {
 function setRollColorStatusFor(setName, colorKey, status) {
   const revert = snapshotRollStatusState(); // เก็บก่อนแก้ เพื่อให้ปุ่ม "ยกเลิก" คืนค่าได้ครบ
   const k = setName + '|' + colorKey;
-  if (status === 'ready') delete rollColorStatus[k]; else rollColorStatus[k] = status;
   let cleared = [];
-  if (status === 'inuse') {
-    // กฎ 1 เครื่อง 1 ชุดต่อหมวด ต้องคุมที่นี่ด้วย ไม่ใช่เฉพาะในหน้าต่างเลือกชุดที่ใช้งาน
-    // ไม่งั้นตั้งจากดรอปดาวน์ในทะเบียนก็ข้ามกฎได้
-    cleared = clearInUseMachineConflicts(setName, colorKey);
-  }
-  persistState();
-  renderRollSetList();
-  updateRollKpi();
-  renderDashboardInUseRoll();
-  renderDashboardWorkingRoll();
-  // การ์ดน้ำหนักเฝ้าระวังโชว์สถานะของชุดด้วย และกดเปลี่ยนสถานะจากการ์ดนั้นได้ ต้องวาดใหม่ให้เห็นผลทันที
-  renderDashboardRollWeight();
+  // ครอบตัวทำรายการซ้ำ — ไม่งั้นถ้ามีเครื่องอื่นเขียนแทรกก่อน สถานะที่เพิ่งตั้ง (เช่นเปลี่ยนเป็น "รอแต่ง"
+  // หลังถอด Roll ออก) จะถูกทิ้งไปเงียบๆ แล้วกลับไปแสดงสถานะเดิมเหมือนไม่เคยกด
+  // ส่วนหน้าต่างถามสถานะชุดที่ถูกปลดอยู่นอกวง จะได้ไม่เด้งซ้ำตอนทำรายการซ้ำ
+  withCloudRetry(() => {
+    if (status === 'ready') delete rollColorStatus[k]; else rollColorStatus[k] = status;
+    if (status === 'inuse') {
+      // กฎ 1 เครื่อง 1 ชุดต่อหมวด ต้องคุมที่นี่ด้วย ไม่ใช่เฉพาะในหน้าต่างเลือกชุดที่ใช้งาน
+      // ไม่งั้นตั้งจากดรอปดาวน์ในทะเบียนก็ข้ามกฎได้
+      cleared = clearInUseMachineConflicts(setName, colorKey);
+    }
+    persistState();
+    renderRollSetList();
+    updateRollKpi();
+    renderDashboardInUseRoll();
+    renderDashboardWorkingRoll();
+    // การ์ดน้ำหนักเฝ้าระวังโชว์สถานะของชุดด้วย และกดเปลี่ยนสถานะจากการ์ดนั้นได้ ต้องวาดใหม่ให้เห็นผลทันที
+    renderDashboardRollWeight();
+  });
   if (cleared.length) openReleasedStatusDialog(cleared,
     'ตั้ง ' + setName + ' · ' + rollColorLabelFor(setName, colorKey) + ' เป็นกำลังใช้งาน จึงปลดชุดเดิมของเครื่องเดียวกันในหมวด '
     + (parseSizeRollName(setName).category || '') + ' ออก', revert);
