@@ -16365,10 +16365,16 @@ function planTaskEndDateTime(t) {
   return d;
 }
 // งานตามแผน (CNC/ขัด Roll) ที่ "วางแผนไว้แล้วแต่ยังไม่เสร็จ" และเลยเวลาที่ควรจะจบงานไปแล้วจริงตามนาฬิกาเครื่อง — ถือเป็นงานค้างทันทีโดยไม่ต้องมีใครมากดอะไรเพิ่ม
+// งานค้างก็แยกตามบทบาทเหมือนหน้างานประจำวัน/วางแผน/ประวัติ — ช่างขัด Roll เห็นเฉพาะงานขัด
+// ช่างแต่ง Roll เห็นเฉพาะงานแต่ง (ช่าง CNC ที่กด "เข้าไปทำงานขัด Roll" ไว้เห็นทั้งสองแบบ)
+// admin/หัวหน้าเห็นทั้งหมดตามเดิม เพราะเป็นคนตามงานทั้งสองฝั่ง
+// ใส่ตัวกรองไว้ในตัวเก็บข้อมูลเลย ทั้งเลขบนเมนู การ์ด KPI และตารางจะได้ตรงกันเสมอ
 function collectOverdueRecords() {
   const now = new Date();
+  const forcedType = forcedWorkTypeForRole();
   const records = [];
   planTasks.forEach(t => {
+    if (forcedType && (t.workType === 'polish' ? 'polish' : 'cnc') !== forcedType) return;
     const dateIso = taskDisplayDate(t);
     // ยึดสถานะรายชิ้นเป็นตัวจริง ไม่ใช่แค่ธงสถานะระดับวัน — งานที่กดจบครบทุกชิ้นแล้วแต่ธงระดับวัน
     // ยังค้างเป็น "กำลังทำ" (เช่นงานที่ถูกแก้/ย้ายวันทีหลัง) จะขึ้นเป็นงานค้างตลอดไปทั้งที่เสร็จแล้ว
@@ -17603,6 +17609,9 @@ function applyRoleUI() {
   refreshHelpPolishBtn();
   if (document.getElementById('tbody-daily')) renderDailyTasks();
   if (document.getElementById('tbody-history')) renderHistory();
+  // งานค้างก็แยกตามบทบาทแล้ว ต้องนับ/วาดใหม่ด้วย ไม่งั้นเลขบนเมนูกับตารางค้างเป็นของบทบาทเดิม
+  if (document.getElementById('tbody-pending')) renderPending();
+  updatePendingBadge();
   renderDashboardInUseRoll();
   renderDashboardWorkingRoll();
 }
