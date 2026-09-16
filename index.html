@@ -9664,18 +9664,47 @@ function pieceMinutesOfTask(task, idx, scoped) {
   return parseFloat((scoped[idx] || {})[field]) || 0;
 }
 
+// Roll ตัวเดียวกันอาจอยู่ในงานมากกว่าหนึ่งใบ (เช่นถูกดึงไปเติมเวลาว่างของอีกวัน หรือวางซ้ำ)
+// สถานะรายชิ้นผูกกับ "งานใบนั้น" ถ้าดูแค่ใบเดียว ชิ้นที่ทำจบไปแล้วในใบอื่นจะถูกมองว่ายังค้าง
+// แล้วถูกยกไปวันถัดไปให้ทำซ้ำอีกรอบ — คืน Map 'ประเภท|ชุด|สี|ลำดับชิ้น' → วันล่าสุดที่ชิ้นนั้นจบงาน
+function donePieceDatesByRoll() {
+  const map = new Map();
+  Object.keys(dailyPieceStatus || {}).forEach(dt => {
+    Object.keys(dailyPieceStatus[dt] || {}).forEach(tid => {
+      const ot = planTasks.find(x => x.id === tid);
+      if (!ot) return;
+      const byIdx = dailyPieceStatus[dt][tid] || {};
+      Object.keys(byIdx).forEach(i => {
+        if ((byIdx[i] || {}).status !== 'done') return;
+        const key = ot.workType + '|' + ot.rollSet + '|' + (ot.rollColor || '') + '|' + i;
+        const prev = map.get(key);
+        if (!prev || dt > prev) map.set(key, dt);
+      });
+    });
+  });
+  return map;
+}
+
 function leftoverWorkTasks() {
   const today = dailyTodayIso();
   const out = [];
+  const doneByRoll = donePieceDatesByRoll();
   planTasks.forEach(t => {
     const d = taskDisplayDate(t);
     if (d >= today) return;                       // ยังไม่ถึงกำหนด/เป็นของวันนี้ ไม่ถือว่าค้าง
     const ids = t.rollIds || [];
     if (!ids.length) return;
     if ((dailyStatusByDate[d] || {})[t.id] === 'done') return;
-    const remaining = ids.filter(i => pieceEntryFor(d, t.id, i).status !== 'done');
+    // ชิ้นที่ทำจบแล้ว "ในใบอื่น" ตั้งแต่วันนั้นเป็นต้นมา ก็คือทำไปแล้ว ไม่ต้องยกไปทำซ้ำ
+    // (เทียบตั้งแต่วันนั้นเป็นต้นมาเท่านั้น รอบก่อนหน้าที่เคยแต่งไปแล้วไม่นับ ไม่งั้นจะไม่ยกอะไรเลย)
+    const doneElsewhere = i => {
+      const at = doneByRoll.get(t.workType + '|' + t.rollSet + '|' + (t.rollColor || '') + '|' + i);
+      return !!at && at >= d;
+    };
+    const isDone = i => pieceEntryFor(d, t.id, i).status === 'done' || doneElsewhere(i);
+    const remaining = ids.filter(i => !isDone(i));
     if (!remaining.length) return;
-    const done = ids.filter(i => pieceEntryFor(d, t.id, i).status === 'done');
+    const done = ids.filter(isDone);
     const scoped = t.otherWork ? [] : getMatchingRollsForPlan(t.rollSet, t.rollColor);
     out.push({ task: t, date: d, done, remaining,
       minutes: remaining.reduce((s, i) => s + pieceMinutesOfTask(t, i, scoped), 0) });
