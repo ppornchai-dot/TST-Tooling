@@ -1554,7 +1554,8 @@ canvas{display:block;}
                 <span style="background:#C03030;color:#fff;font-size:9px;font-weight:800;padding:0 3px;border-radius:3px;line-height:1.5;">T</span>
               </span>
               <span><b>F</b> = Forming · <b>S</b> = Sizing · <b>T</b> = TH — <b>พื้นป้ายคือสีชุด Roll</b> ที่เดินของหมวดนั้น
-                (ตัวอย่างนี้คนละสีกันทั้ง 3 หมวด) · ชี้ค้างที่ป้ายเพื่อดูชื่อสีเต็ม</span>
+                (ตัวอย่างนี้คนละสีกันทั้ง 3 หมวด) · ชี้ค้างที่ป้ายเพื่อดูชื่อสีเต็ม ·
+                <b style="color:var(--accent);">กดที่ป้ายเพื่อแก้ไข/สลับชุด Roll ของวันนั้น</b> (เลือกชุดผิดไว้ก็แก้ย้อนหลังได้)</span>
 
               <span style="font-weight:800;color:var(--text-3);justify-self:start;">*</span>
               <span><b>*✓ ท้ายชื่อขนาด (พื้นเหลือง)</b> = ระบบเดาให้จากยอดผลิตจริง ยังไม่ได้บันทึก —
@@ -2809,6 +2810,201 @@ function applyInUseCalConfirm(idx, machine) {
   renderInUseCalendar();
 }
 
+// ─── แก้ไขชุด Roll ที่ใช้งานย้อนหลัง (เลือกผิดแล้วสลับชุดทีหลังได้) ──────────────
+// เข้าได้ 2 ทาง: กดที่แท่งในไทม์ไลน์รายเดือน · กดป้ายหมวด F/S/T ในปฏิทินรายวัน
+// เขียนลง rollRunColor = "ค่าที่ระบุไว้ของวันนั้น" ซึ่งชนะค่าที่ระบบอนุมานจากยอดผลิตเสมอ
+// สลับได้ทั้งชุดสีและ Size Roll เพราะกรณีที่เจอจริงคือเลือกผิดไปทั้งชุด ไม่ใช่แค่ผิดสี
+// เก็บรายการที่กดได้ไว้เป็นลำดับ แล้วอ้างด้วยเลขลำดับ — ส่งชื่อชุดเป็น argument ใน onclick ตรงๆ ไม่ได้
+// เพราะชื่อ Size Roll มีเครื่องหมาย " อยู่ในตัว (วิธีเดียวกับ inUseCalGuessRows)
+let inUseCalEditRows = [];   // สร้างใหม่ทุกครั้งที่วาดปฏิทิน ลำดับจึงตรงกับที่เห็นบนจอเสมอ
+let inUseEditPick = null;    // { rowIdx, set, colorKey, scope: 'all'|'one', oneDay }
+
+function pushInUseCalEditRow(row) { return inUseCalEditRows.push(row) - 1; }
+
+// ชุดสีที่เลือกได้ของ Size Roll หนึ่ง — เอาเฉพาะสีที่มี Roll จริงในทะเบียน ไม่มีเลยจึงคืนทั้งจาน
+function inUseEditColorOptions(setName) {
+  const palette = getSetPalette(setName);
+  const used = new Set(toolingData.roll.filter(r => r.set === setName).map(r => r.color || NO_COLOR_KEY));
+  const opts = palette.filter(c => used.has(c.key));
+  if (used.has(NO_COLOR_KEY)) opts.push({ key: NO_COLOR_KEY, label: rollColorLabelFor(setName, NO_COLOR_KEY), dot: '#9CA3AF' });
+  return opts.length ? opts : palette;
+}
+
+function openInUseRollEdit(idx) {
+  const row = inUseCalEditRows[Number(idx)];
+  if (!row || !canEditPlan()) return;
+  inUseEditPick = { rowIdx: Number(idx), set: row.set, colorKey: row.colorKey, scope: 'all', oneDay: row.days[0] };
+  let ov = document.getElementById('inuse-edit-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'inuse-edit-overlay';
+    ov.className = 'modal-overlay';
+    ov.style.zIndex = '1060';
+    ov.onclick = e => { if (e.target === ov) closeInUseRollEdit(); };
+    ov.innerHTML = `<div class="modal" style="max-width:600px;display:flex;flex-direction:column;max-height:90vh;overflow:hidden;">
+      <div class="modal-head" style="flex:0 0 auto;">
+        <h3 id="inuse-edit-title">แก้ไขชุด Roll ที่ใช้งาน</h3>
+        <button class="modal-close" onclick="closeInUseRollEdit()">✕</button>
+      </div>
+      <div class="modal-body" id="inuse-edit-body" style="flex:1 1 auto;min-height:0;overflow-y:auto;"></div>
+      <div class="modal-footer" style="flex:0 0 auto;display:flex;gap:8px;">
+        <button class="btn btn-ghost" style="color:var(--red);font-weight:700;" onclick="clearInUseRollEditRange()"
+          title="ลบบันทึกชุดสีของช่วงนี้ ให้ระบบกลับไปอนุมานจากยอดผลิตเอง">ล้างบันทึกช่วงนี้</button>
+        <span style="flex:1 1 auto;"></span>
+        <button class="btn btn-ghost" onclick="closeInUseRollEdit()">ยกเลิก</button>
+        <button class="btn btn-primary" onclick="applyInUseRollEdit()">บันทึก</button>
+      </div>
+    </div>`;
+    document.body.appendChild(ov);
+  }
+  renderInUseRollEdit();
+  ov.classList.add('open');
+}
+
+function closeInUseRollEdit() {
+  const ov = document.getElementById('inuse-edit-overlay');
+  if (ov) ov.classList.remove('open');
+  inUseEditPick = null;
+}
+
+function renderInUseRollEdit() {
+  const body = document.getElementById('inuse-edit-body');
+  if (!body || !inUseEditPick) return;
+  const row = inUseCalEditRows[inUseEditPick.rowIdx];
+  if (!row) return;
+  const p = inUseEditPick;
+  const single = row.days.length === 1;
+  document.getElementById('inuse-edit-title').textContent =
+    'แก้ไขชุด Roll ที่ใช้งาน — ' + (row.machine === 'ไม่ทราบเครื่อง' ? 'ไม่ทราบเครื่อง' : 'เครื่อง ' + row.machine) + ' · ' + row.cat;
+  // Size Roll ที่เลือกได้ = หมวดเดียวกันเท่านั้น (เครื่องหนึ่งใส่หมวดละชุด) เรียงชุดที่ผูกกับเครื่องนี้ไว้บนสุด
+  const onMachine = new Set(row.machine === 'ไม่ทราบเครื่อง' ? [] : inUseSetsForMachine(row.machine));
+  const sets = getRollSets().filter(s => (parseSizeRollName(s).category || '') === row.cat)
+    .sort((a, b) => (onMachine.has(b) - onMachine.has(a)) || String(a).localeCompare(String(b), 'th'));
+  if (!sets.includes(p.set)) sets.unshift(p.set);
+  const colors = inUseEditColorOptions(p.set);
+  if (!colors.some(c => c.key === p.colorKey)) p.colorKey = (colors[0] || {}).key || p.colorKey;
+  const rangeText = single ? fmtDateThai(parseISODate(row.days[0]))
+    : fmtDateThaiShort(parseISODate(row.from)) + ' – ' + fmtDateThai(parseISODate(row.to));
+  const nowDot = inUseColorDot(row.set, row.colorKey);
+  const todayInRange = row.days.includes(dailyTodayIso());
+  body.innerHTML = `
+    <div style="font-size:12.5px;color:var(--text-2);margin-bottom:4px;">ตอนนี้บันทึกไว้เป็น</div>
+    <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:8px;background:var(--bg-panel);margin-bottom:14px;">
+      <span style="width:14px;height:14px;border-radius:4px;flex-shrink:0;background:${nowDot};box-shadow:inset 0 0 0 1px rgba(0,0,0,.22);"></span>
+      <b style="font-size:13.5px;">${escapeHtmlAttr(row.set)}</b>
+      <span style="font-size:12.5px;color:var(--text-2);">· ${escapeHtmlAttr(rollColorLabelFor(row.set, row.colorKey))}</span>
+      <span style="margin-left:auto;font-size:12px;color:var(--text-3);white-space:nowrap;">${escapeHtmlAttr(rangeText)} · ${row.days.length} วัน</span>
+    </div>
+
+    <div style="font-size:12.5px;font-weight:800;margin-bottom:5px;">แก้เป็น Size Roll</div>
+    <select class="form-input" style="margin-bottom:14px;" onchange="setInUseEditSet(this.value)">
+      ${sets.map(s => `<option value="${escapeHtmlAttr(s)}"${s === p.set ? ' selected' : ''}>${
+        escapeHtmlAttr(s)}${onMachine.has(s) ? '' : '  (ไม่ได้ผูกกับเครื่องนี้)'}</option>`).join('')}
+    </select>
+
+    <div style="font-size:12.5px;font-weight:800;margin-bottom:5px;">ชุดสี</div>
+    <div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px;">
+      ${colors.map(c => `<button onclick="${jsCallAttr('setInUseEditColor', c.key)}"
+        style="display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:800;
+               border:2px solid ${c.key === p.colorKey ? 'var(--accent)' : 'var(--border)'};
+               background:${c.key === p.colorKey ? 'var(--accent-glow)' : 'transparent'};color:var(--text-1);">
+        <span style="width:13px;height:13px;border-radius:4px;background:${c.dot};box-shadow:inset 0 0 0 1px rgba(0,0,0,.22);"></span>
+        ${escapeHtmlAttr(c.label)}</button>`).join('')}
+    </div>
+
+    ${single ? '' : `
+    <div style="font-size:12.5px;font-weight:800;margin-bottom:5px;">ใช้กับวันไหน</div>
+    <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:6px;">
+      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer;">
+        <input type="radio" name="inuse-edit-scope" value="all"${p.scope === 'all' ? ' checked' : ''} onchange="setInUseEditScope('all')">
+        ทั้งแท่ง — ${escapeHtmlAttr(rangeText)} (${row.days.length} วัน)
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer;">
+        <input type="radio" name="inuse-edit-scope" value="one"${p.scope === 'one' ? ' checked' : ''} onchange="setInUseEditScope('one')">
+        เฉพาะวันเดียว
+        <select class="form-input" style="width:auto;padding:3px 8px;font-size:12px;" onchange="setInUseEditDay(this.value)"
+          onfocus="setInUseEditScope('one')">
+          ${row.days.map(d => `<option value="${d}"${d === p.oneDay ? ' selected' : ''}>${
+            escapeHtmlAttr(fmtDateThai(parseISODate(d)))}</option>`).join('')}
+        </select>
+      </label>
+    </div>`}
+
+    ${todayInRange ? `<div style="font-size:11.5px;color:var(--text-3);line-height:1.6;margin-top:10px;padding:8px 10px;border-radius:7px;background:var(--amber-dim);">
+      ช่วงนี้รวม <b>วันนี้</b> ด้วย — บันทึกแล้วระบบจะตั้งชุดนี้เป็น <b>"กำลังใช้งาน"</b> ในทะเบียนให้ด้วย
+      เพื่อให้การ์ดด้านบนกับปฏิทินตรงกัน ส่วนชุดเดิมจะถูกปลดเป็น <b>"พร้อมใช้งาน"</b>
+      (ถือว่าเลือกผิด ไม่เคยขึ้นเครื่องจริง) ถ้าต้องส่งไปแต่ง/ขัด ปรับสถานะได้ที่หน้าทะเบียน</div>` : ''}
+    <div style="font-size:11.5px;color:var(--text-3);line-height:1.6;margin-top:10px;">
+      ค่าที่บันทึกที่นี่เป็น "ค่าที่ระบุไว้" ของวันนั้น จะชนะค่าที่ระบบอนุมานจากยอดผลิตเสมอ
+      และยอดผลิตของวันนั้นจะถูกนับให้ชุดที่เลือกไว้</div>`;
+}
+
+function setInUseEditSet(v) {
+  if (!inUseEditPick) return;
+  inUseEditPick.set = v;
+  const colors = inUseEditColorOptions(v);
+  if (!colors.some(c => c.key === inUseEditPick.colorKey)) inUseEditPick.colorKey = (colors[0] || {}).key || null;
+  renderInUseRollEdit();
+}
+function setInUseEditColor(key) { if (inUseEditPick) { inUseEditPick.colorKey = key; renderInUseRollEdit(); } }
+function setInUseEditScope(v) { if (inUseEditPick && inUseEditPick.scope !== v) { inUseEditPick.scope = v; renderInUseRollEdit(); } }
+function setInUseEditDay(v) { if (inUseEditPick) { inUseEditPick.oneDay = v; inUseEditPick.scope = 'one'; renderInUseRollEdit(); } }
+
+// วันที่จะถูกแก้จริง — ทั้งแท่ง หรือวันเดียวตามที่เลือก
+function inUseEditTargetDays() {
+  const row = inUseCalEditRows[(inUseEditPick || {}).rowIdx];
+  if (!row) return [];
+  return inUseEditPick.scope === 'one' ? [inUseEditPick.oneDay] : row.days.slice();
+}
+
+function applyInUseRollEdit() {
+  const p = inUseEditPick;
+  const row = p && inUseCalEditRows[p.rowIdx];
+  if (!row || !p.colorKey || !canEditPlan()) return;
+  const days = inUseEditTargetDays();
+  if (!days.length) return;
+  const newSet = p.set, newColor = p.colorKey, oldSet = row.set;
+  closeInUseRollEdit();
+  // ตั้งค่าเป็นค่านี้ (ไม่ใช่สลับค่า) จึงทำซ้ำได้ปลอดภัยตอนชนกับการเขียนของเครื่องอื่น
+  withCloudRetry(() => {
+    // ทะเบียนก่อน แล้วค่อยเขียนบันทึกรายวัน — ถ้าช่วงที่แก้รวมวันนี้ ทะเบียนต้องตรงกันด้วย
+    // ไม่งั้น syncTodayRunColorToInUse() จะดึงบันทึกของวันนี้กลับเป็นชุดเดิมทันทีที่วาดปฏิทิน
+    if (days.includes(dailyTodayIso()) && ROLL_MACHINES.includes(row.machine)
+        && inUseColorOnMachine(newSet, row.machine) !== newColor) {
+      setInUseRollForMachine(row.machine, newSet, newColor, true, true);
+    }
+    days.forEach(iso => {
+      if (!rollRunColor[iso]) rollRunColor[iso] = {};
+      if (newSet !== oldSet) delete rollRunColor[iso][oldSet];
+      rollRunColor[iso][newSet] = newColor;
+    });
+    persistState();
+    renderInUseCalendar();
+  });
+}
+
+// ล้างบันทึกของช่วงที่เลือก — ระบบกลับไปอนุมานชุดสีจากยอดผลิต/ชุดที่ใช้งานอยู่เอง
+function clearInUseRollEditRange() {
+  const p = inUseEditPick;
+  const row = p && inUseCalEditRows[p.rowIdx];
+  if (!row || !canEditPlan()) return;
+  const days = inUseEditTargetDays();
+  if (!days.length) return;
+  if (!confirm('ล้างบันทึกชุด Roll ของ ' + (days.length === 1
+      ? 'วันที่ ' + fmtDateThai(parseISODate(days[0]))
+      : days.length + ' วันในช่วงนี้') + '?\n\nระบบจะกลับไปอนุมานชุดที่เดินให้เองจากยอดผลิต')) return;
+  closeInUseRollEdit();
+  withCloudRetry(() => {
+    days.forEach(iso => {
+      if (!rollRunColor[iso]) return;
+      delete rollRunColor[iso][row.set];
+      if (!Object.keys(rollRunColor[iso]).length) delete rollRunColor[iso];
+    });
+    persistState();
+    renderInUseCalendar();
+  });
+}
+
 // ─── ปฏิทินแบบ "แยกรายเครื่อง" (ไทม์ไลน์) ────────────────────────────────────
 // ชุด Roll หนึ่งชุดใส่อยู่หลายวันกว่าจะเปลี่ยน แบบรายวันต้องกวาดตาดูทีละช่องว่าวันไหนเปลี่ยน
 // แบบนี้เห็นเป็นแท่งยาวต่อเนื่อง = ชุดนั้นใส่ตั้งแต่วันไหนถึงวันไหน เปลี่ยนตอนไหนดูจากรอยต่อ
@@ -2923,12 +3119,15 @@ function inUseCalRuns(byIso) {
     const last = runs[runs.length - 1];
     if (last && last.key === key) {
       last.to = iso; last.toCol = e.col; last.ranDays++; last.kg += e.kg;
+      last.days.push(iso);
       if (e.inferred) last.inferred = true;
       if (!e.sure) last.unsure = true;
       return;
     }
+    // days = วันที่แท่งนี้ครอบ "และมีข้อมูลจริง" เท่านั้น — วันหยุดที่แท่งลากผ่านไม่นับ
+    // ปุ่มแก้ไขใช้รายการนี้ จะได้ไม่ไปสร้างบันทึกให้วันที่เครื่องไม่ได้เดิน
     runs.push({ key, set: e.set, colorKey: e.colorKey, sizeLabel: e.sizeLabel,
-      from: iso, to: iso, fromCol: e.col, toCol: e.col, ranDays: 1, kg: e.kg,
+      from: iso, to: iso, fromCol: e.col, toCol: e.col, ranDays: 1, kg: e.kg, days: [iso],
       inferred: !!e.inferred, unsure: !e.sure, note: e.note });
   });
   return runs;
@@ -2989,6 +3188,12 @@ function renderInUseCalMachineTimeline() {
           'ครอบ ' + span + ' วัน · เดินงานจริง ' + r.ranDays + ' วัน' + (ton ? ' · ผลิตรวม ' + ton : '')];
         if (r.inferred) tips.push('บางวันยังไม่ได้บันทึกชุดสี ระบบอนุมานจากยอดผลิต (*)');
         if (r.unsure) tips.push('เครื่องเป็นค่าที่ระบบอ้างให้' + (r.note ? ' — ' + r.note : ''));
+        // กดที่แท่งเพื่อแก้ชุด Roll ของช่วงนั้น — เผื่อเลือกชุดผิดไว้แล้วต้องมาสลับทีหลัง
+        const editIdx = canEditPlan()
+          ? pushInUseCalEditRow({ machine: mc, cat, set: r.set, colorKey: r.colorKey,
+              sizeLabel: r.sizeLabel, from: r.from, to: r.to, days: r.days.slice() })
+          : -1;
+        if (editIdx >= 0) tips.push('กดที่แท่งเพื่อแก้ไข/สลับชุด Roll ของช่วงนี้');
         // 4 ระดับตามความกว้างของแท่ง — ยัดเท่าที่พอดี ไม่ให้ชื่อขนาดถูกตัดเหลือ "G..."
         //   >=130px : ขนาด · สี   +   n วัน · X ต.        (ครบทุกอย่าง)
         //   >= 78px : ขนาด        +   X ต.                (ตัดชุดสี/จำนวนวันออก — ความยาวแท่งบอกวันอยู่แล้ว)
@@ -3007,12 +3212,17 @@ function renderInUseCalMachineTimeline() {
             + (ton ? `<span style="flex:0 0 auto;opacity:.9;font-weight:700;">${escapeHtmlAttr(ton)}</span>` : '')
           : `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;">${
               escapeHtmlAttr(tier === 1 ? inUseCalSizeShort(r.sizeLabel) : inUseCalSizeTiny(r.sizeLabel))}${r.inferred ? '*' : ''}</span>`;
-        return `<div title="${escapeHtmlAttr(tips.join(' · '))}"
+        // ✎ เฉพาะแท่งที่กว้างพอ — แท่งแคบยังกดได้ แต่ไม่มีที่ใส่ไอคอน (ทูลทิปบอกไว้แล้ว)
+        const editMark = editIdx >= 0 && tier >= 2
+          ? `<span style="flex:0 0 auto;opacity:.75;font-weight:700;">✎</span>` : '';
+        return `<div title="${escapeHtmlAttr(tips.join(' · '))}"${
+            editIdx >= 0 ? ` onclick="openInUseRollEdit('${editIdx}')"` : ''}
           style="grid-column:${r.fromCol} / span ${span};display:flex;align-items:center;gap:${tier >= 2 ? 4 : 1}px;overflow:hidden;
                  background:${dot};color:${txt};border-radius:5px;padding:2px ${tier >= 2 ? 5 : 1}px;
                  font-size:${tier >= 2 ? 10 : (tier === 1 ? 9 : 8)}px;font-weight:800;letter-spacing:${tier ? '0' : '-.2px'};
+                 ${editIdx >= 0 ? 'cursor:pointer;' : ''}
                  box-shadow:inset 0 0 0 1px rgba(0,0,0,.22);${stillOn ? 'border-right:3px solid var(--accent);' : ''}">
-          ${inner}
+          ${inner}${editMark}
         </div>`;
       }).join('');
       const catColor = ROLL_SET_SECTION_COLORS[cat] || 'var(--text-2)';
@@ -3036,6 +3246,7 @@ function renderInUseCalMachineTimeline() {
       แท่งหนึ่งแท่ง = ชุด Roll หนึ่งชุดที่ใส่อยู่บนเครื่องนั้นต่อเนื่อง — ยาวเท่าไรคือใส่กี่วัน รอยต่อระหว่างแท่งคือวันที่เปลี่ยนชุด<br>
       สีของแท่ง = สีชุด Roll · <b>ขอบขวาน้ำเงิน</b> = ยังใส่อยู่ถึงวันนี้ · <b>*</b> = บางวันยังไม่ได้บันทึกชุดสี ระบบอนุมานจากยอดผลิต ·
       วันหยุด/วันที่ไม่ได้เดินขนาดนี้ไม่ตัดแท่ง เพราะ Roll ยังอยู่บนเครื่อง (ชี้ค้างที่แท่งเพื่อดูวันเริ่ม–สิ้นสุดและยอดผลิตรวม)${
+        canEditPlan() ? '<br><b style="color:var(--accent);">กดที่แท่ง</b> = แก้ไข/สลับชุด Roll ของช่วงนั้น (<b>✎</b>) — เลือกชุดผิดไว้ก็แก้ย้อนหลังได้ ทั้งแท่งหรือเฉพาะบางวัน' : ''}${
         inUseCalAll ? '<br><b style="color:var(--accent);">มุมมองทั้งหมด</b> — ' + escapeHtmlAttr(fmtDateThai(parseISODate(dayList[0]))
           + ' ถึง ' + fmtDateThai(parseISODate(dayList[n - 1])) + ' (' + n + ' วัน)') + ' · เส้นน้ำเงินบางในหัวตาราง = วันที่ 1 ของเดือนใหม่' : ''}
     </div>
@@ -3055,6 +3266,7 @@ function renderInUseCalendar() {
   if (!el) return;
   // เปลี่ยนชุดที่ใช้งานในทะเบียนแล้ว แต่บันทึกชุดสีที่เดินของวันนี้ยังเป็นชุดเดิม — ปรับให้ตรงกันก่อนวาด
   try { syncTodayRunColorToInUse(); } catch (e) { /* ตอนบูตยังอ่านทะเบียน/สถานะ cloud ไม่ได้ */ }
+  inUseCalEditRows = [];   // สร้างใหม่ทุกครั้งที่วาด ลำดับของปุ่มแก้ไขจึงตรงกับที่เห็นเสมอ
   // ตั้งชื่อเดือนก่อนแยกทาง เพราะทั้งสองมุมมองใช้หัวเดียวกัน
   {
     const lb = document.getElementById('inuse-cal-label');
@@ -3134,9 +3346,18 @@ function renderInUseCalendar() {
       // * = ยังไม่ได้บันทึกชุดสีของวันนั้น ระบบอนุมานให้จากยอดผลิต — เครื่องหมายเดียวกับตารางน้ำหนัก
       const anyInferred = ordered.some(x => x.inferred);
       // ป้ายหมวด F/S/T พื้นเป็นสีชุด Roll ที่เดินของหมวดนั้น — เห็นทั้งหมวดและสีในบรรทัดเดียว
-      const catTags = ordered.map(x => `<span title="${escapeHtmlAttr(x.cat + ' ' + rollColorLabelFor(x.set, x.colorKey))}"
+      // ป้ายหมวดกดได้ = แก้ชุด Roll ของ "วันนั้น หมวดนั้น" เผื่อเลือกชุดผิดไว้แล้วต้องสลับทีหลัง
+      // (แถวทั้งแถวกดแล้วเป็น "ยืนยันค่าที่ระบบเดา" อยู่แล้ว จึงแยกปุ่มแก้ไขมาไว้ที่ป้ายหมวด)
+      const catTags = ordered.map(x => {
+        const eIdx = canEditPlan()
+          ? pushInUseCalEditRow({ machine: machine || 'ไม่ทราบเครื่อง', cat: x.cat, set: x.set,
+              colorKey: x.colorKey, sizeLabel, from: iso, to: iso, days: [iso] })
+          : -1;
+        const tip = x.cat + ' ' + rollColorLabelFor(x.set, x.colorKey) + (eIdx >= 0 ? ' — กดเพื่อแก้ไข/สลับชุด Roll ของวันนี้' : '');
+        return `<span title="${escapeHtmlAttr(tip)}"${eIdx >= 0 ? ` onclick="event.stopPropagation();openInUseRollEdit('${eIdx}')"` : ''}
           style="background:${inUseColorDot(x.set, x.colorKey)};color:${rollColorTextOn(inUseColorDot(x.set, x.colorKey))};font-size:9px;font-weight:800;
-                 padding:0 3px;border-radius:3px;line-height:1.5;flex-shrink:0;">${ROLL_CAT_ABBR[x.cat] || '?'}</span>`).join('');
+                 padding:0 3px;border-radius:3px;line-height:1.5;flex-shrink:0;${eIdx >= 0 ? 'cursor:pointer;' : ''}">${ROLL_CAT_ABBR[x.cat] || '?'}</span>`;
+      }).join('');
       const machineNote = !machine ? ''
         : ' · เครื่อง ' + machine + (machineSure || !machineNotes.length ? '' : ' (' + machineNotes.join(' · ') + ')');
       // ยอดผลิตของขนาดนี้ในวันนั้น — ทุกหมวดของขนาดเดียวกันใช้ยอดก้อนเดียวกัน จึงเอาค่ามากสุด
