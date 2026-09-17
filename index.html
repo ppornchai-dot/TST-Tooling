@@ -14887,11 +14887,11 @@ function nowHHMM() {
   const d = new Date();
   return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
 }
-// ช่าง (cnc/polish/operator) กดเริ่ม/จบ/พักงานได้เฉพาะตอนดูวันปัจจุบันจริงเท่านั้น — กันกดย้อนหลัง/ล่วงหน้าให้วันอื่นโดยไม่ตั้งใจ
+// ช่าง (cnc/polish/operator) กดเริ่ม/จบ/พักงานได้ใน 3 วันทำงานที่เลื่อนดูได้ — วันทำงานก่อน / วันนี้ / วันทำงานถัดไป (ดู dailyTechDateAllowed)
 // admin/lead ไม่ถูกจำกัด เผื่อต้องแก้ไขบันทึกย้อนหลังหรือทดสอบข้อมูล
 // มุมมองช่าง (CNC/ขัด Roll/ช่างเครื่อง): เหลือแค่ Size Roll + ชุดสี Roll เป็นตัวระบุงาน ซ่อนคอลัมน์รายละเอียดที่ดูได้จากการกดขยายแถวอยู่แล้ว
 // ต้องเรียกทั้งจาก renderDailyTasks() และ applyRoleUI() — เพราะตอน Admin สลับ "ดูเป็น" คนอื่น applyRoleUI() ไม่ได้ render ตารางใหม่ ถ้าไม่เรียกที่นี่ class จะค้างมุมมองเดิมไว้
-// ช่าง (CNC/ขัด Roll/ช่างเครื่อง) — ดูได้เฉพาะวันปัจจุบัน เลื่อนไปวันอื่นไม่ได้ (สอดคล้องกับ canActOnDailyDate ที่ให้กดเริ่ม/จบงานได้แค่วันนี้อยู่แล้ว)
+// ช่าง (CNC/ขัด Roll/ช่างเครื่อง) — เลื่อนดูได้ 3 วันทำงาน (ก่อน/นี้/ถัดไป) นอกช่วงนี้ดูไม่ได้ และกดเริ่ม/จบงานไม่ได้ (สอดคล้องกับ canActOnDailyDate)
 // ป้ายปุ่มบนหน้างานประจำวัน — ช่างขัด Roll ขอให้เป็นภาษาอังกฤษ บทบาทอื่นยังเป็นภาษาไทยตามเดิม
 // (Admin ที่กด "ดูเป็น" ช่างขัด Roll จะเห็นภาษาอังกฤษด้วย เพราะ effectiveRole() คืนบทบาทที่กำลังดูอยู่จริง)
 const DAILY_ACTION_LABELS_TH = { start: 'เริ่มงาน', finish: 'จบงาน', pause: 'พักงาน', resume: 'ทำต่อ', paused: 'พักงาน' };
@@ -14904,7 +14904,7 @@ function DL() {
 // (ย้อนไป = ตามงานที่ค้างไว้ / ไปข้างหน้า = เตรียมตัวว่าจะทำอะไรต่อ)
 // นับเป็น "วันทำงาน" ไม่ใช่วันปฏิทิน — ข้ามวันอาทิตย์/วันหยุดบริษัทไปเลย
 // (อาการเดิม: วันนี้จันทร์ กดย้อนไปเจอวันอาทิตย์ที่ไม่มีงานเลย แล้วไปต่อไม่ได้)
-// ส่วนการ "กดเริ่ม/จบงาน" ยังทำได้เฉพาะวันปัจจุบันเหมือนเดิม (ดู canActOnDailyDate)
+// การ "กดเริ่ม/พัก/จบงาน" ทำได้ทั้ง 3 วันนี้เช่นกัน (ดู canActOnDailyDate) — งานกะดึกที่คาบเที่ยงคืนหรือมาทำต่อเช้าวันถัดไปจะได้กดได้ทันที
 const DAILY_TECH_DAY_SCAN_MAX = 14;   // กันวนไม่จบถ้าตั้งวันหยุดติดกันยาวผิดปกติ
 function dailyWorkingDayFrom(iso, dir) {
   let d = addDaysIso(iso, dir);
@@ -14986,12 +14986,16 @@ function syncDailyDateNavButtons() {
   });
 }
 
+// ช่างกดเริ่ม/พัก/จบงานได้ใน 3 วันทำงานที่เลื่อนดูได้ — วันทำงานก่อน / วันนี้ / วันทำงานถัดไป
+// (เดิมกดได้เฉพาะวันนี้ ทั้งที่เลื่อนไปดูอีกสองวันได้ ปุ่มจึงเป็นสีจางกดไม่ได้)
+// งานกะดึกที่คาบเที่ยงคืน หรือมาทำต่อเช้าวันถัดไป จึงกดได้โดยไม่ต้องรอให้ระบบเปลี่ยนวัน
+// ส่วนวันอื่นนอกช่วงนี้ยังกดไม่ได้ (เป็นแผนล่วงหน้า/ประวัติที่ไม่ควรแก้จากหน้างาน)
 function canActOnDailyDate() {
   const role = effectiveRole();
-  return role === 'admin' || role === 'lead' || dailyViewDate === dailyTodayIso();
+  return role === 'admin' || role === 'lead' || dailyTechDateAllowed(dailyViewDate);
 }
 // เริ่ม/จบงานตามแผน (CNC/ขัด Roll) ทำได้เฉพาะงานที่ระบุผู้ปฏิบัติงานตรงกับคนที่กำลังดูอยู่เท่านั้น (ดู effectiveWorkerId) — กันไม่ให้ช่างคนอื่นเผลอกดเริ่ม/จบงานที่ไม่ใช่ของตัวเอง
-// และต้องอยู่ในวันปัจจุบันจริงด้วย (ดู canActOnDailyDate) ถ้าเป็นช่าง
+// และถ้าเป็นช่าง ต้องอยู่ในช่วง 3 วันทำงานที่เลื่อนดูได้ด้วย (ดู canActOnDailyDate)
 function canActOnDailyItem(workerId) {
   const restrictId = effectiveWorkerId();
   // ปุ่มใน onclick ส่งค่ามาเป็น `t.workerId || ''` งานที่ไม่ระบุผู้ปฏิบัติงาน (null) จึงมาถึงที่นี่เป็นสตริงว่าง ไม่ใช่ null
@@ -15705,7 +15709,8 @@ function renderDailyTasks() {
     const meta = DAILY_STATUS_META[status];
     const isMine = !restrictWorkerId || item.workerId == null || item.workerId === restrictWorkerId;
     const dateOk = canActOnDailyDate();
-    const blockReason = !isMine ? 'งานของช่างคนอื่น' : (!dateOk ? 'ดูอยู่วันอื่น ไม่ใช่วันนี้' : '');
+    const blockReason = !isMine ? 'งานของช่างคนอื่น'
+      : (!dateOk ? 'กดได้เฉพาะวันทำงานก่อน / วันนี้ / วันทำงานถัดไป' : '');
     const actual = getDailyActualTimes(item.key);
     const startTimeDisplay = escapeHtmlAttr(item.startTime) + (actual.startTime ? ` <span class="muted" style="font-size:11px;">(จริง ${escapeHtmlAttr(actual.startTime)})</span>` : '');
     const endTimeDisplay = item.endTimeHtml + (actual.endTime ? ` <span class="muted" style="font-size:11px;">(จริง ${escapeHtmlAttr(actual.endTime)})</span>` : '');
