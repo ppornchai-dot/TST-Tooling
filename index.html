@@ -2508,7 +2508,16 @@ function rollChangedBetween(setName, fromIso, toIso) {
     return !!(ref && ref.set && ref.set !== setName);   // ขึ้นชุดอื่นในหมวดเดียวกัน = เปลี่ยน Roll แล้ว
   });
   if (byBlock) return true;
-  // 2) ชุดนี้ถูกแต่งแล้วกดเริ่มนับรอบใหม่ในช่วงนั้น = ถอด Roll ลงไปแต่งแล้วใส่กลับ ถือว่าเปลี่ยน
+  // 2) ทะเบียนบอกว่า "ตอนนี้" ชุดสีอื่นของ Size Roll นี้อยู่บนเครื่องแทนแล้ว = เปลี่ยน Roll ไปแล้ว
+  //    ใช้ได้เฉพาะวันนี้เป็นต้นไป เพราะทะเบียนบอกสถานะปัจจุบัน ไม่ใช่สถานะของวันในอดีต
+  //    (อาการเดิม: เปลี่ยนชุด Forming ของ P3 จากสีม่วงเป็นสีทองในทะเบียนแล้ว แต่ไม่ได้กรอก
+  //     รายการเปลี่ยน Roll ไว้ ปฏิทินจึงยกสีม่วงของเมื่อวานมาใส่ต่อไปเรื่อยๆ ว่า "ยังใส่อยู่")
+  try {
+    const nowKey = inUseColorFor(setName);
+    const wasKey = (rollRunColor[fromIso] || {})[setName];
+    if (nowKey && wasKey && nowKey !== wasKey && toIso >= dailyTodayIso()) return true;
+  } catch (e) { /* ตอนบูตยังอ่านทะเบียนไม่ได้ — ตกไปใช้หลักฐานข้ออื่น */ }
+  // 3) ชุดนี้ถูกแต่งแล้วกดเริ่มนับรอบใหม่ในช่วงนั้น = ถอด Roll ลงไปแต่งแล้วใส่กลับ ถือว่าเปลี่ยน
   //    จำเป็นต้องมีข้อนี้ เพราะรายการเปลี่ยน Roll ในหน้า Production Block ไม่ได้ถูกกรอกไว้ทุกครั้ง
   //    ถ้าดูแต่ข้อ 1 ตัวตรวจจะตอบว่า "ไม่เปลี่ยน" เสมอ แล้วยกชุดสีเดิมมาเรื่อยๆ โดยไม่มีอะไรมาหยุด
   return Object.keys(rollDressReset || {}).some(k => {
@@ -2638,6 +2647,27 @@ function autoRecordCarriedRunColors(isoList) {
   });
   if (changed) persistState();
   return changed;
+}
+
+// ทะเบียน "ชุด Roll กำลังใช้งาน" คือหลักฐานล่าสุดว่าอะไรอยู่บนเครื่อง "ตอนนี้"
+// ถ้าบันทึกชุดสีที่เดินของ "วันนี้" ยังเป็นชุดสีอื่นของ Size Roll เดียวกัน แปลว่าเป็นค่าที่
+// autoRecordCarriedRunColors ยกมาจากเมื่อวานตั้งแต่ก่อนเปลี่ยนชุด — ทับด้วยชุดที่ใช้งานจริง
+// ไม่งั้นค่าที่เขียนไปแล้วจะชนะทุกอย่าง (ค่าที่ระบุไว้ชนะเสมอ) แล้วปฏิทินจะขึ้นชุดเดิมว่า "ยังใส่อยู่" ไม่รู้จบ
+// แก้เฉพาะวันนี้เท่านั้น — วันในอดีตเป็นประวัติ ต้องไม่ถูกเขียนทับด้วยสถานะปัจจุบัน
+// ไม่ใช้ withCloudRetry เพราะจะไปทับ cloudReapply ของปุ่มที่ผู้ใช้เพิ่งกด (ตัวนี้คำนวณจากสถานะได้ใหม่เสมอ)
+function syncTodayRunColorToInUse() {
+  if (!canEditPlan() || !cloudSyncReady) return 0;   // ยังไม่ได้ข้อมูลจริงจาก cloud — อย่าเพิ่งเขียน
+  const today = dailyTodayIso();
+  const byDate = rollRunColor[today] || {};
+  const stale = Object.keys(byDate).filter(set => {
+    const now = inUseColorFor(set);
+    // ชุดสีที่บันทึกไว้ต้องไม่ได้อยู่บนเครื่องแล้วจริงๆ ถึงจะทับได้
+    return now && now !== byDate[set] && rollColorStatusFor(set, byDate[set]) !== 'inuse';
+  });
+  if (!stale.length) return 0;
+  stale.forEach(set => { byDate[set] = inUseColorFor(set); });
+  persistState();
+  return stale.length;
 }
 
 async function inUseCalPrefetchMachines(isoList) {
@@ -3023,6 +3053,8 @@ function renderInUseCalMachineTimeline() {
 function renderInUseCalendar() {
   const el = document.getElementById('inuse-cal-body');
   if (!el) return;
+  // เปลี่ยนชุดที่ใช้งานในทะเบียนแล้ว แต่บันทึกชุดสีที่เดินของวันนี้ยังเป็นชุดเดิม — ปรับให้ตรงกันก่อนวาด
+  try { syncTodayRunColorToInUse(); } catch (e) { /* ตอนบูตยังอ่านทะเบียน/สถานะ cloud ไม่ได้ */ }
   // ตั้งชื่อเดือนก่อนแยกทาง เพราะทั้งสองมุมมองใช้หัวเดียวกัน
   {
     const lb = document.getElementById('inuse-cal-label');
