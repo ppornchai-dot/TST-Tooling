@@ -15150,21 +15150,25 @@ function startDailyPiece(taskId, rollIdx, workerId) {
 
 // Roll ชิ้นเดียวกันที่ถูกตัดไปอยู่คนละใบงาน (เช่นทำต่อข้ามกะ: 10 นาทีท้ายกะเช้า + 85 นาทีต้นกะดึก)
 // หา "ส่วนก่อนหน้า" ของชิ้นนี้ — ใบงานของชุด/สี/ประเภทเดียวกันที่มีชิ้นนี้อยู่และมาก่อนในคิว
+// เงื่อนไขต้องแน่นพอ ไม่งั้นรอบขัด/รอบแต่งของวันก่อนๆ (ซึ่งมี Roll ตัวเดียวกันอยู่ด้วยเสมอ)
+// จะถูกนับเป็น "ส่วนก่อนหน้า" ไปหมด แล้วทุกชิ้นจะกลายเป็นปุ่ม "ทำต่อ" ทั้งที่เป็นงานใหม่ปกติ
+// การทำต่อจริงต้องครบ 2 ข้อ:
+//   1) ชิ้นนี้ในใบนี้เป็น "เศษของชิ้น" (นาทีน้อยกว่าเวลาเต็มของ Roll ตัวนั้น) = ถูกตัดมา
+//   2) มีอีกใบที่จบ "ต่อกันสนิทพอดี" กับเวลาเริ่มของใบนี้ และมีชิ้นเดียวกันอยู่ = อีกครึ่งของการตัดนั้น
 function prevPieceTaskFor(task, rollIdx) {
   if (!task) return null;
   const idx = Number(rollIdx);
-  const keyOf = t => t.workType + '|' + t.rollSet + '|' + (t.rollColor || '');
-  const posOf = t => taskDisplayDate(t) + ' ' + String(historyDayOrderMin(t.startTime)).padStart(5, '0');
-  const myKey = keyOf(task), myPos = posOf(task);
-  let best = null, bestPos = '';
-  planTasks.forEach(o => {
-    if (o.id === task.id || keyOf(o) !== myKey) return;
-    if (!(o.rollIds || []).includes(idx)) return;
-    const pos = posOf(o);
-    if (pos >= myPos) return;                       // ต้องเป็นส่วนที่มาก่อนเท่านั้น
-    if (!best || pos > bestPos) { best = o; bestPos = pos; }
-  });
-  return best;
+  const meta = PLAN_WORKTYPE_META[task.workType] || {};
+  const scoped = task.otherWork ? [] : getMatchingRollsForPlan(task.rollSet, task.rollColor);
+  const full = parseFloat((scoped[idx] || {})[meta.field]) || 0;
+  const mine = pieceMinutesOfTask(task, idx, scoped);
+  if (!full || !(mine > 0 && mine < full)) return null;   // ได้ทั้งชิ้นอยู่แล้ว = งานปกติ ไม่ใช่การทำต่อ
+  const startKey = task.date + ' ' + task.startTime;
+  return planTasks.find(o => o.id !== task.id
+    && o.workType === task.workType && o.rollSet === task.rollSet
+    && (o.rollColor || '') === (task.rollColor || '')
+    && (o.rollIds || []).includes(idx)
+    && ((o.endDate || o.date) + ' ' + o.endTime) === startKey) || null;
 }
 
 // กด "ทำต่อ" ที่ส่วนต่อของชิ้นเดิม (คนละใบงาน) — กะถัดไปมารับช่วงต่อ
