@@ -6124,7 +6124,18 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
       if (interactive && !isBreak && isFirstRow) {
         const pieceStatus = pieceEntry.status || 'pending';
         let inner;
-        if (pieceStatus === 'done') {
+        // ชิ้นเดียวกันที่ถูกตัดข้ามกะ = งานชิ้นเดียว ต้องมีปุ่มชุดเดียว
+        // ปุ่มอยู่ที่ "ส่วนแรกที่เห็นในวันนี้" ส่วนถัดๆ ไปโชว์แค่สถานะ ไม่มีปุ่มซ้ำ
+        // (สถานะใช้ร่วมกันทั้งชิ้นอยู่แล้ว — ดู setPieceStatusForChain — กดปุ่มเดียวก็มีผลทุกส่วน)
+        const prevPart = prevPieceTaskFor(t.__origin || t, rollIdx);
+        const prevShownToday = prevPart && taskDisplayDate(prevPart) === dailyViewDate;
+        if (prevShownToday) {
+          const chip = pieceStatus === 'done' ? '<span class="chip chip-green">✓ เสร็จ</span>'
+            : pieceStatus === 'paused' ? `<span class="chip chip-amber">⏸ ${DL().paused}</span>`
+            : pieceStatus === 'in_progress' ? '<span class="chip chip-blue">กำลังทำ</span>' : '';
+          inner = `${chip}<span class="muted" style="font-size:10.5px;display:block;margin-top:2px;"
+            title="${escapeHtmlAttr('ชิ้นเดียวกับที่อยู่ด้านบน (' + prevPart.startTime + '–' + prevPart.endTime + ') — กดปุ่มที่แถวนั้นได้เลย มีผลกับทั้งชิ้น')}">ชิ้นเดียวกับด้านบน</span>`;
+        } else if (pieceStatus === 'done') {
           // งานแต่ง Roll (CNC) แก้ขนาด OD ที่บันทึกไปแล้วได้ — งานขัด Roll ไม่ได้บันทึกขนาดจึงไม่มีปุ่มนี้
           const canEditOD = t.workType !== 'polish';
           inner = `<span class="chip chip-green">✓ เสร็จ</span>${canEditOD ? ` <button class="btn btn-ghost btn-sm" ${lockReason ? `disabled title="${lockReason} — แก้ขนาดไม่ได้"` : 'title="แก้ขนาด OD ที่บันทึกไปแล้ว"'} onclick="editDailyPieceSize('${t.id}','${rollIdx}','${t.workerId || ''}')">✎ แก้ไข OD</button>` : ''}`;
