@@ -9828,7 +9828,11 @@ function carryOverLeftoverTask(taskId, targetDay) {
   if (!info) return null;
   const t = info.task;
   const day = targetDay || nextWorkingDayForCarry();
-  const shiftKey = t.shift || 'morning';
+  // งานค้างที่ยกมา ต้องเป็น "งานแรกของวัน" — วางไว้ต้นกะแรกของวันนั้น (กะเช้า) ไม่ใช่ต้นกะเดิมของมัน
+  // งานกะดึกที่ค้างมา ถ้าคงกะเดิมไว้จะไปเริ่ม 20:00 กลายเป็นงานท้ายวัน
+  // ทั้งที่เป็นงานตกค้างที่ควรเคลียร์ก่อนงานใหม่ของวันนั้น
+  const firstShift = planDayEndShiftsFor(t.workType)[0] || 'morning';
+  const shiftKey = planWorkTypeAllowsShift(t.workType, firstShift) ? firstShift : (t.shift || 'morning');
   const scoped = t.otherWork ? [] : getMatchingRollsForPlan(t.rollSet, t.rollColor);
   const anchor = (SHIFTS[shiftKey] || SHIFTS.morning).start;
 
@@ -9842,6 +9846,7 @@ function carryOverLeftoverTask(taskId, targetDay) {
   if (!info.done.length) {
     // ยังไม่ได้เริ่มสักชิ้น — ย้ายทั้งงานไปเลย ไม่ต้องแตกงานใหม่
     t.date = day;
+    t.shift = shiftKey;   // ย้ายมาเป็นงานแรกของวัน = ทำในกะแรกของวันนั้น
     carriedId = t.id;
   } else {
     // ทำไปบางส่วนแล้ว — งานเดิมเก็บเฉพาะชิ้นที่เสร็จ (เป็นประวัติของวันนั้น) ที่เหลือแตกเป็นงานใหม่
@@ -9854,7 +9859,7 @@ function carryOverLeftoverTask(taskId, targetDay) {
     planTaskSeq++;
     carriedId = 'PT-' + String(planTaskSeq).padStart(4, '0');
     planTasks.push({
-      ...t, id: carriedId, date: day, startTime: anchor,
+      ...t, id: carriedId, date: day, startTime: anchor, shift: shiftKey,
       rollIds: info.remaining.slice(),
       rollId: t.otherWork ? (info.remaining.length + ' รายการ') : (info.remaining.length + ' Roll'),
       rollName: t.otherWork ? t.rollName : info.remaining.map(i => (scoped[i] || {}).name).filter(Boolean).join(', '),
