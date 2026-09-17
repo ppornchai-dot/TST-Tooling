@@ -6127,14 +6127,16 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
         // ชิ้นเดียวกันที่ถูกตัดข้ามกะ = งานชิ้นเดียว ต้องมีปุ่มชุดเดียว
         // ปุ่มอยู่ที่ "ส่วนแรกที่เห็นในวันนี้" ส่วนถัดๆ ไปโชว์แค่สถานะ ไม่มีปุ่มซ้ำ
         // (สถานะใช้ร่วมกันทั้งชิ้นอยู่แล้ว — ดู setPieceStatusForChain — กดปุ่มเดียวก็มีผลทุกส่วน)
-        const prevPart = prevPieceTaskFor(t.__origin || t, rollIdx);
-        const prevShownToday = prevPart && taskDisplayDate(prevPart) === dailyViewDate;
+        // 2 แบบที่ถือว่าเป็น "ส่วนต่อ": ตัดคร่อมส่วนของใบเดียวกัน (__contPieces) และตัดไปอยู่คนละใบ (prevPart)
+        const contSamePart = (t.__contPieces || []).includes(Number(rollIdx));
+        const prevPart = contSamePart ? null : prevPieceTaskFor(t.__origin || t, rollIdx);
+        const prevShownToday = contSamePart || (prevPart && taskDisplayDate(prevPart) === dailyViewDate);
         if (prevShownToday) {
           const chip = pieceStatus === 'done' ? '<span class="chip chip-green">✓ เสร็จ</span>'
             : pieceStatus === 'paused' ? `<span class="chip chip-amber">⏸ ${DL().paused}</span>`
             : pieceStatus === 'in_progress' ? '<span class="chip chip-blue">กำลังทำ</span>' : '';
           inner = `${chip}<span class="muted" style="font-size:10.5px;display:block;margin-top:2px;"
-            title="${escapeHtmlAttr('ชิ้นเดียวกับที่อยู่ด้านบน (' + prevPart.startTime + '–' + prevPart.endTime + ') — กดปุ่มที่แถวนั้นได้เลย มีผลกับทั้งชิ้น')}">ชิ้นเดียวกับด้านบน</span>`;
+            title="${escapeHtmlAttr('ชิ้นเดียวกับที่อยู่ด้านบน' + (prevPart ? ' (' + prevPart.startTime + '–' + prevPart.endTime + ')' : '') + ' — กดปุ่มที่แถวนั้นได้เลย มีผลกับทั้งชิ้น')}">ชิ้นเดียวกับด้านบน</span>`;
         } else if (pieceStatus === 'done') {
           // งานแต่ง Roll (CNC) แก้ขนาด OD ที่บันทึกไปแล้วได้ — งานขัด Roll ไม่ได้บันทึกขนาดจึงไม่มีปุ่มนี้
           const canEditOD = t.workType !== 'polish';
@@ -6224,8 +6226,22 @@ function planTaskDayParts(t) {
     g.rollName = g.rollIds.map(idx => (scoped[idx] || {}).name).filter(Boolean).join(', ');
   });
 
-  return groups.map((g, i) => ({ ...t, ...g, shift: g.shiftKey || t.shift,
+  const built = groups.map((g, i) => ({ ...t, ...g, shift: g.shiftKey || t.shift,
     __origin: t, __partIndex: i, __partCount: groups.length }));
+  // ชิ้นที่ถูกตัดคร่อมรอยต่อของส่วน จะโผล่ทั้งส่วนก่อนและส่วนนี้ (เช่นท้ายกะเช้า 15 นาที + ต้นกะดึก 60 นาที)
+  // ทำเครื่องหมายไว้ว่าส่วนนี้เป็น "ส่วนต่อของชิ้นนั้น" เพื่อให้หน้างานประจำวันไม่โชว์ปุ่มซ้ำอีกชุด
+  // นับเฉพาะตอนส่วนก่อนอยู่ในวันทำงานเดียวกัน — คนละวันต้องมีปุ่มของวันนั้นเอง ไม่งั้นกดอะไรไม่ได้เลย
+  const dates = built.map(p => taskDisplayDate(p));
+  built.forEach((p, i) => {
+    const cont = [];
+    (p.rollIds || []).forEach(idx => {
+      for (let k = 0; k < i; k++) {
+        if (dates[k] === dates[i] && (built[k].rollIds || []).includes(idx)) { cont.push(idx); break; }
+      }
+    });
+    p.__contPieces = cont;
+  });
+  return built;
 }
 
 // งานตามแผนของทุกวัน หลังตัดงานที่ทำข้ามวันเป็น "ส่วนของแต่ละวัน" แล้ว → Map<iso, parts[]>
