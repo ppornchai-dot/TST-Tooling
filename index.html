@@ -6136,17 +6136,9 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
             <button class="btn btn-ghost btn-sm daily-act daily-act-pause" ${lockReason ? `disabled title="${lockReason} — พักงานนี้ไม่ได้"` : ''} onclick="pauseDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">⏸ ${DL().pause}</button>
           </div>`;
         } else {
-          // ชิ้นเดียวกันที่ทำต่อข้ามกะ (ถูกตัดไปอยู่คนละใบงาน) — 1 ชิ้นมีปุ่ม "เริ่มงาน" ได้ปุ่มเดียว
-          // ปุ่มเริ่มงานอยู่ที่ส่วนแรกเท่านั้น ส่วนต่อๆ ไปเป็น "ทำต่อ" เสมอ ไม่ว่าส่วนแรกจะถูกกดหรือยัง
-          // (ส่วนแรกที่ไม่ได้ถูกกดเลยจะไม่ค้างเป็นงานให้ยกไปวันถัดไป เพราะตัวหางานค้าง
-          //  ถือว่าชิ้นนั้นทำแล้วถ้าจบงานในใบอื่นตั้งแต่วันนั้นเป็นต้นมา — ดู donePieceDatesByRoll)
-          const prevPart = prevPieceTaskFor(t.__origin || t, rollIdx);
-          inner = prevPart
-            ? `<button class="btn btn-ghost btn-sm daily-act daily-act-resume" style="color:var(--purple);"
-                 title="${escapeHtmlAttr('ชิ้นนี้ทำต่อจากงานก่อนหน้า (' + prevPart.startTime + '–' + prevPart.endTime + ') — กดเพื่อทำต่อ')}"
-                 ${lockReason ? `disabled title="${lockReason} — ทำต่อไม่ได้"` : ''}
-                 onclick="continueDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}','${prevPart.id}')">▶ ${DL().resume}</button>`
-            : `<button class="btn btn-ghost btn-sm daily-act daily-act-start" ${lockReason ? `disabled title="${lockReason} — เริ่มงานนี้ไม่ได้"` : ''} onclick="startDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ ${DL().start}</button>`;
+          // ชิ้นที่ถูกตัดข้ามกะใช้ปุ่มชุดเดียวกับชิ้นปกติ (เริ่ม/พัก/จบ) — กดที่แถวไหนก็มีผลทุกส่วน
+          // ทั้งสองกะจึงกดปุ่มเดียวกันได้ ไม่ต้องมีปุ่ม "ทำต่อ" แยกอีกปุ่ม
+          inner = `<button class="btn btn-ghost btn-sm daily-act daily-act-start" ${lockReason ? `disabled title="${lockReason} — เริ่มงานนี้ไม่ได้"` : ''} onclick="startDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ ${DL().start}</button>`;
         }
         actionCell = `<td onclick="event.stopPropagation();">${inner}</td>`;
       } else if (interactive && !isBreak) {
@@ -15138,11 +15130,9 @@ function startDailyPiece(taskId, rollIdx, workerId) {
   if (!canActOnDailyItem(workerId)) return;
   const at = nowHHMM();
   withCloudRetry(() => {
-    const dateMap = dailyPieceStatus[dailyStatusDateFor(taskId)] || (dailyPieceStatus[dailyStatusDateFor(taskId)] = {});
-    const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
-    taskMap[rollIdx] = { status: 'in_progress', startTime: at };
-    const dayMap = dailyStatusByDate[dailyStatusDateFor(taskId)] || (dailyStatusByDate[dailyStatusDateFor(taskId)] = {});
-    if ((dayMap[taskId] || 'pending') === 'pending') dayMap[taskId] = 'in_progress';
+    // ชิ้นที่ถูกตัดข้ามกะ ถือเป็นงานชิ้นเดียว — กดที่แถวไหนก็มีผลกับทุกส่วน
+    setPieceStatusForChain(taskId, rollIdx, { status: 'in_progress', startTime: at,
+      endTime: null, pauseReason: null, pausedAt: null });
     persistState();
     renderDailyTasks();
   });
@@ -15171,30 +15161,42 @@ function prevPieceTaskFor(task, rollIdx) {
     && ((o.endDate || o.date) + ' ' + o.endTime) === startKey) || null;
 }
 
-// กด "ทำต่อ" ที่ส่วนต่อของชิ้นเดิม (คนละใบงาน) — กะถัดไปมารับช่วงต่อ
-// ปิดส่วนก่อนหน้าให้เป็น "เสร็จ" ด้วย เพราะช่วงเวลาของกะนั้นทำครบแล้ว
-// ไม่งั้นมันจะค้างเป็น "พักงาน/กำลังทำ" ของกะก่อนตลอดไป แล้วไปโผล่ในงานค้าง
-function continueDailyPiece(taskId, rollIdx, workerId, prevTaskId) {
-  if (!canActOnDailyItem(workerId)) return;
-  const at = nowHHMM();
-  withCloudRetry(() => {
-    if (prevTaskId) {
-      const pDate = dailyStatusDateFor(prevTaskId);
-      const pMap = dailyPieceStatus[pDate] || (dailyPieceStatus[pDate] = {});
-      const pTask = pMap[prevTaskId] || (pMap[prevTaskId] = {});
-      const prevEntry = pTask[rollIdx] || {};
-      if (prevEntry.status === 'in_progress' || prevEntry.status === 'paused') {
-        pTask[rollIdx] = { ...prevEntry, status: 'done', endTime: prevEntry.endTime || at,
-          pauseReason: null, pausedAt: null };
-      }
+// ชิ้นเดียวกันที่ถูกตัดข้ามกะ จะอยู่ในใบงานมากกว่าหนึ่งใบ — คืน id ของ "ทุกส่วน" ของชิ้นนั้น
+// ผู้ใช้เห็นเป็นงานชิ้นเดียว กดปุ่มที่แถวไหนก็ได้ ให้มีผลกับทุกส่วนพร้อมกัน
+// (ทั้งสองกะจึงกดปุ่มเดียวกันได้ ไม่ต้องมีปุ่ม "ทำต่อ" แยกอีกปุ่ม)
+function pieceChainIdsFor(taskId, rollIdx) {
+  const task = planTasks.find(t => t.id === taskId);
+  if (!task) return [taskId];
+  const idx = Number(rollIdx);
+  const chain = [];
+  let cur = task, guard = 0;
+  while (cur && guard++ < 10) { chain.unshift(cur); cur = prevPieceTaskFor(cur, idx); }
+  guard = 0; cur = task;
+  while (guard++ < 10) {
+    const last = cur;
+    const next = planTasks.find(o => o.id !== last.id
+      && o.workType === last.workType && o.rollSet === last.rollSet
+      && (o.rollColor || '') === (last.rollColor || '')
+      && (o.rollIds || []).includes(idx)
+      && (prevPieceTaskFor(o, idx) || {}).id === last.id);
+    if (!next) break;
+    chain.push(next); cur = next;
+  }
+  return [...new Set(chain.map(t => t.id))];
+}
+
+// เขียนสถานะรายชิ้นให้ "ทุกส่วน" ของชิ้นนั้น — ใช้ร่วมกันทุกปุ่ม (เริ่ม/พัก/ทำต่อ/จบ)
+function setPieceStatusForChain(taskId, rollIdx, patch) {
+  pieceChainIdsFor(taskId, rollIdx).forEach(id => {
+    const dMap = dailyPieceStatus[dailyStatusDateFor(id)] || (dailyPieceStatus[dailyStatusDateFor(id)] = {});
+    const tMap = dMap[id] || (dMap[id] = {});
+    tMap[rollIdx] = { ...(tMap[rollIdx] || {}), ...patch };
+    const dayMap = dailyStatusByDate[dailyStatusDateFor(id)] || (dailyStatusByDate[dailyStatusDateFor(id)] = {});
+    if (patch.status === 'in_progress' && (dayMap[id] || 'pending') === 'pending') dayMap[id] = 'in_progress';
+    if (patch.status === 'done') {
+      const t = planTasks.find(x => x.id === id);
+      if (t && (t.rollIds || []).every(i => getDailyPieceEntry(id, i).status === 'done')) dayMap[id] = 'done';
     }
-    const dateMap = dailyPieceStatus[dailyStatusDateFor(taskId)] || (dailyPieceStatus[dailyStatusDateFor(taskId)] = {});
-    const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
-    taskMap[rollIdx] = { ...(taskMap[rollIdx] || {}), status: 'in_progress', startTime: at };
-    const dayMap = dailyStatusByDate[dailyStatusDateFor(taskId)] || (dailyStatusByDate[dailyStatusDateFor(taskId)] = {});
-    if ((dayMap[taskId] || 'pending') === 'pending') dayMap[taskId] = 'in_progress';
-    persistState();
-    renderDailyTasks();
   });
 }
 // ─── กล่องกรอกข้อความพร้อมปุ่มพูดแทนพิมพ์ (ใช้แทน prompt เดิม) ─────────────────
@@ -15375,13 +15377,11 @@ async function finishDailyPiece(taskId, rollIdx, workerId) {
     // ต้องหาใหม่ทุกครั้งที่ทำซ้ำ ไม่งั้นจะไปแก้วัตถุที่ไม่อยู่ในทะเบียนแล้ว (ค่าที่แก้หายไปเฉยๆ)
     const t2 = planTasks.find(x => x.id === taskId) || task;
     const roll2 = getMatchingRollsForPlan(t2.rollSet, t2.rollColor)[rollIdx];
-    const dateMap = dailyPieceStatus[dailyStatusDateFor(taskId)] || (dailyPieceStatus[dailyStatusDateFor(taskId)] = {});
-    const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
-    const prevEntry = getDailyPieceEntry(taskId, rollIdx);
-    taskMap[rollIdx] = needsMeasuredSize
-      ? { ...prevEntry, status: 'done', endTime: endAt, measuredSize: size, registryDiameter: roll2 ? roll2.diameter : null,
+    // ชิ้นที่ถูกตัดข้ามกะ = งานชิ้นเดียว กดจบที่แถวไหนก็จบทุกส่วน
+    setPieceStatusForChain(taskId, rollIdx, needsMeasuredSize
+      ? { status: 'done', endTime: endAt, measuredSize: size, registryDiameter: roll2 ? roll2.diameter : null,
           odStandard: roll2 ? (String(roll2.diameterStd || '').trim() || String(roll2.diameter || '').trim() || null) : null }
-      : { ...prevEntry, status: 'done', endTime: endAt };
+      : { status: 'done', endTime: endAt });
     if (needsMeasuredSize) {
       rollSizeLogSeq++;
       rollSizeLog.push({
@@ -15458,10 +15458,7 @@ async function pauseDailyPiece(taskId, rollIdx, workerId) {
   const pausedAt = nowHHMM();
   // ต้องทำซ้ำได้ถ้าเขียนชนกับเครื่องอื่น ไม่งั้นการพักงานหายไปเงียบๆ (เหมือน finishDailyPiece)
   withCloudRetry(() => {
-    const dateMap = dailyPieceStatus[dailyStatusDateFor(taskId)] || (dailyPieceStatus[dailyStatusDateFor(taskId)] = {});
-    const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
-    const prevEntry = getDailyPieceEntry(taskId, rollIdx);
-    taskMap[rollIdx] = { ...prevEntry, status: 'paused', pauseReason: reason.trim(), pausedAt };
+    setPieceStatusForChain(taskId, rollIdx, { status: 'paused', pauseReason: reason.trim(), pausedAt });
     dailyPauseLogSeq++;
     dailyPauseLog.push({
       id: 'PL-' + String(dailyPauseLogSeq).padStart(4, '0'),
@@ -15475,10 +15472,7 @@ async function pauseDailyPiece(taskId, rollIdx, workerId) {
 function resumeDailyPiece(taskId, rollIdx, workerId) {
   if (!canActOnDailyItem(workerId)) return;
   withCloudRetry(() => {
-    const dateMap = dailyPieceStatus[dailyStatusDateFor(taskId)] || (dailyPieceStatus[dailyStatusDateFor(taskId)] = {});
-    const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
-    const prevEntry = getDailyPieceEntry(taskId, rollIdx);
-    taskMap[rollIdx] = { ...prevEntry, status: 'in_progress', pauseReason: null, pausedAt: null };
+    setPieceStatusForChain(taskId, rollIdx, { status: 'in_progress', pauseReason: null, pausedAt: null });
     persistState();
     renderDailyTasks();
   });
