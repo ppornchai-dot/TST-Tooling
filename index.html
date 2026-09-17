@@ -7138,11 +7138,19 @@ function onPlanDragMove(ev) {
     planDrag.moved = true;
     return;
   }
-  if (over && over.dataset.shift === planDrag.shift) {
-    // วางสลับลำดับกับงานที่ชี้อยู่ — ทำได้เมื่อเป็นกะเดียวกัน เวลาเริ่ม/จบจึงคำนวณอยู่ในรอบกะเดียว
+  // วางสลับลำดับกับงานที่ชี้อยู่ — กะเดียวกันทำได้เสมอ
+  // คนละกะแต่เป็นวันเดียวกันก็ทำได้ ถ้าประเภทงานนั้นทำกะปลายทางได้จริง
+  // (เช่นลากงานกะดึกขึ้นไปไว้หัววันให้เป็นงานแรก = ย้ายไปทำกะเช้า — ตอนวางจะเปลี่ยนกะให้ตาม)
+  // เดิมข้ามกะไม่ได้เลย งานกะดึกจึงถูกล็อกอยู่ท้ายวันตลอด ลากขึ้นมาไว้หน้าไม่ได้
+  const overShift = over ? over.dataset.shift : null;
+  const sameDayShiftSwap = over && overShift && overShift !== planDrag.shift
+    && zone.dataset.day === planDrag.sourceDay
+    && planWorkTypeAllowsShift(planDragWorkType(), overShift);
+  if (over && (overShift === planDrag.shift || sameDayShiftSwap)) {
     const rect = over.getBoundingClientRect();
     zone.insertBefore(planDrag.item, ev.clientY > rect.top + rect.height / 2 ? over.nextSibling : over);
     planDrag.appended = false;
+    planDrag.dropShift = overShift;   // กะปลายทาง (เท่ากับกะเดิมถ้าไม่ได้ข้ามกะ)
   } else {
     // ชี้ที่ว่างในช่องวัน หรือชี้ที่งาน "คนละกะ" — ย้ายมาต่อท้ายวันนั้น
     // เดิมกรณีคนละกะจะ return ทิ้งไปเลย ทำให้ลากไปวางวันที่มีงานคนละกะอยู่แล้วไม่เกิดอะไรขึ้น
@@ -7152,8 +7160,15 @@ function onPlanDragMove(ev) {
     if (addBtn) zone.insertBefore(planDrag.item, addBtn);
     else zone.appendChild(planDrag.item);
     planDrag.appended = true; // ต่อท้ายวัน ไม่ใช่แทรกตามลำดับที่ชี้ — ตอนวางต้องต่อเวลาจากงานสุดท้ายของวันนั้น
+    planDrag.dropShift = null;
   }
   planDrag.moved = true;
+}
+
+// ประเภทงานของชิปที่กำลังลาก — ใช้เช็คว่ากะปลายทางเป็นกะที่ประเภทงานนั้นทำได้ไหม
+function planDragWorkType() {
+  const t = planDrag && planTasks.find(x => x.id === planDrag.taskId);
+  return t ? t.workType : 'cnc';
 }
 
 function onPlanDragUp() {
@@ -7168,15 +7183,25 @@ function onPlanDragUp() {
   const task = planTasks.find(t => t.id === d.taskId);
   if (!zone || !zone.dataset.day || !task) { renderCurrentPlanView(); return; }
   const targetDay = zone.dataset.day;
+  // ลากข้ามกะภายในวันเดียวกัน (เช่นยกงานกะดึกขึ้นมาเป็นงานแรกของวัน) — เปลี่ยนกะของงานให้ตามที่วาง
+  // ต้องเปลี่ยนก่อนเก็บรายการ ids ไม่งั้นชิปที่เพิ่งย้ายมาจะไม่ถูกนับเป็นงานของกะปลายทาง
+  const dropShift = (d.dropShift && d.dropShift !== d.shift && !d.appended) ? d.dropShift : d.shift;
+  if (dropShift !== d.shift) {
+    (d.groupIds && d.groupIds.length ? d.groupIds : [d.taskId]).forEach(id => {
+      const x = planTasks.find(t => t.id === id);
+      if (x) x.shift = dropShift;
+    });
+    d.item.dataset.shift = dropShift;
+  }
   // ชิปที่ยุบรวมนับเป็นหลาย id ตามลำดับ ไม่งั้นใบหลังของกลุ่มจะไม่ถูกจัดเวลาใหม่และค้างเวลาเดิม
   const ids = [...zone.querySelectorAll('.plan-drag-item[data-draggable]')]
-    .filter(n => n.dataset.shift === d.shift && (!d.section || n.dataset.section === d.section))
+    .filter(n => n.dataset.shift === dropShift && (!d.section || n.dataset.section === d.section))
     .flatMap(n => (n.dataset.taskids || n.dataset.taskid || '').split(',').filter(Boolean));
 
   // เริ่มไล่เวลาจาก "ต้นกะของวันนั้น" เสมอ ไม่ยกเวลาเดิมของงานอื่นในวันนั้นมาเป็นจุดตั้งต้น
   // (ถ้ายึดเวลาของงานที่มีอยู่ เช่น 20:00 งานที่ลากเข้ามาจะเริ่ม 20:00 แล้วดันงานเดิมข้ามไปวันถัดไป)
   // ตรงกับที่ตกลงไว้ว่า วางแผนวันไหนให้เป็นการวางแผนของวันนั้น เริ่มที่ต้นกะ ไม่ต่อจากของเดิม
-  const anchor = (SHIFTS[d.shift] || {}).start || '08:00';
+  const anchor = (SHIFTS[dropShift] || {}).start || '08:00';
 
   // จำวันของทุกงานไว้ก่อนแก้ เพื่อย้ายบันทึกความคืบหน้าตามงานที่เปลี่ยนวัน (ดู syncPlanProgressAfterMove)
   // ทำให้ลากงานที่ทำเสร็จแล้วไปวางวันที่ทำจริงได้ โดยยังเป็น "ทำแล้ว" ในวันใหม่
@@ -7206,7 +7231,7 @@ function onPlanDragUp() {
       cursor = nextValidPlanContinuePoint(sched, t.endDate, t.endTime, t.otCapMinutesByShift, t.workType);
     });
   } else {
-    resequencePlanDayShift(targetDay, d.shift, ids, anchor);
+    resequencePlanDayShift(targetDay, dropShift, ids, anchor);
   }
   // ปิดช่องว่างที่งานย้ายออกไปทิ้งไว้ — เฉพาะวันต้นทางที่ยังเป็นวันนี้/อนาคต
   // วันที่ผ่านไปแล้วเป็นบันทึกของสิ่งที่ทำไปแล้ว ไม่ไปรื้อเวลาใหม่
