@@ -4993,59 +4993,76 @@ function goToRegistryTab(key) {
 // ต่างกันที่แหล่งข้อมูล: ของ Roll มาจากงานตามแผน (planTasks) ส่วน Roll SQ ไม่มีงานตามแผน
 // จึงอ่านจาก "สถานะชุด" ที่ตั้งไว้ในทะเบียน Roll SQ แทน (ดู SQ_SET_STATUS_META)
 // ไม่มีส่วนของงานขัด ตามที่หน้างานระบุว่า Roll SQ ไม่มีงานขัด
-const SQ_WORKING_GROUPS = [
-  { key: 'dressing',  label: 'กำลังแต่ง', color: 'var(--amber)', bg: 'var(--amber-dim)' },
-  { key: 'waitdress', label: 'รอแต่ง',    color: 'var(--red)',   bg: 'var(--red-dim)' },
-];
-function dashSqWorkingCardHtml(sets) {
-  const byGroup = SQ_WORKING_GROUPS.map(g => ({
-    ...g, list: sets.filter(s => sqSetStatusFor(sqSetKey(s[0])) === g.key),
-  }));
+// หนึ่งแถว = หนึ่งชุด — ใช้ร่วมกันทุกการ์ดของแท็บ Roll SQ จะได้อ่านเหมือนกันหมด
+function dashSqSetRowHtml(set, accent) {
+  const head = set[0] || {};
+  const expired = set.filter(sqOdExpired).length;
+  const unmeasured = set.filter(r => !sqHasCurrentOd(r)).length;
+  return `<div onclick="${jsCallAttr('goToSqSet', sqSetKey(head))}" title="กดเพื่อเปิดชุดนี้ในหน้าทะเบียน Roll SQ"
+      style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:9px 12px;border-radius:8px;
+             background:var(--bg-surface);border:1px solid ${accent}33;">
+    <span style="width:11px;height:11px;border-radius:50%;flex-shrink:0;background:${sqColorMeta(head.color).dot};"></span>
+    <span style="min-width:0;">
+      <b style="font-size:13.5px;">${escapeHtmlAttr((head.sizeSq || '') + ' ' + (head.kind || ''))}</b>
+      <div class="muted" style="font-size:11.5px;">${escapeHtmlAttr(sqColorMeta(head.color).label
+        + ' · ' + sqSetOrdinalLabel(head) + ' · ' + fmtYmThai(head.madeYm))}</div>
+    </span>
+    <span style="margin-left:auto;text-align:right;flex-shrink:0;">
+      <span style="font-size:12px;font-weight:700;color:${accent};">${set.length} ชิ้น</span>
+      ${expired ? `<div style="font-size:11px;font-weight:700;color:var(--red);">ถึง OD หมดอายุ ${expired} ชิ้น</div>`
+        : unmeasured ? `<div style="font-size:11px;color:var(--text-3);">ยังไม่วัด OD ${unmeasured} ชิ้น</div>` : ''}
+    </span>
+  </div>`;
+}
+
+// การ์ดรวมชุดตามสถานะ — groups มีมากกว่า 1 กลุ่มจึงคั่นหัวกลุ่มให้ มีกลุ่มเดียวก็แสดงเป็นรายการยาว
+function dashSqStatusCardHtml(sets, { title, color, groups, emptyText }) {
+  const byGroup = groups.map(g => ({ ...g, list: sets.filter(s => sqSetStatusFor(sqSetKey(s[0])) === g.key) }));
   const total = byGroup.reduce((n, g) => n + g.list.length, 0);
-  const sub = byGroup.map(g => g.label + ' ' + g.list.length).join(' · ');
+  const sub = groups.length > 1 ? byGroup.map(g => g.label + ' ' + g.list.length).join(' · ') : '';
   const body = !total
     ? `<div style="padding:22px 14px;text-align:center;color:var(--text-3);font-size:13px;">
-         ยังไม่มีชุด Roll SQ ที่กำลังแต่งหรือรอแต่ง<br>
+         ${escapeHtmlAttr(emptyText)}<br>
          <span style="font-size:11.5px;">ตั้งสถานะของชุดได้ที่คอลัมน์ "สถานะชุด" ในหน้าทะเบียน Roll SQ</span>
        </div>`
     : byGroup.filter(g => g.list.length).map(g => `
-        <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:${g.bg};
-                    border-left:3px solid ${g.color};">
+        ${groups.length > 1 ? `<div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:${g.bg};
+            border-left:3px solid ${g.color};">
           <span style="width:9px;height:9px;border-radius:50%;background:${g.color};"></span>
           <b style="font-size:13px;color:${g.color};">${escapeHtmlAttr(g.label)}</b>
           <span style="margin-left:auto;font-size:12px;font-weight:700;color:${g.color};">${g.list.length} ชุด</span>
-        </div>
+        </div>` : ''}
         <div style="padding:8px 14px;display:flex;flex-direction:column;gap:7px;">
-          ${g.list.map(s => {
-            const head = s[0] || {};
-            const expired = s.filter(sqOdExpired).length;
-            const unmeasured = s.filter(r => !sqHasCurrentOd(r)).length;
-            return `<div onclick="${jsCallAttr('goToSqSet', sqSetKey(head))}" title="กดเพื่อเปิดชุดนี้ในหน้าทะเบียน Roll SQ"
-                style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:9px 12px;border-radius:8px;
-                       background:var(--bg-surface);border:1px solid ${g.color}33;">
-              <span style="width:11px;height:11px;border-radius:50%;flex-shrink:0;background:${sqColorMeta(head.color).dot};"></span>
-              <span style="min-width:0;">
-                <b style="font-size:13.5px;">${escapeHtmlAttr((head.sizeSq || '') + ' ' + (head.kind || ''))}</b>
-                <div class="muted" style="font-size:11.5px;">${escapeHtmlAttr(sqColorMeta(head.color).label
-                  + ' · ' + sqSetOrdinalLabel(head) + ' · ' + fmtYmThai(head.madeYm))}</div>
-              </span>
-              <span style="margin-left:auto;text-align:right;flex-shrink:0;">
-                <span style="font-size:12px;font-weight:700;color:${g.color};">${s.length} ชิ้น</span>
-                ${expired ? `<div style="font-size:11px;font-weight:700;color:var(--red);">ถึง OD หมดอายุ ${expired} ชิ้น</div>`
-                  : unmeasured ? `<div style="font-size:11px;color:var(--text-3);">ยังไม่วัด OD ${unmeasured} ชิ้น</div>` : ''}
-              </span>
-            </div>`;
-          }).join('')}
+          ${g.list.map(s => dashSqSetRowHtml(s, g.color)).join('')}
         </div>`).join('');
   return `<div class="card" style="margin-bottom:18px;">
     <div class="card-header">
-      <span class="card-title" style="font-size:17px;color:var(--amber);display:inline-flex;align-items:center;gap:8px;">
-        <span style="width:11px;height:11px;border-radius:50%;background:var(--amber);flex-shrink:0;"></span>ชุด Roll SQ กำลังแต่ง</span>
+      <span class="card-title" style="font-size:17px;color:${color};display:inline-flex;align-items:center;gap:8px;">
+        <span style="width:11px;height:11px;border-radius:50%;background:${color};flex-shrink:0;"></span>${escapeHtmlAttr(title)}</span>
       <span style="margin-left:auto;font-size:12px;color:var(--text-3);">
-        <b style="color:var(--amber);">${total}</b> ชุด${total ? ' (' + escapeHtmlAttr(sub) + ')' : ''}</span>
+        <b style="color:${color};">${total}</b> ชุด${sub && total ? ' (' + escapeHtmlAttr(sub) + ')' : ''}</span>
     </div>
     <div style="padding:0 0 6px;">${body}</div>
   </div>`;
+}
+
+function dashSqWorkingCardHtml(sets) {
+  return dashSqStatusCardHtml(sets, {
+    title: 'ชุด Roll SQ กำลังแต่ง', color: 'var(--amber)',
+    emptyText: 'ยังไม่มีชุด Roll SQ ที่กำลังแต่งหรือรอแต่ง',
+    groups: [
+      { key: 'dressing',  label: 'กำลังแต่ง', color: 'var(--amber)', bg: 'var(--amber-dim)' },
+      { key: 'waitdress', label: 'รอแต่ง',    color: 'var(--red)',   bg: 'var(--red-dim)' },
+    ],
+  });
+}
+
+function dashSqInUseCardHtml(sets) {
+  return dashSqStatusCardHtml(sets, {
+    title: 'ชุด Roll SQ กำลังใช้งาน', color: 'var(--inuse)',
+    emptyText: 'ยังไม่มีชุด Roll SQ ที่กำลังใช้งาน',
+    groups: [{ key: 'inuse', label: 'กำลังใช้งาน', color: 'var(--inuse)', bg: 'var(--inuse-dim)' }],
+  });
 }
 
 // เปิดชุดนั้นในหน้าทะเบียน Roll SQ เลย — กดจาก Dashboard แล้วไปจัดการต่อได้ทันที
@@ -5092,6 +5109,7 @@ function renderDashboardSqPanel() {
     </div>
 
     ${dashSqWorkingCardHtml(sets)}
+    ${dashSqInUseCardHtml(sets)}
 
     <div class="card" style="margin-bottom:18px;">
       <div class="card-header">
