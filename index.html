@@ -1427,7 +1427,7 @@ canvas{display:block;}
             <div class="table-wrap" style="overflow-x:auto;">
               <table>
                 <thead><tr>
-                  <th>Size SQ</th><th>ประเภท</th><th>ชุดสี</th><th title="ชิ้นงานในชุด — R = ขวา · L = ซ้าย">ชิ้นงาน</th><th title="รหัสประจำ Roll ลูกนั้น">รหัส Roll</th><th>เดือน/ปี ที่ผลิต</th><th title="ขนาดตอนใส่ครั้งแรก — ไม่เปลี่ยนตามการแต่ง">OD Standard</th><th title="ขนาดล่าสุดหลังแต่ง">OD ปัจจุบัน</th><th title="OD ที่เล็กที่สุดที่ยังใช้ได้ — ถึงค่านี้แล้วต้องเปลี่ยนลูกใหม่">OD หมดอายุ</th><th></th>
+                  <th>Size SQ</th><th>ประเภท</th><th>ชุดสี</th><th title="สถานะของทั้งชุด — ใช้เป็นตัวบอกการ์ด 'ชุด Roll SQ กำลังแต่ง' บนหน้า Dashboard">สถานะชุด</th><th title="ชิ้นงานในชุด — R = ขวา · L = ซ้าย">ชิ้นงาน</th><th title="รหัสประจำ Roll ลูกนั้น">รหัส Roll</th><th>เดือน/ปี ที่ผลิต</th><th title="ขนาดตอนใส่ครั้งแรก — ไม่เปลี่ยนตามการแต่ง">OD Standard</th><th title="ขนาดล่าสุดหลังแต่ง">OD ปัจจุบัน</th><th title="OD ที่เล็กที่สุดที่ยังใช้ได้ — ถึงค่านี้แล้วต้องเปลี่ยนลูกใหม่">OD หมดอายุ</th><th></th>
                 </tr></thead>
                 <tbody id="tbody-sq"></tbody>
               </table>
@@ -4989,8 +4989,77 @@ function goToRegistryTab(key) {
   switchRegTab(key);
 }
 
-// แผงสรุป Roll SQ — หมวดนี้ไม่มีคอลัมน์สถานะ แต่มี OD ปัจจุบัน/OD หมดอายุ
-// จึงสรุปด้วย "อายุตาม OD" แทน (เกณฑ์เดียวกับ sqOdExpired ที่ทะเบียน Roll SQ ใช้)
+// การ์ด "ชุด Roll SQ กำลังแต่ง" — คู่กับการ์ด "ชุด Roll กำลังแต่ง" ของแท็บ Roll
+// ต่างกันที่แหล่งข้อมูล: ของ Roll มาจากงานตามแผน (planTasks) ส่วน Roll SQ ไม่มีงานตามแผน
+// จึงอ่านจาก "สถานะชุด" ที่ตั้งไว้ในทะเบียน Roll SQ แทน (ดู SQ_SET_STATUS_META)
+// ไม่มีส่วนของงานขัด ตามที่หน้างานระบุว่า Roll SQ ไม่มีงานขัด
+const SQ_WORKING_GROUPS = [
+  { key: 'dressing',  label: 'กำลังแต่ง', color: 'var(--amber)', bg: 'var(--amber-dim)' },
+  { key: 'waitdress', label: 'รอแต่ง',    color: 'var(--red)',   bg: 'var(--red-dim)' },
+];
+function dashSqWorkingCardHtml(sets) {
+  const byGroup = SQ_WORKING_GROUPS.map(g => ({
+    ...g, list: sets.filter(s => sqSetStatusFor(sqSetKey(s[0])) === g.key),
+  }));
+  const total = byGroup.reduce((n, g) => n + g.list.length, 0);
+  const sub = byGroup.map(g => g.label + ' ' + g.list.length).join(' · ');
+  const body = !total
+    ? `<div style="padding:22px 14px;text-align:center;color:var(--text-3);font-size:13px;">
+         ยังไม่มีชุด Roll SQ ที่กำลังแต่งหรือรอแต่ง<br>
+         <span style="font-size:11.5px;">ตั้งสถานะของชุดได้ที่คอลัมน์ "สถานะชุด" ในหน้าทะเบียน Roll SQ</span>
+       </div>`
+    : byGroup.filter(g => g.list.length).map(g => `
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:${g.bg};
+                    border-left:3px solid ${g.color};">
+          <span style="width:9px;height:9px;border-radius:50%;background:${g.color};"></span>
+          <b style="font-size:13px;color:${g.color};">${escapeHtmlAttr(g.label)}</b>
+          <span style="margin-left:auto;font-size:12px;font-weight:700;color:${g.color};">${g.list.length} ชุด</span>
+        </div>
+        <div style="padding:8px 14px;display:flex;flex-direction:column;gap:7px;">
+          ${g.list.map(s => {
+            const head = s[0] || {};
+            const expired = s.filter(sqOdExpired).length;
+            const unmeasured = s.filter(r => !sqHasCurrentOd(r)).length;
+            return `<div onclick="${jsCallAttr('goToSqSet', sqSetKey(head))}" title="กดเพื่อเปิดชุดนี้ในหน้าทะเบียน Roll SQ"
+                style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:9px 12px;border-radius:8px;
+                       background:var(--bg-surface);border:1px solid ${g.color}33;">
+              <span style="width:11px;height:11px;border-radius:50%;flex-shrink:0;background:${sqColorMeta(head.color).dot};"></span>
+              <span style="min-width:0;">
+                <b style="font-size:13.5px;">${escapeHtmlAttr((head.sizeSq || '') + ' ' + (head.kind || ''))}</b>
+                <div class="muted" style="font-size:11.5px;">${escapeHtmlAttr(sqColorMeta(head.color).label
+                  + ' · ' + sqSetOrdinalLabel(head) + ' · ' + fmtYmThai(head.madeYm))}</div>
+              </span>
+              <span style="margin-left:auto;text-align:right;flex-shrink:0;">
+                <span style="font-size:12px;font-weight:700;color:${g.color};">${s.length} ชิ้น</span>
+                ${expired ? `<div style="font-size:11px;font-weight:700;color:var(--red);">ถึง OD หมดอายุ ${expired} ชิ้น</div>`
+                  : unmeasured ? `<div style="font-size:11px;color:var(--text-3);">ยังไม่วัด OD ${unmeasured} ชิ้น</div>` : ''}
+              </span>
+            </div>`;
+          }).join('')}
+        </div>`).join('');
+  return `<div class="card" style="margin-bottom:18px;">
+    <div class="card-header">
+      <span class="card-title" style="font-size:17px;color:var(--amber);display:inline-flex;align-items:center;gap:8px;">
+        <span style="width:11px;height:11px;border-radius:50%;background:var(--amber);flex-shrink:0;"></span>ชุด Roll SQ กำลังแต่ง</span>
+      <span style="margin-left:auto;font-size:12px;color:var(--text-3);">
+        <b style="color:var(--amber);">${total}</b> ชุด${total ? ' (' + escapeHtmlAttr(sub) + ')' : ''}</span>
+    </div>
+    <div style="padding:0 0 6px;">${body}</div>
+  </div>`;
+}
+
+// เปิดชุดนั้นในหน้าทะเบียน Roll SQ เลย — กดจาก Dashboard แล้วไปจัดการต่อได้ทันที
+function goToSqSet(setKeyStr) {
+  showPage('registry');
+  switchRegTab('sq');
+  selectedSqSize = null;
+  selectedSqSetKey = setKeyStr;
+  pageState.sq = 1;
+  renderSqRegistry(1);   // วาดทั้งแท็บ (คอลัมน์ซ้าย + ตาราง + KPI) ให้ชุดที่เลือกไฮไลต์ด้วย
+}
+
+// แผงสรุป Roll SQ — หมวดนี้ไม่มีคอลัมน์สถานะของแต่ละชิ้น แต่มี OD ปัจจุบัน/OD หมดอายุ
+// จึงสรุปด้วย "อายุตาม OD" (เกณฑ์เดียวกับ sqOdExpired ที่ทะเบียน Roll SQ ใช้)
 function renderDashboardSqPanel() {
   const el = document.getElementById('dashpanel-sq');
   if (!el) return;
@@ -5021,6 +5090,8 @@ function renderDashboardSqPanel() {
         'จาก ' + pieces.length.toLocaleString() + ' ชิ้น')}
       ${dashMiniKpi('ขนาด Size SQ', bySize.size.toLocaleString(), 'var(--accent)', 'ที่มีชุดลงทะเบียนไว้')}
     </div>
+
+    ${dashSqWorkingCardHtml(sets)}
 
     <div class="card" style="margin-bottom:18px;">
       <div class="card-header">
@@ -10788,6 +10859,9 @@ const ROLL_COLOR_STATUS_META = {
 
 // สถานะความพร้อมใช้งานของแต่ละ "ชุดสี Roll" — คีย์แยกตาม Size Roll + สี เพราะสีเป็นอิสระต่อกลุ่ม
 let rollColorStatus = {};
+// สถานะของ "ชุด Roll SQ" (คีย์ = sqSetKey ของชุด) — รายละเอียด/ตัวช่วยอยู่ในส่วนทะเบียน Roll SQ
+// ต้องประกาศไว้ตรงนี้ เพราะ buildStateSnapshot() ด้านล่างถูกเรียกตั้งแต่ตอนบูต ถ้าประกาศทีหลังจะชน TDZ
+let sqSetStatus = {};
 function rollColorStatusFor(setName, colorKey) { return rollColorStatus[setName + '|' + colorKey] || 'ready'; }
 function getRollColorStatus(colorKey) { return rollColorStatusFor(selectedRollSet, colorKey); }
 function setRollColorStatus(colorKey, status) {
@@ -11137,7 +11211,7 @@ let rollCarryTon = {};
 
 function buildStateSnapshot() {
   return {
-    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec,
+    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec, sqSetStatus,
     planTasks, planTaskSeq, companyHolidays, companyHolidaySeq, planDayEndTime, planDayWorker, teamMembers, teamSeq,
     dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
     dailyPieceStatus, rollSizeLog, rollSizeLogSeq, dailyPauseLog, dailyPauseLogSeq,
@@ -11265,6 +11339,7 @@ function applyState(saved) {
   if (saved.rollSetMachines) rollSetMachines = saved.rollSetMachines;
   if (saved.rollSetStatus) rollSetStatus = saved.rollSetStatus;
   if (saved.rollColorStatus) rollColorStatus = saved.rollColorStatus;
+  if (saved.sqSetStatus) sqSetStatus = saved.sqSetStatus;
   if (saved.rollColorActiveMachine) rollColorActiveMachine = saved.rollColorActiveMachine;
   if (saved.rollSetCategoryTemplates) rollSetCategoryTemplates = saved.rollSetCategoryTemplates;
   if (saved.rollLifeSpec) rollLifeSpec = saved.rollLifeSpec;
@@ -14945,6 +15020,43 @@ function sqSets() {
   return [...map.values()];
 }
 
+// ─── สถานะของ "ชุด Roll SQ" ───────────────────────────────────────────────────
+// เก็บทีละชุด (ไม่ใช่ทีละชิ้น) เพราะ Roll SQ ถอดเข้า–ออกเครื่องและส่งไปแต่งกันทั้งชุด
+// หมวดนี้ไม่มีงานตามแผนเหมือนทะเบียน Roll (planTasks อ้างถึง Size Roll เท่านั้น)
+// การ์ด "ชุด Roll SQ กำลังแต่ง" บน Dashboard จึงอ่านสถานะตรงนี้เป็นตัวบอก
+// ไม่มี "รอขัด/กำลังขัด" ตามที่หน้างานระบุว่า Roll SQ ไม่มีงานขัด
+const SQ_SET_STATUS_META = {
+  inuse:       { label: 'กำลังใช้งาน',    short: 'กำลังใช้งาน', color: 'var(--inuse)',       bg: 'var(--inuse-dim)',       optBg: '#E4EFC7' },
+  ready:       { label: 'พร้อมใช้งาน',    short: 'พร้อมใช้',   color: 'var(--green)',        bg: 'var(--green-dim)',       optBg: '#D8EFE4' },
+  waitdress:   { label: 'รอแต่ง',         short: 'รอแต่ง',     color: 'var(--red)',          bg: 'var(--red-dim)',         optBg: '#F8DADA' },
+  dressing:    { label: 'กำลังแต่ง',      short: 'กำลังแต่ง',  color: 'var(--amber)',        bg: 'var(--amber-dim)',       optBg: '#FBE7C8' },
+  'not-ready': { label: 'ไม่พร้อมใช้งาน', short: 'ไม่พร้อม',   color: 'var(--st-notready)',  bg: 'var(--st-notready-dim)', optBg: '#DBDDE2' },
+};
+// ตัวแปร sqSetStatus ประกาศไว้ข้างบนคู่กับ rollColorStatus — ต้องอยู่ก่อน buildStateSnapshot()
+// ซึ่งถูกเรียกตั้งแต่ตอนบูต ถ้าประกาศไว้ตรงนี้จะชน TDZ แล้วสคริปต์ตายกลางทาง
+// ไม่มีคีย์ = 'ready' (เกณฑ์เดียวกับ rollColorStatus ของทะเบียน Roll)
+function sqSetStatusFor(setKeyStr) { return sqSetStatus[setKeyStr] || 'ready'; }
+function setSqSetStatus(setKeyStr, status) {
+  // ครอบตัวทำรายการซ้ำ — เป็นการ "ตั้งค่าให้เป็นค่านี้" ไม่ใช่สลับค่า ทำซ้ำตอน cloud ชนจึงได้ผลเดิม
+  withCloudRetry(() => {
+    if (status === 'ready') delete sqSetStatus[setKeyStr]; else sqSetStatus[setKeyStr] = status;
+    persistState();
+    renderSqTable(pageState.sq || 1);
+    renderDashboardToolingPanels();
+  });
+}
+function sqSetStatusSelectHtml(setKeyStr) {
+  const st = sqSetStatusFor(setKeyStr);
+  const meta = SQ_SET_STATUS_META[st] || SQ_SET_STATUS_META.ready;
+  return `<select class="form-select" style="width:112px;padding:3px 6px;font-size:11.5px;font-weight:800;
+      color:${meta.color};background:${meta.bg};border-color:${meta.color};"
+      onchange="${jsCallAttrValue('setSqSetStatus', setKeyStr)}" title="${escapeHtmlAttr('สถานะของทั้งชุด — ' + meta.label)}">
+    ${Object.entries(SQ_SET_STATUS_META).map(([k, m]) =>
+      `<option value="${k}"${st === k ? ' selected' : ''} title="${escapeHtmlAttr(m.label)}"
+        style="background:${m.optBg};color:${m.color};font-weight:700;">${escapeHtmlAttr(m.short)}</option>`).join('')}
+  </select>`;
+}
+
 function sqNum(v) {
   const n = parseFloat(String(v == null ? '' : v).replace(/,/g, ''));
   return Number.isFinite(n) ? n : null;
@@ -15161,6 +15273,7 @@ function renderSqTable(page) {
         <span style="width:10px;height:10px;border-radius:50%;background:${cm.dot};box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);"></span>
         ${escapeHtmlAttr(cm.label)}
         <b style="color:var(--text-1);">${escapeHtmlAttr(sqSetOrdinalLabel(r))}</b></span></td>
+      <td>${first ? sqSetStatusSelectHtml(sqSetKey(r)) : ''}</td>
       <td>${sqPieceChipHtml(r.piece || i + 1)}${
         first && incomplete ? ` <span class="chip chip-amber" title="1 ชุดต้องมี Roll ${SQ_PIECES_PER_SET} ชิ้น — ชุดนี้มี ${set.length} ชิ้น">ไม่ครบ</span>` : ''}</td>
       <td class="muted">${r.code ? escapeHtmlAttr(r.code) : '<span style="color:var(--text-3);">—</span>'}</td>
@@ -15174,7 +15287,7 @@ function renderSqTable(page) {
       </td>
     </tr>`;
     }).join('');
-  }).join('') : `<tr><td colspan="10" style="padding:28px;text-align:center;color:var(--text-3);">${
+  }).join('') : `<tr><td colspan="11" style="padding:28px;text-align:center;color:var(--text-3);">${
     allSets.length ? 'ไม่มีรายการในที่เลือกไว้ — กดหัวข้อขนาดซ้ำอีกครั้งเพื่อดูทุกขนาด'
       : 'ยังไม่มีรายการ Roll SQ — กด "+ เพิ่มชุด" เพื่อเริ่มลงทะเบียน (1 ชุดลง Roll ' + SQ_PIECES_PER_SET + ' ชิ้นพร้อมกัน)'}</td></tr>`;
 
