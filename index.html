@@ -619,6 +619,10 @@ canvas{display:block;}
 
 .reg-panel{display:none;}
 .reg-panel.active{display:block;}
+/* แผงของแท็บหมวดใน Dashboard — ใช้ชื่อคลาสคนละตัวกับ .reg-panel ตั้งใจ
+   เพราะ switchRegTab() กวาด .reg-panel ทั้งหน้า ถ้าใช้ชื่อเดียวกันแผงของ Dashboard จะถูกปิดตามไปด้วย */
+.dash-panel{display:none;}
+.dash-panel.active{display:block;}
 
 .reg-kpi-row{
   display:grid;grid-template-columns:repeat(4,1fr);
@@ -1064,6 +1068,42 @@ canvas{display:block;}
       <div id="dash-leftover-alert" style="display:none;"></div>
       <div id="dash-size-change-alert" style="display:none;"></div>
 
+      <!-- แท็บหมวด Tooling — ชุดเดียวกับหน้าทะเบียน เพื่อให้ Dashboard ดูแยกหมวดได้เหมือนกัน
+           แถบเตือนด้านบนอยู่นอกแท็บ เพราะเป็นเรื่องเร่งด่วนที่ต้องเห็นไม่ว่าจะดูหมวดไหนอยู่ -->
+      <div class="reg-tab-bar" id="dash-tab-bar">
+        <button class="reg-tab active" onclick="switchDashTab('roll')">
+          <span class="reg-tab-icon" style="background:rgba(74,142,194,.18);color:var(--accent);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="10" ry="4"/><path d="M2 12c0 4 4.5 8 10 8s10-4 10-8"/><path d="M2 12c0-4 4.5-8 10-8s10 4 10 8"/></svg>
+          </span>
+          Roll
+          <span class="reg-tab-count" id="dash-cnt-roll">—</span>
+        </button>
+        <button class="reg-tab" onclick="switchDashTab('sq')">
+          <span class="reg-tab-icon" style="background:rgba(139,104,212,.18);color:var(--purple);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+          </span>
+          Roll SQ
+          <span class="reg-tab-count" id="dash-cnt-sq">—</span>
+        </button>
+        <button class="reg-tab" onclick="switchDashTab('saw')">
+          <span class="reg-tab-icon" style="background:rgba(232,151,30,.18);color:var(--amber);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M16.9 16.9l1.4 1.4M5.6 18.4l1.4-1.4M16.9 7.1l1.4-1.4"/></svg>
+          </span>
+          ใบเลื่อย
+          <span class="reg-tab-count" id="dash-cnt-saw">—</span>
+        </button>
+        <button class="reg-tab" onclick="switchDashTab('slitter')">
+          <span class="reg-tab-icon" style="background:rgba(217,91,91,.18);color:var(--red);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="4" y1="12" x2="20" y2="12"/><circle cx="8" cy="12" r="3"/><circle cx="16" cy="12" r="3"/></svg>
+          </span>
+          มีดสลิตเตอร์
+          <span class="reg-tab-count" id="dash-cnt-slitter">—</span>
+        </button>
+      </div>
+
+      <!-- ── แท็บ Roll (ของเดิมทั้งหมด) ── -->
+      <div class="dash-panel active" id="dashpanel-roll">
+
       <!-- KPI ROW -->
       <div class="kpi-grid">
         <div class="kpi-card blue">
@@ -1208,6 +1248,13 @@ canvas{display:block;}
         </div>
         <div id="dash-roll-waitpolish-list" style="padding:12px 14px;"></div>
       </div>
+
+      </div><!-- /dashpanel-roll -->
+
+      <!-- ── แท็บ Roll SQ / ใบเลื่อย / มีดสลิตเตอร์ — เนื้อหาสร้างจาก JS ทั้งแผง ── -->
+      <div class="dash-panel" id="dashpanel-sq"></div>
+      <div class="dash-panel" id="dashpanel-saw"></div>
+      <div class="dash-panel" id="dashpanel-slitter"></div>
 
     </div><!-- /dashboard -->
 
@@ -2195,6 +2242,8 @@ function loadProdBlockIframe() {
 
 function initDashboard() {
   renderToolingStatusTable();
+  // แท็บหมวด Tooling — sqSets()/toolingStatusCounts อยู่ท้ายไฟล์ เลื่อนออกไปกัน TDZ เหมือนตัวอื่น
+  setTimeout(renderDashboardToolingPanels, 0);
   renderDashboardInUseRoll();
   renderDashboardWorkingRoll();
   // การ์ดนี้อ่านตัวแปรของตัวดึงน้ำหนักผลิต (rollLifeFgByKeyDate, fgWeightFetchError ฯลฯ) ซึ่งประกาศอยู่ท้ายไฟล์
@@ -4873,15 +4922,204 @@ function renderToolingStatusDetail(catKey, items) {
 }
 
 // ─── REGISTRY TABS ───────────────────────────────────────────────────────────
+// จำกัดขอบเขตไว้ที่หน้าทะเบียนเท่านั้น — Dashboard ใช้แท็บหน้าตาเดียวกัน (.reg-tab) แล้ว
+// ถ้ากวาดทั้งหน้าเหมือนเดิม การสลับแท็บในทะเบียนจะไปลบไฮไลต์แท็บของ Dashboard ไปด้วย
 function switchRegTab(key) {
-  document.querySelectorAll('.reg-tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.reg-panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.reg-tab').forEach(t => {
+  const scope = document.getElementById('page-registry');
+  if (!scope) return;
+  scope.querySelectorAll('.reg-tab').forEach(t => t.classList.remove('active'));
+  scope.querySelectorAll('.reg-panel').forEach(p => p.classList.remove('active'));
+  scope.querySelectorAll('.reg-tab').forEach(t => {
     if (t.getAttribute('onclick') && t.getAttribute('onclick').includes("'" + key + "'"))
       t.classList.add('active');
   });
   const panel = document.getElementById('regpanel-' + key);
   if (panel) panel.classList.add('active');
+}
+
+// ─── DASHBOARD: แท็บหมวด Tooling (Roll / Roll SQ / ใบเลื่อย / มีดสลิตเตอร์) ────
+// แท็บ Roll คือหน้า Dashboard เดิมทั้งหมด ส่วนอีก 3 หมวดเป็นแผงสรุปของหมวดนั้นๆ
+// (หมวดพวกนี้ไม่มีงานตามแผน/รอบการแต่งเหมือน Roll จึงสรุปจากทะเบียนเป็นหลัก)
+let dashTab = 'roll';
+function switchDashTab(key) {
+  dashTab = key;
+  const bar = document.getElementById('dash-tab-bar');
+  if (bar) bar.querySelectorAll('.reg-tab').forEach(t => {
+    const on = (t.getAttribute('onclick') || '').includes("'" + key + "'");
+    t.classList.toggle('active', on);
+  });
+  ['roll', 'sq', 'saw', 'slitter'].forEach(k => {
+    const p = document.getElementById('dashpanel-' + k);
+    if (p) p.classList.toggle('active', k === key);
+  });
+  renderDashboardToolingPanels();
+}
+
+// จำนวนบนแท็บ — ใช้เกณฑ์เดียวกับหน้าทะเบียน (Roll/ใบเลื่อย/มีดสลิตเตอร์ นับเป็นชิ้น · Roll SQ นับเป็นชุด)
+function dashToolingCount(key) {
+  if (key === 'sq') { try { return sqSets().length; } catch (e) { return 0; } }
+  return ((toolingData || {})[key] || []).length;
+}
+function renderDashboardTabCounts() {
+  ['roll', 'sq', 'saw', 'slitter'].forEach(k => {
+    const el = document.getElementById('dash-cnt-' + k);
+    if (el) el.textContent = dashToolingCount(k).toLocaleString();
+  });
+}
+
+// การ์ด KPI เล็กของแผงหมวดอื่น — รูปแบบเดียวกับ .kpi-card ของแท็บ Roll
+function dashMiniKpi(label, value, color, sub) {
+  return `<div class="kpi-card" style="border-top:3px solid ${color};">
+    <div class="kpi-label">${escapeHtmlAttr(label)}</div>
+    <div class="kpi-value" style="color:${color};">${escapeHtmlAttr(String(value))}</div>
+    ${sub ? `<div class="kpi-change" style="color:var(--text-3);">${escapeHtmlAttr(sub)}</div>` : ''}
+  </div>`;
+}
+
+// ยังไม่มีรายการในหมวดนั้น — ชี้ทางไปลงทะเบียนต่อเลย ไม่ปล่อยให้เป็นหน้าว่างเปล่า
+function dashEmptyToolingHtml(key, name) {
+  return `<div class="card"><div style="padding:34px 20px;text-align:center;">
+    <div style="font-size:15px;font-weight:800;color:var(--text-2);margin-bottom:6px;">ยังไม่มีรายการ${escapeHtmlAttr(name)}ในระบบ</div>
+    <div style="font-size:12.5px;color:var(--text-3);margin-bottom:16px;">ลงทะเบียนก่อน แล้วสรุปของหมวดนี้จะขึ้นที่นี่ให้เอง</div>
+    <button class="btn btn-primary" onclick="${jsCallAttr('goToRegistryTab', key)}">ไปหน้าทะเบียน ${escapeHtmlAttr(name)}</button>
+  </div></div>`;
+}
+function goToRegistryTab(key) {
+  showPage('registry');
+  switchRegTab(key);
+}
+
+// แผงสรุป Roll SQ — หมวดนี้ไม่มีคอลัมน์สถานะ แต่มี OD ปัจจุบัน/OD หมดอายุ
+// จึงสรุปด้วย "อายุตาม OD" แทน (เกณฑ์เดียวกับ sqOdExpired ที่ทะเบียน Roll SQ ใช้)
+function renderDashboardSqPanel() {
+  const el = document.getElementById('dashpanel-sq');
+  if (!el) return;
+  const sets = sqSets();
+  const pieces = sets.flat();
+  if (!pieces.length) { el.innerHTML = dashEmptyToolingHtml('sq', 'Roll SQ'); return; }
+  const expired = pieces.filter(sqOdExpired);
+  const unmeasured = pieces.filter(r => !sqHasCurrentOd(r));
+  const expiredSets = sets.filter(s => s.some(sqOdExpired));
+
+  // สรุปรายขนาด — เรียงขนาดที่มีชิ้นถึงอายุขึ้นก่อน เพื่อให้เห็นของที่ต้องจัดการก่อน
+  const bySize = new Map();
+  sets.forEach(s => {
+    const size = (s[0] || {}).sizeSq || 'ไม่ระบุขนาด';
+    if (!bySize.has(size)) bySize.set(size, { size, sets: 0, pieces: 0, expired: 0, unmeasured: 0 });
+    const g = bySize.get(size);
+    g.sets++;
+    s.forEach(r => { g.pieces++; if (sqOdExpired(r)) g.expired++; if (!sqHasCurrentOd(r)) g.unmeasured++; });
+  });
+  const sizeRows = [...bySize.values()].sort((a, b) => (b.expired - a.expired) || String(a.size).localeCompare(String(b.size), 'th'));
+
+  el.innerHTML = `
+    <div class="kpi-grid">
+      ${dashMiniKpi('ชุด Roll SQ ทั้งหมด', sets.length.toLocaleString(), 'var(--purple)', pieces.length.toLocaleString() + ' ชิ้น')}
+      ${dashMiniKpi('ถึง OD หมดอายุแล้ว', expired.length.toLocaleString(), 'var(--red)',
+        expiredSets.length ? expiredSets.length.toLocaleString() + ' ชุดที่มีชิ้นถึงอายุ' : 'ยังไม่มีชิ้นถึงอายุ')}
+      ${dashMiniKpi('ยังไม่ได้วัด OD', unmeasured.length.toLocaleString(), 'var(--amber)',
+        'จาก ' + pieces.length.toLocaleString() + ' ชิ้น')}
+      ${dashMiniKpi('ขนาด Size SQ', bySize.size.toLocaleString(), 'var(--accent)', 'ที่มีชุดลงทะเบียนไว้')}
+    </div>
+
+    <div class="card" style="margin-bottom:18px;">
+      <div class="card-header">
+        <span class="card-title" style="font-size:16px;color:var(--red);">Roll SQ ที่ถึง OD หมดอายุ</span>
+        <span style="margin-left:auto;font-size:12px;color:var(--text-3);">
+          <b style="color:var(--red);">${expired.length.toLocaleString()}</b> ชิ้น</span>
+      </div>
+      <div style="padding:12px 14px;">${expired.length ? `
+        <div style="display:flex;flex-direction:column;gap:7px;max-height:420px;overflow-y:auto;">
+          ${expiredSets.map(s => {
+            const head = s[0] || {};
+            const hit = s.filter(sqOdExpired);
+            return `<div style="padding:9px 12px;border-radius:8px;background:var(--bg-surface);border:1px solid var(--red-dim);">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <span style="width:11px;height:11px;border-radius:50%;flex-shrink:0;background:${sqColorMeta(head.color).dot};"></span>
+                <b style="font-size:13.5px;">${escapeHtmlAttr(sqSetFullLabel(head))}</b>
+                <span style="margin-left:auto;font-size:11.5px;font-weight:800;color:var(--red);">ถึงอายุ ${hit.length}/${s.length} ชิ้น</span>
+              </div>
+              <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;">
+                ${s.map(r => `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;
+                    color:${sqOdExpired(r) ? 'var(--red)' : 'var(--text-2)'};">
+                  ${sqPieceChipHtml(r.piece)} ${sqOdCurHtml(r)}
+                  <span class="muted" style="font-size:11px;">/ หมดอายุ ${escapeHtmlAttr(String(r.odMin || '—'))}</span>
+                </span>`).join('')}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>`
+        : `<div style="text-align:center;color:var(--text-3);font-size:13px;padding:16px;">
+             ยังไม่มีชิ้นไหนถึง OD หมดอายุ${unmeasured.length ? ` (แต่ยังไม่ได้วัด OD อยู่ ${unmeasured.length.toLocaleString()} ชิ้น)` : ''}</div>`}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title" style="font-size:16px;">สรุปตามขนาด Size SQ</span></div>
+      <div style="padding:0;overflow-x:auto;">
+        <table>
+          <thead><tr><th>ขนาด Size SQ</th><th style="text-align:right;">ชุด</th><th style="text-align:right;">ชิ้น</th>
+            <th style="text-align:right;">ยังไม่วัด OD</th><th style="text-align:right;">ถึงอายุ</th></tr></thead>
+          <tbody>${sizeRows.map(g => `<tr>
+            <td style="font-weight:600;">${escapeHtmlAttr(g.size)}</td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums;">${g.sets.toLocaleString()}</td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--text-2);">${g.pieces.toLocaleString()}</td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums;color:${g.unmeasured ? 'var(--amber)' : 'var(--text-3)'};">${g.unmeasured.toLocaleString()}</td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:${g.expired ? 800 : 400};color:${g.expired ? 'var(--red)' : 'var(--text-3)'};">${g.expired.toLocaleString()}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// แผงสรุปใบเลื่อย / มีดสลิตเตอร์ — สองหมวดนี้มีคอลัมน์สถานะ จึงสรุปด้วยสถานะตรงๆ
+// ใช้ตัวนับชุดเดียวกับตารางสถานะ Tooling (toolingStatusCounts) ตัวเลขสองที่จึงตรงกันเสมอ
+function renderDashboardSimpleToolingPanel(key, name) {
+  const el = document.getElementById('dashpanel-' + key);
+  if (!el) return;
+  const items = (toolingData || {})[key] || [];
+  if (!items.length) { el.innerHTML = dashEmptyToolingHtml(key, name); return; }
+  const { ready, repair, expired, total } = toolingStatusCounts(items);
+  const byStatus = new Map();
+  items.forEach(it => {
+    const s = it.status || 'ไม่ระบุสถานะ';
+    if (!byStatus.has(s)) byStatus.set(s, []);
+    byStatus.get(s).push(it);
+  });
+  el.innerHTML = `
+    <div class="kpi-grid">
+      ${dashMiniKpi(name + 'ทั้งหมด', total.toLocaleString(), 'var(--accent)', '')}
+      ${dashMiniKpi('พร้อมใช้งาน', ready.toLocaleString(), 'var(--green)', total ? Math.round(ready / total * 100) + '% ของทั้งหมด' : '')}
+      ${dashMiniKpi('ซ่อมบำรุง / รอใช้งาน', repair.toLocaleString(), 'var(--amber)', '')}
+      ${dashMiniKpi('หมดอายุ / มีปัญหา', expired.toLocaleString(), 'var(--red)', '')}
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title" style="font-size:16px;">รายการ${escapeHtmlAttr(name)}ตามสถานะ</span>
+        <span style="margin-left:auto;font-size:12px;color:var(--text-3);">${total.toLocaleString()} รายการ</span>
+      </div>
+      <div style="padding:12px 14px;display:flex;flex-direction:column;gap:14px;">
+        ${[...byStatus.entries()].map(([status, list]) => `<div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
+            ${statusChip(status)}<span style="font-size:12px;color:var(--text-3);">${list.length.toLocaleString()} รายการ</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px;max-height:240px;overflow-y:auto;">
+            ${list.map(it => `<div style="display:flex;align-items:center;gap:12px;padding:6px 10px;background:var(--bg-surface);border-radius:6px;">
+              <span style="font-size:12px;color:var(--text-3);min-width:70px;">${escapeHtmlAttr(it.id || '')}</span>
+              <span style="font-size:13px;color:var(--text-1);flex:1;">${escapeHtmlAttr(it.name || '')}</span>
+            </div>`).join('')}
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+// วาดเฉพาะแผงที่กำลังเปิดอยู่ (แท็บ Roll ใช้ตัวเรนเดอร์เดิมของมันเอง ไม่ต้องทำอะไรที่นี่)
+function renderDashboardToolingPanels() {
+  renderDashboardTabCounts();
+  if (dashTab === 'sq') renderDashboardSqPanel();
+  else if (dashTab === 'saw') renderDashboardSimpleToolingPanel('saw', 'ใบเลื่อย');
+  else if (dashTab === 'slitter') renderDashboardSimpleToolingPanel('slitter', 'มีดสลิตเตอร์');
 }
 
 function switchTeamTab(role) {
