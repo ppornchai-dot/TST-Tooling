@@ -4999,7 +4999,7 @@ function goToRegistryTab(key) {
 function dashSqSetRowHtml(set, badgeColor, rowBg, hideSize) {
   const head = set[0] || {};
   const cm = sqColorMeta(head.color);
-  const mc = sqSetMachineFor(sqSetKey(head));
+  const mc = sqSetMachineLabel(sqSetKey(head));   // 'P1/P3' ถ้าใส่หลายเครื่อง · '' ถ้ายังไม่ได้ใส่
   const expired = set.filter(sqOdExpired).length;
   const unmeasured = set.filter(r => !sqHasCurrentOd(r)).length;
   const tag = expired
@@ -15148,58 +15148,91 @@ function setSqSetStatus(setKeyStr, status) {
   });
 }
 // ─── เครื่องที่ชุด Roll SQ ใส่อยู่ ─────────────────────────────────────────────
-// ของจริงเครื่องหนึ่งใส่ Roll SQ ได้ชุดเดียว — ใส่ชุดใหม่แล้วชุดเดิมของเครื่องนั้นถูกถอดออกให้เอง
-// (กฎเดียวกับ clearInUseMachineConflicts ของทะเบียน Roll แต่ Roll SQ ไม่มีหมวด จึงเป็น 1 ชุดต่อเครื่อง)
-function sqSetMachineFor(setKeyStr) { return sqSetMachine[setKeyStr] || null; }
+// หนึ่งชุดใส่ได้หลายเครื่อง (เก็บเป็นรายการเครื่อง) แต่เครื่องหนึ่งมี Roll SQ ได้ชุดเดียว
+// ใส่ชุดใหม่ที่เครื่องซึ่งมีชุดอื่นอยู่ ชุดนั้นจะถูกถอดออก "เฉพาะเครื่องนั้น" เครื่องอื่นของมันยังอยู่
+function sqSetMachinesFor(setKeyStr) {
+  const v = sqSetMachine[setKeyStr];
+  if (!v) return [];
+  const list = Array.isArray(v) ? v : [v];   // รองรับข้อมูลเดิมที่เคยเก็บเป็นเครื่องเดียวเป็นสตริง
+  return ROLL_MACHINES.filter(m => list.includes(m));   // เรียง P1→P4 เสมอ ป้ายจะได้ไม่สลับไปมา
+}
+function sqSetMachineLabel(setKeyStr) { return sqSetMachinesFor(setKeyStr).join('/'); }
 function sqSetOnMachine(machine) {
-  return Object.keys(sqSetMachine).find(k => sqSetMachine[k] === machine) || null;
+  return Object.keys(sqSetMachine).find(k => sqSetMachinesFor(k).includes(machine)) || null;
 }
 // ชื่อชุดแบบสั้นสำหรับข้อความแจ้ง — หาแถวแรกของชุดนั้นจากคีย์
 function sqSetLabelByKey(setKeyStr) {
   const r = toolingData.sq.find(x => sqSetKey(x) === setKeyStr);
   return r ? sqSetFullLabel(r) : setKeyStr;
 }
-// machine = null คือถอดออกจากเครื่อง — เป็นการ "ตั้งค่าให้เป็นค่านี้" ทำซ้ำได้ผลเดิมเสมอ
-function setSqSetMachine(setKeyStr, machine) {
-  const mc = machine || null;
-  const replaced = mc ? sqSetOnMachine(mc) : null;
+
+// ตั้งรายการเครื่องของชุดให้เป็นค่านี้ (รายการว่าง = ถอดออกทุกเครื่อง) — ทำซ้ำได้ผลเดิมเสมอ
+// คืนรายการที่ถูกถอดออกให้ เพื่อเอาไปบอกผู้ใช้ว่าไปแตะชุดไหนเข้า
+function applySqSetMachines(setKeyStr, machines) {
+  const want = ROLL_MACHINES.filter(m => (machines || []).includes(m));
+  // คิดรายการที่จะถูกถอดจาก "สถานะก่อนแก้" ไว้ก่อน ไม่คิดข้างใน withCloudRetry
+  // เพราะฟังก์ชันข้างในถูกเรียกซ้ำได้ตอนชนกับการเขียนของเครื่องอื่น
+  const released = [];
+  want.forEach(m => Object.keys(sqSetMachine).forEach(k => {
+    if (k !== setKeyStr && sqSetMachinesFor(k).includes(m)) released.push({ key: k, machine: m });
+  }));
   withCloudRetry(() => {
-    if (mc) {
-      // ถอดชุดเดิมของเครื่องนั้นออกก่อน แล้วปลดสถานะ "กำลังใช้งาน" ของมันด้วย
-      Object.keys(sqSetMachine).forEach(k => {
-        if (k !== setKeyStr && sqSetMachine[k] === mc) {
-          delete sqSetMachine[k];
-          if (sqSetStatusFor(k) === 'inuse') delete sqSetStatus[k];   // ไม่มีคีย์ = พร้อมใช้งาน
-        }
-      });
-      sqSetMachine[setKeyStr] = mc;
-      sqSetStatus[setKeyStr] = 'inuse';   // ใส่เครื่องแล้ว = กำลังใช้งาน ให้สองที่ตรงกันเสมอ
+    want.forEach(m => Object.keys(sqSetMachine).forEach(k => {
+      if (k === setKeyStr) return;
+      const cur = sqSetMachinesFor(k);
+      if (!cur.includes(m)) return;
+      const rest = cur.filter(x => x !== m);
+      if (rest.length) sqSetMachine[k] = rest;
+      else {
+        delete sqSetMachine[k];
+        if (sqSetStatusFor(k) === 'inuse') delete sqSetStatus[k];   // ไม่มีคีย์ = พร้อมใช้งาน
+      }
+    }));
+    if (want.length) {
+      sqSetMachine[setKeyStr] = want;
+      sqSetStatus[setKeyStr] = 'inuse';   // อยู่บนเครื่อง = กำลังใช้งาน ให้ทะเบียนกับ Dashboard ตรงกันเสมอ
     } else {
       delete sqSetMachine[setKeyStr];
-      // ถอดออกจากเครื่องแล้วไม่ใช่ "กำลังใช้งาน" อีก — ส่วนจะไปแต่งต่อไหมให้เลือกเองที่ดรอปดาวน์สถานะ
+      // ถอดออกหมดแล้วไม่ใช่ "กำลังใช้งาน" อีก — จะไปแต่งต่อไหมให้เลือกเองที่ดรอปดาวน์สถานะ
       if (sqSetStatusFor(setKeyStr) === 'inuse') delete sqSetStatus[setKeyStr];
     }
     persistState();
     renderSqRegistry(pageState.sq || 1);
     renderDashboardToolingPanels();
   });
-  if (replaced && replaced !== setKeyStr) {
-    alert('เครื่อง ' + mc + ' มีชุดอยู่แล้ว — ถอด "' + sqSetLabelByKey(replaced) + '" ออกให้แล้ว'
-      + '\nสถานะของชุดนั้นถูกตั้งเป็น "พร้อมใช้งาน" ถ้าต้องส่งไปแต่ง เปลี่ยนได้ที่คอลัมน์สถานะชุด');
+  return released;
+}
+
+// กดเครื่องหนึ่งครั้ง = ใส่/ถอดเครื่องนั้น (เลือกได้หลายเครื่อง)
+function toggleSqSetMachine(setKeyStr, machine) {
+  if (!canEditPlan()) return;
+  const cur = sqSetMachinesFor(setKeyStr);
+  const want = cur.includes(machine) ? cur.filter(m => m !== machine) : cur.concat(machine);
+  const released = applySqSetMachines(setKeyStr, want);
+  renderSqMachinePicker(setKeyStr);   // เปิดกล่องค้างไว้ เลือกหลายเครื่องรวดเดียวได้
+  if (released.length) {
+    alert(released.map(r => 'เครื่อง ' + r.machine + ' มีชุดอยู่แล้ว — ถอด "'
+      + sqSetLabelByKey(r.key) + '" ออกจากเครื่องนั้นให้แล้ว').join('\n')
+      + '\nชุดที่ถูกถอดจนไม่เหลือเครื่อง สถานะจะเป็น "พร้อมใช้งาน" ถ้าต้องส่งไปแต่ง เปลี่ยนได้ที่คอลัมน์สถานะชุด');
   }
+}
+function clearSqSetMachines(setKeyStr) {
+  if (!canEditPlan()) return;
+  applySqSetMachines(setKeyStr, []);
+  renderSqMachinePicker(setKeyStr);
 }
 
 // ปุ่ม/ป้ายเครื่องในรายการชุดด้านซ้ายของทะเบียน Roll SQ
 function sqSetMachineBtnHtml(setKeyStr) {
-  const mc = sqSetMachineFor(setKeyStr);
-  return mc
-    ? `<button class="btn btn-sm" style="padding:3px 9px;flex-shrink:0;font-size:12px;font-weight:800;
+  const label = sqSetMachineLabel(setKeyStr);
+  return label
+    ? `<button class="btn btn-sm" style="padding:3px 9px;flex-shrink:0;font-size:12px;font-weight:800;white-space:nowrap;
          background:var(--inuse);color:#fff;border:1px solid var(--inuse);"
          onclick="${jsCallAttr('openSqMachinePicker', setKeyStr)}"
-         title="${escapeHtmlAttr('ใส่อยู่ที่เครื่อง ' + mc + ' — กดเพื่อย้ายเครื่องหรือถอดออก')}">${escapeHtmlAttr(mc)}</button>`
-    : `<button class="btn btn-ghost btn-sm" style="padding:3px 8px;flex-shrink:0;font-size:11.5px;font-weight:700;"
+         title="${escapeHtmlAttr('ใส่อยู่ที่เครื่อง ' + label + ' — กดเพื่อเพิ่ม/ย้ายเครื่อง หรือถอดออก')}">${escapeHtmlAttr(label)}</button>`
+    : `<button class="btn btn-ghost btn-sm" style="padding:3px 8px;flex-shrink:0;font-size:11.5px;font-weight:700;white-space:nowrap;"
          onclick="${jsCallAttr('openSqMachinePicker', setKeyStr)}"
-         title="เลือกเครื่องที่จะใส่ชุดนี้">＋ ใส่เครื่อง</button>`;
+         title="เลือกเครื่องที่จะใส่ชุดนี้ (เลือกได้มากกว่า 1 เครื่อง)">＋ ใส่เครื่อง</button>`;
 }
 
 function openSqMachinePicker(setKeyStr) {
@@ -15215,44 +15248,50 @@ function openSqMachinePicker(setKeyStr) {
       <div class="modal-head"><h3 id="sqmc-title">ใส่ชุด Roll SQ เข้าเครื่อง</h3>
         <button class="modal-close" onclick="closeSqMachinePicker()">✕</button></div>
       <div class="modal-body" id="sqmc-body"></div>
-      <div class="modal-footer"><button class="btn btn-ghost" onclick="closeSqMachinePicker()">ปิด</button></div>
+      <div class="modal-footer"><button class="btn btn-primary" onclick="closeSqMachinePicker()">เสร็จแล้ว</button></div>
     </div>`;
     document.body.appendChild(ov);
   }
-  const cur = sqSetMachineFor(setKeyStr);
-  document.getElementById('sqmc-title').textContent = cur ? 'ย้าย/ถอดชุด Roll SQ' : 'ใส่ชุด Roll SQ เข้าเครื่อง';
-  document.getElementById('sqmc-body').innerHTML = `
-    <div style="font-size:13px;color:var(--text-2);line-height:1.7;margin-bottom:12px;">
+  renderSqMachinePicker(setKeyStr);
+  ov.classList.add('open');
+}
+
+// วาดใหม่ได้ระหว่างที่กล่องยังเปิดอยู่ — ติ๊กเครื่องได้ทีละหลายเครื่องโดยไม่ต้องเปิดปิดซ้ำ
+function renderSqMachinePicker(setKeyStr) {
+  const body = document.getElementById('sqmc-body');
+  if (!body) return;
+  const cur = sqSetMachinesFor(setKeyStr);
+  const titleEl = document.getElementById('sqmc-title');
+  if (titleEl) titleEl.textContent = cur.length ? 'เครื่องที่ใส่ชุด Roll SQ นี้' : 'ใส่ชุด Roll SQ เข้าเครื่อง';
+  body.innerHTML = `
+    <div style="font-size:13px;color:var(--text-2);line-height:1.7;margin-bottom:4px;">
       ${escapeHtmlAttr(sqSetLabelByKey(setKeyStr))}
-      ${cur ? `<div style="font-size:12px;color:var(--inuse);font-weight:700;">ตอนนี้ใส่อยู่ที่เครื่อง ${escapeHtmlAttr(cur)}</div>` : ''}
+      ${cur.length ? `<div style="font-size:12px;color:var(--inuse);font-weight:700;">ตอนนี้ใส่อยู่ที่เครื่อง ${
+        escapeHtmlAttr(cur.join(' · '))} (${cur.length} เครื่อง)</div>` : ''}
     </div>
+    <div style="font-size:11.5px;color:var(--text-3);margin-bottom:10px;">กดเครื่องเพื่อใส่ กดซ้ำเพื่อถอด — เลือกได้มากกว่า 1 เครื่อง</div>
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">
       ${ROLL_MACHINES.map(m => {
-        const holder = sqSetOnMachine(m);
-        const mine = holder === setKeyStr;
+        const mine = cur.includes(m);
+        const holder = mine ? null : sqSetOnMachine(m);
         return `<button class="btn ${mine ? 'btn-primary' : 'btn-ghost'}"
           style="justify-content:center;font-size:15px;font-weight:800;padding:12px;"
-          onclick="${jsCallAttr('pickSqMachine', setKeyStr, m)}"
-          title="${escapeHtmlAttr(mine ? 'ชุดนี้ใส่อยู่ที่เครื่องนี้แล้ว'
-            : holder ? 'เครื่องนี้มี "' + sqSetLabelByKey(holder) + '" อยู่ — เลือกแล้วจะถอดชุดนั้นออกให้'
-            : 'ใส่ชุดนี้ที่เครื่อง ' + m)}">เครื่อง ${escapeHtmlAttr(m)}${
-          holder && !mine ? '<span style="font-size:10px;font-weight:700;color:var(--amber);margin-left:6px;">มีชุดอยู่</span>' : ''}</button>`;
+          onclick="${jsCallAttr('toggleSqSetMachine', setKeyStr, m)}"
+          title="${escapeHtmlAttr(mine ? 'ชุดนี้ใส่อยู่ที่เครื่องนี้ — กดเพื่อถอดออกจากเครื่องนี้'
+            : holder ? 'เครื่องนี้มี "' + sqSetLabelByKey(holder) + '" อยู่ — กดแล้วจะถอดชุดนั้นออกจากเครื่องนี้ให้'
+            : 'ใส่ชุดนี้ที่เครื่อง ' + m)}">${mine ? '✓ ' : ''}เครื่อง ${escapeHtmlAttr(m)}${
+          holder ? '<span style="font-size:10px;font-weight:700;color:var(--amber);margin-left:6px;">มีชุดอยู่</span>' : ''}</button>`;
       }).join('')}
     </div>
-    ${cur ? `<button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:10px;font-weight:700;color:var(--red);"
-      onclick="${jsCallAttr('pickSqMachine', setKeyStr, '')}"
-      title="ถอดชุดนี้ออกจากเครื่อง — สถานะจะกลับเป็นพร้อมใช้งาน">ถอดออกจากเครื่อง ${escapeHtmlAttr(cur)}</button>` : ''}
+    ${cur.length ? `<button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:10px;font-weight:700;color:var(--red);"
+      onclick="${jsCallAttr('clearSqSetMachines', setKeyStr)}"
+      title="ถอดชุดนี้ออกจากทุกเครื่อง — สถานะจะกลับเป็นพร้อมใช้งาน">ถอดออกจากทุกเครื่อง (${cur.length})</button>` : ''}
     <div style="font-size:11.5px;color:var(--text-3);line-height:1.6;margin-top:12px;">
-      ใส่เครื่องแล้วสถานะของชุดจะเป็น "กำลังใช้งาน" อัตโนมัติ · เครื่องหนึ่งใส่ Roll SQ ได้ชุดเดียว</div>`;
-  ov.classList.add('open');
+      อยู่บนเครื่องแล้วสถานะของชุดจะเป็น "กำลังใช้งาน" อัตโนมัติ · เครื่องหนึ่งมี Roll SQ ได้ชุดเดียว</div>`;
 }
 function closeSqMachinePicker() {
   const ov = document.getElementById('sqmc-overlay');
   if (ov) ov.classList.remove('open');
-}
-function pickSqMachine(setKeyStr, machine) {
-  closeSqMachinePicker();
-  setSqSetMachine(setKeyStr, machine || null);
 }
 
 function sqSetStatusSelectHtml(setKeyStr) {
