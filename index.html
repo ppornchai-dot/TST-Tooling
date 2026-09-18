@@ -5098,7 +5098,7 @@ function dashSqSizeGroupsHtml(list, badgeColor, rowBg) {
 // การ์ดที่มีสถานะเดียว (กำลังใช้งาน/พร้อมใช้งาน) แสดงเป็นตารางคอลัมน์ GS/GI ตรงๆ
 // การ์ดที่มีหลายสถานะ (กำลังแต่ง/รอแต่ง) คั่นด้วยแถบสีของแต่ละสถานะก่อน แล้วค่อยแบ่งคอลัมน์ข้างใน
 // (เกณฑ์เดียวกับการ์ด "ชุด Roll กำลังแต่ง" ที่คั่นเป็น งานค้าง/กำลังทำ/รอทำ)
-function dashSqStatusCardHtml(sets, { title, color, groups, emptyText, maxHeight }) {
+function dashSqStatusCardHtml(sets, { title, color, groups, emptyText, maxHeight, action }) {
   const byGroup = groups.map(g => ({ ...g, list: sets.filter(s => sqSetStatusFor(sqSetKey(s[0])) === g.key) }));
   const total = byGroup.reduce((n, g) => n + g.list.length, 0);
   const sub = groups.length > 1 ? byGroup.map(g => g.label + ' ' + g.list.length).join(' · ') : '';
@@ -5124,6 +5124,7 @@ function dashSqStatusCardHtml(sets, { title, color, groups, emptyText, maxHeight
     <div class="card-header">
       <span class="card-title" style="font-size:17px;color:${color};display:inline-flex;align-items:center;gap:8px;">
         <span style="width:11px;height:11px;border-radius:50%;background:${color};flex-shrink:0;"></span>${escapeHtmlAttr(title)}</span>
+      ${action || ''}
       <span style="margin-left:auto;font-size:12px;color:var(--text-3);">
         <b style="color:${color};">${total}</b> ชุด${sub && total ? ' (' + escapeHtmlAttr(sub) + ')' : ''}</span>
     </div>
@@ -5147,7 +5148,127 @@ function dashSqInUseCardHtml(sets) {
     title: 'ชุด Roll SQ กำลังใช้งาน', color: 'var(--inuse)',
     emptyText: 'ยังไม่มีชุด Roll SQ ที่กำลังใช้งาน',
     groups: [{ key: 'inuse', label: 'กำลังใช้งาน', color: 'var(--inuse)', bg: 'var(--inuse-dim)' }],
+    // ปุ่มเดียวกับ "เลือกชุดที่ใช้งาน" ของการ์ดชุด Roll — เลือกทีละเครื่องจากที่เดียวจบ
+    action: canEditPlan() ? `<button class="btn" style="font-size:13px;font-weight:800;padding:6px 14px;border-radius:8px;
+        background:var(--inuse);color:#fff;border:1px solid var(--inuse);box-shadow:0 1px 3px rgba(79,122,0,.3);"
+        onclick="openSqInUsePicker()" title="เลือกว่าแต่ละเครื่องกำลังใช้ชุด Roll SQ ชุดไหน">✎ เลือกชุดที่ใช้งาน</button>` : '',
   });
+}
+
+// ─── เลือกชุด Roll SQ ที่กำลังใช้งาน (ทีละเครื่อง) ─────────────────────────────
+// ใช้ข้อมูลชุดเดียวกับปุ่ม "ใส่เครื่อง" ในทะเบียน (sqSetMachine) ไม่ได้เก็บซ้อนอีกที่
+// ต่างกันแค่ทางเข้า: อันนั้นเริ่มจากชุด อันนี้เริ่มจากเครื่อง ซึ่งตรงกับวิธีคิดหน้างานมากกว่า
+let sqInUsePickerMachine = null;
+function openSqInUsePicker() {
+  if (!canEditPlan()) return;
+  if (!ROLL_MACHINES.includes(sqInUsePickerMachine)) sqInUsePickerMachine = ROLL_MACHINES[0];
+  let ov = document.getElementById('sqinuse-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'sqinuse-overlay';
+    ov.className = 'modal-overlay';
+    ov.onclick = e => { if (e.target === ov) closeSqInUsePicker(); };
+    ov.innerHTML = `<div class="modal" style="max-width:720px;display:flex;flex-direction:column;max-height:90vh;overflow:hidden;">
+      <div class="modal-head" style="flex:0 0 auto;">
+        <h3>เลือกชุด Roll SQ ที่กำลังใช้งาน</h3>
+        <button class="modal-close" onclick="closeSqInUsePicker()">✕</button>
+      </div>
+      <!-- แถบเลือกเครื่องอยู่นอกกล่องที่เลื่อน จะได้เห็นตลอดว่ากำลังตั้งของเครื่องไหนอยู่ -->
+      <div style="flex:0 0 auto;padding:14px 22px 0;">
+        <div id="sqinuse-tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;"></div>
+        <div id="sqinuse-current"></div>
+      </div>
+      <div class="modal-body" id="sqinuse-body" style="flex:1 1 auto;min-height:0;overflow-y:auto;padding-top:12px;"></div>
+      <div class="modal-footer" style="flex:0 0 auto;display:flex;justify-content:flex-end;">
+        <button class="btn btn-primary" onclick="closeSqInUsePicker()">เสร็จแล้ว</button>
+      </div>
+    </div>`;
+    document.body.appendChild(ov);
+  }
+  renderSqInUsePicker();
+  ov.classList.add('open');
+}
+function closeSqInUsePicker() {
+  const ov = document.getElementById('sqinuse-overlay');
+  if (ov) ov.classList.remove('open');
+}
+function switchSqInUsePickerMachine(m) {
+  sqInUsePickerMachine = m;
+  renderSqInUsePicker();
+}
+// กดชุด = ใส่ชุดนั้นที่เครื่องที่เลือกอยู่ · กดชุดที่ใส่อยู่แล้วซ้ำ = ถอดออก
+function pickSqInUseSet(setKeyStr) {
+  if (!canEditPlan()) return;
+  const m = sqInUsePickerMachine;
+  const same = sqSetMachineFor(setKeyStr) === m;
+  setSqSetMachine(setKeyStr, same ? null : m);
+  renderSqInUsePicker();
+}
+
+function renderSqInUsePicker() {
+  const tabs = document.getElementById('sqinuse-tabs');
+  const cur = document.getElementById('sqinuse-current');
+  const body = document.getElementById('sqinuse-body');
+  if (!tabs || !body) return;
+  const m = sqInUsePickerMachine;
+  tabs.innerHTML = ROLL_MACHINES.map(x => {
+    const on = x === m;
+    const holder = sqSetOnMachine(x);
+    return `<button onclick="${jsCallAttr('switchSqInUsePickerMachine', x)}"
+      style="padding:5px 14px;border-radius:99px;cursor:pointer;font-size:13px;font-weight:800;
+             border:1px solid ${on ? 'var(--inuse)' : 'var(--border)'};
+             background:${on ? 'var(--inuse)' : 'transparent'};color:${on ? '#fff' : 'var(--text-2)'};">
+      เครื่อง ${escapeHtmlAttr(x)}
+      <span style="font-size:11px;font-weight:700;margin-left:5px;opacity:.85;">${holder ? '●' : '—'}</span></button>`;
+  }).join('');
+
+  const holderKey = sqSetOnMachine(m);
+  cur.innerHTML = holderKey
+    ? `<div style="display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:8px;background:var(--inuse-dim);
+              border:1px solid var(--inuse);margin-bottom:4px;">
+        <span style="font-size:12px;font-weight:800;color:var(--inuse);">กำลังใช้งานที่เครื่อง ${escapeHtmlAttr(m)}</span>
+        <span style="font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(sqSetLabelByKey(holderKey))}</span>
+        <button class="btn btn-ghost btn-sm" style="margin-left:auto;color:var(--red);font-weight:700;"
+          onclick="${jsCallAttr('pickSqInUseSet', holderKey)}" title="ถอดชุดนี้ออกจากเครื่องนี้">ถอดออก</button>
+      </div>`
+    : `<div style="font-size:12.5px;color:var(--text-3);padding:4px 2px 2px;">เครื่อง ${escapeHtmlAttr(m)} ยังไม่ได้ตั้งว่าใช้ชุดไหน — เลือกจากรายการด้านล่าง</div>`;
+
+  // ขนาดที่ผูกไว้กับเครื่องนี้ขึ้นก่อน (ดูปุ่มเครื่องบนหัวข้อขนาดในทะเบียน) ที่เหลือตามลงมา
+  const groups = sqSizeGroups();
+  const fit = groups.filter(([size]) => sqSizeMachinesFor(size).includes(m));
+  const rest = groups.filter(([size]) => !sqSizeMachinesFor(size).includes(m));
+  const sectionHtml = (label, list, note) => !list.length ? '' : `
+    <div style="font-size:12px;font-weight:800;color:var(--text-2);margin:12px 2px 6px;">${escapeHtmlAttr(label)}
+      <span style="font-weight:400;color:var(--text-3);">${escapeHtmlAttr(note || '')}</span></div>
+    ${list.map(([size, sets]) => `
+      <div style="font-size:12.5px;font-weight:800;color:var(--text-1);margin:9px 2px 4px;">${escapeHtmlAttr(size)}</div>
+      ${sets.map(s => {
+        const r = s[0];
+        const key = sqSetKey(r);
+        const cm = sqColorMeta(r.color);
+        const at = sqSetMachineFor(key);
+        const mine = at === m;
+        return `<div onclick="${jsCallAttr('pickSqInUseSet', key)}"
+          style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:8px;cursor:pointer;margin-bottom:5px;
+                 border:1px solid ${mine ? 'var(--inuse)' : 'var(--border-light)'};
+                 background:${mine ? 'var(--inuse-dim)' : 'var(--bg-surface)'};"
+          title="${escapeHtmlAttr(mine ? 'ชุดนี้ใช้อยู่ที่เครื่องนี้ — กดเพื่อถอดออก'
+            : at ? 'ตอนนี้ชุดนี้อยู่ที่เครื่อง ' + at + ' — กดเพื่อย้ายมาเครื่อง ' + m
+            : 'กดเพื่อตั้งเป็นชุดที่ใช้งานของเครื่อง ' + m)}">
+          <span style="width:11px;height:11px;border-radius:50%;flex-shrink:0;background:${cm.dot};
+                       box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);"></span>
+          <span style="font-size:12.5px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(cm.label)}</span>
+          <span style="font-size:12px;color:var(--text-2);">${escapeHtmlAttr(sqSetOrdinalLabel(r))}</span>
+          <span style="font-size:11.5px;color:var(--text-3);">· ${escapeHtmlAttr(fmtYmThai(r.madeYm))}</span>
+          ${mine ? '<span class="chip chip-green" style="margin-left:auto;">✓ ใช้อยู่</span>'
+            : at ? `<span class="chip chip-amber" style="margin-left:auto;">อยู่ที่ ${escapeHtmlAttr(at)}</span>`
+            : '<span style="margin-left:auto;font-size:11px;color:var(--text-3);">' + s.length + ' ชิ้น</span>'}
+        </div>`;
+      }).join('')}`).join('')}`;
+
+  body.innerHTML = (sectionHtml('ขนาดที่ใช้กับเครื่อง ' + m + ' ได้', fit, '(ตามที่ผูกไว้ที่หัวข้อขนาดในทะเบียน)')
+    + sectionHtml('ขนาดอื่น', rest, '(ยังไม่ได้ผูกกับเครื่องนี้ แต่เลือกได้)'))
+    || '<div style="padding:18px;text-align:center;color:var(--text-3);font-size:13px;">ยังไม่มีชุด Roll SQ ในทะเบียน</div>';
 }
 
 // ชุดที่ยังไม่ได้ตั้งสถานะจะนับเป็น "พร้อมใช้งาน" ตามค่าเริ่มต้น (ไม่มีคีย์ = ready)
