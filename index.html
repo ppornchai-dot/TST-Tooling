@@ -5025,10 +5025,10 @@ function dashSqSetRowHtml(set, badgeColor, rowBg, hideSize) {
 // หัวข้อย่อยของแต่ละขนาดในคอลัมน์ — ชุดของขนาดเดียวกันมักมีหลายชุด ถ้าเรียงติดกันเฉยๆ
 // ชื่อขนาดจะซ้ำทุกบรรทัดจนอ่านยาก แยกหัวข้อแล้วในแถวไม่ต้องเขียนชื่อขนาดซ้ำอีก
 function dashSqSizeHeadHtml(size, count) {
-  return `<div style="display:flex;align-items:center;gap:8px;margin:10px 2px 5px;">
-    <b style="font-size:12px;font-weight:800;color:var(--text-2);white-space:nowrap;">${escapeHtmlAttr(size || 'ไม่ระบุขนาด')}</b>
+  return `<div style="display:flex;align-items:center;gap:8px;margin:12px 2px 6px;">
+    <b style="font-size:15px;font-weight:800;color:var(--text-1);white-space:nowrap;">${escapeHtmlAttr(size || 'ไม่ระบุขนาด')}</b>
     <span style="flex:1;height:1px;background:var(--border-light);"></span>
-    <span style="font-size:11px;font-weight:700;color:var(--text-3);white-space:nowrap;">${count} ชุด</span>
+    <span style="font-size:12px;font-weight:700;color:var(--text-3);white-space:nowrap;">${count} ชุด</span>
   </div>`;
 }
 
