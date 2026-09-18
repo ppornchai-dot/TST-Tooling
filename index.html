@@ -6307,16 +6307,35 @@ function actualPieceMinutesHtml(show, entry, std) {
 
 // ─── ตัวนับเวลาของชิ้นที่ "กำลังทำ" ───────────────────────────────────────────
 // นับจากเวลาที่กดเริ่มงานถึงตอนนี้ เป็นนาที เดินต่อเองโดยไม่ต้องรีเฟรชหน้า
-// โชว์เฉพาะงานของ "วันทำงานปัจจุบัน" เท่านั้น — สถานะรายชิ้นเก็บแค่ ชม.:นาที ไม่ได้เก็บวันที่กดเริ่ม
-// ถ้าเอาไปนับกับวันอื่นที่เลื่อนดูได้ (เมื่อวาน/พรุ่งนี้) จะได้ตัวเลขที่ไม่มีความหมาย
 // ไม่ได้หักช่วงที่พักงานออก เพราะระบบบันทึกแค่ "เวลาที่กดพัก" ไม่ได้บันทึกเวลาที่กดทำต่อ
 // — จึงเขียนกำกับไว้ในทูลทิปให้ชัดว่าเป็นเวลาที่ผ่านไปตั้งแต่กดเริ่มงาน
-function runningPieceMinutesHtml(show, entry, std, owningDate) {
+
+// สถานะรายชิ้นเก็บเวลาเริ่มไว้แค่ ชม.:นาที ไม่ได้เก็บวันที่ — ต้องประกอบเป็นเวลาจริงบนปฏิทินก่อน
+// อิงวันของ "ใบงาน" เป็นหลัก: ถ้าเวลาที่กดเริ่มมาก่อนเวลาเริ่มของใบงาน แปลว่าเป็นของวันถัดไป
+// (ใบงานกะดึกคร่อมเที่ยงคืน เช่น 18 ก.ย. 04:15–10:55 ซึ่งเป็น "วันทำงาน" ของ 17 ก.ย.)
+// จำเป็นต้องคิดแบบนี้ ไม่ใช่เทียบ "วันทำงาน" กับวันนี้ตรงๆ — ไม่งั้นงาน CNC กะดึกที่ยังเดินอยู่จริง
+// ตอนเช้าวันถัดไป จะถูกมองว่าเป็นงานของเมื่อวานแล้วไม่ขึ้นตัวนับเลย
+function pieceStartTimestamp(task, startHHMM) {
+  if (!task || !task.date || !startHHMM) return null;
+  const planMin = hhmmToMinOfDay(task.startTime), startMin = hhmmToMinOfDay(startHHMM);
+  if (planMin == null || startMin == null) return null;
+  const iso = startMin >= planMin ? task.date : addDaysIso(task.date, 1);
+  return parseISODate(iso).getTime() + startMin * 60000;
+}
+
+// เกินเท่านี้ถือว่าลืมกดจบงาน ไม่ใช่งานที่กำลังทำอยู่จริง — ไม่ขึ้นตัวนับ (ตัวเลขจะไม่มีความหมาย)
+// 24 ชม. เผื่อกะดึก + OT เต็มโควตาไว้หมดแล้ว (งานขัด Roll OT ได้สูงสุด 12 ชม.)
+const DAILY_RUN_MIN_MAX = 24 * 60;
+
+function runningPieceMinutesHtml(show, entry, std, task) {
   if (!show || !entry || entry.status !== 'in_progress' || !entry.startTime) return '';
-  if (owningDate !== dailyTodayIso()) return '';
+  const at = pieceStartTimestamp(task, entry.startTime);
+  if (at == null) return '';
+  const mins = Math.floor((Date.now() - at) / 60000);
+  if (mins < 0 || mins > DAILY_RUN_MIN_MAX) return '';
   const stdNum = parseFloat(std);
   // เนื้อความ/สีเติมโดย refreshDailyRunMinutes() แล้วอัปเดตซ้ำทุก 15 วินาที
-  return `<div class="daily-run-min" data-start="${escapeHtmlAttr(entry.startTime)}"
+  return `<div class="daily-run-min" data-at="${at}" data-start="${escapeHtmlAttr(entry.startTime)}"
     data-std="${isFinite(stdNum) ? escapeHtmlAttr(String(stdNum)) : ''}"
     style="font-size:11px;font-weight:700;"></div>`;
 }
@@ -6330,10 +6349,11 @@ function refreshDailyRunMinutes() {
     if (dailyRunMinTimer) { clearInterval(dailyRunMinTimer); dailyRunMinTimer = null; }
     return;
   }
-  const now = nowHHMM();
   nodes.forEach(el => {
-    const mins = actualMinutesBetween(el.dataset.start, now);
-    if (mins == null) { el.textContent = ''; return; }
+    const at = Number(el.dataset.at);
+    const mins = isFinite(at) ? Math.floor((Date.now() - at) / 60000) : null;
+    // ลืมกดจบงานข้ามวัน — ปล่อยว่างไว้ ดีกว่าโชว์ตัวเลขที่อ่านแล้วเข้าใจผิด
+    if (mins == null || mins < 0 || mins > DAILY_RUN_MIN_MAX) { el.textContent = ''; el.title = ''; return; }
     const std = parseFloat(el.dataset.std);
     const over = isFinite(std) && mins > std;
     el.style.color = over ? 'var(--amber)' : 'var(--accent)';
@@ -6477,7 +6497,7 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
           // ชิ้นที่กำลังทำอยู่ — เดินนาทีให้เห็นว่าทำมากี่นาทีแล้ว เทียบกับเวลามาตรฐานทั้งชิ้น
           // วางไว้แถวแรกของชิ้น (แถวเดียวกับปุ่มและเวลาเริ่มจริง) ไม่ใช่แถวสุดท้ายที่ไว้โชว์เวลาที่ใช้จริงตอนจบ
           runningPieceMinutesHtml(interactive && isFirstRow && !isBreak, pieceEntry,
-            p.fullMinutes != null ? p.fullMinutes : s.minutes, dailyStatusDateFor(t.id))}</td>
+            p.fullMinutes != null ? p.fullMinutes : s.minutes, t.__origin || t)}</td>
         <td class="muted">${escapeHtmlAttr(s.startTime || '—')}${actualStartSuffix}</td>
         <td class="muted">${escapeHtmlAttr(s.endTime || '—')}${endBadge}${actualEndSuffix}</td>
       </tr>`;
