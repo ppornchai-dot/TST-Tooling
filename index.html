@@ -4996,7 +4996,7 @@ function goToRegistryTab(key) {
 // หนึ่งแถว = หนึ่งชุด — รูปแบบเดียวกับแถวในการ์ดของชุด Roll (ป้ายซ้าย + ชื่อ + เม็ดสี + ป้ายท้าย)
 // ป้ายซ้ายของชุด Roll คือ "เครื่อง" แต่ Roll SQ ไม่ได้ผูกกับเครื่อง จึงใช้ "ชุดที่ N" แทน
 // ซึ่งเป็นตัวแยกชุดที่ขนาด+สีเดียวกันออกจากกัน (ตัวเดียวกับที่ทะเบียนใช้)
-function dashSqSetRowHtml(set, badgeColor, rowBg) {
+function dashSqSetRowHtml(set, badgeColor, rowBg, hideSize) {
   const head = set[0] || {};
   const cm = sqColorMeta(head.color);
   const expired = set.filter(sqOdExpired).length;
@@ -5016,9 +5016,19 @@ function dashSqSetRowHtml(set, badgeColor, rowBg) {
     title="${escapeHtmlAttr(sqSetFullLabel(head) + ' · Roll ' + set.length + ' ชิ้น — กดเพื่อเปิดชุดนี้ในทะเบียน Roll SQ')}">
     <span style="font-size:15px;font-weight:800;color:#fff;background:${badgeColor || 'var(--accent)'};
                  padding:3px 11px;border-radius:6px;flex-shrink:0;letter-spacing:.02em;">${sqSetOrdinalInfo(head).no}</span>
-    <span style="font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(head.sizeSq || '—')}</span>
+    ${hideSize ? '' : `<span style="font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(head.sizeSq || '—')}</span>`}
     ${rollColorPillHtml(cm.dot, cm.label)}
     ${tag}
+  </div>`;
+}
+
+// หัวข้อย่อยของแต่ละขนาดในคอลัมน์ — ชุดของขนาดเดียวกันมักมีหลายชุด ถ้าเรียงติดกันเฉยๆ
+// ชื่อขนาดจะซ้ำทุกบรรทัดจนอ่านยาก แยกหัวข้อแล้วในแถวไม่ต้องเขียนชื่อขนาดซ้ำอีก
+function dashSqSizeHeadHtml(size, count) {
+  return `<div style="display:flex;align-items:center;gap:8px;margin:10px 2px 5px;">
+    <b style="font-size:12px;font-weight:800;color:var(--text-2);white-space:nowrap;">${escapeHtmlAttr(size || 'ไม่ระบุขนาด')}</b>
+    <span style="flex:1;height:1px;background:var(--border-light);"></span>
+    <span style="font-size:11px;font-weight:700;color:var(--text-3);white-space:nowrap;">${count} ชุด</span>
   </div>`;
 }
 
@@ -5044,10 +5054,23 @@ function dashSqKindGridHtml(list, badgeColor, rowBg) {
   return `<div class="dash-rollinuse-grid" style="display:grid;grid-template-columns:repeat(${columns.length},1fr);gap:16px;">
     ${columns.map(([label, col]) => `<div>
       ${rollSetSectionHeaderHtml(label, col.length, SQ_KIND_SECTION_COLORS[label] || C_SLATE)}
-      ${col.length ? col.slice().sort(dashSqSetSortCmp).map(s => dashSqSetRowHtml(s, badgeColor, rowBg)).join('')
+      ${col.length ? dashSqSizeGroupsHtml(col, badgeColor, rowBg)
         : '<div style="padding:4px;color:var(--text-3);font-size:12px;">ไม่มี</div>'}
     </div>`).join('')}
   </div>`;
+}
+
+// แบ่งชุดในคอลัมน์ออกเป็นกลุ่มตาม Size SQ — เรียงตามชื่อขนาด แล้วในกลุ่มเรียงตามสี/ลำดับชุด
+function dashSqSizeGroupsHtml(list, badgeColor, rowBg) {
+  const bySize = new Map();
+  list.slice().sort(dashSqSetSortCmp).forEach(s => {
+    const size = (s[0] || {}).sizeSq || 'ไม่ระบุขนาด';
+    if (!bySize.has(size)) bySize.set(size, []);
+    bySize.get(size).push(s);
+  });
+  return [...bySize.entries()].map(([size, group]) =>
+    dashSqSizeHeadHtml(size, group.length)
+    + group.map(s => dashSqSetRowHtml(s, badgeColor, rowBg, true)).join('')).join('');
 }
 
 // การ์ดรวมชุดตามสถานะ — รูปแบบเดียวกับการ์ดของชุด Roll
