@@ -6305,6 +6305,55 @@ function actualPieceMinutesHtml(show, entry, std) {
     ทำจริง ${escapeHtmlAttr(mins.toLocaleString())}</div>`;
 }
 
+// ─── ตัวนับเวลาของชิ้นที่ "กำลังทำ" ───────────────────────────────────────────
+// นับจากเวลาที่กดเริ่มงานถึงตอนนี้ เป็นนาที เดินต่อเองโดยไม่ต้องรีเฟรชหน้า
+// โชว์เฉพาะงานของ "วันทำงานปัจจุบัน" เท่านั้น — สถานะรายชิ้นเก็บแค่ ชม.:นาที ไม่ได้เก็บวันที่กดเริ่ม
+// ถ้าเอาไปนับกับวันอื่นที่เลื่อนดูได้ (เมื่อวาน/พรุ่งนี้) จะได้ตัวเลขที่ไม่มีความหมาย
+// ไม่ได้หักช่วงที่พักงานออก เพราะระบบบันทึกแค่ "เวลาที่กดพัก" ไม่ได้บันทึกเวลาที่กดทำต่อ
+// — จึงเขียนกำกับไว้ในทูลทิปให้ชัดว่าเป็นเวลาที่ผ่านไปตั้งแต่กดเริ่มงาน
+function runningPieceMinutesHtml(show, entry, std, owningDate) {
+  if (!show || !entry || entry.status !== 'in_progress' || !entry.startTime) return '';
+  if (owningDate !== dailyTodayIso()) return '';
+  const stdNum = parseFloat(std);
+  // เนื้อความ/สีเติมโดย refreshDailyRunMinutes() แล้วอัปเดตซ้ำทุก 15 วินาที
+  return `<div class="daily-run-min" data-start="${escapeHtmlAttr(entry.startTime)}"
+    data-std="${isFinite(stdNum) ? escapeHtmlAttr(String(stdNum)) : ''}"
+    style="font-size:11px;font-weight:700;"></div>`;
+}
+
+let dailyRunMinTimer = null;
+// อัปเดตเฉพาะข้อความในช่อง ไม่วาดตารางใหม่ทั้งหน้า — วาดใหม่ทุก 15 วินาทีจะพับแถวที่กางอยู่
+// รีเซ็ตตำแหน่งเลื่อน และไปแย่งจังหวะตอนช่างกำลังจะกดปุ่มพอดี
+function refreshDailyRunMinutes() {
+  const nodes = document.querySelectorAll('.daily-run-min');
+  if (!nodes.length) {
+    if (dailyRunMinTimer) { clearInterval(dailyRunMinTimer); dailyRunMinTimer = null; }
+    return;
+  }
+  const now = nowHHMM();
+  nodes.forEach(el => {
+    const mins = actualMinutesBetween(el.dataset.start, now);
+    if (mins == null) { el.textContent = ''; return; }
+    const std = parseFloat(el.dataset.std);
+    const over = isFinite(std) && mins > std;
+    el.style.color = over ? 'var(--amber)' : 'var(--accent)';
+    el.textContent = 'กำลังทำ ' + mins.toLocaleString() + ' นาที';
+    el.title = 'เริ่มงาน ' + el.dataset.start + ' — ผ่านไปแล้ว ' + mins.toLocaleString() + ' นาที'
+      + (mins >= 60 ? ' (' + formatMinutesAsHm(mins).replace('≈ ', '') + ')' : '')
+      + (isFinite(std)
+        ? (over ? ' · เกินมาตรฐาน ' + Math.round(mins - std).toLocaleString() + ' นาที'
+                : ' · เหลืออีก ' + Math.round(std - mins).toLocaleString() + ' นาที จากมาตรฐาน ' + std.toLocaleString() + ' นาที')
+        : '')
+      + ' · นับจากเวลาที่กดเริ่มงาน รวมช่วงที่พักงานไว้ด้วย';
+  });
+}
+function ensureDailyRunMinTimer() {
+  refreshDailyRunMinutes();
+  if (!dailyRunMinTimer && document.querySelector('.daily-run-min')) {
+    dailyRunMinTimer = setInterval(refreshDailyRunMinutes, 15000);
+  }
+}
+
 function pieceCountText(minutes, fullMinutes) {
   const full = parseFloat(fullMinutes) || 0;
   const part = parseFloat(minutes) || 0;
@@ -6424,7 +6473,11 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
           // เวลาที่ใช้จริงของชิ้นนั้น (จากเวลาเริ่ม–จบที่กดไว้จริง) — วางไว้แถวที่โชว์เวลาจบจริง
           // เทียบกับเวลามาตรฐานทั้งชิ้น (fullMinutes) ไม่ใช่เฉพาะส่วนที่ตัดมาแสดงในแถวนี้
           // เกินมาตรฐาน = สีเหลือง · ไม่เกิน = สีเขียว จะได้เห็นทันทีว่าชิ้นไหนใช้เวลาเกิน
-          actualPieceMinutesHtml(interactive && isLastRow && !isBreak, pieceEntry, p.fullMinutes != null ? p.fullMinutes : s.minutes)}</td>
+          actualPieceMinutesHtml(interactive && isLastRow && !isBreak, pieceEntry, p.fullMinutes != null ? p.fullMinutes : s.minutes)}${
+          // ชิ้นที่กำลังทำอยู่ — เดินนาทีให้เห็นว่าทำมากี่นาทีแล้ว เทียบกับเวลามาตรฐานทั้งชิ้น
+          // วางไว้แถวแรกของชิ้น (แถวเดียวกับปุ่มและเวลาเริ่มจริง) ไม่ใช่แถวสุดท้ายที่ไว้โชว์เวลาที่ใช้จริงตอนจบ
+          runningPieceMinutesHtml(interactive && isFirstRow && !isBreak, pieceEntry,
+            p.fullMinutes != null ? p.fullMinutes : s.minutes, dailyStatusDateFor(t.id))}</td>
         <td class="muted">${escapeHtmlAttr(s.startTime || '—')}${actualStartSuffix}</td>
         <td class="muted">${escapeHtmlAttr(s.endTime || '—')}${endBadge}${actualEndSuffix}</td>
       </tr>`;
@@ -16106,6 +16159,8 @@ function renderDailyTasks() {
   document.getElementById('daily-kpi-pending').textContent = pending;
   document.getElementById('daily-kpi-overdue').textContent = overdue;
   updatePendingBadge();
+  // เติมตัวเลขนาทีของชิ้นที่กำลังทำ แล้วตั้งให้เดินต่อเอง (ตัวจับเวลาหยุดเองเมื่อไม่เหลือชิ้นที่กำลังทำ)
+  ensureDailyRunMinTimer();
 }
 
 // ─── ประวัติการทำงาน (หน้า History) ───────────────────────────────────────
