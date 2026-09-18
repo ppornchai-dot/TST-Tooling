@@ -4999,6 +4999,7 @@ function goToRegistryTab(key) {
 function dashSqSetRowHtml(set, badgeColor, rowBg, hideSize) {
   const head = set[0] || {};
   const cm = sqColorMeta(head.color);
+  const mc = sqSetMachineFor(sqSetKey(head));
   const expired = set.filter(sqOdExpired).length;
   const unmeasured = set.filter(r => !sqHasCurrentOd(r)).length;
   const tag = expired
@@ -5015,7 +5016,10 @@ function dashSqSetRowHtml(set, badgeColor, rowBg, hideSize) {
     onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
     title="${escapeHtmlAttr(sqSetFullLabel(head) + ' · Roll ' + set.length + ' ชิ้น — กดเพื่อเปิดชุดนี้ในทะเบียน Roll SQ')}">
     <span style="font-size:15px;font-weight:800;color:#fff;background:${badgeColor || 'var(--accent)'};
-                 padding:3px 11px;border-radius:6px;flex-shrink:0;letter-spacing:.02em;">${sqSetOrdinalInfo(head).no}</span>
+                 padding:3px 11px;border-radius:6px;flex-shrink:0;letter-spacing:.02em;"
+      title="${escapeHtmlAttr(mc ? 'เครื่องที่ใส่อยู่' : 'ลำดับชุดของขนาด+สีนี้ (ยังไม่ได้ใส่เครื่อง)')}">${
+      // ใส่เครื่องแล้วโชว์ชื่อเครื่องเป็นป้ายซ้าย เหมือนการ์ดของชุด Roll · ยังไม่ใส่ก็ใช้เลขชุดไปก่อน
+      escapeHtmlAttr(mc || String(sqSetOrdinalInfo(head).no))}</span>
     ${hideSize ? '' : `<span style="font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(head.sizeSq || '—')}</span>`}
     ${rollColorPillHtml(cm.dot, cm.label)}
     ${tag}
@@ -10956,6 +10960,9 @@ let rollColorStatus = {};
 // สถานะของ "ชุด Roll SQ" (คีย์ = sqSetKey ของชุด) — รายละเอียด/ตัวช่วยอยู่ในส่วนทะเบียน Roll SQ
 // ต้องประกาศไว้ตรงนี้ เพราะ buildStateSnapshot() ด้านล่างถูกเรียกตั้งแต่ตอนบูต ถ้าประกาศทีหลังจะชน TDZ
 let sqSetStatus = {};
+// เครื่องที่ชุด Roll SQ นั้นใส่อยู่ (คีย์ = sqSetKey ของชุด · ค่า = ชื่อเครื่อง เช่น 'P3')
+// ประกาศไว้ตรงนี้ด้วยเหตุผลเดียวกับ sqSetStatus — buildStateSnapshot() ถูกเรียกตั้งแต่ตอนบูต
+let sqSetMachine = {};
 function rollColorStatusFor(setName, colorKey) { return rollColorStatus[setName + '|' + colorKey] || 'ready'; }
 function getRollColorStatus(colorKey) { return rollColorStatusFor(selectedRollSet, colorKey); }
 function setRollColorStatus(colorKey, status) {
@@ -11305,7 +11312,7 @@ let rollCarryTon = {};
 
 function buildStateSnapshot() {
   return {
-    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec, sqSetStatus,
+    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec, sqSetStatus, sqSetMachine,
     planTasks, planTaskSeq, companyHolidays, companyHolidaySeq, planDayEndTime, planDayWorker, teamMembers, teamSeq,
     dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
     dailyPieceStatus, rollSizeLog, rollSizeLogSeq, dailyPauseLog, dailyPauseLogSeq,
@@ -11434,6 +11441,7 @@ function applyState(saved) {
   if (saved.rollSetStatus) rollSetStatus = saved.rollSetStatus;
   if (saved.rollColorStatus) rollColorStatus = saved.rollColorStatus;
   if (saved.sqSetStatus) sqSetStatus = saved.sqSetStatus;
+  if (saved.sqSetMachine) sqSetMachine = saved.sqSetMachine;
   if (saved.rollColorActiveMachine) rollColorActiveMachine = saved.rollColorActiveMachine;
   if (saved.rollSetCategoryTemplates) rollSetCategoryTemplates = saved.rollSetCategoryTemplates;
   if (saved.rollLifeSpec) rollLifeSpec = saved.rollLifeSpec;
@@ -15139,6 +15147,114 @@ function setSqSetStatus(setKeyStr, status) {
     renderDashboardToolingPanels();
   });
 }
+// ─── เครื่องที่ชุด Roll SQ ใส่อยู่ ─────────────────────────────────────────────
+// ของจริงเครื่องหนึ่งใส่ Roll SQ ได้ชุดเดียว — ใส่ชุดใหม่แล้วชุดเดิมของเครื่องนั้นถูกถอดออกให้เอง
+// (กฎเดียวกับ clearInUseMachineConflicts ของทะเบียน Roll แต่ Roll SQ ไม่มีหมวด จึงเป็น 1 ชุดต่อเครื่อง)
+function sqSetMachineFor(setKeyStr) { return sqSetMachine[setKeyStr] || null; }
+function sqSetOnMachine(machine) {
+  return Object.keys(sqSetMachine).find(k => sqSetMachine[k] === machine) || null;
+}
+// ชื่อชุดแบบสั้นสำหรับข้อความแจ้ง — หาแถวแรกของชุดนั้นจากคีย์
+function sqSetLabelByKey(setKeyStr) {
+  const r = toolingData.sq.find(x => sqSetKey(x) === setKeyStr);
+  return r ? sqSetFullLabel(r) : setKeyStr;
+}
+// machine = null คือถอดออกจากเครื่อง — เป็นการ "ตั้งค่าให้เป็นค่านี้" ทำซ้ำได้ผลเดิมเสมอ
+function setSqSetMachine(setKeyStr, machine) {
+  const mc = machine || null;
+  const replaced = mc ? sqSetOnMachine(mc) : null;
+  withCloudRetry(() => {
+    if (mc) {
+      // ถอดชุดเดิมของเครื่องนั้นออกก่อน แล้วปลดสถานะ "กำลังใช้งาน" ของมันด้วย
+      Object.keys(sqSetMachine).forEach(k => {
+        if (k !== setKeyStr && sqSetMachine[k] === mc) {
+          delete sqSetMachine[k];
+          if (sqSetStatusFor(k) === 'inuse') delete sqSetStatus[k];   // ไม่มีคีย์ = พร้อมใช้งาน
+        }
+      });
+      sqSetMachine[setKeyStr] = mc;
+      sqSetStatus[setKeyStr] = 'inuse';   // ใส่เครื่องแล้ว = กำลังใช้งาน ให้สองที่ตรงกันเสมอ
+    } else {
+      delete sqSetMachine[setKeyStr];
+      // ถอดออกจากเครื่องแล้วไม่ใช่ "กำลังใช้งาน" อีก — ส่วนจะไปแต่งต่อไหมให้เลือกเองที่ดรอปดาวน์สถานะ
+      if (sqSetStatusFor(setKeyStr) === 'inuse') delete sqSetStatus[setKeyStr];
+    }
+    persistState();
+    renderSqRegistry(pageState.sq || 1);
+    renderDashboardToolingPanels();
+  });
+  if (replaced && replaced !== setKeyStr) {
+    alert('เครื่อง ' + mc + ' มีชุดอยู่แล้ว — ถอด "' + sqSetLabelByKey(replaced) + '" ออกให้แล้ว'
+      + '\nสถานะของชุดนั้นถูกตั้งเป็น "พร้อมใช้งาน" ถ้าต้องส่งไปแต่ง เปลี่ยนได้ที่คอลัมน์สถานะชุด');
+  }
+}
+
+// ปุ่ม/ป้ายเครื่องในรายการชุดด้านซ้ายของทะเบียน Roll SQ
+function sqSetMachineBtnHtml(setKeyStr) {
+  const mc = sqSetMachineFor(setKeyStr);
+  return mc
+    ? `<button class="btn btn-sm" style="padding:3px 9px;flex-shrink:0;font-size:12px;font-weight:800;
+         background:var(--inuse);color:#fff;border:1px solid var(--inuse);"
+         onclick="${jsCallAttr('openSqMachinePicker', setKeyStr)}"
+         title="${escapeHtmlAttr('ใส่อยู่ที่เครื่อง ' + mc + ' — กดเพื่อย้ายเครื่องหรือถอดออก')}">${escapeHtmlAttr(mc)}</button>`
+    : `<button class="btn btn-ghost btn-sm" style="padding:3px 8px;flex-shrink:0;font-size:11.5px;font-weight:700;"
+         onclick="${jsCallAttr('openSqMachinePicker', setKeyStr)}"
+         title="เลือกเครื่องที่จะใส่ชุดนี้">＋ ใส่เครื่อง</button>`;
+}
+
+function openSqMachinePicker(setKeyStr) {
+  if (!canEditPlan()) return;
+  let ov = document.getElementById('sqmc-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'sqmc-overlay';
+    ov.className = 'modal-overlay';
+    ov.style.zIndex = '1060';
+    ov.onclick = e => { if (e.target === ov) closeSqMachinePicker(); };
+    ov.innerHTML = `<div class="modal" style="max-width:460px;">
+      <div class="modal-head"><h3 id="sqmc-title">ใส่ชุด Roll SQ เข้าเครื่อง</h3>
+        <button class="modal-close" onclick="closeSqMachinePicker()">✕</button></div>
+      <div class="modal-body" id="sqmc-body"></div>
+      <div class="modal-footer"><button class="btn btn-ghost" onclick="closeSqMachinePicker()">ปิด</button></div>
+    </div>`;
+    document.body.appendChild(ov);
+  }
+  const cur = sqSetMachineFor(setKeyStr);
+  document.getElementById('sqmc-title').textContent = cur ? 'ย้าย/ถอดชุด Roll SQ' : 'ใส่ชุด Roll SQ เข้าเครื่อง';
+  document.getElementById('sqmc-body').innerHTML = `
+    <div style="font-size:13px;color:var(--text-2);line-height:1.7;margin-bottom:12px;">
+      ${escapeHtmlAttr(sqSetLabelByKey(setKeyStr))}
+      ${cur ? `<div style="font-size:12px;color:var(--inuse);font-weight:700;">ตอนนี้ใส่อยู่ที่เครื่อง ${escapeHtmlAttr(cur)}</div>` : ''}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">
+      ${ROLL_MACHINES.map(m => {
+        const holder = sqSetOnMachine(m);
+        const mine = holder === setKeyStr;
+        return `<button class="btn ${mine ? 'btn-primary' : 'btn-ghost'}"
+          style="justify-content:center;font-size:15px;font-weight:800;padding:12px;"
+          onclick="${jsCallAttr('pickSqMachine', setKeyStr, m)}"
+          title="${escapeHtmlAttr(mine ? 'ชุดนี้ใส่อยู่ที่เครื่องนี้แล้ว'
+            : holder ? 'เครื่องนี้มี "' + sqSetLabelByKey(holder) + '" อยู่ — เลือกแล้วจะถอดชุดนั้นออกให้'
+            : 'ใส่ชุดนี้ที่เครื่อง ' + m)}">เครื่อง ${escapeHtmlAttr(m)}${
+          holder && !mine ? '<span style="font-size:10px;font-weight:700;color:var(--amber);margin-left:6px;">มีชุดอยู่</span>' : ''}</button>`;
+      }).join('')}
+    </div>
+    ${cur ? `<button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:10px;font-weight:700;color:var(--red);"
+      onclick="${jsCallAttr('pickSqMachine', setKeyStr, '')}"
+      title="ถอดชุดนี้ออกจากเครื่อง — สถานะจะกลับเป็นพร้อมใช้งาน">ถอดออกจากเครื่อง ${escapeHtmlAttr(cur)}</button>` : ''}
+    <div style="font-size:11.5px;color:var(--text-3);line-height:1.6;margin-top:12px;">
+      ใส่เครื่องแล้วสถานะของชุดจะเป็น "กำลังใช้งาน" อัตโนมัติ · เครื่องหนึ่งใส่ Roll SQ ได้ชุดเดียว</div>`;
+  ov.classList.add('open');
+}
+function closeSqMachinePicker() {
+  const ov = document.getElementById('sqmc-overlay');
+  if (ov) ov.classList.remove('open');
+}
+function pickSqMachine(setKeyStr, machine) {
+  closeSqMachinePicker();
+  setSqSetMachine(setKeyStr, machine || null);
+}
+
 function sqSetStatusSelectHtml(setKeyStr) {
   const st = sqSetStatusFor(setKeyStr);
   const meta = SQ_SET_STATUS_META[st] || SQ_SET_STATUS_META.ready;
@@ -15503,6 +15619,7 @@ function renderSqSetList() {
           ${incomplete ? `<span class="chip chip-amber" style="flex-shrink:0;" title="1 ชุดต้องมี Roll ${SQ_PIECES_PER_SET} ชิ้น">ไม่ครบ</span>` : ''}
           <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;flex-shrink:0;">${set.length}</span>
         </div>
+        ${canEditPlan() ? sqSetMachineBtnHtml(key) : ''}
         <button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;color:var(--red);"
           onclick="${jsCallAttr('deleteSqSet', r.id)}" title="ลบทั้งชุด (${set.length} ชิ้น)">✕</button>
       </div>`;
