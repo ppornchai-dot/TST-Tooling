@@ -5233,10 +5233,11 @@ function renderSqInUsePicker() {
       </div>`
     : `<div style="font-size:12.5px;color:var(--text-3);padding:4px 2px 2px;">เครื่อง ${escapeHtmlAttr(m)} ยังไม่ได้ตั้งว่าใช้ชุดไหน — เลือกจากรายการด้านล่าง</div>`;
 
-  // ขนาดที่ผูกไว้กับเครื่องนี้ขึ้นก่อน (ดูปุ่มเครื่องบนหัวข้อขนาดในทะเบียน) ที่เหลือตามลงมา
+  // แสดงเฉพาะขนาดที่ผูกไว้ว่าใช้กับเครื่องนี้ได้ (ดูปุ่มเครื่องบนหัวข้อขนาดในทะเบียน)
+  // บวกขนาดของชุดที่ใส่อยู่บนเครื่องนี้ตอนนี้ เผื่อเคยใส่ไว้ก่อนผูกเครื่อง จะได้ยังถอดออกจากรายการได้
   const groups = sqSizeGroups();
-  const fit = groups.filter(([size]) => sqSizeMachinesFor(size).includes(m));
-  const rest = groups.filter(([size]) => !sqSizeMachinesFor(size).includes(m));
+  const curSize = holderKey ? String((toolingData.sq.find(x => sqSetKey(x) === holderKey) || {}).sizeSq || '').trim() : '';
+  const fit = groups.filter(([size]) => sqSizeMachinesFor(size).includes(m) || size === curSize);
   const sectionHtml = (label, list, note) => !list.length ? '' : `
     <div style="font-size:12px;font-weight:800;color:var(--text-2);margin:12px 2px 6px;">${escapeHtmlAttr(label)}
       <span style="font-weight:400;color:var(--text-3);">${escapeHtmlAttr(note || '')}</span></div>
@@ -5266,9 +5267,11 @@ function renderSqInUsePicker() {
         </div>`;
       }).join('')}`).join('')}`;
 
-  body.innerHTML = (sectionHtml('ขนาดที่ใช้กับเครื่อง ' + m + ' ได้', fit, '(ตามที่ผูกไว้ที่หัวข้อขนาดในทะเบียน)')
-    + sectionHtml('ขนาดอื่น', rest, '(ยังไม่ได้ผูกกับเครื่องนี้ แต่เลือกได้)'))
-    || '<div style="padding:18px;text-align:center;color:var(--text-3);font-size:13px;">ยังไม่มีชุด Roll SQ ในทะเบียน</div>';
+  body.innerHTML = sectionHtml('ขนาดที่ใช้กับเครื่อง ' + m + ' ได้', fit, '(ตามที่ผูกไว้ที่หัวข้อขนาดในทะเบียน)')
+    || `<div style="padding:22px 16px;text-align:center;color:var(--text-3);font-size:13px;line-height:1.7;">
+         ยังไม่มีขนาด Size SQ ไหนผูกไว้ว่าใช้กับ<b> เครื่อง ${escapeHtmlAttr(m)} </b>ได้<br>
+         <span style="font-size:11.5px;">ไปผูกเครื่องให้ขนาดก่อนที่ปุ่มท้ายหัวข้อขนาด ในหน้าทะเบียน Roll SQ</span>
+       </div>`;
 }
 
 // ชุดที่ยังไม่ได้ตั้งสถานะจะนับเป็น "พร้อมใช้งาน" ตามค่าเริ่มต้น (ไม่มีคีย์ = ready)
