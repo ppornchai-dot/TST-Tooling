@@ -10963,6 +10963,10 @@ let sqSetStatus = {};
 // เครื่องที่ชุด Roll SQ นั้นใส่อยู่ (คีย์ = sqSetKey ของชุด · ค่า = ชื่อเครื่อง เช่น 'P3')
 // ประกาศไว้ตรงนี้ด้วยเหตุผลเดียวกับ sqSetStatus — buildStateSnapshot() ถูกเรียกตั้งแต่ตอนบูต
 let sqSetMachine = {};
+// เครื่องที่ "ขนาด Size SQ" นั้นใช้ได้ (คีย์ = ชื่อขนาด · ค่า = รายการเครื่อง เช่น ['P2','P3'])
+// คนละเรื่องกับ sqSetMachine ด้านบน: ตัวนั้นคือ "ชุดนี้ใส่อยู่ที่เครื่องไหนตอนนี้"
+// ส่วนตัวนี้คือ "ขนาดนี้ใช้กับเครื่องไหนได้บ้าง" — เทียบเท่า rollSetMachines ของทะเบียน Roll
+let sqSizeMachines = {};
 function rollColorStatusFor(setName, colorKey) { return rollColorStatus[setName + '|' + colorKey] || 'ready'; }
 function getRollColorStatus(colorKey) { return rollColorStatusFor(selectedRollSet, colorKey); }
 function setRollColorStatus(colorKey, status) {
@@ -11312,7 +11316,7 @@ let rollCarryTon = {};
 
 function buildStateSnapshot() {
   return {
-    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec, sqSetStatus, sqSetMachine,
+    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec, sqSetStatus, sqSetMachine, sqSizeMachines,
     planTasks, planTaskSeq, companyHolidays, companyHolidaySeq, planDayEndTime, planDayWorker, teamMembers, teamSeq,
     dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
     dailyPieceStatus, rollSizeLog, rollSizeLogSeq, dailyPauseLog, dailyPauseLogSeq,
@@ -11442,6 +11446,7 @@ function applyState(saved) {
   if (saved.rollColorStatus) rollColorStatus = saved.rollColorStatus;
   if (saved.sqSetStatus) sqSetStatus = saved.sqSetStatus;
   if (saved.sqSetMachine) sqSetMachine = saved.sqSetMachine;
+  if (saved.sqSizeMachines) sqSizeMachines = saved.sqSizeMachines;
   if (saved.rollColorActiveMachine) rollColorActiveMachine = saved.rollColorActiveMachine;
   if (saved.rollSetCategoryTemplates) rollSetCategoryTemplates = saved.rollSetCategoryTemplates;
   if (saved.rollLifeSpec) rollLifeSpec = saved.rollLifeSpec;
@@ -15189,6 +15194,102 @@ function setSqSetMachine(setKeyStr, machine) {
   }
 }
 
+// ─── เครื่องที่ "ขนาด Size SQ" ใช้ได้ (เลือกได้หลายเครื่อง) ─────────────────────
+// เทียบเท่า rollSetMachines ของทะเบียน Roll — บอกว่าขนาดนี้ขึ้นเครื่องไหนได้บ้าง
+// ไม่ใช่ "ตอนนี้ชุดไหนอยู่เครื่องไหน" (อันนั้นคือ sqSetMachine รายชุด)
+function sqSizeMachinesFor(size) {
+  const v = sqSizeMachines[size];
+  const list = Array.isArray(v) ? v : (v ? [v] : []);
+  return ROLL_MACHINES.filter(m => list.includes(m));   // เรียง P1→P4 เสมอ ป้ายจะได้ไม่สลับไปมา
+}
+function sqSizeMachineLabel(size) { return sqSizeMachinesFor(size).join('/'); }
+
+// ตั้งรายการเครื่องของขนาดให้เป็นค่านี้ (รายการว่าง = ไม่ผูกเครื่อง) — ทำซ้ำได้ผลเดิมเสมอ
+function applySqSizeMachines(size, machines) {
+  const want = ROLL_MACHINES.filter(m => (machines || []).includes(m));
+  withCloudRetry(() => {
+    if (want.length) sqSizeMachines[size] = want; else delete sqSizeMachines[size];
+    persistState();
+    renderSqRegistry(pageState.sq || 1);
+    renderDashboardToolingPanels();
+  });
+}
+function toggleSqSizeMachine(size, machine) {
+  if (!canEditPlan()) return;
+  const cur = sqSizeMachinesFor(size);
+  applySqSizeMachines(size, cur.includes(machine) ? cur.filter(m => m !== machine) : cur.concat(machine));
+  renderSqSizeMachinePicker(size);   // เปิดกล่องค้างไว้ ติ๊กหลายเครื่องรวดเดียวได้
+}
+function clearSqSizeMachines(size) {
+  if (!canEditPlan()) return;
+  applySqSizeMachines(size, []);
+  renderSqSizeMachinePicker(size);
+}
+
+// ปุ่ม/ป้ายเครื่องบนหัวข้อขนาดในรายการด้านซ้ายของทะเบียน Roll SQ
+function sqSizeMachineBtnHtml(size) {
+  const label = sqSizeMachineLabel(size);
+  return label
+    ? `<button class="btn btn-sm" style="padding:2px 9px;flex-shrink:0;font-size:11.5px;font-weight:800;white-space:nowrap;
+         background:var(--accent);color:#fff;border:1px solid var(--accent);"
+         onclick="event.stopPropagation();${jsCallAttr('openSqSizeMachinePicker', size)}"
+         title="${escapeHtmlAttr('ขนาดนี้ใช้กับเครื่อง ' + label + ' — กดเพื่อแก้ไข')}">${escapeHtmlAttr(label)}</button>`
+    : `<button class="btn btn-ghost btn-sm" style="padding:2px 8px;flex-shrink:0;font-size:11px;font-weight:700;white-space:nowrap;"
+         onclick="event.stopPropagation();${jsCallAttr('openSqSizeMachinePicker', size)}"
+         title="เลือกเครื่องที่ใช้ขนาดนี้ได้ (เลือกได้มากกว่า 1 เครื่อง)">＋ เครื่อง</button>`;
+}
+
+function openSqSizeMachinePicker(size) {
+  if (!canEditPlan()) return;
+  let ov = document.getElementById('sqsizemc-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'sqsizemc-overlay';
+    ov.className = 'modal-overlay';
+    ov.style.zIndex = '1060';
+    ov.onclick = e => { if (e.target === ov) closeSqSizeMachinePicker(); };
+    ov.innerHTML = `<div class="modal" style="max-width:460px;">
+      <div class="modal-head"><h3 id="sqsizemc-title">ขนาดนี้ใช้กับเครื่องไหน</h3>
+        <button class="modal-close" onclick="closeSqSizeMachinePicker()">✕</button></div>
+      <div class="modal-body" id="sqsizemc-body"></div>
+      <div class="modal-footer"><button class="btn btn-primary" onclick="closeSqSizeMachinePicker()">เสร็จแล้ว</button></div>
+    </div>`;
+    document.body.appendChild(ov);
+  }
+  renderSqSizeMachinePicker(size);
+  ov.classList.add('open');
+}
+function closeSqSizeMachinePicker() {
+  const ov = document.getElementById('sqsizemc-overlay');
+  if (ov) ov.classList.remove('open');
+}
+function renderSqSizeMachinePicker(size) {
+  const body = document.getElementById('sqsizemc-body');
+  if (!body) return;
+  const cur = sqSizeMachinesFor(size);
+  const sets = sqSets().filter(s => String((s[0] || {}).sizeSq || '').trim() === size);
+  body.innerHTML = `
+    <div style="font-size:14px;font-weight:800;color:var(--text-1);margin-bottom:2px;">${escapeHtmlAttr(size)}</div>
+    <div style="font-size:12px;color:var(--text-3);margin-bottom:10px;">
+      มี ${sets.length} ชุดในทะเบียน${cur.length ? ' · ตอนนี้ผูกไว้กับเครื่อง ' + escapeHtmlAttr(cur.join(' · ')) : ''}</div>
+    <div style="font-size:11.5px;color:var(--text-3);margin-bottom:10px;">กดเครื่องเพื่อเลือก กดซ้ำเพื่อเอาออก — เลือกได้มากกว่า 1 เครื่อง</div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">
+      ${ROLL_MACHINES.map(m => {
+        const on = cur.includes(m);
+        return `<button class="btn ${on ? 'btn-primary' : 'btn-ghost'}"
+          style="justify-content:center;font-size:15px;font-weight:800;padding:12px;"
+          onclick="${jsCallAttr('toggleSqSizeMachine', size, m)}"
+          title="${escapeHtmlAttr(on ? 'เอาเครื่อง ' + m + ' ออกจากขนาดนี้' : 'ให้ขนาดนี้ใช้กับเครื่อง ' + m + ' ได้')}">${
+          on ? '✓ ' : ''}เครื่อง ${escapeHtmlAttr(m)}</button>`;
+      }).join('')}
+    </div>
+    ${cur.length ? `<button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:10px;font-weight:700;color:var(--red);"
+      onclick="${jsCallAttr('clearSqSizeMachines', size)}">ล้างเครื่องทั้งหมด (${cur.length})</button>` : ''}
+    <div style="font-size:11.5px;color:var(--text-3);line-height:1.6;margin-top:12px;">
+      ตัวนี้บอกว่า "ขนาดนี้ใช้กับเครื่องไหนได้บ้าง" ไม่ใช่ว่าตอนนี้ชุดไหนอยู่เครื่องไหน —
+      ชุดที่ใส่อยู่บนเครื่องจริงตั้งได้ที่ปุ่มท้ายแถวของแต่ละชุด</div>`;
+}
+
 // ปุ่ม/ป้ายเครื่องในรายการชุดด้านซ้ายของทะเบียน Roll SQ
 function sqSetMachineBtnHtml(setKeyStr) {
   const mc = sqSetMachineFor(setKeyStr);
@@ -15587,10 +15688,15 @@ function renderSqSetList() {
   el.innerHTML = groups.map(([size, sets]) => {
     const pieces = sets.reduce((n, s) => n + s.length, 0);
     const sizeActive = selectedSqSize === size;
-    const header = `<div onclick="${jsCallAttr('selectSqSize', size)}" style="cursor:pointer;"
-      title="${escapeHtmlAttr('ดู Roll SQ ทุกชุดของขนาด ' + size + ' (กดซ้ำเพื่อดูทุกขนาด)')}">${
-      rollSetSectionHeaderHtml(escapeHtmlAttr(size), sets.length + ' ชุด · ' + pieces + ' ชิ้น',
-        sizeActive ? 'var(--accent)' : 'var(--text-1)', { keepCase: true, big: true })}</div>`;
+    // ปุ่ม "ขนาดนี้ใช้กับเครื่องไหน" วางคู่หัวข้อขนาด — event.stopPropagation() อยู่ในตัวปุ่มแล้ว
+    // ไม่งั้นกดปุ่มแล้วจะไปโดน onclick ของหัวข้อที่สลับการกรองขนาดด้วย
+    const header = `<div style="display:flex;align-items:center;gap:8px;">
+      <div onclick="${jsCallAttr('selectSqSize', size)}" style="cursor:pointer;flex:1;min-width:0;"
+        title="${escapeHtmlAttr('ดู Roll SQ ทุกชุดของขนาด ' + size + ' (กดซ้ำเพื่อดูทุกขนาด)')}">${
+        rollSetSectionHeaderHtml(escapeHtmlAttr(size), sets.length + ' ชุด · ' + pieces + ' ชิ้น',
+          sizeActive ? 'var(--accent)' : 'var(--text-1)', { keepCase: true, big: true })}</div>
+      ${canEditPlan() ? `<span style="flex-shrink:0;padding-top:6px;">${sqSizeMachineBtnHtml(size)}</span>` : ''}
+    </div>`;
     return header + sets.map(set => {
       const r = set[0];
       const key = sqSetKey(r);
