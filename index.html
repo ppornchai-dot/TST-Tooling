@@ -5046,22 +5046,39 @@ function dashSqSetSortCmp(a, b) {
   return sqSetOrdinalInfo(ha).no - sqSetOrdinalInfo(hb).no;
 }
 
-// แบ่งเป็นคอลัมน์ตามประเภท GS/GI เหมือนที่การ์ดของชุด Roll แบ่งตามหมวด Forming/Sizing/TH
-// (Roll SQ ไม่มีหมวด — ตัวแบ่งที่ใกล้เคียงที่สุดคือประเภทของท่อ ซึ่งมีสีประจำอยู่แล้วใน SQ_KIND_COLORS)
-// ต้องเป็นค่าสี hex จริง ไม่ใช่ var(--…) เพราะ rollSetSectionHeaderHtml ย้อมแถบหัวข้อให้เข้มขึ้น
-// ด้วย shadeHex() ซึ่งคำนวณจาก hex เท่านั้น — ส่ง var() ไปแถบจะตกไปเป็นสีเทาเข้มทุกคอลัมน์
-const SQ_KIND_SECTION_COLORS = { GS: C_BLUE, GI: C_PURPLE };
-function dashSqKindGridHtml(list, badgeColor, rowBg) {
-  const columns = SQ_KINDS.map(k => [k, list.filter(s => (s[0] || {}).kind === k)]);
-  const other = list.filter(s => !SQ_KINDS.includes((s[0] || {}).kind));
-  if (other.length) columns.push(['อื่นๆ', other]);
+// เครื่องที่ชุดหนึ่งควรไปโผล่ในคอลัมน์
+//   1) ใส่อยู่บนเครื่องจริง → เครื่องนั้นเครื่องเดียว (ของจริงอยู่ตรงนั้น)
+//   2) ยังไม่ได้ใส่ แต่ขนาดผูกเครื่องไว้ → ขึ้นทุกเครื่องที่ขนาดนั้นใช้ได้
+//      (คอลัมน์เครื่องต้องตอบให้ได้ว่า "เครื่องนี้มีชุดอะไรให้ใช้บ้าง" ถ้าเลือกแค่เครื่องแรก
+//       เครื่องที่เหลือจะขึ้น 0 ทั้งที่มีชุดใช้ได้จริง)
+//   3) ไม่มีทั้งคู่ → คอลัมน์ "ยังไม่ระบุเครื่อง"
+const SQ_NO_MACHINE_COL = 'ยังไม่ระบุเครื่อง';
+function dashSqColumnsFor(set) {
+  const head = set[0] || {};
+  const mounted = sqSetMachineFor(sqSetKey(head));
+  if (mounted) return [mounted];
+  const bound = sqSizeMachinesFor(String(head.sizeSq || '').trim());
+  return bound.length ? bound : [SQ_NO_MACHINE_COL];
+}
+// แบ่งเป็นคอลัมน์ตามเครื่อง แบบเดียวกับที่การ์ดของชุด Roll แบ่งเป็นคอลัมน์
+function dashSqMachineGridHtml(list, badgeColor, rowBg) {
+  const columns = ROLL_MACHINES.map(m => [m, list.filter(s => dashSqColumnsFor(s).includes(m))]);
+  const rest = list.filter(s => dashSqColumnsFor(s).includes(SQ_NO_MACHINE_COL));
+  if (rest.length) columns.push([SQ_NO_MACHINE_COL, rest]);
+  // ชุดที่ใช้ได้หลายเครื่องจะถูกนับในทุกคอลัมน์ที่ใช้ได้ ผลรวมจึงมากกว่าจำนวนชุดจริง — บอกไว้ใต้ตาราง
+  const sum = columns.reduce((n, [, col]) => n + col.length, 0);
+  // สีแถบหัวข้อต้องเป็น hex จริง ไม่ใช่ var(--…) เพราะ rollSetSectionHeaderHtml ย้อมให้เข้มขึ้น
+  // ด้วย shadeHex() ซึ่งคำนวณจาก hex เท่านั้น — ส่ง var() ไปแถบจะกลายเป็นสีเทาเข้มทุกคอลัมน์
   return `<div class="dash-rollinuse-grid" style="display:grid;grid-template-columns:repeat(${columns.length},1fr);gap:16px;">
     ${columns.map(([label, col]) => `<div>
-      ${rollSetSectionHeaderHtml(label, col.length, SQ_KIND_SECTION_COLORS[label] || C_SLATE)}
+      ${rollSetSectionHeaderHtml(label === SQ_NO_MACHINE_COL ? label : 'เครื่อง ' + label,
+        col.length, label === SQ_NO_MACHINE_COL ? C_SLATE : C_BLUE)}
       ${col.length ? dashSqSizeGroupsHtml(col, badgeColor, rowBg)
         : '<div style="padding:4px;color:var(--text-3);font-size:12px;">ไม่มี</div>'}
     </div>`).join('')}
-  </div>`;
+  </div>${sum > list.length ? `<div style="font-size:11px;color:var(--text-3);margin:8px 2px 0;">
+    ชุดที่ยังไม่ได้ใส่เครื่องและขนาดนั้นใช้ได้หลายเครื่อง จะขึ้นในทุกเครื่องที่ใช้ได้ —
+    ผลรวมทุกคอลัมน์ (${sum}) จึงมากกว่าจำนวนชุดจริง (${list.length})</div>` : ''}`;
 }
 
 // แบ่งชุดในคอลัมน์ออกเป็นกลุ่มตาม Size SQ — เรียงตามชื่อขนาด แล้วในกลุ่มเรียงตามสี/ลำดับชุด
@@ -5101,7 +5118,7 @@ function dashSqStatusCardHtml(sets, { title, color, groups, emptyText, maxHeight
           // การ์ดที่รายการยาว (เช่น "พร้อมใช้งาน" ที่ปกติมีเกือบทุกชุด) ให้เลื่อนในกล่องตัวเอง
           // ไม่งั้นการ์ดเดียวยาวจนดันการ์ดอื่นหลุดจอ
           maxHeight ? `max-height:${maxHeight}px;overflow-y:auto;` : ''}">
-          ${dashSqKindGridHtml(g.list, g.color, g.bg)}
+          ${dashSqMachineGridHtml(g.list, g.color, g.bg)}
         </div>`).join('');
   return `<div class="card" style="margin-bottom:18px;">
     <div class="card-header">
