@@ -9600,6 +9600,41 @@ function planTaskIsSettled(t) {
   return st === 'done' || st === 'doing';
 }
 
+// แก้เวลางานหนึ่งแล้วให้งานถัดๆ ไปของประเภทเดียวกัน "ต่อเวลา" จากงานนั้นทันที — ปิดช่องว่างให้ด้วย
+// ต่างจาก autoFixPlanSequencing ที่ตั้งใจปิดเฉพาะช่วงที่ทับซ้อน (เพื่อไม่ไปลบช่องว่างที่ตั้งใจเว้นไว้)
+// ตัวนี้ทำเฉพาะตอนกดบันทึกการแก้ไข ซึ่งเป็นจังหวะที่ตั้งใจให้คิวหลังขยับตามงานที่เพิ่งแก้
+// orderedIds = ลำดับงานก่อนแก้ ต้องเก็บไว้ก่อน ไม่งั้นถ้าเวลาเริ่มถูกแก้ไปไกล การเรียงใหม่จะไม่ใช่ลำดับที่ผู้ใช้เห็น
+// งานที่ทำไปแล้ว/เลยวันแล้ว (planTaskIsSettled) ไม่ขยับ และถือเป็น "จุดหยุด" — ของหลังจากนั้นไม่ไล่ต่อ
+// เพราะถ้าข้ามไปต่อ งานที่ยังไม่ทำจะถูกดันไปทับเวลาของงานที่ทำไปแล้ว
+function rechainPlanTasksAfter(taskId, orderedIds) {
+  const t = planTasks.find(x => x.id === taskId);
+  const order = orderedIds || [];
+  const at = order.indexOf(taskId);
+  if (!t || at < 0) return 0;
+  let prev = t, moved = 0;
+  for (let i = at + 1; i < order.length; i++) {
+    const cur = planTasks.find(x => x.id === order[i]);
+    if (!cur || !cur.totalTime) continue;
+    if (planTaskIsSettled(cur)) break;
+    const schedPrev = planScheduleShiftFor(prev.workType, prev.shift);
+    const target = nextValidPlanContinuePoint(schedPrev, prev.endDate || prev.date, prev.endTime, prev.otCapMinutesByShift, prev.workType);
+    if (cur.date !== target.date || cur.startTime !== target.time) {
+      cur.date = target.date;
+      // ต่อเวลาไปตกในช่วงของกะไหน ก็เป็นงานของกะนั้น (เกณฑ์เดียวกับปุ่ม "ต่อเวลา")
+      cur.shift = schedPrev === 'both' ? bothModeStartFieldKey(target.time) : prev.shift;
+      cur.startTime = target.time;
+      const c = computePlanEnd(cur.date, cur.startTime, cur.totalTime, planTaskSchedShift(cur), cur.otCapMinutesByShift || {});
+      cur.endTime = c.time;
+      cur.endDate = c.date || cur.date;
+      cur.otMinutes = c.otMinutes || 0;
+      cur.otMinutesByShift = c.otMinutesByShift || {};
+      moved++;
+    }
+    prev = cur;
+  }
+  return moved;
+}
+
 function autoFixPlanSequencing() {
   const workTypes = Object.keys(PLAN_WORKTYPE_META);
   let anyChanged = false;
@@ -10159,7 +10194,16 @@ function openPlanTaskModal(mode, taskId, presetDate, presetShift) {
         });
       });
     } else if (mode === 'edit') {
+      // ลำดับงานก่อนแก้ — ใช้ไล่ "ต่อเวลา" ให้งานถัดไปหลังบันทึก (ดู rechainPlanTasksAfter)
+      const orderBefore = planTasks
+        .filter(x => x.workType === task.workType)
+        .sort((a, b) => {
+          const ak = a.date + ' ' + (a.startTime || ''), bk = b.date + ' ' + (b.startTime || '');
+          return ak !== bk ? ak.localeCompare(bk) : (a.id < b.id ? -1 : 1);
+        })
+        .map(x => x.id);
       Object.assign(task, data, { splitGroupId: null });
+      rechainPlanTasksAfter(task.id, orderBefore);
     } else {
       planTaskSeq++;
       planTasks.push({ id: 'PT-' + String(planTaskSeq).padStart(4, '0'), workType, ...data, splitGroupId: null });
