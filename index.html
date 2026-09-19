@@ -6950,7 +6950,9 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
   const pieces = planTaskPieceBreakdown(t);
   const body = pieces.map((p, i) => {
     const rollIdx = t.rollIds[i];
-    const pieceEntry = interactive ? getDailyPieceEntry(t.id, rollIdx) : { status: 'pending' };
+    // อ่านสถานะจริงของชิ้นนั้นทั้งสองหน้า — หน้าแผนงานก็ต้องเห็นว่าชิ้นไหนทำไปแล้ว
+    // (getDailyPieceEntry อ่านจาก "วันทำงาน" ของใบงานนั้นเอง ไม่ใช่วันที่กำลังดู จึงถูกทั้งงานที่คาบข้ามวัน)
+    const pieceEntry = getDailyPieceEntry(t.id, rollIdx);
     const segs = (p.range.segments && p.range.segments.length)
       ? p.range.segments
       : [{ shiftKey: null, type: null, startDate: p.range.startDate, startTime: p.range.startTime, endDate: p.range.endDate, endTime: p.range.endTime, minutes: p.minutes }];
@@ -6984,7 +6986,7 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
         ? odCompareHtml(pieceEntry.measuredSize, pieceEntry.registryDiameter, t.rollSet,
             pieceEntry.odStandard || (p.roll || {}).diameterStd || null) : '';
       // เหตุผลที่พักงานชิ้นนี้ (กด "⏸ พักงาน") — โชว์แค่แถวแรกของชิ้นนั้น จนกว่าจะกดทำต่อ
-      const pauseReasonLine = (interactive && isFirstRow && !isBreak && pieceEntry.status === 'paused' && pieceEntry.pauseReason)
+      const pauseReasonLine = (isFirstRow && !isBreak && pieceEntry.status === 'paused' && pieceEntry.pauseReason)
         ? `<div class="muted" style="font-size:11px;font-weight:400;color:var(--amber);">⏸ พักงาน: ${escapeHtmlAttr(pieceEntry.pauseReason)}${pieceEntry.pausedAt ? ` (${escapeHtmlAttr(pieceEntry.pausedAt)})` : ''}</div>` : '';
       const rollCell = isBreak
         ? `<td colspan="2" class="muted" style="${breakStyle}">${escapeHtmlAttr(typeMeta.label)}</td>`
@@ -7026,9 +7028,18 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
         actionCell = `<td onclick="event.stopPropagation();">${inner}</td>`;
       } else if (interactive && !isBreak) {
         actionCell = '<td></td>';
+      } else if (!interactive) {
+        // หน้าแผนงาน: ช่องเดียวกันใช้บอกสถานะของชิ้นนั้นแทนปุ่ม — เห็นได้ทันทีว่าชิ้นไหนทำไปแล้ว
+        // ชิ้นที่ยังไม่เริ่มปล่อยว่างไว้ ไม่ต้องใส่ป้าย "รอทำ" ให้รก (ส่วนใหญ่ของตารางคือชิ้นที่ยังไม่เริ่ม)
+        const st = pieceEntry.status || 'pending';
+        const chip = !isFirstRow || isBreak ? ''
+          : st === 'done' ? '<span class="chip chip-green">✓ เสร็จ</span>'
+          : st === 'in_progress' ? '<span class="chip chip-blue">กำลังทำ</span>'
+          : st === 'paused' ? '<span class="chip chip-amber">⏸ พักงาน</span>' : '';
+        actionCell = `<td>${chip}</td>`;
       }
-      const actualStartSuffix = (interactive && isFirstRow && !isBreak && pieceEntry.startTime) ? ` <span class="muted" style="font-size:11px;">(จริง ${escapeHtmlAttr(pieceEntry.startTime)})</span>` : '';
-      const actualEndSuffix = (interactive && isLastRow && !isBreak && pieceEntry.endTime) ? ` <span class="muted" style="font-size:11px;">(จริง ${escapeHtmlAttr(pieceEntry.endTime)})</span>` : '';
+      const actualStartSuffix = (isFirstRow && !isBreak && pieceEntry.startTime) ? ` <span class="muted" style="font-size:11px;">(จริง ${escapeHtmlAttr(pieceEntry.startTime)})</span>` : '';
+      const actualEndSuffix = (isLastRow && !isBreak && pieceEntry.endTime) ? ` <span class="muted" style="font-size:11px;">(จริง ${escapeHtmlAttr(pieceEntry.endTime)})</span>` : '';
       return `<tr style="${groupBorder}${breakStyle}">
         <td class="muted" style="padding-left:36px;">${isFirstRow ? i + 1 : ''}</td>
         ${actionCell}
@@ -7041,7 +7052,7 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
           // เวลาที่ใช้จริงของชิ้นนั้น (จากเวลาเริ่ม–จบที่กดไว้จริง) — วางไว้แถวที่โชว์เวลาจบจริง
           // เทียบกับเวลามาตรฐานทั้งชิ้น (fullMinutes) ไม่ใช่เฉพาะส่วนที่ตัดมาแสดงในแถวนี้
           // เกินมาตรฐาน = สีเหลือง · ไม่เกิน = สีเขียว จะได้เห็นทันทีว่าชิ้นไหนใช้เวลาเกิน
-          actualPieceMinutesHtml(interactive && isLastRow && !isBreak, pieceEntry, p.fullMinutes != null ? p.fullMinutes : s.minutes)}${
+          actualPieceMinutesHtml(isLastRow && !isBreak, pieceEntry, p.fullMinutes != null ? p.fullMinutes : s.minutes)}${
           // ชิ้นที่กำลังทำอยู่ — เดินนาทีให้เห็นว่าทำมากี่นาทีแล้ว เทียบกับเวลามาตรฐานทั้งชิ้น
           // วางไว้แถวแรกของชิ้น (แถวเดียวกับปุ่มและเวลาเริ่มจริง) ไม่ใช่แถวสุดท้ายที่ไว้โชว์เวลาที่ใช้จริงตอนจบ
           runningPieceMinutesHtml(interactive && isFirstRow && !isBreak, pieceEntry,
@@ -7054,7 +7065,7 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
   return `<tr><td colspan="${colspan}" style="padding:0;background:var(--bg-panel);">
     <table>
       <thead><tr>
-        <th style="padding-left:36px;">ลำดับ</th>${interactive ? '<th></th>' : ''}<th>รหัส</th><th>ชื่อ Roll</th><th>กะ</th><th>ช่วงเวลา</th><th style="text-align:right;">นาที</th><th>เริ่มงาน</th><th>จบงาน</th>
+        <th style="padding-left:36px;">ลำดับ</th>${interactive ? '<th></th>' : '<th>สถานะ</th>'}<th>รหัส</th><th>ชื่อ Roll</th><th>กะ</th><th>ช่วงเวลา</th><th style="text-align:right;">นาที</th><th>เริ่มงาน</th><th>จบงาน</th>
       </tr></thead>
       <tbody>${body}</tbody>
     </table>
