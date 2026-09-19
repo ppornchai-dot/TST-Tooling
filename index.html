@@ -7620,8 +7620,9 @@ function renderPlanDay() {
     const expanded = expandable && expandedPlanDayTaskId === t.id;
     // ลากสลับลำดับในวันนี้ได้ — เฉพาะงานที่ "เริ่มจริง" ในวันนี้ (ส่วนที่ล้นมาจากวันก่อนหน้าต้องไปสลับที่วันต้นทาง)
     // เกณฑ์เดียวกับชิปในปฏิทินรายสัปดาห์/รายเดือน (ดู planDragWrap)
+    // งานที่ทำเสร็จครบทุกชิ้นแล้วลากไม่ได้ — เวลาที่ทำจริงบันทึกไว้แล้ว ย้ายวันแล้วประวัติจะเพี้ยน
     const dragOk = canEditPlan() && !planDeleteMode && t.date === iso && !(t.__partIndex > 0)
-      && iso >= dailyTodayIso();
+      && iso >= dailyTodayIso() && planTaskLockState(t.__origin || t) !== 'full';
     const dragAttrs = dragOk
       ? ` class="plan-drag-item" data-draggable="1" data-shift="${escapeHtmlAttr(t.shift || '')}" data-section="${escapeHtmlAttr((section && section.shiftKey ? section.key + ':' + section.shiftKey : (section ? section.key : '')))}"`
       : '';
@@ -7645,10 +7646,24 @@ function renderPlanDay() {
           if (t.__partIndex > 0) return ''; // ส่วนต่อของวันถัดไปไม่ต้องมีปุ่มต่อเวลา เพราะเวลาของมันมาจากงานก้อนเดียวกันอยู่แล้ว
           const prev = findPrecedingPlanTask(origin);
           const outOfSequence = prev && (origin.date !== prev.endDate || origin.startTime !== prev.endTime);
-          return outOfSequence ? `<button class="btn btn-ghost btn-sm" style="color:var(--accent);" title="ย้ายให้เริ่มต่อจากงานก่อนหน้าทันที" onclick="resequencePlanTask('${origin.id}')">ต่อเวลา</button>` : '';
+          // งานที่ทำไปแล้ว (บางส่วนหรือครบ) ไม่ควรมีปุ่มเลื่อนเวลา — เวลาที่ทำจริงบันทึกไว้แล้ว
+          return outOfSequence && planTaskLockState(origin) === 'none' ? `<button class="btn btn-ghost btn-sm" style="color:var(--accent);" title="ย้ายให้เริ่มต่อจากงานก่อนหน้าทันที" onclick="resequencePlanTask('${origin.id}')">ต่อเวลา</button>` : '';
         })()}
-        ${canEditPlan() ? `<button class="btn btn-ghost btn-sm" onclick="openPlanTaskModal('edit','${t.id}')">แก้ไข</button>
-        <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deletePlanTask('${t.id}')">ลบ</button>` : ''}
+        ${canEditPlan() ? (() => {
+          // เสร็จครบทุกชิ้น = ล็อก · เสร็จบางชิ้น = กดได้แต่จะถามให้แยกใบก่อน (ดู planTaskEditableId)
+          // ต้องดูจาก "ใบงานจริง" ไม่ใช่ส่วนย่อยของวัน — ปุ่มแก้ไข/ลบทำงานกับทั้งใบ (t.id)
+          // ส่วนย่อยของวันนี้อาจยังไม่มีชิ้นไหนเสร็จ ทั้งที่อีกส่วนของใบเดียวกันเสร็จไปแล้ว
+          const lock = planTaskLockState(t.__origin || t);
+          if (lock === 'full') {
+            const tip = escapeHtmlAttr('งานนี้ทำเสร็จครบทุกชิ้นแล้ว แก้ไข/ลบไม่ได้');
+            return `<button class="btn btn-ghost btn-sm" disabled title="${tip}">แก้ไข</button>
+        <button class="btn btn-ghost btn-sm" disabled title="${tip}">ลบ</button>`;
+          }
+          const tip = lock === 'partial'
+            ? escapeHtmlAttr('ทำไปแล้วบางชิ้น — กดแล้วระบบจะแยกชิ้นที่ยังไม่ได้ทำออกเป็นงานใหม่ให้ก่อน') : '';
+          return `<button class="btn btn-ghost btn-sm"${tip ? ` title="${tip}"` : ''} onclick="planTaskEditClick('${t.id}')">แก้ไข</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--red);"${tip ? ` title="${tip}"` : ''} onclick="planTaskDeleteClick('${t.id}')">ลบ</button>`;
+        })() : ''}
       </td>
     </tr>`;
     return row + (expanded ? renderPlanDayTaskDetailRow(t) : '');
@@ -7730,6 +7745,112 @@ const PLAN_PROGRESS_META = {
 // เดิมฟังก์ชันนี้อ่านความคืบหน้าจาก "วันของส่วนย่อย" ซึ่งไม่มีบันทึกอยู่เลย ส่วนที่ 2/2 จึงดูเหมือน
 // ยังไม่ได้เริ่ม แล้วพอเลยวันไปก็กลายเป็น "ค้าง" (แดง) ตลอด ทั้งที่งานทั้งก้อนทำเสร็จแล้ว
 // จึงอ่านบันทึกจากงานก้อนจริง แต่ยังนับเฉพาะชิ้นของส่วนนี้ เพื่อให้แต่ละส่วนบอกความคืบหน้าของตัวเองได้
+// ─── ล็อกงานที่ทำไปแล้ว ────────────────────────────────────────────────────────
+// ชิ้นที่ทำเสร็จแล้วถือเป็นประวัติ ห้ามแก้/ย้ายวัน-เวลา ไม่งั้นบันทึกเวลาที่ทำจริงจะไปโผล่ผิดวัน
+// ส่วนชิ้นที่ยังไม่ได้ทำยังต้องแก้และย้ายได้ตามปกติ — ใบที่ปนกันจึงต้อง "แยกใบ" ก่อน
+function planTaskDonePieceIds(t) {
+  if (!t) return [];
+  const d = taskDisplayDate(t);
+  return (t.rollIds || []).filter(i => pieceEntryFor(d, t.id, i).status === 'done');
+}
+// 'none' = ยังไม่เสร็จสักชิ้น (ทำอะไรก็ได้) · 'partial' = เสร็จบางชิ้น (ต้องแยกใบก่อน) · 'full' = เสร็จครบ (ล็อก)
+function planTaskLockState(t) {
+  const ids = (t && t.rollIds) || [];
+  if (!ids.length) return 'none';
+  if ((dailyStatusByDate[taskDisplayDate(t)] || {})[t.id] === 'done') return 'full';
+  const done = planTaskDonePieceIds(t).length;
+  return done === 0 ? 'none' : (done >= ids.length ? 'full' : 'partial');
+}
+
+// แยกชิ้นที่ยังไม่ได้ทำออกเป็นใบใหม่ "ที่เวลาเดิมต่อกัน" — ใบเดิมเหลือเฉพาะชิ้นที่ทำเสร็จแล้ว
+// เวลารวมของสองใบเท่าของเดิมพอดี งานใบอื่นของวันนั้นจึงไม่ต้องเลื่อนตาม
+// คืน id ของใบใหม่ · null เมื่อไม่ต้องแยก (ยังไม่เสร็จสักชิ้น หรือเสร็จครบแล้ว)
+function splitPlanTaskAtDone(taskId) {
+  const t = planTasks.find(x => x.id === taskId);
+  if (!t) return null;
+  const ids = t.rollIds || [];
+  const done = planTaskDonePieceIds(t);
+  const remaining = ids.filter(i => !done.includes(i));
+  if (!done.length || !remaining.length) return null;
+  const scoped = t.otherWork ? [] : getMatchingRollsForPlan(t.rollSet, t.rollColor);
+  const minutesOf = arr => arr.reduce((s, i) => s + pieceMinutesOfTask(t, i, scoped), 0);
+  const overrideOf = arr => {
+    const o = {};
+    arr.forEach(i => { o[i] = pieceMinutesOfTask(t, i, scoped); });
+    return o;
+  };
+  const nameOf = arr => t.otherWork ? t.rollName : arr.map(i => (scoped[i] || {}).name).filter(Boolean).join(', ');
+  const labelOf = arr => t.otherWork ? (arr.length + ' รายการ') : (arr.length + ' Roll');
+
+  // คิดนาที/override ของทั้งสองใบให้เสร็จ "ก่อน" แก้ใบเดิม — pieceMinutesOfTask อ่านจาก
+  // t.rollMinutesOverride ถ้าเขียนทับก่อน ชิ้นที่เหลือจะไม่มี override แล้วตกไปใช้เวลาจากทะเบียนแทน
+  // (เจอตอนทดสอบ: 30 ชิ้น × 15 นาที ถูกแยกเป็น 45 + 540 นาที แทนที่จะเป็น 45 + 405)
+  const doneMinutes = minutesOf(done), remainMinutes = minutesOf(remaining);
+  const doneOverride = overrideOf(done), remainOverride = overrideOf(remaining);
+
+  // ใบเดิม: เหลือเฉพาะชิ้นที่เสร็จ แล้วคิดเวลาจบใหม่ (สั้นลง)
+  t.rollIds = done.slice();
+  t.rollId = labelOf(done);
+  t.rollName = nameOf(done);
+  t.totalTime = doneMinutes;
+  t.rollMinutesOverride = doneOverride;
+  const sched = planTaskSchedShift(t);
+  const endOld = computePlanEnd(t.date, t.startTime, t.totalTime, sched, t.otCapMinutesByShift || {});
+  t.endTime = endOld.time;
+  t.endDate = endOld.date || t.date;
+  t.otMinutes = endOld.otMinutes || 0;
+  t.otMinutesByShift = endOld.otMinutesByShift || {};
+
+  // ใบใหม่: ชิ้นที่ยังไม่ทำ เริ่มต่อจากใบเดิมทันที (ที่เดิมของมันเอง) — ยังไม่ย้ายไปไหน
+  const cont = nextValidPlanContinuePoint(sched, t.endDate, t.endTime, t.otCapMinutesByShift, t.workType);
+  planTaskSeq++;
+  const newId = 'PT-' + String(planTaskSeq).padStart(4, '0');
+  const fresh = { ...t, id: newId, date: cont.date, startTime: cont.time,
+    rollIds: remaining.slice(), rollId: labelOf(remaining), rollName: nameOf(remaining),
+    totalTime: remainMinutes, rollMinutesOverride: remainOverride,
+    splitGroupId: null, carriedFrom: null };
+  const endNew = computePlanEnd(fresh.date, fresh.startTime, fresh.totalTime, planTaskSchedShift(fresh), fresh.otCapMinutesByShift || {});
+  fresh.endTime = endNew.time;
+  fresh.endDate = endNew.date || fresh.date;
+  fresh.otMinutes = endNew.otMinutes || 0;
+  fresh.otMinutesByShift = endNew.otMinutesByShift || {};
+  planTasks.push(fresh);
+  return newId;
+}
+
+// ปุ่มแก้ไข/ลบบนหน้าแผนงาน — แยกใบให้ก่อนถ้าใบนั้นทำไปแล้วบางชิ้น
+function planTaskEditClick(taskId) {
+  const id = planTaskEditableId(taskId, 'แก้ไข');
+  if (!id) return;
+  if (id !== taskId) { persistState(); renderCurrentPlanView(); }   // แยกใบแล้ว ต้องบันทึกและวาดใหม่ก่อน
+  openPlanTaskModal('edit', id);
+}
+function planTaskDeleteClick(taskId) {
+  const id = planTaskEditableId(taskId, 'ลบ');
+  if (!id) return;
+  if (id !== taskId) persistState();
+  deletePlanTask(id);
+}
+
+// ถามก่อนแยก แล้วคืน id ของใบที่ "แก้ไข/ย้ายได้" — null = ทำต่อไม่ได้ (ล็อกอยู่ หรือผู้ใช้ยกเลิก)
+function planTaskEditableId(taskId, actionLabel) {
+  const t = planTasks.find(x => x.id === taskId);
+  if (!t) return null;
+  const lock = planTaskLockState(t);
+  if (lock === 'none') return taskId;
+  if (lock === 'full') {
+    alert('งานนี้ทำเสร็จครบทุกชิ้นแล้ว จึง' + (actionLabel || 'แก้ไข') + 'ไม่ได้\n'
+      + 'ถ้าต้องแก้จริงๆ ให้ไปแก้สถานะรายชิ้นที่หน้างานประจำวันก่อน');
+    return null;
+  }
+  const total = (t.rollIds || []).length;
+  const doneN = planTaskDonePieceIds(t).length;
+  if (!confirm('งานนี้ทำเสร็จไปแล้ว ' + doneN + ' จาก ' + total + ' ชิ้น\n\n'
+      + 'ระบบจะแยกชิ้นที่ยังไม่ได้ทำ (' + (total - doneN) + ' ชิ้น) ออกเป็นงานใหม่ให้ก่อน แล้วค่อย'
+      + (actionLabel || 'แก้ไข') + 'งานใหม่นั้น\nส่วนชิ้นที่ทำเสร็จแล้วจะคงอยู่ที่เดิมเป็นประวัติ')) return null;
+  return splitPlanTaskAtDone(taskId);
+}
+
 function planTaskProgressState(t) {
   const origin = t.__origin || t;
   const originDate = taskDisplayDate(origin);
@@ -7870,7 +7991,9 @@ function planCalendarChipForGroup(group, iso, editable, withDeleteBtn) {
   // ส่วนปุ่มลบไม่มีให้ เพราะเป็นคำสั่งรายใบ ต้องไปลบที่แผนของวัน
   const gids = group.map(t => t.id).join(',');
   const gchip = planMergedCalendarChip(group, editable, 'flex:1;min-width:0;');
-  if (!editable || planDeleteMode || taskDisplayDate(group[0]) !== iso) return `<div class="plan-drag-item">${gchip}</div>`;
+  // มีใบไหนในกลุ่มที่เสร็จครบแล้ว ก็ลากทั้งกลุ่มไม่ได้ (กลุ่มยุบรวมเฉพาะใบที่ความคืบหน้าเท่ากันอยู่แล้ว)
+  if (!editable || planDeleteMode || taskDisplayDate(group[0]) !== iso
+      || group.some(t => planTaskLockState(t.__origin || t) === 'full')) return `<div class="plan-drag-item">${gchip}</div>`;
   return `<div class="plan-drag-item" data-taskid="${escapeHtmlAttr(group[0].id)}" data-taskids="${escapeHtmlAttr(gids)}" data-shift="${escapeHtmlAttr(group[0].shift || '')}" data-draggable="1"><span class="plan-drag-grip" title="ลากขึ้น–ลงเพื่อสลับลำดับก่อน–หลัง หรือลากไปวางวันอื่นเพื่อย้ายวัน (ยกไปทั้งกลุ่ม ${group.length} รายการ)">⋮⋮</span>${gchip}</div>`;
 }
 
@@ -7993,7 +8116,8 @@ let planDrag = null;
 // แต่ถูกแสดงในช่องของวันทำงานก่อนหน้า เทียบด้วย t.date จะไม่มีที่จับลากให้เลย
 // (ส่วนของงานที่ถูกตัดข้ามวันมี date ของตัวเองอยู่แล้ว จึงลากได้เหมือนเดิมทุกกรณี)
 function planDragWrap(t, iso, innerHtml, editable) {
-  if (!editable || planDeleteMode || taskDisplayDate(t) !== iso) return `<div class="plan-drag-item">${innerHtml}</div>`;
+  // เสร็จครบทุกชิ้นแล้วไม่ให้จับลาก (เหตุผลเดียวกับ dragOk ในตารางรายวัน)
+  if (!editable || planDeleteMode || taskDisplayDate(t) !== iso || planTaskLockState(t.__origin || t) === 'full') return `<div class="plan-drag-item">${innerHtml}</div>`;
   return `<div class="plan-drag-item" data-taskid="${escapeHtmlAttr(t.id)}" data-shift="${escapeHtmlAttr(t.shift || '')}" data-draggable="1"><span class="plan-drag-grip" title="ลากขึ้น–ลงเพื่อสลับลำดับก่อน–หลัง หรือลากไปวางวันอื่นเพื่อย้ายวัน">⋮⋮</span>${innerHtml}</div>`;
 }
 
@@ -8084,8 +8208,21 @@ function onPlanDragUp() {
   if (d.hotZone) d.hotZone.classList.remove('plan-drop-hot');
   if (!d.moved) return;
   const zone = d.item.closest('.plan-drop-zone');
-  const task = planTasks.find(t => t.id === d.taskId);
+  let task = planTasks.find(t => t.id === d.taskId);
   if (!zone || !zone.dataset.day || !task) { renderCurrentPlanView(); return; }
+  // ใบที่ทำไปแล้วบางชิ้น — แยกชิ้นที่ยังไม่ทำออกเป็นใบใหม่ก่อน แล้วย้ายเฉพาะใบใหม่นั้น
+  // ชิ้นที่เสร็จแล้วต้องอยู่วันเดิมเสมอ ไม่งั้นเวลาที่บันทึกไว้จะไปโผล่ผิดวัน
+  // (ใบที่เสร็จครบถูกกันไม่ให้ลากตั้งแต่ต้นแล้ว — ดู data-draggable ตอนวาดชิป)
+  if (planTaskLockState(task) === 'partial') {
+    const newId = planTaskEditableId(d.taskId, 'ย้าย');
+    if (!newId || newId === d.taskId) { renderCurrentPlanView(); return; }
+    // เปลี่ยนตัวที่กำลังย้ายเป็นใบใหม่ ทั้งใน d และในรายการลำดับที่อ่านจากหน้าจอ
+    d.taskId = newId;
+    if (d.groupIds && d.groupIds.length) d.groupIds = d.groupIds.map(x => x === task.id ? newId : x);
+    d.item.dataset.taskid = newId;
+    if (d.item.dataset.taskids) d.item.dataset.taskids = d.item.dataset.taskids.split(',').map(x => x === task.id ? newId : x).join(',');
+    task = planTasks.find(t => t.id === newId);
+  }
   const targetDay = zone.dataset.day;
   // ลากข้ามกะภายในวันเดียวกัน (เช่นยกงานกะดึกขึ้นมาเป็นงานแรกของวัน) — เปลี่ยนกะของงานให้ตามที่วาง
   // ต้องเปลี่ยนก่อนเก็บรายการ ids ไม่งั้นชิปที่เพิ่งย้ายมาจะไม่ถูกนับเป็นงานของกะปลายทาง
