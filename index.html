@@ -7634,7 +7634,21 @@ function renderPlanDay() {
       <td class="muted" style="white-space:nowrap;">${grip}${expandable ? `<span aria-hidden="true" style="display:inline-block;width:12px;transition:transform .15s;transform:rotate(${expanded ? 90 : 0}deg);">▸</span>` : ''}${i + 1}</td>
       <td>${escapeHtmlAttr(t.rollSet)}</td>
       <td>${escapeHtmlAttr(planRollColorLabel(t))}</td>
-      <td class="muted">${escapeHtmlAttr(t.rollId)}</td>
+      <td class="muted">${escapeHtmlAttr(t.rollId)}${(() => {
+        // ความคืบหน้าของส่วนนี้ — เห็นได้ตั้งแต่ยังไม่กางแถว ไม่ต้องกดเข้าไปดูทีละชิ้น
+        // ใช้ planTaskProgressState ตัวเดียวกับสีชิปในปฏิทินแผนงาน สองที่จึงบอกตรงกันเสมอ
+        const st = planTaskProgressState(t);
+        const meta = PLAN_PROGRESS_META[st] || PLAN_PROGRESS_META.wait;
+        if (st === 'wait') return '';   // ยังไม่เริ่ม ไม่ต้องติดป้ายให้รก
+        const ids = t.rollIds || [];
+        const doneN = planTaskDonePieceIds(t).length;
+        const tip = st === 'done' ? 'ทำเสร็จครบทุกชิ้นแล้ว'
+          : 'ทำไปแล้ว ' + doneN + ' จาก ' + ids.length + ' ชิ้น';
+        // ใส่ตัวนับเฉพาะตอนทำไปแล้วจริงๆ — "กำลังทำ 0/3" อ่านแล้วสะดุด สู้เขียน "กำลังทำ" เฉยๆ ไม่ได้
+        const count = (doneN > 0 && ids.length > 1) ? ' ' + doneN + '/' + ids.length : '';
+        return ` <span class="chip ${meta.chip}" title="${escapeHtmlAttr(tip)}">${
+          st === 'done' ? '✓ เสร็จ' : escapeHtmlAttr(meta.label + count)}</span>`;
+      })()}</td>
       <td><strong>${escapeHtmlAttr(t.rollName)}</strong>${t.__partCount > 1 ? ` <span class="chip chip-blue" title="งานก้อนนี้ทำข้ามวัน — แสดงแยกเฉพาะส่วนที่ทำในวันนี้">ส่วนที่ ${t.__partIndex + 1}/${t.__partCount}</span>` : ''}</td>
       <td class="muted" style="text-align:right;">${escapeHtmlAttr(t.totalTime != null ? String(t.totalTime) : planMetricTime(t.rollId, t.workType))}</td>
       <td class="muted">${escapeHtmlAttr(t.startTime || '—')}</td>
@@ -7748,10 +7762,14 @@ const PLAN_PROGRESS_META = {
 // ─── ล็อกงานที่ทำไปแล้ว ────────────────────────────────────────────────────────
 // ชิ้นที่ทำเสร็จแล้วถือเป็นประวัติ ห้ามแก้/ย้ายวัน-เวลา ไม่งั้นบันทึกเวลาที่ทำจริงจะไปโผล่ผิดวัน
 // ส่วนชิ้นที่ยังไม่ได้ทำยังต้องแก้และย้ายได้ตามปกติ — ใบที่ปนกันจึงต้อง "แยกใบ" ก่อน
+// ความคืบหน้าถูกบันทึกไว้ที่ "ใบงานจริง" ในวันของใบนั้น ไม่ใช่ที่ส่วนย่อยของแต่ละวัน
+// ต้องอ่านจากวันของใบจริงเสมอ ไม่งั้นส่วนที่ 2/2 (ซึ่งแสดงในวันถัดไป) จะหาบันทึกไม่เจอเลย
+// แล้วดูเหมือนยังไม่ได้ทำ ทั้งที่ทำเสร็จไปแล้ว — นับเฉพาะชิ้นของส่วนนั้นตามเดิม
 function planTaskDonePieceIds(t) {
   if (!t) return [];
-  const d = taskDisplayDate(t);
-  return (t.rollIds || []).filter(i => pieceEntryFor(d, t.id, i).status === 'done');
+  const origin = t.__origin || t;
+  const d = taskDisplayDate(origin);
+  return (t.rollIds || []).filter(i => pieceEntryFor(d, origin.id, i).status === 'done');
 }
 // 'none' = ยังไม่เสร็จสักชิ้น (ทำอะไรก็ได้) · 'partial' = เสร็จบางชิ้น (ต้องแยกใบก่อน) · 'full' = เสร็จครบ (ล็อก)
 function planTaskLockState(t) {
