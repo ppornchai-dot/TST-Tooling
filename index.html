@@ -8951,12 +8951,16 @@ function advancePlanCursor(state, minutes) {
   const otCapFor = key => Math.max(0, (state.otCaps && state.otCaps[key]) || 0);
   let remaining = Math.round(minutes);
   const chunks = [];
+  // กันวนไม่จบ — ลูปนี้เดินทีละนาที งานยาวสุดที่เป็นไปได้จริงไม่กี่พันนาที เพดานนี้จึงเหลือเฟือ
+  // ถ้าชนเพดานแปลว่ามีเงื่อนไขที่ทำให้ cursor ไม่เดินหน้า ยอมได้ผลลัพธ์เพี้ยนดีกว่าหน้าเว็บค้างทั้งหน้า
+  let loopGuard = 0;
+  const LOOP_MAX = 500000;
   const pushChunk = (key, type, start, end) => {
     const last = chunks[chunks.length - 1];
     if (last && last.key === key && last.type === type && last.end === start) { last.end = end; }
     else { chunks.push({ key, type, start, end }); }
   };
-  while (remaining > 0) {
+  while (remaining > 0 && loopGuard++ < LOOP_MAX) {
     const activeBreak = state.shift && state.shift.breaks
       ? state.shift.breaks.find(b => state.cursor % 1440 === b.startMin)
       : null;
@@ -8979,9 +8983,18 @@ function advancePlanCursor(state, minutes) {
         // window ที่คร่อมเที่ยงคืน (startMin > endMin) และตอนนี้อยู่ครึ่งหลัง = เริ่มมาตั้งแต่เมื่อวาน
         const crossedMidnight = w.startMin > w.endMin && minOfDay < w.endMin;
         const dayIdx = Math.floor(state.cursor / 1440) - (crossedMidnight ? 1 : 0);
-        if (isPlanDayOff(addDaysIso(state.startDate, dayIdx))) {
+        // จำคำตอบไว้ต่อ "วัน" — ลูปนี้เดินทีละนาที ถ้าเรียก isPlanDayOff ทุกนาที
+        // จะสร้าง Date ใหม่หลักพันครั้งต่องานหนึ่งใบ (วัดได้ว่าช้าลง 2.8 เท่า)
+        if (!state.dayOffMemo) state.dayOffMemo = {};
+        if (state.dayOffMemo[dayIdx] === undefined) {
+          state.dayOffMemo[dayIdx] = isPlanDayOff(addDaysIso(state.startDate, dayIdx));
+        }
+        if (state.dayOffMemo[dayIdx]) {
           const gapStart = state.cursor;
-          state.cursor = nextShiftEntry(state.cursor, state.shift, state.startDate);
+          const jump = nextShiftEntry(state.cursor, state.shift, state.startDate);
+          // ต้องเดินหน้าเสมอ — ถ้าไม่ขยับ (เช่น cursor อยู่ที่จุดเริ่ม window พอดี) จะวนไม่จบและหน้าค้าง
+          // ดันไปต้นวันถัดไปแทน แล้วรอบหน้าค่อยเช็ควันหยุดใหม่
+          state.cursor = jump > state.cursor ? jump : (Math.floor(state.cursor / 1440) + 1) * 1440;
           pushChunk(null, 'shiftgap', gapStart, state.cursor);
           continue;
         }
