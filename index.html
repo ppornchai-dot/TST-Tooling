@@ -17089,9 +17089,26 @@ function renderDailyTasks() {
     const partBadge = item.partLabel
       ? ` <span class="chip chip-blue" title="งานก้อนนี้ทำข้ามวัน — แสดงเฉพาะชิ้นที่ต้องทำในวันที่กำลังดู">${escapeHtmlAttr(item.partLabel)}</span>`
       : '';
+    // สถานะของแถวเป็นของ "งานทั้งก้อน" แต่แถวนี้แสดงแค่ส่วนของวันนี้ — ถ้าส่วนนี้ทำครบแล้วแต่ทั้งก้อนยังไม่จบ
+    // จะดูเหมือนทำเสร็จแล้วแต่ยังขึ้น "กำลังทำ" อยู่ บอกให้ชัดว่าเหลืออีกกี่ชิ้นและไปทำวันไหน
+    const partDoneNote = (() => {
+      const t = item.raw;
+      if (!t || status === 'done' || !(t.__partCount > 1)) return '';
+      const partIds = t.rollIds || [];
+      if (!partIds.length || !partIds.every(i => getDailyPieceEntry(item.key, i).status === 'done')) return '';
+      const origin = t.__origin || t;
+      const left = (origin.rollIds || []).filter(i => getDailyPieceEntry(item.key, i).status !== 'done');
+      if (!left.length) return '';
+      // วันของส่วนที่ยังเหลือ — หาจากส่วนอื่นของงานก้อนเดียวกันที่ยังมีชิ้นค้างอยู่
+      const other = planTaskDayParts(origin).filter(p => (p.rollIds || []).some(i => left.includes(i)));
+      const days = [...new Set(other.map(p => taskDisplayDate(p)))].sort();
+      return `<div class="muted" style="font-size:11px;font-weight:400;color:var(--accent);">
+        ส่วนของวันนี้ทำครบแล้ว — เหลืออีก ${left.length} ชิ้นในส่วนที่ ${other.map(p => (p.__partIndex + 1) + '/' + p.__partCount).join(', ') || 'อื่น'}${
+        days.length ? ' (' + days.map(d => fmtDateThaiShort(parseISODate(d))).join(', ') + ')' : ''}</div>`;
+    })();
     const taskLabel = (rollNames.length > 2
       ? escapeHtmlAttr(rollNames.slice(0, 2).join(', ')) + ` <span class="muted" style="font-weight:400;">…อีก ${rollNames.length - 2} ชิ้น</span>`
-      : escapeHtmlAttr(item.task)) + partBadge;
+      : escapeHtmlAttr(item.task)) + partBadge + partDoneNote;
     const row = `<tr data-taskid="${escapeHtmlAttr(item.key)}"${rowClickable ? ` style="cursor:pointer;${rowOpacity}" onclick="toggleDailyTaskDetail('${item.key}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : (rowOpacity ? ` style="${rowOpacity}"` : '')}>
       <!-- ช่องติ๊กที่กดได้จริงเท่านั้นที่กัน event ไว้ — ช่องที่ปิดใช้งาน (งานตามแผน) ปล่อยให้คลิกกางรายละเอียดได้ -->
       <td${item.editable ? ' onclick="event.stopPropagation();"' : ''}>${item.editable ? `<input type="checkbox" ${status==='done'?'checked':''} onchange="toggleDailyTask('${item.key}')" style="width:16px;height:16px;cursor:pointer;">` : `<input type="checkbox" ${status==='done'?'checked':''} disabled style="width:16px;height:16px;">`}</td>
