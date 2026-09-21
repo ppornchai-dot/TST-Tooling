@@ -7553,14 +7553,6 @@ function planOpenDayFromCell(ev, iso) {
 // เพิ่มงานในวันที่ระบุ ของประเภทที่ระบุ — ใช้จากปุ่มเพิ่มงานทุกมุมมอง
 // shiftKey (ถ้าส่งมา) = ตั้งกะให้ตรงกับหมวดที่กดเพิ่ม (CNC แยกกะเช้า/กะดึก)
 function addPlanTaskOnDate(dateIso, workType, shiftKey) {
-  // วันหยุด (อาทิตย์/วันหยุดบริษัท) วางแผนงานไม่ได้ — เกณฑ์เดียวกับการลากงานมาวาง ซึ่งกันไว้อยู่แล้ว
-  if (dateIso && isPlanDayOff(dateIso)) {
-    const holiday = companyHolidays.find(h => h.date === dateIso);
-    alert('วันที่ ' + fmtDateThai(parseISODate(dateIso)) + ' เป็น'
-      + (holiday ? 'วันหยุดบริษัท (' + holiday.name + ')' : 'วันอาทิตย์') + ' วางแผนงานไม่ได้'
-      + '\nถ้าต้องทำงานวันนี้จริง ให้วางไว้วันทำงานก่อนหน้าแล้วใส่เวลา OT แทน');
-    return;
-  }
   if (workType && workType !== currentPlanWorkType) switchPlanWorkType(workType);
   const wt = workType || currentPlanWorkType;
   const preset = shiftKey && planWorkTypeAllowsShift(wt, shiftKey) ? shiftKey : null;
@@ -8967,26 +8959,6 @@ function advancePlanCursor(state, minutes) {
       continue;
     }
     const curKey = state.shift ? windowKeyAt(state.shift, state.cursor) : null;
-    // กะที่ "เริ่มต้น" ในวันหยุด (อาทิตย์/วันหยุดบริษัท) ไม่มีใครมาทำงาน — ข้ามไปกะถัดไปที่ไม่ใช่วันหยุด
-    // แต่กะที่เริ่มในวันทำงานแล้วลากข้ามเที่ยงคืนเข้าวันหยุด ยังทำต่อได้ตามปกติ เพราะเป็นกะเดียวกันของวันทำงานนั้น
-    // (กะดึกเสาร์ 20:00–05:00 + OT ถึง 08:00 เช้าอาทิตย์ = ยังเป็นกะของวันเสาร์ ตรงกับ sessionOwningDate)
-    // อาการเดิม: OT ท้ายกะดึกคืนวันเสาร์ไหลต่อเข้ากะเช้าวันอาทิตย์ 08:00 ทันที เพราะตอนนั้น cursor
-    // อยู่ใน window พอดี จึงไม่เคยผ่านทางที่เช็ควันหยุด (nextShiftEntry) เลย
-    if (curKey && state.startDate) {
-      const minOfDay = ((state.cursor % 1440) + 1440) % 1440;
-      const w = (state.shift.windows || []).find(x => isMinuteInWindow(minOfDay, x));
-      if (w) {
-        // window ที่คร่อมเที่ยงคืน (startMin > endMin) และตอนนี้อยู่ครึ่งหลัง = เริ่มมาตั้งแต่เมื่อวาน
-        const crossedMidnight = w.startMin > w.endMin && minOfDay < w.endMin;
-        const dayIdx = Math.floor(state.cursor / 1440) - (crossedMidnight ? 1 : 0);
-        if (isPlanDayOff(addDaysIso(state.startDate, dayIdx))) {
-          const gapStart = state.cursor;
-          state.cursor = nextShiftEntry(state.cursor, state.shift, state.startDate);
-          pushChunk(null, 'shiftgap', gapStart, state.cursor);
-          continue;
-        }
-      }
-    }
     if (!state.shift || curKey) {
       if (curKey) {
         if (!state.segments[curKey]) state.segments[curKey] = { start: state.cursor, end: state.cursor };
@@ -9689,20 +9661,7 @@ function autoFixPlanSequencing() {
         if (!t.startTime || t.startTime === '—' || !t.totalTime) return;
         const schedT = planScheduleShiftFor(t.workType, t.shift);
         const adv = advanceToShiftWindow(schedT, t.date, t.startTime, t.otCapMinutesByShift || {}, t.workType);
-        if (adv.date === t.date && adv.time === t.startTime) {
-          // เวลาเริ่มถูกอยู่แล้ว แต่เวลาจบที่เก็บไว้อาจไม่ตรงกับกฎปัจจุบัน (เช่นงานเก่าที่คำนวณไว้
-          // ตอนที่ยังไม่ข้ามวันหยุด) — คิดใหม่จากค่าของตัวเอง ถ้าไม่ตรงก็เขียนทับให้ถูก
-          const re = computePlanEnd(t.date, t.startTime, t.totalTime, planTaskSchedShift(t), t.otCapMinutesByShift || {});
-          if (re.time && (re.time !== t.endTime || (re.date || t.date) !== (t.endDate || t.date))) {
-            t.endTime = re.time;
-            t.endDate = re.date || t.date;
-            t.otMinutes = re.otMinutes || 0;
-            t.otMinutesByShift = re.otMinutesByShift || {};
-            changed = true;
-            anyChanged = true;
-          }
-          return;
-        }
+        if (adv.date === t.date && adv.time === t.startTime) return;
         t.date = adv.date;
         t.startTime = adv.time;
         // ไหลไปอยู่ในช่วงของกะไหนก็เป็นงานของกะนั้น (กะดึกล้น 05:00 → ไปกะเช้า 08:00)
