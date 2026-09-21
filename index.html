@@ -9641,6 +9641,15 @@ function planTaskIsSettled(t) {
   return st === 'done' || st === 'doing';
 }
 
+// เฉพาะการ "ปิดช่วงที่ทับซ้อนกัน" — งานที่ยังทำไม่เสร็จยังขยับเวลาตามแผนได้
+// (เวลาที่ทำจริงเก็บแยกไว้ที่สถานะรายชิ้นอยู่แล้ว การขยับเวลาตามแผนไม่ไปแตะของจริง)
+// ห้ามขยับจริงๆ มีแค่ งานที่ทำเสร็จแล้ว กับ งานของวันที่ผ่านไปแล้ว — สองอย่างนี้เป็นประวัติ
+// ต่างจาก planTaskIsSettled ที่นับ "กำลังทำ" เป็นห้ามขยับด้วย ซึ่งใช้กับการดึงงาน/เติมงาน
+function planTaskTimeLocked(t) {
+  if (taskDisplayDate(t) < dailyTodayIso()) return true;
+  return planTaskProgressState(t) === 'done';
+}
+
 // แก้เวลางานหนึ่งแล้วให้งานถัดๆ ไปของประเภทเดียวกัน "ต่อเวลา" จากงานนั้นทันที — ปิดช่องว่างให้ด้วย
 // ต่างจาก autoFixPlanSequencing ที่ตั้งใจปิดเฉพาะช่วงที่ทับซ้อน (เพื่อไม่ไปลบช่องว่างที่ตั้งใจเว้นไว้)
 // ตัวนี้ทำเฉพาะตอนกดบันทึกการแก้ไข ซึ่งเป็นจังหวะที่ตั้งใจให้คิวหลังขยับตามงานที่เพิ่งแก้
@@ -9740,7 +9749,11 @@ function autoFixPlanSequencing() {
         const curKey = cur.date + ' ' + cur.startTime;
         const targetKey = targetDate + ' ' + targetTime;
         if (curKey >= targetKey) continue;
-        if (planTaskIsSettled(cur)) continue; // อดีต/ทำแล้ว — ไม่ขยับ (prev ยังใช้เป็นจุดต่อเวลาให้งานถัดไปได้ตามเดิม)
+        if (planTaskTimeLocked(cur)) continue; // ทำเสร็จแล้ว/อดีต — ไม่ขยับ (prev ยังใช้เป็นจุดต่อเวลาให้งานถัดไปได้ตามเดิม)
+        // งานที่ "กำลังทำ" ขยับได้เฉพาะเมื่อยังอยู่ในวันทำงานเดิม — ถ้าดันข้ามวัน บันทึกความคืบหน้า
+        // ที่เก็บไว้ใต้วันทำงานเดิมจะกลายเป็นของคนละวันกับใบงาน แล้วสถานะที่กดไว้จะหายไปจากหน้าจอ
+        if (planTaskProgressState(cur) === 'doing'
+            && taskDisplayDate({ ...cur, date: targetDate, startTime: targetTime }) !== taskDisplayDate(cur)) continue;
         cur.date = targetDate;
         // ต่อเวลาไปตกในช่วงของกะไหน ก็เป็นงานของกะนั้น (ไล่ต่อกะถัดไป ไม่ใช่ยึดกะเดิมของงานก่อนหน้า)
         cur.shift = schedPrev === 'both' ? bothModeStartFieldKey(targetTime) : prev.shift;
