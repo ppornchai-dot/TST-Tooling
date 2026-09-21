@@ -10975,6 +10975,12 @@ function leftoverWorkTasks() {
     const isDone = i => pieceEntryFor(d, t.id, i).status === 'done' || doneElsewhere(i);
     const remaining = ids.filter(i => !isDone(i));
     if (!remaining.length) return;
+    // ชิ้นที่ยังไม่ทำถูกวางไว้ในส่วนของวันนี้/วันข้างหน้าอยู่แล้ว — ไม่ใช่งานค้างที่ต้องยกไปไหน
+    // งานที่ทำข้ามวันถูกตัดเป็น "ส่วนของแต่ละวัน" ส่วนท้ายจึงอาจตกวันนี้พอดี ทั้งที่วันของใบงาน
+    // (taskDisplayDate ของทั้งก้อน) ยังเป็นวันก่อนหน้า — เดิมนับเป็นงานค้างแล้วชวนให้ยกซ้ำ
+    // ทั้งที่ช่างเห็นงานนั้นอยู่ในหน้างานประจำวันของวันนี้แล้ว
+    const pendingParts = planTaskDayParts(t).filter(p => (p.rollIds || []).some(i => remaining.includes(i)));
+    if (pendingParts.length && pendingParts.every(p => taskDisplayDate(p) >= today)) return;
     const done = ids.filter(isDone);
     const scoped = t.otherWork ? [] : getMatchingRollsForPlan(t.rollSet, t.rollColor);
     out.push({ task: t, date: d, done, remaining,
