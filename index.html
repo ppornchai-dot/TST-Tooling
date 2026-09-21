@@ -9742,13 +9742,19 @@ function refreshPlanTaskEndTimes() {
 // การเติมวันหนึ่งทำให้วันถัดไปว่างลง แล้ววันถัดไปก็ดึงของวันถัดๆ ไปต่อเป็นทอด
 // จึงต้องกวาดซ้ำจนไม่มีอะไรขยับ (fixed point) ให้จบภายในการเรียกครั้งเดียว
 // ไม่งั้นแผนจะขยับทีละนิดทุกครั้งที่เปิดหน้า ซึ่งน่ากลัวกว่าการขยับครั้งเดียวจบ
+// เพดานเวลาของการเติมงานอัตโนมัติ — ลูปซ้อนกัน (สวีป × วัน × ประเภทงาน × กะ × รอบดึง)
+// ถ้าข้อมูลทำให้ "ดึงแล้วมีที่ว่างอีก" ไม่จบ จะวนจนหน้าเว็บค้าง (เจอจริง: planTaskSeq เพิ่มครั้งละหลายพัน
+// เพราะการดึงงานมาเติมมีการตัดใบงานใหม่ทุกครั้ง แล้ว mergeAdjacentPlanTasks รวมกลับ วนไม่จบ)
+// ยอมเติมได้ไม่ครบดีกว่าหน้าค้าง — ที่เหลือกดเติมเองได้จากปุ่มในหน้าวางแผน
+const PLAN_AUTOFILL_BUDGET_MS = 400;
 function autoFillPlanDayTails() {
   if (!canEditPlan()) return false;
   const today = dailyTodayIso();
+  const deadline = Date.now() + PLAN_AUTOFILL_BUDGET_MS;
   let any = false;
   let sweep = 0;
   let movedThisSweep = true;
-  while (movedThisSweep && sweep++ < 40) {
+  while (movedThisSweep && sweep++ < 40 && Date.now() < deadline) {
     movedThisSweep = false;
     Object.keys(planDayEndTime || {}).sort().forEach(dateIso => {
       if (dateIso < today) return;
@@ -9757,7 +9763,7 @@ function autoFillPlanDayTails() {
         planDayEndShiftsFor(workType).forEach(shiftKey => {
           if (!planDayEndFor(dateIso, workType, shiftKey)) return;   // กะนี้ไม่ได้ตั้งเวลาเลิกงานไว้
           let guard = 0;
-          while (guard++ < 30) {
+          while (guard++ < 30 && Date.now() < deadline) {
             const caps = planDayCapsFor(dateIso, workType);
             if (!pullWorkIntoFreeTail(workType, dateIso, shiftKey, caps, true).length) break;
             any = true;
@@ -9774,8 +9780,10 @@ function tidyPlanAfterStateLoad() {
   let changed = false;
   if (refreshPlanTaskEndTimes()) changed = true;
   if (autoFixPlanSequencing()) changed = true;
-  // เติม OT ให้เต็มก่อนรวมงาน — เติมแล้วงานชุดเดียวกันมักมาต่อกันสนิทพอดี ให้ตัวรวมเก็บทีเดียว
-  if (autoFillPlanDayTails()) changed = true;
+  // เดิมเรียก autoFillPlanDayTails() ตรงนี้ด้วย — เอาออกแล้ว
+  // ฟังก์ชันนี้ถูกเรียกทุกครั้งที่ได้ข้อมูลใหม่จาก cloud (เปิดหน้า · realtime · กลับมาที่แท็บ)
+  // ซึ่งเป็นที่ที่ไม่ควรรันงานหนักแบบวนหลายชั้น — ข้อมูลบางชุดทำให้มันวนจนหน้าเว็บค้าง
+  // การเติมงานอัตโนมัติยังทำงานตอนที่ผู้ใช้แก้ OT/เวลาเลิกงานเองอยู่ (maybePullWorkIntoFreeTail)
   if (mergeAdjacentPlanTasks()) changed = true;
   if (changed) persistState();
   return changed;
