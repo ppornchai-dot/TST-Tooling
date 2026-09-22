@@ -6457,9 +6457,22 @@ function syncPlanStickyHead() {
   const head = document.getElementById('plan-sticky-head');
   const root = document.documentElement;
   if (bar) root.style.setProperty('--plan-head-top', bar.offsetHeight + 'px');
-  if (head) root.style.setProperty('--plan-head-h', head.offsetHeight + 'px');
+  // ไม่เขียนค่า 0 — ตอนอยู่หน้าอื่นแถบหัวถูกซ่อน ความสูงจะวัดได้ 0
+  // ถ้าเขียนทับไป พอกลับเข้าหน้าแผนก่อนวัดใหม่ แถวชื่อวันจะไปตรึงซ้อนใต้ topbar ชั่วขณะ
+  if (head && head.offsetHeight) root.style.setProperty('--plan-head-h', head.offsetHeight + 'px');
 }
 window.addEventListener('resize', syncPlanStickyHead);
+// เดิมวัดความสูงแค่ตอน resize กับตอนกดสลับมุมมอง — ซึ่งไม่ครอบตอน "เพิ่งเข้าหน้าแผน"
+// ตอนนั้นแถบหัวยังไม่ถูกแสดง ความสูงวัดได้ 0 แถวชื่อวันจึงไปตรึงที่ใต้ topbar พอดี
+// คือซ่อนอยู่หลังแถบหัวทั้งแถบ มองเหมือนไม่ได้ตรึงไว้เลย (เห็นชัดเมื่อมุมมองที่ค้างไว้เป็นรายเดือน
+// เพราะจะไม่มีการกดสลับมุมมองมาช่วยวัดให้)
+// ให้ ResizeObserver คอยวัดแทน ครอบทั้งตอนเข้าหน้าครั้งแรก · แถบโหมดลบโผล่ · ปุ่มขึ้นบรรทัดใหม่
+(function watchPlanStickyHead() {
+  const head = document.getElementById('plan-sticky-head');
+  if (!head) { setTimeout(watchPlanStickyHead, 200); return; }   // สคริปต์อาจรันก่อน markup ส่วนนี้
+  if (typeof ResizeObserver === 'function') new ResizeObserver(syncPlanStickyHead).observe(head);
+  syncPlanStickyHead();
+})();
 
 function switchPlanView(mode) {
   currentPlanView = mode;
