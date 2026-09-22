@@ -6900,16 +6900,22 @@ function actualPieceMinutesHtml(show, entry, std) {
 // — จึงเขียนกำกับไว้ในทูลทิปให้ชัดว่าเป็นเวลาที่ผ่านไปตั้งแต่กดเริ่มงาน
 
 // สถานะรายชิ้นเก็บเวลาเริ่มไว้แค่ ชม.:นาที ไม่ได้เก็บวันที่ — ต้องประกอบเป็นเวลาจริงบนปฏิทินก่อน
-// อิงวันของ "ใบงาน" เป็นหลัก: ถ้าเวลาที่กดเริ่มมาก่อนเวลาเริ่มของใบงาน แปลว่าเป็นของวันถัดไป
-// (ใบงานกะดึกคร่อมเที่ยงคืน เช่น 18 ก.ย. 04:15–10:55 ซึ่งเป็น "วันทำงาน" ของ 17 ก.ย.)
-// จำเป็นต้องคิดแบบนี้ ไม่ใช่เทียบ "วันทำงาน" กับวันนี้ตรงๆ — ไม่งั้นงาน CNC กะดึกที่ยังเดินอยู่จริง
-// ตอนเช้าวันถัดไป จะถูกมองว่าเป็นงานของเมื่อวานแล้วไม่ขึ้นตัวนับเลย
+// เลือก "วัน" ที่ทำให้เวลาที่กดเริ่มอยู่ใกล้เวลาเริ่มตามแผนที่สุด (ลองวันก่อน/วันเดียวกัน/วันถัดไป)
+// ครอบทั้งใบงานกะดึกที่คร่อมเที่ยงคืน (แผน 20:00 กดเริ่ม 02:30 = ของวันถัดไป)
+// และงานที่ช่างกดเริ่มก่อนเวลาตามแผน (แผน 15:35 กดเริ่ม 11:03 = วันเดียวกัน)
+//
+// เดิมใช้กฎตรงๆ ว่า "เวลาน้อยกว่าแผน = วันถัดไป" — งานที่เริ่มก่อนเวลาจึงถูกมองว่าเริ่มพรุ่งนี้
+// นาทีที่นับได้ติดลบ แล้วตัวนับเวลาหายไปทั้งแถว (เจอกับงาน CNC ที่กดเริ่มเช้ากว่าแผน 4 ชม.)
 function pieceStartTimestamp(task, startHHMM) {
   if (!task || !task.date || !startHHMM) return null;
   const planMin = hhmmToMinOfDay(task.startTime), startMin = hhmmToMinOfDay(startHHMM);
   if (planMin == null || startMin == null) return null;
-  const iso = startMin >= planMin ? task.date : addDaysIso(task.date, 1);
-  return parseISODate(iso).getTime() + startMin * 60000;
+  const planAt = parseISODate(task.date).getTime() + planMin * 60000;
+  const cands = [0, 1, -1].map(d => parseISODate(addDaysIso(task.date, d)).getTime() + startMin * 60000);
+  // กดเริ่มงานในอนาคตไม่ได้ — ตัดวันที่เลยตอนนี้ออกก่อน (เผื่อนาฬิกาคลาดกันเล็กน้อย 1 นาที)
+  const usable = cands.filter(ts => ts <= Date.now() + 60000);
+  const pool = usable.length ? usable : cands;
+  return pool.reduce((best, ts) => Math.abs(ts - planAt) < Math.abs(best - planAt) ? ts : best, pool[0]);
 }
 
 // เกินเท่านี้ถือว่าลืมกดจบงาน ไม่ใช่งานที่กำลังทำอยู่จริง — ไม่ขึ้นตัวนับ (ตัวเลขจะไม่มีความหมาย)
