@@ -4581,6 +4581,8 @@ function renderDashboardRollWeight() {
 // doing = เริ่มแล้วและยังอยู่ในกำหนด, wait = ยังไม่เริ่ม และวันที่วางแผนยังไม่ถึง/เป็นวันนี้
 // รวมยอดแยกตามกลุ่ม (set|สี|กลุ่ม) ไม่ยุบข้ามกลุ่ม เพราะชุดเดียวกันอาจมีทั้งงานค้างและงานรอทำคนละวัน
 function getWorkingRollEntries(workType) {
+  // การ์ดนี้วาดนอกรอบของหน้าวางแผน — ล้างแคชนาทีต่อชิ้นเองก่อน ไม่งั้นสัดส่วนค้างของเก่า
+  if (typeof clearPlanGroupPieceMinutesCache === 'function') clearPlanGroupPieceMinutesCache();
   const today = dailyTodayIso();
   const byKey = new Map();
   planTasks.forEach(t => {
@@ -4591,10 +4593,24 @@ function getWorkingRollEntries(workType) {
     const dayStatus = (dailyStatusByDate[d] || {})[t.id];
     const rollIds = t.rollIds || [];
     let doing = 0, done = 0;
+    // งานที่เหลือ นับเป็นสัดส่วนของเวลาต่อชิ้น — ชิ้นที่ถูกตัดคาบเกี่ยวมาอยู่ในใบนี้แค่บางส่วน
+    // ไม่ควรถูกนับเป็นชิ้นเต็ม (เกณฑ์เดียวกับชิปในปฏิทิน ดู planGroupPieceMinutes)
+    const fullMap = planGroupPieceMinutes(t);
+    const scopedRolls = getMatchingRollsForPlan(t.rollSet, t.rollColor);
+    const minField = (PLAN_WORKTYPE_META[t.workType] || {}).field;
+    const shareOf = idx => {
+      const ov = t.rollMinutesOverride && t.rollMinutesOverride[idx];
+      const mine = ov != null ? (parseFloat(ov) || 0)
+        : (minField && scopedRolls[idx] ? (parseFloat(scopedRolls[idx][minField]) || 0) : 0);
+      const whole = fullMap.get(idx) || 0;
+      return whole > 0 ? mine / whole : 1;   // ไม่รู้เวลาเต็ม — นับเป็น 1 ชิ้นตามเดิม
+    };
+    let remainAmt = 0;
     rollIds.forEach(idx => {
       const st = (pieces[idx] || {}).status;
-      if (st === 'done') done++;
-      else if (st === 'in_progress') doing++;
+      if (st === 'done') { done++; return; }
+      remainAmt += shareOf(idx);
+      if (st === 'in_progress') doing++;
     });
     // งานที่จบครบทุกชิ้นแล้วไม่ใช่งานค้างอีก ไม่ต้องแสดง
     if (dayStatus === 'done' || (rollIds.length && done >= rollIds.length)) return;
@@ -4608,11 +4624,11 @@ function getWorkingRollEntries(workType) {
         set: t.rollSet, colorKey, cat,
         colorLabel: colorMeta ? colorMeta.label : 'ไม่ระบุสี',
         dot: colorMeta ? colorMeta.dot : '#9CA3AF',
-        doing: 0, done: 0, total: 0, dates: new Set(), tasks: [],
+        doing: 0, done: 0, total: 0, remainAmt: 0, dates: new Set(), tasks: [],
       });
     }
     const e = byKey.get(key);
-    e.doing += doing; e.done += done; e.total += rollIds.length;
+    e.doing += doing; e.done += done; e.total += rollIds.length; e.remainAmt += remainAmt;
     e.dates.add(d);
     // เก็บงานตามแผนที่ยุบมารวมกันไว้ด้วย เพื่อให้กดจาก Dashboard แล้วเด้งไปหางานนั้นได้
     e.tasks.push({ id: t.id, date: d, workType: t.workType });
@@ -4653,7 +4669,10 @@ function getWorkingRollEntries(workType) {
 
 // ชุดที่ยังไม่กดเริ่มจะแสดงแบบจาง (พื้นใส ขอบประ) + ป้าย "รอเริ่ม" ให้แยกออกจากชุดที่ทำอยู่จริงได้ทันที
 function dashRollWorkingChipHtml(e, accentVar, bgVar) {
-  const remain = Math.max(e.total - e.done, 0);
+  // งานที่เหลือ เป็นสัดส่วนของเวลาต่อชิ้น ("0.3 ชิ้น" ไม่ใช่ปัดเป็น 0 หรือ 1)
+  // ป้ายของชุดที่กำลังทำเดิมโชว์ "จำนวนชิ้นที่กดเริ่มค้างไว้" ซึ่งเป็น 0 ได้ทั้งที่ยังมีงานเหลือ
+  // (เช่น เสร็จ 7/8 ชิ้น แต่ชิ้นที่ 8 ยังไม่ได้กดเริ่ม ป้ายจึงขึ้น "0 ชิ้น") — เปลี่ยนเป็นบอกงานที่เหลือแทน
+  const remain = fmtRollAmount(e.remainAmt != null ? e.remainAmt : Math.max(e.total - e.done, 0));
   // รวมทุกวันที่วางแผนไว้แล้ว จึงต้องบอกวันด้วย ไม่งั้นไม่รู้ว่าของวันไหน
   // ชุดเดียวกันอาจถูกวางแผนไว้หลายวัน — แสดงวันแรกสุดแล้วต่อท้ายว่ามีอีกกี่วัน
   const dateNote = e.firstDate
@@ -4661,7 +4680,7 @@ function dashRollWorkingChipHtml(e, accentVar, bgVar) {
     : '';
   const style = {
     late:  { border: '1px solid var(--red)',      bg: 'var(--red-dim)',  badge: e.insert ? 'ค้าง' : `ค้าง ${remain} ชิ้น`,   badgeColor: 'var(--red)' },
-    doing: { border: `1px solid ${accentVar}`,    bg: bgVar,             badge: e.insert ? 'กำลังทำ' : `${e.doing} ชิ้น`,     badgeColor: accentVar },
+    doing: { border: `1px solid ${accentVar}`,    bg: bgVar,             badge: e.insert ? 'กำลังทำ' : `เหลือ ${remain} ชิ้น`, badgeColor: accentVar },
     wait:  { border: `1px dashed ${accentVar}`,   bg: 'transparent',     badge: e.insert ? 'รอทำ' : `รอทำ ${remain} ชิ้น`,   badgeColor: 'var(--text-3)' },
   }[e.cat];
   // งานแทรกไม่ได้นับเป็นชิ้น Roll — ใช้คำอธิบายของตัวเอง (ดู detailNote ใน getWorkingRollEntries)
@@ -4676,8 +4695,10 @@ function dashRollWorkingChipHtml(e, accentVar, bgVar) {
     style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:8px;cursor:pointer;
            border:${style.border};background:${style.bg};margin-bottom:6px;transition:filter .12s;"
     onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
-    title="${escapeHtmlAttr(e.taskId ? 'ไปที่งานประจำวัน' + (e.firstDate ? ' วันที่ ' + fmtDateThai(parseISODate(e.firstDate)) : '')
-      : 'ดูรายละเอียดในทะเบียน Tooling')}">
+    title="${escapeHtmlAttr((e.taskId ? 'ไปที่งานประจำวัน' + (e.firstDate ? ' วันที่ ' + fmtDateThai(parseISODate(e.firstDate)) : '')
+      : 'ดูรายละเอียดในทะเบียน Tooling')
+      + (e.insert ? '' : ' · กดเริ่มค้างไว้ ' + e.doing + ' ชิ้น'
+          + ' · งานที่เหลือคิดเป็นสัดส่วนของเวลาต่อชิ้น ชิ้นที่ทำได้ครึ่งเดียวนับเป็น 0.5 ชิ้น'))}">
     <span style="width:9px;height:9px;border-radius:50%;background:${e.dot};flex-shrink:0;"></span>
     <span style="flex:1;min-width:0;">
       <span style="display:block;font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(e.set)}</span>
