@@ -7144,7 +7144,39 @@ function planTaskDayParts(t) {
     });
     p.__contPieces = cont;
   });
+  // ชิ้นที่ยัง "ทำไม่จบ" ในส่วนนี้ เพราะถูกตัดไปทำต่อในส่วนถัดไป หรือในใบถัดไปที่ต่อเวลากันสนิท
+  // ใช้นับจำนวน Roll บนชิปปฏิทินให้ตรงกับที่ทำจบจริง (ดู planPartFinishedRollCount)
+  const nextTask = planNextAdjacentSameGroupTask(t);
+  built.forEach((p, i) => {
+    p.__carryPieces = (p.rollIds || []).filter(idx =>
+      built.slice(i + 1).some(q => (q.rollIds || []).includes(idx))
+      || (i === built.length - 1 && nextTask && (nextTask.rollIds || []).includes(idx)));
+  });
   return built;
+}
+
+// ใบถัดไปของ Size Roll/สี/ประเภทงานเดียวกันที่ต่อเวลากันสนิท — จุดเดียวที่ชิ้นถูกตัดคาบเกี่ยวข้ามใบได้
+function planNextAdjacentSameGroupTask(t) {
+  if (!t || !t.endTime || t.endTime === '—') return null;
+  const endDate = t.endDate || t.date;
+  return planTasks.find(x => x.id !== t.id && x.workType === t.workType && x.rollSet === t.rollSet
+    && (x.rollColor || null) === (t.rollColor || null)
+    && x.date === endDate && x.startTime === t.endTime) || null;
+}
+
+// จำนวนชิ้นที่ "ทำจบ" ในส่วนนี้ — ชิ้นที่ถูกตัดคาบเกี่ยวไปทำต่อส่วนถัดไปยังไม่จบ จึงไม่นับให้ส่วนนี้
+// เดิมนับจาก rollIds ตรงๆ ส่วนที่ได้ชิ้นแรกเต็ม 50 นาที กับชิ้นที่สองแค่ 35 จาก 50 นาที จึงขึ้นว่า "2 Roll"
+// ทั้งที่ทำจบจริงแค่ชิ้นเดียว — และชิ้นที่สองไปถูกนับซ้ำในส่วนถัดไปอีกด้วย
+function planPartFinishedRollCount(p) {
+  const ids = p.rollIds || [];
+  if (!ids.length) return planTaskRollCount(p);
+  let carried = p.__carryPieces;
+  if (!carried) {
+    const nx = planNextAdjacentSameGroupTask(p.__origin || p);
+    carried = nx ? ids.filter(i => (nx.rollIds || []).includes(i)) : [];
+  }
+  const n = ids.filter(i => !carried.includes(i)).length;
+  return n || 1;   // ทั้งส่วนยังทำไม่จบสักชิ้น — อย่างน้อยก็กำลังทำอยู่ 1 ชิ้น ไม่ขึ้น "0 Roll"
 }
 
 // งานตามแผนของทุกวัน หลังตัดงานที่ทำข้ามวันเป็น "ส่วนของแต่ละวัน" แล้ว → Map<iso, parts[]>
@@ -7920,7 +7952,10 @@ function planCalendarChip(t, editable, extraStyle) {
   const hasColor = color && color !== '—';
   // งานที่ทำข้ามวันถูกตัดเป็นส่วนของแต่ละวัน — บอกว่าเป็นส่วนที่เท่าไร ไม่งั้นดูเหมือนงานซ้ำสองวัน
   const partTag = t.__partCount > 1 ? ` (${t.__partIndex + 1}/${t.__partCount})` : '';
-  const sub = (hasColor ? color + ' · ' : '') + t.rollId + partTag;
+  // นับเฉพาะชิ้นที่ทำจบในส่วนนี้ — ชิ้นที่ถูกตัดไปทำต่อส่วนถัดไปไม่นับ (ดู planPartFinishedRollCount)
+  const carriedCount = ((t.__carryPieces) || []).length;
+  const rollText = planPartFinishedRollCount(t) + ' Roll';
+  const sub = (hasColor ? color + ' · ' : '') + rollText + partTag;
   // เวลาเริ่ม–จบของงานชิ้นนั้น (งานที่ถูกตัดข้ามวัน = เวลาของส่วนที่อยู่ในวันนั้น)
   // ต่อท้าย (+N วัน) เมื่อเวลาจบเลยรอบกะของวันนั้นไปจริง เกณฑ์เดียวกับป้ายในตารางรายวัน
   const hasTime = t.startTime && t.startTime !== '—' && t.endTime && t.endTime !== '—';
@@ -7930,8 +7965,9 @@ function planCalendarChip(t, editable, extraStyle) {
   // ปฏิทินรวมทั้ง CNC และขัด Roll ไว้ด้วยกันแล้ว ติดไอคอนประเภทงานไว้หน้าชื่อชุดให้แยกออกด้วยตาเปล่า
   const typeIcon = t.workType === 'polish' ? '✦ ' : '⚙ ';
   const typeLabel = (PLAN_WORKTYPE_META[t.workType] || {}).label || '';
-  const fullTitle = `[${prog.label}] ${typeLabel} · ${SHIFTS[t.shift]?.label || ''} — ${t.rollSet}${hasColor ? ' · ' + color : ''} — ${t.rollId} — ${t.rollName}`
-    + (partTag ? ` — ส่วนที่ ${t.__partIndex + 1}/${t.__partCount} ของงานที่ทำข้ามวัน (${t.startTime}–${t.endTime})` : '');
+  const fullTitle = `[${prog.label}] ${typeLabel} · ${SHIFTS[t.shift]?.label || ''} — ${t.rollSet}${hasColor ? ' · ' + color : ''} — ${rollText} — ${t.rollName}`
+    + (partTag ? ` — ส่วนที่ ${t.__partIndex + 1}/${t.__partCount} ของงานที่ทำข้ามวัน (${t.startTime}–${t.endTime})` : '')
+    + (carriedCount ? `\nอีก ${carriedCount} ชิ้นเริ่มไว้แล้วแต่ไปทำจบในช่วงถัดไป จึงยังไม่นับให้ช่วงนี้` : '');
   // โหมดลบ: คลิกที่งานคือติ๊กเลือก/ยกเลิกเลือก (ไม่เปิดฟอร์มแก้ไข) และมีเครื่องหมายบอกว่าเลือกอยู่
   if (planDeleteMode) {
     const picked = planDeleteSelected.has(t.id);
@@ -7985,13 +8021,14 @@ function planMergedCalendarChip(group, editable, extraStyle) {
   const prog = PLAN_PROGRESS_META[planTaskProgressState(first)] || PLAN_PROGRESS_META.wait;
   const color = planRollColorLabel(first);
   const hasColor = color && color !== '—';
-  const total = group.reduce((n, t) => n + planTaskRollCount(t), 0);
+  // นับเฉพาะชิ้นที่ทำจบในแต่ละส่วน ชิ้นที่ถูกตัดคาบเกี่ยวจึงไม่ถูกนับซ้ำทั้งสองฝั่ง
+  const total = group.reduce((n, t) => n + planPartFinishedRollCount(t), 0);
   const sub = (hasColor ? color + ' · ' : '') + total + ' Roll';
   const dayOff = endDayOffset(taskSessionShiftKey(last), last.date, last.startTime, last.endDate || last.date, last.endTime, last.workType);
   const timeText = first.startTime + '–' + last.endTime + (dayOff > 0 ? ' (+' + dayOff + ' วัน)' : '');
   const typeIcon = first.workType === 'polish' ? '✦ ' : '⚙ ';
   const typeLabel = (PLAN_WORKTYPE_META[first.workType] || {}).label || '';
-  const detail = group.map(t => '· ' + t.startTime + '–' + t.endTime + '  ' + planTaskRollCount(t) + ' Roll').join('\n');
+  const detail = group.map(t => '· ' + t.startTime + '–' + t.endTime + '  ' + planPartFinishedRollCount(t) + ' Roll').join('\n');
   const fullTitle = `[${prog.label}] ${typeLabel} · ${SHIFTS[first.shift]?.label || ''} — ${first.rollSet}`
     + `${hasColor ? ' · ' + color : ''} — รวม ${group.length} รายการที่เดินต่อกัน ${total} Roll\n${detail}`;
   const ids = group.map(t => t.id);
