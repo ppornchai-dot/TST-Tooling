@@ -14320,13 +14320,30 @@ function renderRollLife() {
       .sort((a, b) => (b.prodPct || 0) - (a.prodPct || 0));
     if (!list.length) return '';
     // % ปักไว้ท้ายบรรทัดแบบไม่ให้ถูกตัด ส่วนชื่อชุดยาวเกินค่อยตัดด้วย ... (การ์ดแคบ ชื่อชุดยาว)
-    return list.map(g => `<div onclick="${jsCallAttr('goToRollSetColor', g.set, g.colorKey)}"
-      style="cursor:pointer;display:flex;gap:5px;align-items:baseline;"
-      title="${escapeHtmlAttr(g.set + ' · ' + g.colorLabel + ' · ใช้ไป ' + g.prodPct + '% — กดเพื่อดูในทะเบียน Tooling')}">
-      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">• ${
-        escapeHtmlAttr(rollSetGroupDisplayName(g.set))} <span style="opacity:.75;">${
-        escapeHtmlAttr(parseSizeRollName(g.set).category || '')} · ${escapeHtmlAttr(g.colorLabel)}</span></span>
-      <b style="flex:0 0 auto;">${g.prodPct}%</b></div>`).join('');
+    return list.map(g => {
+      // วางแผนแต่ง Roll ไว้แล้วหรือยัง — ชุดที่เลยรอบมาแล้วต้องเห็นได้ทันทีว่ามีคิวแต่งรอวันไหน
+      // ไม่งั้นต้องไปเปิดหน้าแผนงานดูทีละชุดว่าจัดคิวไปแล้วหรือยัง
+      // ชุดที่ยังไม่มีแผนไม่ขึ้นบรรทัดนี้ — การ์ดแคบอยู่แล้ว เก็บที่ว่างไว้ให้บรรทัดที่มีข้อมูลจริง
+      const plan = plannedFinishForRollColor(g.set, g.colorKey, 'cnc');
+      const planText = !plan ? '' : (plan.done ? '✓ แต่งเสร็จ ' : 'วางแผนแต่ง ') + fmtDateThaiShort(parseISODate(plan.date));
+      return `<div onclick="${jsCallAttr('goToRollSetColor', g.set, g.colorKey)}"
+      style="cursor:pointer;margin-bottom:2px;"
+      title="${escapeHtmlAttr(g.set + ' · ' + g.colorLabel + ' · ใช้ไป ' + g.prodPct + '%'
+        + ' · ' + (plan ? (plan.done ? 'แต่งเสร็จแล้วเมื่อ ' : 'วางแผนแต่งไว้แล้ว — ตามแผนจะเสร็จวันที่ ')
+                         + fmtDateThai(parseISODate(plan.date))
+                : 'ยังไม่ได้วางแผนแต่ง Roll ชุดนี้')
+        + ' — กดเพื่อดูในทะเบียน Tooling')}">
+      <div style="display:flex;gap:5px;align-items:baseline;">
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">• ${
+          escapeHtmlAttr(rollSetGroupDisplayName(g.set))} <span style="opacity:.75;">${
+          escapeHtmlAttr(parseSizeRollName(g.set).category || '')} · ${escapeHtmlAttr(g.colorLabel)}</span></span>
+        <b style="flex:0 0 auto;">${g.prodPct}%</b>
+      </div>
+      ${plan ? `<div style="margin-left:9px;font-size:10.5px;font-weight:800;white-space:nowrap;
+        overflow:hidden;text-overflow:ellipsis;color:${plan.done ? 'var(--green)' : 'var(--accent)'};"
+        >${escapeHtmlAttr(planText)}</div>` : ''}
+    </div>`;
+    }).join('');
   };
   const expList = document.getElementById('rolllife-kpi-expired-list');
   if (expList) expList.innerHTML = bandListHtml('expired');
