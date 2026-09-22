@@ -2676,7 +2676,10 @@ let inUseCalFetching = false;
 //   4) ไม่เกินวันนี้ และไม่ย้อนไปก่อนวันที่บันทึกไว้ล่าสุด — เปิดดูเดือนเก่าแล้วไม่ไปเขียนประวัติเอง
 function autoRecordCarriedRunColors(isoList) {
   if (!canEditPlan()) return 0;   // คนที่แก้แผนไม่ได้ ไม่ควรเขียนข้อมูลกลาง
-  const today = dailyTodayIso();
+  // ขอบบนต้องเป็น "วันตามปฏิทิน" ไม่ใช่วันทำงาน — rollRunColor และยอดผลิตเก็บเป็นวันปฏิทิน
+  // ถ้าใช้ dailyTodayIso() ช่วงเช้าที่กะดึกของเมื่อวานยังค้างอยู่ วันทำงานจะยังเป็นเมื่อวาน
+  // แล้ววันนี้จะติดเงื่อนไข iso > today จนไม่ถูกระบุชุดสีให้เลย ต้องมากดยืนยันเองทุกวัน
+  const today = toISODate(new Date());
   const recorded = Object.keys(rollRunColor || {}).filter(d => Object.keys(rollRunColor[d] || {}).length).sort();
   const lastRecorded = recorded[recorded.length - 1];
   if (!lastRecorded) return 0;    // ยังไม่เคยบันทึกอะไรเลย ไม่มีอะไรให้ยกมา
@@ -2707,7 +2710,9 @@ function autoRecordCarriedRunColors(isoList) {
 // ไม่ใช้ withCloudRetry เพราะจะไปทับ cloudReapply ของปุ่มที่ผู้ใช้เพิ่งกด (ตัวนี้คำนวณจากสถานะได้ใหม่เสมอ)
 function syncTodayRunColorToInUse() {
   if (!canEditPlan() || !cloudSyncReady) return 0;   // ยังไม่ได้ข้อมูลจริงจาก cloud — อย่าเพิ่งเขียน
-  const today = dailyTodayIso();
+  // วันปฏิทินด้วยเหตุผลเดียวกับ autoRecordCarriedRunColors — ตัวนี้เป็นตาข่ายรับของตัวนั้น
+  // ถ้าคนละวันกัน ตัวนี้จะไปแก้เมื่อวาน (ซึ่งเป็นประวัติ) แทนที่จะคุมค่าที่เพิ่งยกมาให้วันนี้
+  const today = toISODate(new Date());
   const byDate = rollRunColor[today] || {};
   const stale = Object.keys(byDate).filter(set => {
     const now = inUseColorFor(set);
@@ -12593,6 +12598,9 @@ function openRunColorPicker(dateIso, scope) {
     </div>`;
     document.body.appendChild(ov);
   }
+  // เปิดหน้าต่างมาให้ชุดที่ "ไม่มีการเปลี่ยน Roll" ถูกเลือกไว้ให้เลย ไม่ต้องไล่กดยืนยันทีละแถว
+  // ตัวมันเองกันไว้แล้วว่าจะเขียนเฉพาะวันที่มียอดผลิต ไม่ทับค่าที่ระบุเอง และไม่ย้อนไปแก้ประวัติ
+  autoRecordCarriedRunColors([dateIso]);
   renderRunColorPicker();
   ov.classList.add('open');
 }
