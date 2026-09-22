@@ -6440,6 +6440,8 @@ let currentPlanView = 'month';
 let planViewDate = parseISODate(toISODate(new Date()));
 
 function renderCurrentPlanView() {
+  // แผนอาจเพิ่งถูกแก้ — ล้างแคชนาทีต่อชิ้นก่อนวาด ไม่งั้นสัดส่วนบนชิปค้างของเก่า
+  if (typeof clearPlanGroupPieceMinutesCache === 'function') clearPlanGroupPieceMinutesCache();
   if (currentPlanView === 'day') renderPlanDay();
   else if (currentPlanView === 'week') renderPlanWeek();
   else if (currentPlanView === 'month') renderPlanMonth();
@@ -7145,7 +7147,7 @@ function planTaskDayParts(t) {
     p.__contPieces = cont;
   });
   // ชิ้นที่ยัง "ทำไม่จบ" ในส่วนนี้ เพราะถูกตัดไปทำต่อในส่วนถัดไป หรือในใบถัดไปที่ต่อเวลากันสนิท
-  // ใช้นับจำนวน Roll บนชิปปฏิทินให้ตรงกับที่ทำจบจริง (ดู planPartFinishedRollCount)
+  // ใช้บอกในทูลทิปว่าช่วงนี้มีชิ้นที่เริ่มไว้แล้วแต่ยังไปจบช่วงถัดไปกี่ชิ้น (ดู planCalendarChip)
   const nextTask = planNextAdjacentSameGroupTask(t);
   built.forEach((p, i) => {
     p.__carryPieces = (p.rollIds || []).filter(idx =>
@@ -7164,19 +7166,68 @@ function planNextAdjacentSameGroupTask(t) {
     && x.date === endDate && x.startTime === t.endTime) || null;
 }
 
-// จำนวนชิ้นที่ "ทำจบ" ในส่วนนี้ — ชิ้นที่ถูกตัดคาบเกี่ยวไปทำต่อส่วนถัดไปยังไม่จบ จึงไม่นับให้ส่วนนี้
-// เดิมนับจาก rollIds ตรงๆ ส่วนที่ได้ชิ้นแรกเต็ม 50 นาที กับชิ้นที่สองแค่ 35 จาก 50 นาที จึงขึ้นว่า "2 Roll"
-// ทั้งที่ทำจบจริงแค่ชิ้นเดียว — และชิ้นที่สองไปถูกนับซ้ำในส่วนถัดไปอีกด้วย
-function planPartFinishedRollCount(p) {
+// จำนวนชิ้นของส่วนนี้ คิดเป็น "อัตราส่วนของเวลาต่อชิ้น" — ชิ้นที่ทำได้ 35 จาก 50 นาที นับเป็น 0.7 ชิ้น
+// เดิมนับจาก rollIds ตรงๆ ส่วนที่ได้ชิ้นแรกเต็มกับชิ้นที่สองแค่ 35 จาก 50 นาที จึงขึ้นว่า "2 Roll"
+// ทั้งที่ทำได้จริง 1.7 ชิ้น — และชิ้นที่สองยังไปถูกนับเต็มซ้ำในส่วนถัดไปอีกด้วย
+// รวมทุกส่วนแล้วได้เท่าจำนวนชิ้นจริงพอดี (0.7 + 0.3 = 1) ไม่นับซ้ำและไม่ขาด
+//
+// เวลาเต็มของชิ้นยึดจาก "นาทีที่วางแผนไว้จริง รวมทุกใบของชุด/สี/ประเภทงานเดียวกัน"
+// ไม่ใช่เวลาในทะเบียน Tooling เพราะเวลาในทะเบียนถูกแก้ทีหลังได้ แผนที่วางไว้ก่อนหน้าจะคิดสัดส่วนเพี้ยนทันที
+function planPartRollAmount(p) {
   const ids = p.rollIds || [];
   if (!ids.length) return planTaskRollCount(p);
-  let carried = p.__carryPieces;
-  if (!carried) {
-    const nx = planNextAdjacentSameGroupTask(p.__origin || p);
-    carried = nx ? ids.filter(i => (nx.rollIds || []).includes(i)) : [];
-  }
-  const n = ids.filter(i => !carried.includes(i)).length;
-  return n || 1;   // ทั้งส่วนยังทำไม่จบสักชิ้น — อย่างน้อยก็กำลังทำอยู่ 1 ชิ้น ไม่ขึ้น "0 Roll"
+  const origin = p.__origin || p;
+  const scoped = getMatchingRollsForPlan(origin.rollSet, origin.rollColor);
+  const field = (PLAN_WORKTYPE_META[origin.workType] || {}).field;
+  const minutesIn = (t, idx) => {
+    const ov = t.rollMinutesOverride && t.rollMinutesOverride[idx];
+    if (ov != null) return parseFloat(ov) || 0;
+    return field && scoped[idx] ? (parseFloat(scoped[idx][field]) || 0) : 0;
+  };
+  const full = planGroupPieceMinutes(origin);
+  let amount = 0;
+  ids.forEach(idx => {
+    const mine = minutesIn(p, idx);
+    const whole = full.get(idx) || 0;
+    amount += whole > 0 ? mine / whole : 1;   // ไม่รู้เวลาเต็ม (ยังไม่กรอกในทะเบียน) — นับเป็น 1 ชิ้นตามเดิม
+  });
+  return Math.round(amount * 10) / 10;
+}
+
+// นาทีเต็มของแต่ละชิ้นสำหรับใบงานหนึ่ง = นาทีในใบนั้นเอง บวกส่วนที่ถูกตัดคาบเกี่ยวไปอยู่
+// "ใบก่อนหน้า/ใบถัดไปที่ต่อเวลากันสนิท" ซึ่งเป็นจุดเดียวที่ชิ้นถูกตัดข้ามใบได้
+// ไม่รวมทุกใบของชุด/สีเดียวกัน เพราะชิ้นเดียวกันอาจถูกวางแผนไว้หลายรอบคนละช่วงเวลา
+// (รอบหน้าไม่ใช่ส่วนหนึ่งของรอบนี้) ถ้าเอามารวมเป็นตัวหาร สัดส่วนจะเล็กลงผิดทันที
+// แคชไว้ต่อการเรนเดอร์หนึ่งครั้ง เพราะปฏิทินรายเดือนเรียกซ้ำหลักร้อยครั้งต่อการวาดหนึ่งรอบ
+let planGroupPieceMinutesCache = new Map();
+function planGroupPieceMinutes(t) {
+  const hit = planGroupPieceMinutesCache.get(t.id);
+  if (hit) return hit;
+  const scoped = getMatchingRollsForPlan(t.rollSet, t.rollColor);
+  const field = (PLAN_WORKTYPE_META[t.workType] || {}).field;
+  const sameGroup = x => x.workType === t.workType && x.rollSet === t.rollSet
+    && (x.rollColor || null) === (t.rollColor || null);
+  const prev = planTasks.find(x => x.id !== t.id && sameGroup(x)
+    && (x.endDate || x.date) === t.date && x.endTime === t.startTime) || null;
+  const map = new Map();
+  [prev, t, planNextAdjacentSameGroupTask(t)].forEach(x => {
+    if (!x) return;
+    (x.rollIds || []).forEach(idx => {
+      const ov = x.rollMinutesOverride && x.rollMinutesOverride[idx];
+      const m = ov != null ? (parseFloat(ov) || 0)
+        : (field && scoped[idx] ? (parseFloat(scoped[idx][field]) || 0) : 0);
+      map.set(idx, (map.get(idx) || 0) + m);
+    });
+  });
+  planGroupPieceMinutesCache.set(t.id, map);
+  return map;
+}
+// แผนเปลี่ยนเมื่อไหร่ต้องล้างแคช ไม่งั้นสัดส่วนค้างของเก่า
+function clearPlanGroupPieceMinutesCache() { planGroupPieceMinutesCache = new Map(); }
+
+// "1.7 Roll" · จำนวนเต็มไม่ต้องมีทศนิยม ("8 Roll" ไม่ใช่ "8.0 Roll")
+function fmtRollAmount(n) {
+  return Math.abs(n - Math.round(n)) < 0.05 ? String(Math.round(n)) : n.toFixed(1);
 }
 
 // งานตามแผนของทุกวัน หลังตัดงานที่ทำข้ามวันเป็น "ส่วนของแต่ละวัน" แล้ว → Map<iso, parts[]>
@@ -7952,9 +8003,9 @@ function planCalendarChip(t, editable, extraStyle) {
   const hasColor = color && color !== '—';
   // งานที่ทำข้ามวันถูกตัดเป็นส่วนของแต่ละวัน — บอกว่าเป็นส่วนที่เท่าไร ไม่งั้นดูเหมือนงานซ้ำสองวัน
   const partTag = t.__partCount > 1 ? ` (${t.__partIndex + 1}/${t.__partCount})` : '';
-  // นับเฉพาะชิ้นที่ทำจบในส่วนนี้ — ชิ้นที่ถูกตัดไปทำต่อส่วนถัดไปไม่นับ (ดู planPartFinishedRollCount)
+  // นับเป็นสัดส่วนของเวลาต่อชิ้น — ชิ้นที่ทำได้ไม่เต็มในส่วนนี้ขึ้นเป็นทศนิยม (ดู planPartRollAmount)
   const carriedCount = ((t.__carryPieces) || []).length;
-  const rollText = planPartFinishedRollCount(t) + ' Roll';
+  const rollText = fmtRollAmount(planPartRollAmount(t)) + ' Roll';
   const sub = (hasColor ? color + ' · ' : '') + rollText + partTag;
   // เวลาเริ่ม–จบของงานชิ้นนั้น (งานที่ถูกตัดข้ามวัน = เวลาของส่วนที่อยู่ในวันนั้น)
   // ต่อท้าย (+N วัน) เมื่อเวลาจบเลยรอบกะของวันนั้นไปจริง เกณฑ์เดียวกับป้ายในตารางรายวัน
@@ -7967,7 +8018,7 @@ function planCalendarChip(t, editable, extraStyle) {
   const typeLabel = (PLAN_WORKTYPE_META[t.workType] || {}).label || '';
   const fullTitle = `[${prog.label}] ${typeLabel} · ${SHIFTS[t.shift]?.label || ''} — ${t.rollSet}${hasColor ? ' · ' + color : ''} — ${rollText} — ${t.rollName}`
     + (partTag ? ` — ส่วนที่ ${t.__partIndex + 1}/${t.__partCount} ของงานที่ทำข้ามวัน (${t.startTime}–${t.endTime})` : '')
-    + (carriedCount ? `\nอีก ${carriedCount} ชิ้นเริ่มไว้แล้วแต่ไปทำจบในช่วงถัดไป จึงยังไม่นับให้ช่วงนี้` : '');
+    + (carriedCount ? `\nมีอีก ${carriedCount} ชิ้นที่เริ่มไว้แล้วแต่ไปทำจบในช่วงถัดไป — ช่วงนี้จึงนับเป็นสัดส่วนของเวลาที่ทำได้จริง` : '');
   // โหมดลบ: คลิกที่งานคือติ๊กเลือก/ยกเลิกเลือก (ไม่เปิดฟอร์มแก้ไข) และมีเครื่องหมายบอกว่าเลือกอยู่
   if (planDeleteMode) {
     const picked = planDeleteSelected.has(t.id);
@@ -8021,14 +8072,14 @@ function planMergedCalendarChip(group, editable, extraStyle) {
   const prog = PLAN_PROGRESS_META[planTaskProgressState(first)] || PLAN_PROGRESS_META.wait;
   const color = planRollColorLabel(first);
   const hasColor = color && color !== '—';
-  // นับเฉพาะชิ้นที่ทำจบในแต่ละส่วน ชิ้นที่ถูกตัดคาบเกี่ยวจึงไม่ถูกนับซ้ำทั้งสองฝั่ง
-  const total = group.reduce((n, t) => n + planPartFinishedRollCount(t), 0);
+  // นับเป็นสัดส่วนของเวลาต่อชิ้น ชิ้นที่ถูกตัดคาบเกี่ยวจึงไม่ถูกนับเต็มซ้ำทั้งสองฝั่ง
+  const total = fmtRollAmount(group.reduce((n, t) => n + planPartRollAmount(t), 0));
   const sub = (hasColor ? color + ' · ' : '') + total + ' Roll';
   const dayOff = endDayOffset(taskSessionShiftKey(last), last.date, last.startTime, last.endDate || last.date, last.endTime, last.workType);
   const timeText = first.startTime + '–' + last.endTime + (dayOff > 0 ? ' (+' + dayOff + ' วัน)' : '');
   const typeIcon = first.workType === 'polish' ? '✦ ' : '⚙ ';
   const typeLabel = (PLAN_WORKTYPE_META[first.workType] || {}).label || '';
-  const detail = group.map(t => '· ' + t.startTime + '–' + t.endTime + '  ' + planPartFinishedRollCount(t) + ' Roll').join('\n');
+  const detail = group.map(t => '· ' + t.startTime + '–' + t.endTime + '  ' + fmtRollAmount(planPartRollAmount(t)) + ' Roll').join('\n');
   const fullTitle = `[${prog.label}] ${typeLabel} · ${SHIFTS[first.shift]?.label || ''} — ${first.rollSet}`
     + `${hasColor ? ' · ' + color : ''} — รวม ${group.length} รายการที่เดินต่อกัน ${total} Roll\n${detail}`;
   const ids = group.map(t => t.id);
