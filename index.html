@@ -9976,7 +9976,8 @@ function autoFillPlanDayTails() {
   return any;
 }
 
-function tidyPlanAfterStateLoad() {
+// fromCloud = ข้อมูลชุดนี้เพิ่งดึงมาจากคลาวด์ (เปิดหน้า · realtime · กลับมาที่แท็บ)
+function tidyPlanAfterStateLoad(fromCloud) {
   let changed = false;
   if (refreshPlanTaskEndTimes()) changed = true;
   if (autoFixPlanSequencing()) changed = true;
@@ -9985,7 +9986,12 @@ function tidyPlanAfterStateLoad() {
   // ซึ่งเป็นที่ที่ไม่ควรรันงานหนักแบบวนหลายชั้น — ข้อมูลบางชุดทำให้มันวนจนหน้าเว็บค้าง
   // การเติมงานอัตโนมัติยังทำงานตอนที่ผู้ใช้แก้ OT/เวลาเลิกงานเองอยู่ (maybePullWorkIntoFreeTail)
   if (mergeAdjacentPlanTasks()) changed = true;
-  if (changed) persistState();
+  // ข้อมูลที่เพิ่งได้มาจากคลาวด์ ห้ามเขียนกลับขึ้นไปทันทีแบบอัตโนมัติ
+  // ถ้ามีอีกเครื่องรันโค้ดคนละเวอร์ชัน มันจะแก้กลับ แล้วเครื่องนี้แก้กลับอีก วนไม่รู้จบ
+  // (เจอจริง 22 ก.ย.: เขียนทับกันทุก 3 วินาทีทั้งวัน — เครื่องเก่าลบข้อมูล Roll SQ ทิ้งและคิดวันจบงาน
+  //  ลงวันอาทิตย์ ส่วนเครื่องใหม่แก้กลับ ผลคือการกดเริ่ม/จบงานของช่างชนแล้วถูกทิ้งเกือบทุกครั้ง)
+  // แก้ไว้ในเครื่องพอให้หน้าจอถูกต้อง ค่าที่แก้จะถูกส่งขึ้นไปเองตอนผู้ใช้กดทำอะไรจริงครั้งถัดไป
+  if (changed && !fromCloud) persistState();
   return changed;
 }
 
@@ -12011,6 +12017,9 @@ let cloudWritePending = false;
 // ต้องเป็นการ "ตั้งค่าให้เป็นค่านี้" (idempotent) ไม่ใช่การสลับค่า ไม่งั้นทำซ้ำแล้วกลับกัน
 let cloudReapply = null;
 let cloudReapplyTries = 0;
+// จำนวนครั้งที่ยอมทำรายการซ้ำเมื่อเขียนชน — เดิม 2 ครั้ง ซึ่งน้อยเกินไปตอนที่มีเครื่องอื่น
+// เขียนถี่ๆ อยู่ การกดจบงานของช่างจึงถูกทิ้งบ่อย (ต้องกดซ้ำเองหลายรอบกว่าจะติด)
+const CLOUD_REAPPLY_MAX = 5;
 // ครอบการกดหนึ่งครั้งที่ต้องการให้ "ติดแน่นอน" — fn ต้องตั้งค่าเป็นค่าเดิมได้ซ้ำๆ อย่างปลอดภัย
 function withCloudRetry(fn) {
   cloudReapply = fn;
@@ -12071,7 +12080,7 @@ async function flushCloudWrite() {
       cacheStateLocally();
       refreshAfterCloudUpdate();
       // ถ้ารายการที่เพิ่งกดเป็นแบบ "ทำซ้ำได้" ให้ทำซ้ำบนข้อมูลใหม่แล้วเขียนอีกครั้ง (ไม่ต้องกวนผู้ใช้)
-      if (cloudReapply && cloudReapplyTries < 2) {
+      if (cloudReapply && cloudReapplyTries < CLOUD_REAPPLY_MAX) {
         cloudReapplyTries++;
         try { cloudReapply(); } catch (e) { cloudReapply = null; }
         if (cloudWritePending) continue;   // cloudReapply เรียก persistState เอง → มีของรอเขียนแล้ว
@@ -12096,7 +12105,11 @@ function showCloudConflictNotice() {
     el.onclick = () => el.remove();
     document.body.appendChild(el);
   }
-  el.innerHTML = '<b>ยังไม่ได้บันทึก</b> — มีการแก้ไขจากอีกเครื่องเข้ามาก่อน ระบบดึงข้อมูลล่าสุดมาแสดงแล้ว<br>กรุณาตรวจสอบและทำรายการที่เพิ่งแก้ไปอีกครั้ง <span style="opacity:.7;">(แตะเพื่อปิด)</span>';
+  el.innerHTML = '<b>ยังไม่ได้บันทึก — สิ่งที่เพิ่งกดไปหายไปแล้ว</b><br>'
+    + 'มีเครื่องอื่นเขียนแทรกเข้ามาก่อน ระบบลองทำซ้ำให้ ' + CLOUD_REAPPLY_MAX + ' ครั้งแล้วแต่ยังชน '
+    + '<b>กรุณากดซ้ำอีกครั้ง</b><br>'
+    + 'ถ้าขึ้นบ่อยมาก แปลว่ามีเครื่องที่เปิดแอปค้างไว้นานแล้วยังใช้เวอร์ชันเก่า — ให้ไปรีเฟรชเครื่องนั้น '
+    + '<span style="opacity:.7;">(แตะเพื่อปิด)</span>';
 }
 
 function applyState(saved) {
@@ -19386,7 +19399,7 @@ async function initCloudSync() {
       cloudUpdatedAt = row.updated_at;
       applyState(row.data);
       syncRollStatusWithProdBlock();
-      tidyPlanAfterStateLoad();
+      tidyPlanAfterStateLoad(true);   // มาจากคลาวด์ — อย่าเขียนกลับอัตโนมัติ
       cacheStateLocally();
       refreshAfterCloudUpdate();
     } else {
@@ -19417,7 +19430,7 @@ async function initCloudSync() {
         cloudUpdatedAt = payload.new.updated_at || cloudUpdatedAt;
         applyState(payload.new.data);
         syncRollStatusWithProdBlock();
-        tidyPlanAfterStateLoad();
+        tidyPlanAfterStateLoad(true);   // มาจากคลาวด์ — อย่าเขียนกลับอัตโนมัติ
         cacheStateLocally();
         refreshAfterCloudUpdate();
       })
@@ -19447,7 +19460,7 @@ async function pullCloudState() {
     cloudUpdatedAt = cur.updated_at;
     applyState(cur.data);
     syncRollStatusWithProdBlock();
-    tidyPlanAfterStateLoad();
+    tidyPlanAfterStateLoad(true);   // มาจากคลาวด์ — อย่าเขียนกลับอัตโนมัติ
     cacheStateLocally();
     refreshAfterCloudUpdate();
   } catch (e) { /* ออฟไลน์ — ใช้ข้อมูลในเครื่องต่อไป */ }
