@@ -9783,6 +9783,65 @@ function planTaskTimeLocked(t) {
   return planTaskProgressState(t) === 'done';
 }
 
+// ─── ให้แผนเดินตามงานจริง ─────────────────────────────────────────────────────
+// เวลาที่ช่างลงมือจริงครั้งแรกของใบงานนี้ (จากสถานะรายชิ้น) — คืน {date, time} ตามปฏิทินจริง
+// ใช้ pieceStartTimestamp ประกอบวันให้ เพราะสถานะรายชิ้นเก็บไว้แค่ ชม.:นาที
+function planTaskActualStart(t) {
+  if (!t) return null;
+  const rec = (dailyPieceStatus[dailyStatusDateFor(t.id)] || {})[t.id] || {};
+  const stamps = (t.rollIds || [])
+    .map(i => (rec[i] || {}).startTime)
+    .filter(Boolean)
+    .map(s => pieceStartTimestamp(t, s))
+    .filter(v => v != null);
+  if (!stamps.length) return null;
+  const d = new Date(Math.min(...stamps));
+  return { date: toISODate(d),
+           time: String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') };
+}
+
+// ใบงานที่เวลาเริ่มตามแผน "ถูกตรึงไว้กับเวลาที่เริ่มทำจริง" แล้ว — ตัวไล่ปิดช่วงทับซ้อนต้องไม่ดันกลับ
+// ไม่งั้นพอ reanchorPlanTaskToActual ย้ายมาตามความจริง ตัวไล่จะดันกลับไปที่เดิมทันที
+function planTaskStartPinnedToActual(t) {
+  const a = planTaskActualStart(t);
+  return !!a && a.date === t.date && a.time === t.startTime;
+}
+
+// ย้ายเวลาเริ่มของใบงานไปที่เวลาที่ช่างเริ่มทำจริง แล้วไล่เวลาใบถัดๆ ไปให้ใหม่ทั้งแถว
+// ชิ้นที่เหลือในใบเดียวกันจะไล่ต่อจากชิ้นที่ทำจบล่าสุดเองโดยอัตโนมัติ เพราะเวลาแต่ละชิ้น
+// คิดจาก "เวลาเริ่มของใบ + นาทีสะสม" อยู่แล้ว ไม่ต้องแยกใบ (แยกใบแล้วสถานะรายชิ้นจะหลุดจาก id เดิม)
+// ห้ามย้ายถ้า "วันทำงาน" ของใบเปลี่ยน — สถานะรายชิ้นผูกกับวันทำงาน ย้ายข้ามวันแล้วบันทึกที่กดไว้จะหาย
+function reanchorPlanTaskToActual(taskId) {
+  const t = planTasks.find(x => x.id === taskId);
+  if (!t || !t.startTime || t.startTime === '—' || !t.totalTime) return false;
+  if (taskDisplayDate(t) < dailyTodayIso()) return false;   // วันที่ผ่านไปแล้วเป็นประวัติ ไม่แตะ
+  const actual = planTaskActualStart(t);
+  if (!actual) return false;
+  const sched = planScheduleShiftFor(t.workType, t.shift);
+  const shift = sched === 'both' ? bothModeStartFieldKey(actual.time) : t.shift;
+  const probe = { ...t, date: actual.date, startTime: actual.time, shift };
+  // เวลาที่เริ่มจริงอาจตกนอกช่วงทำงาน (พักเที่ยง/ก่อนเข้ากะ) — เลื่อนไปจุดที่ทำงานได้จริงจุดถัดไป
+  const adv = advanceToShiftWindow(planTaskSchedShift(probe), probe.date, probe.startTime,
+                                   probe.otCapMinutesByShift || {}, probe.workType);
+  probe.date = adv.date; probe.startTime = adv.time;
+  if (taskDisplayDate(probe) !== taskDisplayDate(t)) return false;
+  if (probe.date === t.date && probe.startTime === t.startTime && probe.shift === t.shift) return false;
+
+  // ลำดับงานก่อนย้าย — ต้องเก็บไว้ก่อน ไม่งั้นพอย้ายไปไกลแล้วเรียงใหม่จะไม่ใช่ลำดับเดิมที่ผู้ใช้เห็น
+  const order = planTasks
+    .filter(x => x.workType === t.workType && x.startTime && x.startTime !== '—')
+    .sort((a, b) => (a.date + ' ' + a.startTime).localeCompare(b.date + ' ' + b.startTime))
+    .map(x => x.id);
+  t.date = probe.date; t.startTime = probe.startTime; t.shift = probe.shift;
+  const c = computePlanEnd(t.date, t.startTime, t.totalTime, planTaskSchedShift(t), t.otCapMinutesByShift || {});
+  t.endTime = c.time;
+  t.endDate = c.date || t.date;
+  t.otMinutes = c.otMinutes || 0;
+  t.otMinutesByShift = c.otMinutesByShift || {};
+  rechainPlanTasksAfter(t.id, order);
+  return true;
+}
+
 // แก้เวลางานหนึ่งแล้วให้งานถัดๆ ไปของประเภทเดียวกัน "ต่อเวลา" จากงานนั้นทันที — ปิดช่องว่างให้ด้วย
 // ต่างจาก autoFixPlanSequencing ที่ตั้งใจปิดเฉพาะช่วงที่ทับซ้อน (เพื่อไม่ไปลบช่องว่างที่ตั้งใจเว้นไว้)
 // ตัวนี้ทำเฉพาะตอนกดบันทึกการแก้ไข ซึ่งเป็นจังหวะที่ตั้งใจให้คิวหลังขยับตามงานที่เพิ่งแก้
@@ -9883,6 +9942,9 @@ function autoFixPlanSequencing() {
         const targetKey = targetDate + ' ' + targetTime;
         if (curKey >= targetKey) continue;
         if (planTaskTimeLocked(cur)) continue; // ทำเสร็จแล้ว/อดีต — ไม่ขยับ (prev ยังใช้เป็นจุดต่อเวลาให้งานถัดไปได้ตามเดิม)
+        // เวลาเริ่มถูกตรึงไว้กับเวลาที่ช่างเริ่มทำจริงแล้ว — ดันกลับไม่ได้ ไม่งั้นแผนจะเด้งกลับไปเวลาเดิมทันที
+        // ที่ reanchorPlanTaskToActual ย้ายมาให้ตรงความจริง (ช่วงที่ทับซ้อนไปแก้ที่ใบก่อนหน้าแทน)
+        if (planTaskStartPinnedToActual(cur)) continue;
         // งานที่ "กำลังทำ" ขยับได้เฉพาะเมื่อยังอยู่ในวันทำงานเดิม — ถ้าดันข้ามวัน บันทึกความคืบหน้า
         // ที่เก็บไว้ใต้วันทำงานเดิมจะกลายเป็นของคนละวันกับใบงาน แล้วสถานะที่กดไว้จะหายไปจากหน้าจอ
         if (planTaskProgressState(cur) === 'doing'
@@ -17077,6 +17139,9 @@ async function finishDailyPiece(taskId, rollIdx, workerId) {
       dayMap[taskId] = 'done';
       maybeAutoContinueDailyPlan(dailyViewDate);
     }
+    // ให้แผนเดินตามงานจริง — ตรึงเวลาเริ่มของใบนี้ไว้กับเวลาที่ช่างลงมือจริง
+    // ชิ้นที่ยังไม่ได้ทำในใบเดียวกันจึงไล่ต่อจากชิ้นที่เพิ่งจบ แล้วไล่เวลาใบถัดๆ ไปให้ใหม่ทั้งแถว
+    if (!allDone) reanchorPlanTaskToActual(taskId);
     persistState();
     renderDailyTasks();
     // OD ในทะเบียนเปลี่ยน → หน้าทะเบียน/อายุ Roll/การ์ดน้ำหนักต้องอัปเดตตาม
