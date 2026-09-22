@@ -9952,7 +9952,112 @@ function mergeAdjacentPlanTasks() {
       }
     }
   }
+  // รวมใบเสร็จแล้วค่อยจัดลำดับชิ้น — ทุกที่ที่จัดแผนใหม่จะได้เรียงชิ้นให้ถูกเสมอ
+  if (normalizePlanRollPieceOrder()) anyChanged = true;
   return anyChanged;
+}
+
+// ─── Size Roll เดียวกัน ต้องทำชิ้นที่ 1 → 2 → 3 ตามลำดับเสมอ ───────────────────
+// อาการที่เจอ: GI 1-1/2" (38x38) TH ถูกวางเป็น 2 ใบที่ต่อเวลากันสนิท แต่ใบแรก
+// ถือชิ้นที่ 4–12 ส่วนใบหลังถือชิ้นที่ 1–4 ช่างจึงต้องทำชิ้นกลางก่อนแล้ววนกลับมาทำชิ้นต้น
+//
+// วิธีแก้คือไม่ขยับเวลาเลย แต่สลับว่า "ใบไหนถือชิ้นไหน" ให้ไล่จากน้อยไปมากตามลำดับเวลา
+// เวลารวมของแต่ละใบยังเท่าเดิมเป๊ะ แผนทั้งวันจึงไม่ต้องคำนวณใหม่ และไม่มีงานอื่นเลื่อนตาม
+// (ถ้าไปสลับตำแหน่งใบแทน เวลาจะเลื่อนกันทั้งแถวและงานที่กดเริ่มไปแล้วจะพัง)
+function normalizePlanRollPieceOrder() {
+  let changed = false;
+  const planKey = t => [t.workType, t.rollSet, t.rollColor].join('|');
+  const allByKey = new Map();
+  const groups = new Map();
+  planTasks.forEach(t => {
+    if (!(t.rollIds || []).length) return;
+    const key = planKey(t);
+    if (!allByKey.has(key)) allByKey.set(key, []);
+    allByKey.get(key).push(t);
+    // ชิ้นที่มีคนลงมือไปแล้วผูกกับ Roll ลูกจริงที่ถอดมาแต่งแล้ว สลับทีหลังไม่ได้
+    if (planTaskIsSettled(t) || planTaskLockState(t) !== 'none') return;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(t);
+  });
+  groups.forEach((list, key) => {
+    list.sort((a, b) => (a.date + ' ' + (a.startTime || '')).localeCompare(b.date + ' ' + (b.startTime || '')));
+    // ตัดชิ้นคาบเกี่ยวข้ามใบได้เฉพาะใบที่ "ต่อเวลากันสนิท" เท่านั้น
+    // ชิ้นที่ถูกตัดข้ามใบที่ไม่ได้ต่อกัน removeOverlappingRollDuplicates จะมองว่าวางซ้ำแล้วลบทิ้ง
+    let run = [];
+    const flush = () => {
+      if (run.length) {
+        // ชิ้นที่มีบางส่วนอยู่ในใบนอกช่วงนี้ (ใบที่ทำไปแล้ว หรือใบที่ไม่ได้ต่อเวลากัน)
+        // ห้ามเอามาตัดซ้ำอีก ไม่งั้นชิ้นเดียวจะกระจายเกิน 2 ใบ
+        const inRun = new Set(run.map(t => t.id));
+        const outside = new Set();
+        (allByKey.get(key) || []).forEach(t => {
+          if (!inRun.has(t.id)) (t.rollIds || []).forEach(i => outside.add(i));
+        });
+        if (normalizeRunPieceOrder(run, outside)) changed = true;
+      }
+      run = [];
+    };
+    list.forEach(t => {
+      const prev = run[run.length - 1];
+      if (prev && !((prev.endDate || prev.date) === t.date && prev.endTime === t.startTime)) flush();
+      run.push(t);
+    });
+    flush();
+  });
+  return changed;
+}
+
+// จัดชิ้นใหม่ให้ใบในช่วงที่ต่อเวลากันสนิท 1 ช่วง — คืน true เมื่อมีการเปลี่ยนจริง
+// ยอมแพ้ (คืน false ไม่แตะอะไรเลย) ทุกครั้งที่นาทีไม่ลงตัวพอดี ปลอดภัยกว่าเดาแล้วเวลาเพี้ยน
+function normalizeRunPieceOrder(run, outsideIdx) {
+  const first = run[0];
+  const scoped = getMatchingRollsForPlan(first.rollSet, first.rollColor);
+  const field = (PLAN_WORKTYPE_META[first.workType] || {}).field;
+  if (!field) return false;
+  const fullMin = idx => { const r = scoped[idx]; return r ? (parseFloat(r[field]) || 0) : 0; };
+  // รวมนาทีของชิ้นเดียวกันที่กระจายอยู่หลายใบในช่วงนี้เข้าด้วยกันก่อน
+  const pool = new Map();
+  run.forEach(t => (t.rollIds || []).forEach(idx => {
+    const ov = t.rollMinutesOverride && t.rollMinutesOverride[idx];
+    pool.set(idx, (pool.get(idx) || 0) + (ov != null ? (parseFloat(ov) || 0) : fullMin(idx)));
+  }));
+  const order = [...pool.keys()].sort((a, b) => a - b);
+  const current = [];
+  run.forEach(t => (t.rollIds || []).forEach(idx => { if (!current.includes(idx)) current.push(idx); }));
+  if (current.join(',') === order.join(',')) return false;   // เรียงถูกอยู่แล้ว
+
+  const queue = order.map(idx => ({ idx, left: pool.get(idx) }));
+  const assign = run.map(() => ({ ids: [], ov: {} }));
+  let qi = 0;
+  for (let i = 0; i < run.length; i++) {
+    let need = run[i].totalTime || 0;
+    while (need > 0.001 && qi < queue.length) {
+      const q = queue[qi];
+      const take = Math.min(q.left, need);
+      // ชิ้นที่มีบางส่วนอยู่ในใบนอกช่วงนี้อยู่แล้ว ห้ามเอามาตัดซ้ำ
+      // ไม่งั้นชิ้นเดียวจะกระจายเกิน 2 ใบ ซึ่งตัวกวาดของซ้ำจะไม่รับว่าเป็นการแบ่งเวลาที่ถูกต้อง
+      if (take < q.left - 0.001 && outsideIdx && outsideIdx.has(q.idx)) return false;
+      assign[i].ids.push(q.idx);
+      // เขียน override ทุกครั้งที่นาทีไม่เท่าเวลาเต็มในทะเบียน (ทั้งน้อยกว่าและมากกว่า)
+      // เวลาในทะเบียนถูกแก้ทีหลังได้ งานเก่าจึงมีนาทีต่อชิ้นมากกว่าเวลาเต็มปัจจุบันได้ — วิธีเดียวกับตอนรวมใบ
+      if (Math.abs(take - fullMin(q.idx)) > 0.001) assign[i].ov[q.idx] = take;
+      q.left -= take;
+      need -= take;
+      if (q.left <= 0.001) qi++;
+    }
+    if (need > 0.001) return false;   // เวลารวมของใบนี้มากกว่านาทีที่มี — ไม่แตะดีกว่า
+  }
+  if (qi < queue.length) return false;   // ยังเหลือชิ้นที่ไม่ได้แจก — ไม่แตะดีกว่า
+  // ชิ้นหนึ่งกระจายได้ไม่เกิน 2 ใบ (ข้อจำกัดเดียวกับฟีเจอร์ตัดวัน)
+  const spread = new Map();
+  assign.forEach(a => a.ids.forEach(idx => spread.set(idx, (spread.get(idx) || 0) + 1)));
+  if ([...spread.values()].some(n => n > 2)) return false;
+
+  run.forEach((t, i) => {
+    t.rollIds = assign[i].ids;
+    t.rollMinutesOverride = Object.keys(assign[i].ov).length ? assign[i].ov : undefined;
+  });
+  return true;
 }
 
 // สร้างงานต่อให้อัตโนมัติสำหรับ Roll ที่ยังเหลือเวลาไม่ครบของ Size Roll/สี/ประเภทงานเดียวกัน (workType/setName/colorKey) โดยเริ่มจาก (anchorDate, anchorTime) ที่กำหนด
