@@ -10055,6 +10055,7 @@ function tidyPlanAfterStateLoad(fromCloud) {
   // ซึ่งเป็นที่ที่ไม่ควรรันงานหนักแบบวนหลายชั้น — ข้อมูลบางชุดทำให้มันวนจนหน้าเว็บค้าง
   // การเติมงานอัตโนมัติยังทำงานตอนที่ผู้ใช้แก้ OT/เวลาเลิกงานเองอยู่ (maybePullWorkIntoFreeTail)
   if (mergeAdjacentPlanTasks()) changed = true;
+  if (syncPieceStatusAcrossChains()) changed = true;
   // ข้อมูลที่เพิ่งได้มาจากคลาวด์ ห้ามเขียนกลับขึ้นไปทันทีแบบอัตโนมัติ
   // ถ้ามีอีกเครื่องรันโค้ดคนละเวอร์ชัน มันจะแก้กลับ แล้วเครื่องนี้แก้กลับอีก วนไม่รู้จบ
   // (เจอจริง 22 ก.ย.: เขียนทับกันทุก 3 วินาทีทั้งวัน — เครื่องเก่าลบข้อมูล Roll SQ ทิ้งและคิดวันจบงาน
@@ -16944,6 +16945,56 @@ function pieceChainIdsFor(taskId, rollIdx) {
     chain.push(o);
   });
   return [...new Set(chain.map(t => t.id))];
+}
+
+// Roll ลูกเดียวกันที่ถูกตัดไปอยู่หลายใบในวันทำงานเดียวกัน ต้องมีสถานะตรงกันทุกใบ
+// ข้อมูลที่กดไว้ก่อนแก้เรื่อง "ปุ่มชุดเดียว" จะมีบันทึกอยู่ใบเดียว อีกใบจึงยังนับว่าชิ้นนั้นค้าง
+// ใบนั้นเลยขึ้น "กำลังทำ" ค้างตลอด ทั้งที่ทุกชิ้นทำจบไปหมดแล้ว — คัดลอกให้ตรงกันทั้งสาย
+// ทำซ้ำได้ปลอดภัย (คัดลอกแล้วไม่มีอะไรให้คัดลอกอีก) และไม่ทับของที่กดไว้เองด้วยค่าที่ "ไม่เสร็จ"
+function syncPieceStatusAcrossChains() {
+  let changed = false;
+  const groups = new Map();
+  planTasks.forEach(t => {
+    if (!(t.rollIds || []).length) return;
+    const day = taskDisplayDate(t);
+    (t.rollIds || []).forEach(idx => {
+      const k = [t.workType, t.rollSet, t.rollColor, idx, day].join('|');
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push({ t, idx });
+    });
+  });
+  const touched = new Set();
+  const real = st => st && st !== 'pending';
+  groups.forEach(list => {
+    if (list.length < 2) return;
+    let src = null;
+    list.forEach(({ t, idx }) => {
+      const e = getDailyPieceEntry(t.id, idx) || {};
+      if (!real(e.status)) return;
+      if (!src || (e.status === 'done' && src.status !== 'done')) src = e;
+    });
+    if (!src) return;
+    list.forEach(({ t, idx }) => {
+      const e = getDailyPieceEntry(t.id, idx) || {};
+      if (e.status === src.status) return;
+      if (real(e.status) && src.status !== 'done') return;   // มีของตัวเองอยู่แล้ว ทับได้เฉพาะด้วย "เสร็จ"
+      const d = dailyStatusDateFor(t.id);
+      const dm = dailyPieceStatus[d] || (dailyPieceStatus[d] = {});
+      (dm[t.id] || (dm[t.id] = {}))[idx] = { ...src };
+      touched.add(t.id);
+      changed = true;
+    });
+  });
+  // ใบที่ครบทุกชิ้นแล้วต้องขึ้นเป็น "สำเร็จ" ไม่ใช่ค้างอยู่ที่ "กำลังทำ"
+  touched.forEach(id => {
+    const t = planTasks.find(x => x.id === id);
+    if (!t) return;
+    const d = dailyStatusDateFor(id);
+    const map = dailyStatusByDate[d] || (dailyStatusByDate[d] = {});
+    if (map[id] === 'done') return;
+    if ((t.rollIds || []).every(i => (getDailyPieceEntry(id, i) || {}).status === 'done')) map[id] = 'done';
+  });
+  return changed;
 }
 
 // ใบที่ "ถือปุ่มเริ่ม/จบ" ของชิ้นนี้ — ชิ้นเดียวกันที่อยู่หลายใบต้องมีปุ่มชุดเดียว
