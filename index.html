@@ -16388,9 +16388,10 @@ function renderSqTable(page) {
     return set.map((r, i) => {
       const std = sqNum(r.odStd);
       const first = i === 0;
-      // ค่าของ "ชุด" ซ้ำบนทุกชิ้น แต่ทำให้จางลงในชิ้นถัดไป จะได้เห็นว่าเป็นชุดเดียวกัน
-      const dim = first ? '' : 'opacity:.45;';
-      return `<tr style="${first ? 'border-top:2px solid var(--border-light);' : ''}">
+      // ค่าของ "ชุด" ซ้ำบนทุกชิ้น เดิมทำให้ชิ้นที่ 2 จางลงเพื่อบอกว่าเป็นชุดเดียวกัน
+      // แต่อ่านยากเวลาเทียบค่าระหว่างชิ้น — ใช้สีเท่ากันทุกชิ้น แล้วบอกขอบเขตชุดด้วยเส้นคั่นแทน
+      const dim = '';
+      return `<tr style="${first ? 'border-top:2px solid var(--border);' : ''}">
       <td style="${dim}"><strong>${escapeHtmlAttr(r.sizeSq || '—')}</strong></td>
       <td class="muted" style="${dim}">${sqSpecCellHtml(r.filmFace)}</td>
       <td class="muted" style="${dim}">${sqSpecCellHtml(r.thickness)}</td>
