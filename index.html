@@ -10070,6 +10070,9 @@ function tidyPlanAfterStateLoad(fromCloud) {
   // การเติมงานอัตโนมัติยังทำงานตอนที่ผู้ใช้แก้ OT/เวลาเลิกงานเองอยู่ (maybePullWorkIntoFreeTail)
   if (mergeAdjacentPlanTasks()) changed = true;
   if (syncPieceStatusAcrossChains()) changed = true;
+  // ทะเบียน Roll SQ: เติมหน้าฟิล์ม/ความหนาที่ว่างจากชุดพี่น้องในสีเดียวกัน
+  // (ฮุกนี้เป็นตัวจัดระเบียบข้อมูลหลังโหลดของทั้งแอป ไม่ใช่เฉพาะแผนงาน)
+  if (syncSqColorGroupSpecs()) changed = true;
   // ข้อมูลที่เพิ่งได้มาจากคลาวด์ ห้ามเขียนกลับขึ้นไปทันทีแบบอัตโนมัติ
   // ถ้ามีอีกเครื่องรันโค้ดคนละเวอร์ชัน มันจะแก้กลับ แล้วเครื่องนี้แก้กลับอีก วนไม่รู้จบ
   // (เจอจริง 22 ก.ย.: เขียนทับกันทุก 3 วินาทีทั้งวัน — เครื่องเก่าลบข้อมูล Roll SQ ทิ้งและคิดวันจบงาน
@@ -16147,6 +16150,66 @@ function fillSqFormOptions() {
     `<option value="${c.key}">${escapeHtmlAttr(c.label)}</option>`).join('');
   const list = document.getElementById('f-sq-size-list');
   if (list) list.innerHTML = sqSizeList().map(s => `<option value="${escapeHtmlAttr(s)}"></option>`).join('');
+  // เลือก Size/ประเภท/ชุดสี แล้วเติมหน้าฟิล์ม-ความหนาของสีนั้นให้เลย จะได้เห็นก่อนกดบันทึก
+  // ไม่ทับค่าที่ผู้ใช้เพิ่งพิมพ์เอง (เติมเฉพาะช่องที่ยังว่าง)
+  const film = document.getElementById('f-sq-film');
+  const thick = document.getElementById('f-sq-thick');
+  if (film && thick) {
+    const fill = () => {
+      const g = sqColorGroupSpec(sqFormVal('f-sq-size'), sqFormVal('f-sq-kind'), sqFormVal('f-sq-color'));
+      if (!film.value.trim() && g.filmFace) film.value = g.filmFace;
+      if (!thick.value.trim() && g.thickness) thick.value = g.thickness;
+    };
+    ['f-sq-size', 'f-sq-kind', 'f-sq-color'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', fill);
+    });
+  }
+}
+
+// ─── หน้าฟิล์ม/ความหนา เป็นค่าของ "ชุดสี" ไม่ใช่ของชุดใดชุดหนึ่ง ────────────────
+// Size SQ + ประเภท + ชุดสี เดียวกัน ใช้หน้าฟิล์มและความหนาเดียวกันหมดทุกชุด (ชุดที่ 1, 2, 3 …)
+// กรอกที่ชุดไหนก็ได้ครั้งเดียว ชุดอื่นในสีเดียวกันได้ตามไปเอง ไม่ต้องไล่กรอกทุกชุด
+function sqColorGroupKey(r) {
+  return [r.sizeSq || '', r.kind || '', r.color || ''].join('|');
+}
+function sqColorGroupSpec(sizeSq, kind, color) {
+  const key = [sizeSq || '', kind || '', color || ''].join('|');
+  const list = (toolingData.sq || []).filter(x => sqColorGroupKey(x) === key);
+  const pick = f => (list.find(x => String(x[f] || '').trim()) || {})[f] || '';
+  return { filmFace: pick('filmFace'), thickness: pick('thickness') };
+}
+// เขียนค่าให้ทุกชุดในสีเดียวกัน — เรียกหลังบันทึกทุกทาง (เพิ่มชุด/แก้ไข/เติมชิ้นที่ขาด)
+function applySqColorGroupSpec(sizeSq, kind, color, filmFace, thickness) {
+  const key = [sizeSq || '', kind || '', color || ''].join('|');
+  (toolingData.sq || []).forEach(x => {
+    if (sqColorGroupKey(x) !== key) return;
+    x.filmFace = filmFace;
+    x.thickness = thickness;
+  });
+}
+// เติมค่าที่ว่างจากชุดพี่น้องในสีเดียวกัน — ใช้กับข้อมูลเดิมที่กรอกไว้แค่ชุดเดียว
+// ทำซ้ำได้ปลอดภัย และไม่ทับค่าที่กรอกไว้แล้ว
+function syncSqColorGroupSpecs() {
+  let changed = false;
+  const byGroup = new Map();
+  (toolingData.sq || []).forEach(r => {
+    const k = sqColorGroupKey(r);
+    if (!byGroup.has(k)) byGroup.set(k, []);
+    byGroup.get(k).push(r);
+  });
+  byGroup.forEach(list => {
+    ['filmFace', 'thickness'].forEach(f => {
+      const val = (list.find(r => String(r[f] || '').trim()) || {})[f];
+      if (!val) return;
+      list.forEach(r => {
+        if (String(r[f] || '').trim()) return;
+        r[f] = val;
+        changed = true;
+      });
+    });
+  });
+  return changed;
 }
 
 // รายการที่ใช้รหัสนี้อยู่แล้ว (ไม่นับตัวเอง) — เว้นรหัสว่างไว้ได้ ไม่ถือว่าซ้ำ
@@ -16188,8 +16251,11 @@ function readSqSetForm() {
     alert('รหัส Roll ของชิ้น R และ L ซ้ำกัน — แต่ละลูกต้องมีรหัสของตัวเอง');
     return null;
   }
-  const filmFace = sqFormVal('f-sq-film');
-  const thickness = sqFormVal('f-sq-thick');
+  // เว้นว่างไว้ = ใช้ค่าเดิมของชุดสีนั้น (ทุกชุดในสีเดียวกันใช้ค่าเดียวกัน)
+  const grpSpec = sqColorGroupSpec(sizeSq, kind, color);
+  const filmFace = sqFormVal('f-sq-film') || grpSpec.filmFace;
+  const thickness = sqFormVal('f-sq-thick') || grpSpec.thickness;
+  applySqColorGroupSpec(sizeSq, kind, color, filmFace, thickness);
   const setId = newSqSetId();
   const out = [];
   for (let i = 1; i <= SQ_PIECES_PER_SET; i++) {
@@ -16247,9 +16313,10 @@ function editSq(id) {
     toolingData.sq.forEach(x => {
       if (x !== updated && sqSetKey(x) === sqSetKey(updated)) {
         x.sizeSq = updated.sizeSq; x.kind = updated.kind; x.color = updated.color; x.madeYm = updated.madeYm;
-        x.filmFace = updated.filmFace; x.thickness = updated.thickness;
       }
     });
+    // หน้าฟิล์ม/ความหนา กว้างกว่านั้น — เป็นค่าของ "ชุดสี" ไปทุกชุดของ Size+ประเภท+สีเดียวกัน
+    applySqColorGroupSpec(updated.sizeSq, updated.kind, updated.color, updated.filmFace, updated.thickness);
     persistState();
     closeModal();
     renderSqRegistry(pageState.sq || 1);
@@ -16524,6 +16591,8 @@ function addSqPieceToSet(key) {
       piece: Number(sqFormVal('f-sq-piece')) || piece, code: sqFormVal('f-sq-code'),
       odStd: sqFormVal('f-sq-odstd'), odCur: sqFormVal('f-sq-odcur'), odMin: sqFormVal('f-sq-odmin'),
     });
+    applySqColorGroupSpec(sizeSq, sqFormVal('f-sq-kind') || SQ_KINDS[0],
+      sqFormVal('f-sq-color') || SQ_COLORS[0].key, sqFormVal('f-sq-film'), sqFormVal('f-sq-thick'));
     persistState();
     closeModal();
     renderSqRegistry(pageState.sq || 1);
