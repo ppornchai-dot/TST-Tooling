@@ -1427,7 +1427,7 @@ canvas{display:block;}
             <div class="table-wrap" style="overflow-x:auto;">
               <table>
                 <thead><tr>
-                  <th>Size SQ</th><th>ประเภท</th><th>ชุดสี</th><th title="สถานะของทั้งชุด — ใช้เป็นตัวบอกการ์ด 'ชุด Roll SQ กำลังแต่ง' บนหน้า Dashboard">สถานะชุด</th><th title="ชิ้นงานในชุด — R = ขวา · L = ซ้าย">ชิ้นงาน</th><th title="รหัสประจำ Roll ลูกนั้น">รหัส Roll</th><th>เดือน/ปี ที่ผลิต</th><th title="ขนาดตอนใส่ครั้งแรก — ไม่เปลี่ยนตามการแต่ง">OD Standard</th><th title="ขนาดล่าสุดหลังแต่ง">OD ปัจจุบัน</th><th title="OD ที่เล็กที่สุดที่ยังใช้ได้ — ถึงค่านี้แล้วต้องเปลี่ยนลูกใหม่">OD หมดอายุ</th><th></th>
+                  <th>Size SQ</th><th title="หน้ากว้างของฟิล์มที่ใช้กับชุดนี้ — เป็นค่าของทั้งชุด">หน้าฟิล์ม</th><th title="ความหนาของวัสดุที่ชุดนี้เดิน — เป็นค่าของทั้งชุด">ความหนา</th><th>ประเภท</th><th>ชุดสี</th><th title="สถานะของทั้งชุด — ใช้เป็นตัวบอกการ์ด 'ชุด Roll SQ กำลังแต่ง' บนหน้า Dashboard">สถานะชุด</th><th title="ชิ้นงานในชุด — R = ขวา · L = ซ้าย">ชิ้นงาน</th><th title="รหัสประจำ Roll ลูกนั้น">รหัส Roll</th><th>เดือน/ปี ที่ผลิต</th><th title="ขนาดตอนใส่ครั้งแรก — ไม่เปลี่ยนตามการแต่ง">OD Standard</th><th title="ขนาดล่าสุดหลังแต่ง">OD ปัจจุบัน</th><th title="OD ที่เล็กที่สุดที่ยังใช้ได้ — ถึงค่านี้แล้วต้องเปลี่ยนลูกใหม่">OD หมดอายุ</th><th></th>
                 </tr></thead>
                 <tbody id="tbody-sq"></tbody>
               </table>
@@ -5692,6 +5692,13 @@ const MODAL_FORMS = {
         <div class="form-group"><label class="form-label">ปีที่ผลิต (พ.ศ.)</label>
           <input class="form-input" id="f-sq-year" type="number" inputmode="numeric" placeholder="เช่น 2569"></div>
       </div>
+      <!-- หน้าฟิล์ม/ความหนา เป็นค่าของ "ชุด" เหมือน Size SQ — แก้ที่ชิ้นไหนก็ตามไปทั้งชุด -->
+      <div class="modal-row">
+        <div class="form-group"><label class="form-label">หน้าฟิล์ม (mm)</label>
+          <input class="form-input" id="f-sq-film" placeholder="เช่น 1219"></div>
+        <div class="form-group"><label class="form-label">ความหนา (mm)</label>
+          <input class="form-input" id="f-sq-thick" placeholder="เช่น 0.35"></div>
+      </div>
       <div class="modal-row full"><div style="font-size:12px;font-weight:800;color:var(--text-2);
         border-left:3px solid var(--accent);padding-left:8px;">รหัสและ OD ของแต่ละชิ้น — 1 ชุดมี Roll 2 ชิ้น (R และ L)</div></div>
       <!-- OD ปัจจุบันเว้นว่างไว้ได้ = ยังไม่ได้วัดหลังแต่ง (เกณฑ์เดียวกับ Ø ปัจจุบันของทะเบียน Roll) -->
@@ -5742,6 +5749,13 @@ const MODAL_FORMS = {
           <select class="form-select" id="f-sq-mon"></select></div>
         <div class="form-group"><label class="form-label">ปีที่ผลิต (พ.ศ.)</label>
           <input class="form-input" id="f-sq-year" type="number" inputmode="numeric" placeholder="เช่น 2569"></div>
+      </div>
+      <!-- หน้าฟิล์ม/ความหนา เป็นค่าของ "ชุด" — แก้ที่ชิ้นไหนก็ตามไปทั้งชุดเหมือน Size SQ -->
+      <div class="modal-row">
+        <div class="form-group"><label class="form-label">หน้าฟิล์ม (mm)</label>
+          <input class="form-input" id="f-sq-film" placeholder="เช่น 1219"></div>
+        <div class="form-group"><label class="form-label">ความหนา (mm)</label>
+          <input class="form-input" id="f-sq-thick" placeholder="เช่น 0.35"></div>
       </div>
       <div class="modal-row three">
         <div class="form-group"><label class="form-label">OD Standard (mm)</label>
@@ -16174,11 +16188,13 @@ function readSqSetForm() {
     alert('รหัส Roll ของชิ้น R และ L ซ้ำกัน — แต่ละลูกต้องมีรหัสของตัวเอง');
     return null;
   }
+  const filmFace = sqFormVal('f-sq-film');
+  const thickness = sqFormVal('f-sq-thick');
   const setId = newSqSetId();
   const out = [];
   for (let i = 1; i <= SQ_PIECES_PER_SET; i++) {
     out.push({
-      id: newSqId(), setId, sizeSq, kind, color, madeYm, piece: i,
+      id: newSqId(), setId, sizeSq, kind, color, madeYm, filmFace, thickness, piece: i,
       code: codes[i - 1],
       odStd: sqFormVal('f-sq-odstd' + i),
       odCur: sqFormVal('f-sq-odcur' + i),   // ว่าง = ยังไม่ได้วัด
@@ -16200,6 +16216,8 @@ function editSq(id) {
   document.getElementById('f-sq-kind').value = r.kind || SQ_KINDS[0];
   document.getElementById('f-sq-color').value = r.color || SQ_COLORS[0].key;
   sqYmToForm(r.madeYm);
+  document.getElementById('f-sq-film').value = r.filmFace || '';
+  document.getElementById('f-sq-thick').value = r.thickness || '';
   document.getElementById('f-sq-piece').value = String(r.piece || 1);
   document.getElementById('f-sq-code').value = r.code || '';
   document.getElementById('f-sq-odstd').value = r.odStd || '';
@@ -16220,14 +16238,16 @@ function editSq(id) {
     }
     const updated = { ...r, sizeSq, kind: sqFormVal('f-sq-kind') || SQ_KINDS[0],
       color: sqFormVal('f-sq-color') || SQ_COLORS[0].key, madeYm: sqYmFromForm(),
+      filmFace: sqFormVal('f-sq-film'), thickness: sqFormVal('f-sq-thick'),
       piece: Number(sqFormVal('f-sq-piece')) || 1, code: sqFormVal('f-sq-code'),
       odStd: sqFormVal('f-sq-odstd'), odCur: sqFormVal('f-sq-odcur'), odMin: sqFormVal('f-sq-odmin') };
     toolingData.sq[idx] = updated;
-    // Size/ประเภท/ชุดสี/เดือน-ปีที่ผลิต เป็นค่าของ "ชุด" — แก้ที่ชิ้นไหนก็ต้องตรงกันทั้งชุด
+    // Size/ประเภท/ชุดสี/เดือน-ปีที่ผลิต/หน้าฟิล์ม/ความหนา เป็นค่าของ "ชุด" — แก้ที่ชิ้นไหนก็ต้องตรงกันทั้งชุด
     // ชุดชี้ด้วย setId แล้ว การเปลี่ยนขนาด/สีจึงไม่ทำให้ชุดแตกออกจากกันอีก
     toolingData.sq.forEach(x => {
       if (x !== updated && sqSetKey(x) === sqSetKey(updated)) {
         x.sizeSq = updated.sizeSq; x.kind = updated.kind; x.color = updated.color; x.madeYm = updated.madeYm;
+        x.filmFace = updated.filmFace; x.thickness = updated.thickness;
       }
     });
     persistState();
@@ -16282,6 +16302,13 @@ function sqVisibleSets(allSets) {
   return sets;
 }
 
+// ช่องหน้าฟิล์ม/ความหนา — ยังไม่ได้กรอกให้ขึ้นขีดจางเหมือนช่องอื่นในตารางนี้
+// เก็บเป็นข้อความตามที่กรอก ไม่ปัดเลข เพราะบางขนาดกรอกเป็นทศนิยม 2 ตำแหน่ง (เช่น 0.35)
+function sqSpecCellHtml(v) {
+  const s = String(v == null ? '' : v).trim();
+  return s ? escapeHtmlAttr(s) : '<span style="color:var(--text-3);">—</span>';
+}
+
 function renderSqTable(page) {
   const tbody = document.getElementById('tbody-sq');
   if (!tbody) return;
@@ -16298,6 +16325,8 @@ function renderSqTable(page) {
       const dim = first ? '' : 'opacity:.45;';
       return `<tr style="${first ? 'border-top:2px solid var(--border-light);' : ''}">
       <td style="${dim}"><strong>${escapeHtmlAttr(r.sizeSq || '—')}</strong></td>
+      <td class="muted" style="${dim}">${sqSpecCellHtml(r.filmFace)}</td>
+      <td class="muted" style="${dim}">${sqSpecCellHtml(r.thickness)}</td>
       <td style="${dim}"><span style="font-size:11.5px;font-weight:800;padding:2px 9px;border-radius:99px;
         color:#fff;background:${SQ_KIND_COLORS[r.kind] || 'var(--text-2)'};">${escapeHtmlAttr(r.kind || '—')}</span></td>
       <td style="${dim}"><span style="display:inline-flex;align-items:center;gap:6px;">
@@ -16318,7 +16347,7 @@ function renderSqTable(page) {
       </td>
     </tr>`;
     }).join('');
-  }).join('') : `<tr><td colspan="11" style="padding:28px;text-align:center;color:var(--text-3);">${
+  }).join('') : `<tr><td colspan="13" style="padding:28px;text-align:center;color:var(--text-3);">${
     allSets.length ? 'ไม่มีรายการในที่เลือกไว้ — กดหัวข้อขนาดซ้ำอีกครั้งเพื่อดูทุกขนาด'
       : 'ยังไม่มีรายการ Roll SQ — กด "+ เพิ่มชุด" เพื่อเริ่มลงทะเบียน (1 ชุดลง Roll ' + SQ_PIECES_PER_SET + ' ชิ้นพร้อมกัน)'}</td></tr>`;
 
@@ -16475,6 +16504,8 @@ function addSqPieceToSet(key) {
   document.getElementById('f-sq-kind').value = base.kind || SQ_KINDS[0];
   document.getElementById('f-sq-color').value = base.color || SQ_COLORS[0].key;
   sqYmToForm(base.madeYm);
+  document.getElementById('f-sq-film').value = base.filmFace || '';     // ค่าของชุด ลอกจากพี่น้องมาเลย
+  document.getElementById('f-sq-thick').value = base.thickness || '';
   document.getElementById('f-sq-piece').value = String(piece);
   document.getElementById('f-sq-code').value = '';   // รหัสเป็นของ Roll ลูกนั้น ไม่ลอกจากชิ้นแรก
   document.getElementById('f-sq-odstd').value = base.odStd || '';
@@ -16489,6 +16520,7 @@ function addSqPieceToSet(key) {
     toolingData.sq.push({
       id: newSqId(), setId: base.setId || sqSetKey(base), sizeSq, kind: sqFormVal('f-sq-kind') || SQ_KINDS[0],
       color: sqFormVal('f-sq-color') || SQ_COLORS[0].key, madeYm: sqYmFromForm(),
+      filmFace: sqFormVal('f-sq-film'), thickness: sqFormVal('f-sq-thick'),
       piece: Number(sqFormVal('f-sq-piece')) || piece, code: sqFormVal('f-sq-code'),
       odStd: sqFormVal('f-sq-odstd'), odCur: sqFormVal('f-sq-odcur'), odMin: sqFormVal('f-sq-odmin'),
     });
