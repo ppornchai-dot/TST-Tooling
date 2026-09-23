@@ -7048,14 +7048,21 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
         // (สถานะใช้ร่วมกันทั้งชิ้นอยู่แล้ว — ดู setPieceStatusForChain — กดปุ่มเดียวก็มีผลทุกส่วน)
         // 2 แบบที่ถือว่าเป็น "ส่วนต่อ": ตัดคร่อมส่วนของใบเดียวกัน (__contPieces) และตัดไปอยู่คนละใบ (prevPart)
         const contSamePart = (t.__contPieces || []).includes(Number(rollIdx));
-        const prevPart = contSamePart ? null : prevPieceTaskFor(t.__origin || t, rollIdx);
-        const prevShownToday = contSamePart || (prevPart && taskDisplayDate(prevPart) === dailyViewDate);
+        const originTask = t.__origin || t;
+        const ownerId = contSamePart ? originTask.id : pieceButtonOwnerId(originTask, rollIdx);
+        const prevPart = ownerId !== originTask.id ? planTasks.find(x => x.id === ownerId) : null;
+        const prevShownToday = contSamePart || !!prevPart;
         if (prevShownToday) {
-          const chip = pieceStatus === 'done' ? '<span class="chip chip-green">✓ เสร็จ</span>'
-            : pieceStatus === 'paused' ? `<span class="chip chip-amber">⏸ ${DL().paused}</span>`
-            : pieceStatus === 'in_progress' ? '<span class="chip chip-blue">กำลังทำ</span>' : '';
+          // สถานะอ่านจากใบที่ถือปุ่ม — ใบนี้อาจยังไม่มีบันทึกของตัวเอง (ของเก่าที่เคยกดไว้คนละใบ)
+          const chainStatus = (prevPart ? (getDailyPieceEntry(prevPart.id, rollIdx) || {}).status : '') || pieceStatus;
+          const chip = chainStatus === 'done' ? '<span class="chip chip-green">✓ เสร็จ</span>'
+            : chainStatus === 'paused' ? `<span class="chip chip-amber">⏸ ${DL().paused}</span>`
+            : chainStatus === 'in_progress' ? '<span class="chip chip-blue">กำลังทำ</span>' : '';
+          // ใบที่ถือปุ่มอาจอยู่ข้างบนหรือข้างล่างก็ได้ (แถวเรียงตามเวลา แผนถูกจัดเวลาใหม่ตามงานจริงได้)
+          const where = !prevPart ? 'ด้านบน'
+            : ((prevPart.date + ' ' + prevPart.startTime) < (originTask.date + ' ' + originTask.startTime) ? 'ด้านบน' : 'ด้านล่าง');
           inner = `${chip}<span class="muted" style="font-size:10.5px;display:block;margin-top:2px;"
-            title="${escapeHtmlAttr('ชิ้นเดียวกับที่อยู่ด้านบน' + (prevPart ? ' (' + prevPart.startTime + '–' + prevPart.endTime + ')' : '') + ' — กดปุ่มที่แถวนั้นได้เลย มีผลกับทั้งชิ้น')}">ชิ้นเดียวกับด้านบน</span>`;
+            title="${escapeHtmlAttr('Roll ลูกเดียวกับที่อยู่' + where + (prevPart ? ' (' + prevPart.startTime + '–' + prevPart.endTime + ')' : '') + ' — ถูกตัดเวลามาทำสองช่วง กดปุ่มที่แถวนั้นได้เลย มีผลกับทั้งชิ้น')}">ชิ้นเดียวกับ${where}</span>`;
         } else if (pieceStatus === 'done') {
           // งานแต่ง Roll (CNC) แก้ขนาด OD ที่บันทึกไปแล้วได้ — งานขัด Roll ไม่ได้บันทึกขนาดจึงไม่มีปุ่มนี้
           const canEditOD = t.workType !== 'polish';
@@ -16923,7 +16930,41 @@ function pieceChainIdsFor(taskId, rollIdx) {
     if (!next) break;
     chain.push(next); cur = next;
   }
+  // Roll ลูกเดียวกันในวันทำงานเดียวกัน = งานชิ้นเดียวกันแน่นอน (ลูกเดียวถูกแต่งสองที่พร้อมกันไม่ได้)
+  // ต้องรวมด้วย เพราะการไล่ตาม "เวลาต่อกันสนิท" ข้างบนใช้ไม่ได้แล้วเมื่อแผนถูกจัดเวลาใหม่ตามงานจริง
+  // และตัวเช็ค "เป็นเศษของชิ้น" อิงเวลาต่อชิ้นในทะเบียน ซึ่งถูกแก้ทีหลังได้ จึงเชื่อไม่ได้เสมอไป
+  // (เจอจริง: TH3-T ถูกตัดอยู่ 2 ใบ กดจบไปแล้วใบหนึ่ง อีกใบยังขึ้นปุ่ม "เริ่มงาน" อยู่)
+  // คนละวันทำงานไม่รวม — วันนั้นต้องมีปุ่มของตัวเอง ไม่งั้นช่างกดอะไรไม่ได้เลย
+  const day = taskDisplayDate(task);
+  planTasks.forEach(o => {
+    if (o.workType !== task.workType || o.rollSet !== task.rollSet) return;
+    if ((o.rollColor || '') !== (task.rollColor || '')) return;
+    if (!(o.rollIds || []).includes(idx)) return;
+    if (taskDisplayDate(o) !== day) return;
+    chain.push(o);
+  });
   return [...new Set(chain.map(t => t.id))];
+}
+
+// ใบที่ "ถือปุ่มเริ่ม/จบ" ของชิ้นนี้ — ชิ้นเดียวกันที่อยู่หลายใบต้องมีปุ่มชุดเดียว
+// ยึดใบที่มีบันทึกสถานะของชิ้นนี้อยู่แล้วก่อน (ปุ่มจะได้อยู่ที่เดียวกับประวัติที่กดไว้)
+// ถ้ายังไม่มีใครกด ใช้ใบที่มาก่อนสุดตามเวลา
+function pieceButtonOwnerId(task, rollIdx) {
+  const ids = pieceChainIdsFor(task.id, rollIdx);
+  if (ids.length <= 1) return task.id;
+  const day = taskDisplayDate(task);
+  const list = ids.map(id => planTasks.find(x => x.id === id))
+    .filter(x => x && taskDisplayDate(x) === day);
+  if (!list.length) return task.id;
+  // 'pending' คือค่าตั้งต้นของชิ้นที่ยังไม่มีใครแตะ ไม่นับว่าเป็นบันทึก
+  const withRec = list.filter(x => {
+    const st = (getDailyPieceEntry(x.id, rollIdx) || {}).status;
+    return st && st !== 'pending';
+  });
+  const pool = withRec.length ? withRec : list;
+  pool.sort((a, b) => (a.date + ' ' + a.startTime).localeCompare(b.date + ' ' + b.startTime)
+    || (a.id < b.id ? -1 : 1));
+  return pool[0].id;
 }
 
 // เขียนสถานะรายชิ้นให้ "ทุกส่วน" ของชิ้นนั้น — ใช้ร่วมกันทุกปุ่ม (เริ่ม/พัก/ทำต่อ/จบ)
