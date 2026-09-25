@@ -6927,12 +6927,17 @@ function planTaskPieceBreakdown(t) {
 // std = เวลามาตรฐานทั้งชิ้น เอาไว้บอกว่าเกิน/ไม่เกินไปเท่าไร
 function actualPieceMinutesHtml(show, entry, std) {
   if (!show || !entry || !entry.startTime || !entry.endTime) return '';
-  const mins = actualMinutesBetween(entry.startTime, entry.endTime);
-  if (mins == null) return '';
+  const gross = actualMinutesBetween(entry.startTime, entry.endTime);
+  if (gross == null) return '';
+  // หักช่วงที่กดพักงานออก — เวลาที่ใช้จริงคือเวลาที่ลงมือจริง ไม่รวมตอนที่พัก
+  const paused = Math.max(0, Math.min(parseFloat(entry.pausedMin) || 0, gross));
+  const mins = gross - paused;
   const stdNum = parseFloat(std);
   const diff = isFinite(stdNum) ? Math.round(mins - stdNum) : null;
   const over = diff != null && diff > 0;
-  const tip = 'เวลาที่ใช้จริง ' + entry.startTime + ' – ' + entry.endTime + ' = ' + mins.toLocaleString() + ' นาที'
+  const tip = 'เวลาที่ใช้จริง ' + entry.startTime + ' – ' + entry.endTime
+    + (paused > 0 ? ' (หักพักงาน ' + paused.toLocaleString() + ' นาที)' : '')
+    + ' = ' + mins.toLocaleString() + ' นาที'
     + (diff == null ? '' : (diff === 0 ? ' (เท่ามาตรฐานพอดี)'
       : (over ? ' (เกินมาตรฐาน ' + diff.toLocaleString() + ' นาที)'
               : ' (เร็วกว่ามาตรฐาน ' + Math.abs(diff).toLocaleString() + ' นาที)')));
@@ -6943,8 +6948,8 @@ function actualPieceMinutesHtml(show, entry, std) {
 
 // ─── ตัวนับเวลาของชิ้นที่ "กำลังทำ" ───────────────────────────────────────────
 // นับจากเวลาที่กดเริ่มงานถึงตอนนี้ เป็นนาที เดินต่อเองโดยไม่ต้องรีเฟรชหน้า
-// ไม่ได้หักช่วงที่พักงานออก เพราะระบบบันทึกแค่ "เวลาที่กดพัก" ไม่ได้บันทึกเวลาที่กดทำต่อ
-// — จึงเขียนกำกับไว้ในทูลทิปให้ชัดว่าเป็นเวลาที่ผ่านไปตั้งแต่กดเริ่มงาน
+// หักช่วงที่กดพักงานออกให้แล้ว — ตอนกดทำต่อจะคิดนาทีที่พักไปสะสมไว้ที่ pausedMin ของชิ้นนั้น
+// (เดิมบันทึกแค่ "เวลาที่กดพัก" ไม่ได้บันทึกเวลาที่กดทำต่อ ตัวนับจึงเดินต่อคร่อมช่วงที่พักไปด้วย)
 
 // สถานะรายชิ้นเก็บเวลาเริ่มไว้แค่ ชม.:นาที ไม่ได้เก็บวันที่ — ต้องประกอบเป็นเวลาจริงบนปฏิทินก่อน
 // เลือก "วัน" ที่ทำให้เวลาที่กดเริ่มอยู่ใกล้เวลาเริ่มตามแผนที่สุด (ลองวันก่อน/วันเดียวกัน/วันถัดไป)
@@ -6976,9 +6981,11 @@ function runningPieceMinutesHtml(show, entry, std, task) {
   const mins = Math.floor((Date.now() - at) / 60000);
   if (mins < 0 || mins > DAILY_RUN_MIN_MAX) return '';
   const stdNum = parseFloat(std);
+  // นาทีที่พักไปแล้วรวมทั้งหมด — ตัวนับต้องหักออก ไม่งั้นช่วงที่พักจะถูกนับเป็นเวลาทำงาน
+  const paused = Math.max(0, parseFloat(entry.pausedMin) || 0);
   // เนื้อความ/สีเติมโดย refreshDailyRunMinutes() แล้วอัปเดตซ้ำทุก 15 วินาที
   return `<div class="daily-run-min" data-at="${at}" data-start="${escapeHtmlAttr(entry.startTime)}"
-    data-std="${isFinite(stdNum) ? escapeHtmlAttr(String(stdNum)) : ''}"
+    data-std="${isFinite(stdNum) ? escapeHtmlAttr(String(stdNum)) : ''}" data-paused="${paused}"
     style="font-size:11px;font-weight:700;"></div>`;
 }
 
@@ -6993,7 +7000,8 @@ function refreshDailyRunMinutes() {
   }
   nodes.forEach(el => {
     const at = Number(el.dataset.at);
-    const mins = isFinite(at) ? Math.floor((Date.now() - at) / 60000) : null;
+    const paused = Math.max(0, parseFloat(el.dataset.paused) || 0);
+    const mins = isFinite(at) ? Math.max(0, Math.floor((Date.now() - at) / 60000) - paused) : null;
     // ลืมกดจบงานข้ามวัน — ปล่อยว่างไว้ ดีกว่าโชว์ตัวเลขที่อ่านแล้วเข้าใจผิด
     if (mins == null || mins < 0 || mins > DAILY_RUN_MIN_MAX) { el.textContent = ''; el.title = ''; return; }
     const std = parseFloat(el.dataset.std);
@@ -7006,7 +7014,8 @@ function refreshDailyRunMinutes() {
         ? (over ? ' · เกินมาตรฐาน ' + Math.round(mins - std).toLocaleString() + ' นาที'
                 : ' · เหลืออีก ' + Math.round(std - mins).toLocaleString() + ' นาที จากมาตรฐาน ' + std.toLocaleString() + ' นาที')
         : '')
-      + ' · นับจากเวลาที่กดเริ่มงาน รวมช่วงที่พักงานไว้ด้วย';
+      + ' · นับจากเวลาที่กดเริ่มงาน'
+      + (paused > 0 ? ' หักช่วงที่พักงานออกแล้ว ' + paused.toLocaleString() + ' นาที' : ' (ยังไม่เคยพักงาน)');
   });
 }
 function ensureDailyRunMinTimer() {
@@ -17392,11 +17401,15 @@ async function finishDailyPiece(taskId, rollIdx, workerId) {
     // ต้องหาใหม่ทุกครั้งที่ทำซ้ำ ไม่งั้นจะไปแก้วัตถุที่ไม่อยู่ในทะเบียนแล้ว (ค่าที่แก้หายไปเฉยๆ)
     const t2 = planTasks.find(x => x.id === taskId) || task;
     const roll2 = getMatchingRollsForPlan(t2.rollSet, t2.rollColor)[rollIdx];
+    // กดจบทั้งที่ยังพักงานค้างอยู่ — ปิดช่วงพักนั้นด้วย ไม่งั้นเวลาที่พักจะถูกนับเป็นเวลาทำงาน
+    const cur = getDailyPieceEntry(taskId, rollIdx) || {};
+    const pausedMin = (parseFloat(cur.pausedMin) || 0)
+      + (cur.status === 'paused' ? pauseGapMinutes(cur.pausedAt, endAt) : 0);
     // ชิ้นที่ถูกตัดข้ามกะ = งานชิ้นเดียว กดจบที่แถวไหนก็จบทุกส่วน
     setPieceStatusForChain(taskId, rollIdx, needsMeasuredSize
-      ? { status: 'done', endTime: endAt, measuredSize: size, registryDiameter: roll2 ? roll2.diameter : null,
+      ? { status: 'done', endTime: endAt, pausedAt: null, pausedMin, measuredSize: size, registryDiameter: roll2 ? roll2.diameter : null,
           odStandard: roll2 ? (String(roll2.diameterStd || '').trim() || String(roll2.diameter || '').trim() || null) : null }
-      : { status: 'done', endTime: endAt });
+      : { status: 'done', endTime: endAt, pausedAt: null, pausedMin });
     if (needsMeasuredSize) {
       rollSizeLogSeq++;
       rollSizeLog.push({
@@ -17489,11 +17502,36 @@ async function pauseDailyPiece(taskId, rollIdx, workerId) {
 // กดทำต่อหลังพักงาน — กลับไปสถานะ "กำลังทำ" ตามเดิม เหตุผลที่พักครั้งนั้นยังอยู่ใน dailyPauseLog เป็นประวัติ
 function resumeDailyPiece(taskId, rollIdx, workerId) {
   if (!canActOnDailyItem(workerId)) return;
+  // จับเวลาครั้งเดียวนอก withCloudRetry — ถ้าเขียนชนแล้วต้องทำซ้ำ ต้องได้เวลาเดิม
+  const resumedAt = nowHHMM();
   withCloudRetry(() => {
-    setPieceStatusForChain(taskId, rollIdx, { status: 'in_progress', pauseReason: null, pausedAt: null });
+    const cur = getDailyPieceEntry(taskId, rollIdx) || {};
+    // สะสมนาทีที่พักไว้ เพื่อหักออกจากเวลาที่นับให้ทั้งตอนกำลังทำและตอนสรุปเวลาที่ใช้จริง
+    // อ่าน pausedMin ใหม่ทุกครั้งที่ทำซ้ำ (ข้อมูลถูกแทนทั้งชุดตอนดึงของใหม่มา) จะได้ไม่บวกซ้ำ
+    const add = pauseGapMinutes(cur.pausedAt, resumedAt);
+    const pausedMin = (parseFloat(cur.pausedMin) || 0) + add;
+    setPieceStatusForChain(taskId, rollIdx,
+      { status: 'in_progress', pauseReason: null, pausedAt: null, pausedMin });
+    // ปิดรายการพักล่าสุดของชิ้นนี้ด้วยเวลาที่กดทำต่อ — ประวัติจะได้บอกได้ว่าพักไปนานเท่าไร
+    for (let i = dailyPauseLog.length - 1; i >= 0; i--) {
+      const l = dailyPauseLog[i];
+      if (l.taskId === taskId && String(l.rollIdx) === String(rollIdx) && !l.resumedAt) {
+        l.resumedAt = resumedAt; l.minutes = add; break;
+      }
+    }
     persistState();
     renderDailyTasks();
   });
+}
+
+// นาทีระหว่างเวลาที่กดพักกับเวลาที่กดทำต่อ — เก็บไว้แค่ ชม.:นาที จึงคิดแบบวนรอบวัน
+// ข้ามเที่ยงคืนบวก 1440 ให้ (พักข้ามคืนเกิน 24 ชม. ถือว่าไม่สมเหตุสมผล ไม่ต้องรองรับ)
+function pauseGapMinutes(pausedAt, resumedAt) {
+  const a = hhmmToMinOfDay(pausedAt), b = hhmmToMinOfDay(resumedAt);
+  if (a == null || b == null) return 0;
+  let d = b - a;
+  if (d < 0) d += 1440;
+  return d;
 }
 
 // เมื่อรายการเช็คลิสต์ + งานตามแผนของวันนี้ "เสร็จครบทุกรายการ" แล้ว ให้สร้างแผนงาน CNC/ขัด Roll ของวันถัดไปต่อให้อัตโนมัติทันที
