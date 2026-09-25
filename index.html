@@ -14960,7 +14960,7 @@ function rollSetRowHtml(s, colorMeta, num, withActions) {
         <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;flex-shrink:0;">${count}</span>
       </div>
       ${colorMeta ? rollRowStatusSelectHtml(s, colorKey) : ''}
-      ${colorMeta ? rollSetNoteBtnHtml(s, colorKey) : '<span style="width:28px;flex-shrink:0;"></span>'}
+      ${colorMeta ? rollSetNoteBtnHtml(s, colorKey) : `<span style="width:${ROLL_NOTE_BTN_W}px;flex-shrink:0;"></span>`}
       ${withActions ? `${cat ? `<button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;color:${isRollSetTemplate(s) ? 'var(--amber)' : 'var(--text-3)'};" onclick="toggleRollSetTemplate('${esc}')" title="${isRollSetTemplate(s) ? 'เป็นเทมเพลตของหมวด ' + cat + ' อยู่ — กดเพื่อยกเลิก' : 'ตั้งเป็นเทมเพลตของหมวด ' + cat}">${isRollSetTemplate(s) ? '★' : '☆'}</button>` : ''}
         <button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;" onclick="openEditSetModal('${esc}')" title="แก้ไข ${escapeHtmlAttr(s)} (ทั้งกลุ่ม ทุกสี)">✏️</button>
         <button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;color:var(--red);" onclick="deleteSet('${esc}')" title="ลบ ${escapeHtmlAttr(s)} ทั้งกลุ่ม (Roll ทุกสี ${rolls.length} ลูก)">✕</button>`
@@ -14994,14 +14994,16 @@ async function editRollSetNote(setName, colorKey) {
     renderRollSetList();
   });
 }
+const ROLL_NOTE_BTN_W = 42;   // กว้างเท่ากันทั้งปุ่มและที่ว่าง ไม่งั้นแถวที่ไม่มีปุ่มจะเยื้อง
 function rollSetNoteBtnHtml(setName, colorKey) {
-  if (!canEditPlan()) return '<span style="width:28px;flex-shrink:0;"></span>';
+  if (!canEditPlan()) return `<span style="width:${ROLL_NOTE_BTN_W}px;flex-shrink:0;"></span>`;
   const note = rollSetNoteFor(setName, colorKey);
   // ต้องใช้ jsCallAttr — ชื่อ Size Roll มีเครื่องหมายนิ้ว (") อยู่ ถ้าต่อสตริงเองจะไปปิด attribute กลางคัน
-  return `<button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;width:28px;
-      color:${note ? 'var(--amber)' : 'var(--text-3)'};"
+  return `<button class="btn btn-ghost btn-sm" style="padding:3px 4px;flex-shrink:0;width:${ROLL_NOTE_BTN_W}px;
+      font-size:10px;font-weight:${note ? 800 : 600};letter-spacing:.02em;line-height:1.2;
+      color:${note ? 'var(--amber)' : 'var(--text-3)'};${note ? 'border-color:var(--amber);' : ''}"
     onclick="${jsCallAttr('editRollSetNote', setName, colorKey)}"
-    title="${escapeHtmlAttr(note ? 'บันทึกย่อ: ' + note + ' — กดเพื่อแก้ไข' : 'เพิ่มบันทึกย่อของชุดนี้')}">${note ? '📝' : '✎'}</button>`;
+    title="${escapeHtmlAttr(note ? 'บันทึกย่อ: ' + note + ' — กดเพื่อแก้ไข' : 'เพิ่มบันทึกย่อของชุดนี้')}">Note</button>`;
 }
 
 // ปุ่มเลือกเครื่องที่ชุดสีนี้กำลังใช้งานอยู่ — กดปุ่มเดิมซ้ำเพื่อล้าง (= ไม่ระบุ ใช้ได้ทุกเครื่องที่ผูกไว้)
