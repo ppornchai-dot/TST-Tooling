@@ -4086,7 +4086,8 @@ function renderInUseRollPicker() {
       ${pendingHere.length
         ? `เครื่อง <b>${escapeHtmlAttr(inUsePickerMachine)}</b> ต้องเลือกชุดของ <b style="font-size:14px;">${escapeHtmlAttr(pendingSizes)}</b>
            ในหมวด <b>${escapeHtmlAttr(pendingHere.map(e => e.category).join(' · '))}</b>
-           <br><span style="font-weight:600;">แถวที่ต้องเลือกมีป้าย <span style="background:var(--amber);color:#fff;padding:0 5px;border-radius:4px;">รอเลือก</span> กำกับไว้ — กดสีในแถวนั้น</span>`
+           <br><span style="font-weight:600;">แถวที่ต้องเลือกมีป้าย <span style="background:var(--amber);color:#fff;padding:0 5px;border-radius:4px;">รอเลือก</span> กำกับไว้ — กดสีในแถวนั้น</span>
+           ${pendingHere.map(e => inUseWhyAskingHtml(e)).join('')}`
         : pending.map(e => `เครื่อง <b>${escapeHtmlAttr(e.machine)}</b> · หมวด <b>${escapeHtmlAttr(e.category)}</b> → เลือกชุดของ <b>${escapeHtmlAttr(fgKeyLabel(e.fgKey))}</b>`).join('<br>')
           + '<br><span style="font-weight:600;">(ไม่มีของเครื่องที่กำลังดูอยู่ — สลับแท็บเครื่องด้านบน)</span>'}
     </div>`;
@@ -4145,6 +4146,28 @@ function inUseCategoryConflictHtml(catLabel, onlyMachine) {
 
 // awaited = แถวนี้คือชุดของขนาดที่ระบบรอให้เลือกอยู่ (Production Block เปลี่ยน Size ไปแล้ว)
 // ต้องชี้ให้ชัดเป็นรายแถว ไม่งั้นในรายการที่มีหลายสิบชุดจะไม่รู้ว่าต้องกดแถวไหน
+// บอกเหตุผลว่า "ทำไมยังต้องเลือก" — เอาสถานะปัจจุบันของทุกสีในชุดที่เข้าเกณฑ์มากาง
+// เจอหน้างานบ่อย: เคยตั้งชุดสีหนึ่งเป็นกำลังใช้งานไว้แล้ว แต่ภายหลังเปลี่ยนสถานะเป็น รอขัด/รอแต่ง
+// (ถอดไปขัด) สถานะกำลังใช้งานจึงหลุดไป เครื่องเลยไม่มีชุดของหมวดนั้น แล้วหน้าต่างก็เด้งถามอีก
+// ถ้าไม่บอกไว้ จะดูเหมือนว่า "เลือกไปแล้วแต่ระบบไม่จำ"
+function inUseWhyAskingHtml(e) {
+  const cands = inUseSetsForMachine(e.machine)
+    .filter(s => (parseSizeRollName(s).category || '') === e.category && rollSetFgKey(s) === e.fgKey);
+  const lines = cands.flatMap(s => {
+    const used = new Set(toolingData.roll.filter(r => r.set === s).map(r => r.color || NO_COLOR_KEY));
+    return getSetPalette(s).filter(c => used.has(c.key)).map(c => {
+      const meta = ROLL_COLOR_STATUS_META[rollColorStatusFor(s, c.key)] || ROLL_COLOR_STATUS_META.ready;
+      return `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:9px;">
+        <span style="width:8px;height:8px;border-radius:50%;background:${c.dot};"></span>
+        ${escapeHtmlAttr(c.label)} <b style="color:${meta.color};">${escapeHtmlAttr(meta.label)}</b></span>`;
+    });
+  });
+  if (!lines.length) return '';
+  return `<div style="font-weight:600;font-size:11.5px;color:var(--text-2);margin-top:4px;line-height:1.7;">
+    สถานะตอนนี้ของชุด ${escapeHtmlAttr(e.category)} ที่เลือกได้: ${lines.join('')}
+    <br><span style="color:var(--text-3);">ไม่มีสีไหนเป็น <b>กำลังใช้งาน</b> อยู่ — ถ้าเคยตั้งไว้แล้วแต่ภายหลังเปลี่ยนเป็น รอขัด/รอแต่ง สถานะกำลังใช้งานจะหลุดไป จึงต้องเลือกใหม่</span></div>`;
+}
+
 function inUsePickerRowHtml(setName, machine, awaited) {
   const machines = rollSetMachines[setName] || [];
   const palette = getSetPalette(setName);
