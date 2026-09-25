@@ -11730,6 +11730,9 @@ const ROLL_COLOR_STATUS_META = {
 
 // สถานะความพร้อมใช้งานของแต่ละ "ชุดสี Roll" — คีย์แยกตาม Size Roll + สี เพราะสีเป็นอิสระต่อกลุ่ม
 let rollColorStatus = {};
+// บันทึกย่อของแต่ละชุด Roll (คีย์เดียวกับ rollColorStatus คือ Size Roll + สี)
+// ประกาศไว้ตรงนี้ด้วยเหตุผลเดียวกับตัวอื่น — buildStateSnapshot() ถูกเรียกตั้งแต่ตอนบูต ประกาศทีหลังจะชน TDZ
+let rollSetNote = {};
 // สถานะของ "ชุด Roll SQ" (คีย์ = sqSetKey ของชุด) — รายละเอียด/ตัวช่วยอยู่ในส่วนทะเบียน Roll SQ
 // ต้องประกาศไว้ตรงนี้ เพราะ buildStateSnapshot() ด้านล่างถูกเรียกตั้งแต่ตอนบูต ถ้าประกาศทีหลังจะชน TDZ
 let sqSetStatus = {};
@@ -12089,7 +12092,7 @@ let rollCarryTon = {};
 
 function buildStateSnapshot() {
   return {
-    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec, sqSetStatus, sqSetMachine, sqSizeMachines,
+    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollSetNote, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec, sqSetStatus, sqSetMachine, sqSizeMachines,
     planTasks, planTaskSeq, companyHolidays, companyHolidaySeq, planDayEndTime, planDayWorker, teamMembers, teamSeq,
     dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
     dailyPieceStatus, rollSizeLog, rollSizeLogSeq, dailyPauseLog, dailyPauseLogSeq,
@@ -12224,6 +12227,7 @@ function applyState(saved) {
   if (saved.rollSetMachines) rollSetMachines = saved.rollSetMachines;
   if (saved.rollSetStatus) rollSetStatus = saved.rollSetStatus;
   if (saved.rollColorStatus) rollColorStatus = saved.rollColorStatus;
+  if (saved.rollSetNote) rollSetNote = saved.rollSetNote;
   if (saved.sqSetStatus) sqSetStatus = saved.sqSetStatus;
   if (saved.sqSetMachine) sqSetMachine = saved.sqSetMachine;
   if (saved.sqSizeMachines) sqSizeMachines = saved.sqSizeMachines;
@@ -14929,6 +14933,7 @@ function rollSetRowHtml(s, colorMeta, num, withActions) {
   const badgeBg = active ? 'var(--accent)' : (catColor || 'var(--bg-panel)');
   const badgeColor = (active || catColor) ? '#fff' : 'var(--text-3)';
   const machines = rollSetMachines[s] || [];
+  const note = colorMeta ? rollSetNoteFor(s, colorKey) : '';
   const onclick = colorMeta ? jsCallAttr('goToRollSetColor', s, colorKey) : `selectRollSet('${esc}')`;
   return `<div>
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
@@ -14936,7 +14941,8 @@ function rollSetRowHtml(s, colorMeta, num, withActions) {
         style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:6px;cursor:pointer;flex:1;min-width:0;
                background:${active?'var(--accent-glow)':'transparent'};
                color:${active?'var(--accent)':'var(--text-2)'};font-weight:${active?'700':'400'};transition:background .12s;"
-        title="${escapeHtmlAttr(s + (colorMeta ? ' · ' + colorMeta.label : '') + ' · ' + count + ' Roll')}">
+        title="${escapeHtmlAttr(s + (colorMeta ? ' · ' + colorMeta.label : '') + ' · ' + count + ' Roll'
+          + (note ? '\nบันทึกย่อ: ' + note : ''))}">
         <span style="width:18px;height:18px;border-radius:50%;background:${badgeBg};color:${badgeColor};font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${num}</span>
         <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;line-height:1.3;">
           <span style="font-size:12.5px;display:flex;align-items:center;gap:6px;min-width:0;">
@@ -14947,16 +14953,55 @@ function rollSetRowHtml(s, colorMeta, num, withActions) {
               : '<span style="font-size:11px;color:var(--text-3);">ยังไม่มี Roll</span>'}
           </span>
           ${machines.length ? rollRowMachinePickerHtml(s, colorKey, machines) : ''}
+          ${note ? `<span style="font-size:10.5px;color:var(--amber);font-weight:600;display:block;
+            overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+            title="${escapeHtmlAttr('บันทึกย่อ: ' + note)}">📝 ${escapeHtmlAttr(note)}</span>` : ''}
         </span>
         <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;flex-shrink:0;">${count}</span>
       </div>
       ${colorMeta ? rollRowStatusSelectHtml(s, colorKey) : ''}
+      ${colorMeta ? rollSetNoteBtnHtml(s, colorKey) : '<span style="width:28px;flex-shrink:0;"></span>'}
       ${withActions ? `${cat ? `<button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;color:${isRollSetTemplate(s) ? 'var(--amber)' : 'var(--text-3)'};" onclick="toggleRollSetTemplate('${esc}')" title="${isRollSetTemplate(s) ? 'เป็นเทมเพลตของหมวด ' + cat + ' อยู่ — กดเพื่อยกเลิก' : 'ตั้งเป็นเทมเพลตของหมวด ' + cat}">${isRollSetTemplate(s) ? '★' : '☆'}</button>` : ''}
         <button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;" onclick="openEditSetModal('${esc}')" title="แก้ไข ${escapeHtmlAttr(s)} (ทั้งกลุ่ม ทุกสี)">✏️</button>
         <button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;color:var(--red);" onclick="deleteSet('${esc}')" title="ลบ ${escapeHtmlAttr(s)} ทั้งกลุ่ม (Roll ทุกสี ${rolls.length} ลูก)">✕</button>`
       : `<span style="width:${cat ? 84 : 56}px;flex-shrink:0;"></span>`}
     </div>
   </div>`;
+}
+
+// ─── บันทึกย่อของชุด Roll ──────────────────────────────────────────────────────
+// เรื่องที่ต้องจำเฉพาะชุดนั้น เช่น "ลูกบนมีรอย ระวังตอนใส่" หรือ "ใช้คู่กับชุดสีฟ้าเท่านั้น"
+// คีย์เดียวกับสถานะชุด (Size Roll + สี) เพราะเป็นหน่วยเดียวกับที่หน้างานเรียกว่า "ชุด Roll"
+function rollSetNoteKey(setName, colorKey) {
+  return String(setName) + '|' + String(colorKey || NO_COLOR_KEY);
+}
+function rollSetNoteFor(setName, colorKey) {
+  return String(rollSetNote[rollSetNoteKey(setName, colorKey)] || '').trim();
+}
+async function editRollSetNote(setName, colorKey) {
+  if (!canEditPlan()) return;
+  const key = rollSetNoteKey(setName, colorKey);
+  const cur = rollSetNoteFor(setName, colorKey);
+  const meta = (getSetPalette(setName) || []).find(c => c.key === colorKey);
+  const label = setName + (meta ? ' · ' + meta.label : '');
+  const val = await voicePrompt('บันทึกย่อของชุด ' + label + ':', cur || 'พิมพ์ หรือกด 🎤 แล้วพูด');
+  if (val === null) return;                    // กดยกเลิก — ไม่แตะของเดิม
+  const next = String(val).trim();
+  withCloudRetry(() => {
+    if (next) rollSetNote[key] = next;
+    else delete rollSetNote[key];              // ล้างข้อความ = ลบบันทึกย่อ
+    persistState();
+    renderRollSetList();
+  });
+}
+function rollSetNoteBtnHtml(setName, colorKey) {
+  if (!canEditPlan()) return '<span style="width:28px;flex-shrink:0;"></span>';
+  const note = rollSetNoteFor(setName, colorKey);
+  // ต้องใช้ jsCallAttr — ชื่อ Size Roll มีเครื่องหมายนิ้ว (") อยู่ ถ้าต่อสตริงเองจะไปปิด attribute กลางคัน
+  return `<button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;width:28px;
+      color:${note ? 'var(--amber)' : 'var(--text-3)'};"
+    onclick="${jsCallAttr('editRollSetNote', setName, colorKey)}"
+    title="${escapeHtmlAttr(note ? 'บันทึกย่อ: ' + note + ' — กดเพื่อแก้ไข' : 'เพิ่มบันทึกย่อของชุดนี้')}">${note ? '📝' : '✎'}</button>`;
 }
 
 // ปุ่มเลือกเครื่องที่ชุดสีนี้กำลังใช้งานอยู่ — กดปุ่มเดิมซ้ำเพื่อล้าง (= ไม่ระบุ ใช้ได้ทุกเครื่องที่ผูกไว้)
