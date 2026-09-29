@@ -1022,6 +1022,16 @@ canvas{display:block;}
         ทีมงาน
       </button>
     </div>
+    <!-- สำรองข้อมูลของเครื่องนี้ — ทุกคนเห็น เพราะตอนคลาวด์ใช้ไม่ได้ ข้อมูลจะอยู่ในเครื่องเท่านั้น
+         ปุ่มนำเข้ามีเฉพาะผู้ที่แก้ข้อมูลได้ เพราะเป็นการเขียนทับข้อมูลทั้งก้อน -->
+    <div class="nav-section">
+      <div class="nav-label">ข้อมูล</div>
+      <button class="nav-item" onclick="showPage('backup')">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        สำรองข้อมูล
+        <span class="nav-badge" id="backup-badge" style="display:none;background:var(--red);">!</span>
+      </button>
+    </div>
   </div>
 
 </nav>
@@ -2077,6 +2087,39 @@ canvas{display:block;}
 
     </div>
 
+    <!-- ══════════════════════════════════════════
+         PAGE: BACKUP — สำรอง/นำเข้าข้อมูลของเครื่องนี้
+         มีไว้สำหรับตอนที่คลาวด์ใช้ไม่ได้ ข้อมูลที่กดไปจะอยู่แค่ในเครื่องเท่านั้น
+         ถ้าล้างข้อมูลเว็บหรือเปลี่ยนเบราว์เซอร์ = หายถาวร จึงต้องเซฟเป็นไฟล์เก็บไว้
+    ══════════════════════════════════════════ -->
+    <div class="page" id="page-backup">
+      <div id="backup-cloud-state" style="margin-bottom:16px;"></div>
+      <div class="card" style="margin-bottom:18px;">
+        <div class="card-header"><span class="card-title">สำรองข้อมูลของเครื่องนี้เป็นไฟล์</span></div>
+        <div style="padding:16px 20px 20px;">
+          <div id="backup-summary" style="font-size:13px;line-height:1.8;color:var(--text-2);margin-bottom:14px;"></div>
+          <button class="btn btn-primary" onclick="downloadStateBackup()"
+            style="font-size:15px;font-weight:800;padding:11px 22px;border-radius:10px;">⬇ ดาวน์โหลดไฟล์สำรอง</button>
+          <div style="font-size:12px;color:var(--text-3);margin-top:10px;line-height:1.7;">
+            ได้ไฟล์ .json หนึ่งไฟล์ เก็บไว้ที่ไหนก็ได้ (ส่งเข้าไลน์ตัวเองก็ได้)<br>
+            เป็นการอ่านอย่างเดียว ไม่แก้ไขข้อมูลในเครื่องและไม่ส่งออกไปที่ไหน
+          </div>
+        </div>
+      </div>
+      <div class="card" id="backup-restore-card">
+        <div class="card-header"><span class="card-title" style="color:var(--red);">นำเข้าข้อมูลจากไฟล์สำรอง</span></div>
+        <div style="padding:16px 20px 20px;">
+          <div style="font-size:13px;color:var(--red);font-weight:700;line-height:1.7;margin-bottom:12px;">
+            เขียนทับข้อมูลทั้งหมดในเครื่องนี้ด้วยข้อมูลในไฟล์ — ใช้เฉพาะตอนกู้คืนเท่านั้น<br>
+            ระบบจะเทียบให้ดูก่อนว่าไฟล์กับของในเครื่องต่างกันอย่างไร แล้วค่อยถามยืนยัน
+          </div>
+          <input type="file" id="backup-file-input" accept="application/json,.json"
+            onchange="onBackupFileChosen(this)" style="font-size:13px;">
+          <div id="backup-compare" style="margin-top:14px;"></div>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /content -->
 </div><!-- /main -->
 
@@ -2165,6 +2208,7 @@ const PAGE_META = {
   history:    { title: 'ประวัติการทำงาน' },
   pending:    { title: 'งานค้าง' },
   team:       { title: 'ทีมงาน' },
+  backup:     { title: 'สำรองข้อมูล' },
 };
 
 function toggleMobileSidebar() {
@@ -2222,6 +2266,7 @@ function showPage(id) {
   if (id === 'prodWeight') renderProdWeight();
   if (id === 'rollLife') renderRollLife();
   if (id === 'standard') loadProdBlockIframe();
+  if (id === 'backup') renderBackupPage();
 }
 
 // หน้า Block ดึงจากระบบ TST Production ด้วยลิงก์แชร์แบบดูอย่างเดียว เข้าได้เลยไม่ต้องล็อกอิน
@@ -12134,6 +12179,148 @@ function buildStateSnapshot() {
   };
 }
 
+// ─── สำรอง/กู้คืนข้อมูลของเครื่องนี้เป็นไฟล์ ──────────────────────────────────
+// จำเป็นตอนคลาวด์ใช้ไม่ได้ (เช่นโดนระงับเพราะ Egress เกินโควตา) — สิ่งที่กดไปจะอยู่แค่ในเครื่อง
+// ถ้าล้างข้อมูลเว็บหรือเปลี่ยนเบราว์เซอร์ = หายถาวร ต้องเซฟเป็นไฟล์เก็บไว้ก่อน
+// การสำรองเป็นการอ่านอย่างเดียว · การนำเข้าเขียนทับทั้งก้อน จึงต้องเทียบให้ดูและถามยืนยันก่อน
+
+// ตัวเลขสรุปของข้อมูลชุดหนึ่ง — ใช้ทั้งหน้าสำรองและตอนเทียบไฟล์กับของในเครื่อง
+function stateSummary(st) {
+  const s = st || {};
+  const dayKeys = o => Object.keys(o || {}).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort();
+  const pieceDays = dayKeys(s.dailyPieceStatus);
+  let donePieces = 0;
+  (pieceDays || []).forEach(d => Object.keys(s.dailyPieceStatus[d] || {}).forEach(t =>
+    Object.keys(s.dailyPieceStatus[d][t] || {}).forEach(i => {
+      if ((s.dailyPieceStatus[d][t][i] || {}).status === 'done') donePieces++;
+    })));
+  return {
+    planTasks: (s.planTasks || []).length,
+    rolls: ((s.toolingData || {}).roll || []).length,
+    sq: ((s.toolingData || {}).sq || []).length,
+    pieceDays: pieceDays.length,
+    lastPieceDay: pieceDays[pieceDays.length - 1] || '—',
+    donePieces,
+    sizeLogs: (s.rollSizeLog || []).length,
+    bytes: (() => { try { return JSON.stringify(s).length; } catch (e) { return 0; } })(),
+  };
+}
+
+function renderBackupPage() {
+  const sum = stateSummary(buildStateSnapshot());
+  const box = document.getElementById('backup-summary');
+  if (box) box.innerHTML = `
+    ข้อมูลที่อยู่ในเครื่องนี้ตอนนี้<br>
+    · แผนงาน <b>${sum.planTasks.toLocaleString()}</b> ใบ<br>
+    · ทะเบียน Roll <b>${sum.rolls.toLocaleString()}</b> ลูก · Roll SQ <b>${sum.sq.toLocaleString()}</b> ชิ้น<br>
+    · บันทึกงานรายชิ้น <b>${sum.pieceDays.toLocaleString()}</b> วัน (ล่าสุด <b>${escapeHtmlAttr(sum.lastPieceDay)}</b>) ·
+      ทำเสร็จรวม <b>${sum.donePieces.toLocaleString()}</b> ชิ้น<br>
+    · ล็อกขนาด OD <b>${sum.sizeLogs.toLocaleString()}</b> รายการ ·
+      ขนาดไฟล์ประมาณ <b>${(sum.bytes / 1024 / 1024).toFixed(2)}</b> MB`;
+  const restore = document.getElementById('backup-restore-card');
+  if (restore) restore.style.display = canEditPlan() ? '' : 'none';
+  const cloud = document.getElementById('backup-cloud-state');
+  if (cloud) {
+    cloud.innerHTML = cloudSyncReady
+      ? `<div style="background:var(--green-dim);border-left:4px solid var(--green);border-radius:8px;padding:11px 14px;
+           font-size:13px;font-weight:700;color:var(--green);">✓ เชื่อมต่อคลาวด์ได้ปกติ — ข้อมูลถูกซิงก์ให้อัตโนมัติอยู่แล้ว
+           <span style="font-weight:400;color:var(--text-2);">(ยังสำรองเป็นไฟล์เก็บไว้เองได้)</span></div>`
+      : `<div style="background:var(--red-dim);border-left:4px solid var(--red);border-radius:8px;padding:11px 14px;
+           font-size:13px;font-weight:800;color:var(--red);line-height:1.7;">
+           ⚠ ตอนนี้ยังเชื่อมต่อคลาวด์ไม่ได้ — สิ่งที่กดไปอยู่ใน<b>เครื่องนี้เครื่องเดียว</b><br>
+           <span style="font-weight:600;">อย่าล้างข้อมูลเว็บ อย่าเปลี่ยนเบราว์เซอร์ และกดดาวน์โหลดไฟล์สำรองเก็บไว้ก่อน</span></div>`;
+  }
+  updateBackupBadge();
+}
+
+// จุดแดงข้างเมนู "สำรองข้อมูล" — ขึ้นเมื่อเชื่อมคลาวด์ไม่ได้ เพื่อให้รู้ตัวโดยไม่ต้องเข้าหน้านั้นก่อน
+function updateBackupBadge() {
+  const badge = document.getElementById('backup-badge');
+  if (badge) badge.style.display = cloudSyncReady ? 'none' : '';
+}
+
+function downloadStateBackup() {
+  const snap = buildStateSnapshot();
+  const now = new Date();
+  const p = n => String(n).padStart(2, '0');
+  const stamp = now.getFullYear() + p(now.getMonth() + 1) + p(now.getDate()) + '-' + p(now.getHours()) + p(now.getMinutes());
+  const who = (currentUser && (currentUser.name || currentUser.username)) || 'device';
+  const payload = { __tstBackup: 1, savedAt: now.toISOString(), savedBy: String(who), state: snap };
+  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'TST-Tooling-backup-' + stamp + '.json';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
+let backupPendingState = null;   // ข้อมูลในไฟล์ที่เลือกไว้ รอผู้ใช้กดยืนยันนำเข้า
+function onBackupFileChosen(input) {
+  const box = document.getElementById('backup-compare');
+  backupPendingState = null;
+  if (box) box.innerHTML = '';
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    let parsed = null;
+    try { parsed = JSON.parse(rd.result); } catch (e) { parsed = null; }
+    // รับได้ทั้งไฟล์ที่ห่อด้วย __tstBackup และไฟล์ที่เป็น state ดิบ (เผื่อสำรองด้วยวิธีอื่น)
+    const st = parsed && parsed.__tstBackup ? parsed.state : parsed;
+    if (!st || typeof st !== 'object' || !Array.isArray(st.planTasks)) {
+      if (box) box.innerHTML = '<div style="color:var(--red);font-weight:700;font-size:13px;">อ่านไฟล์ไม่ได้ หรือไม่ใช่ไฟล์สำรองของระบบนี้</div>';
+      return;
+    }
+    backupPendingState = st;
+    const f = stateSummary(st), c = stateSummary(buildStateSnapshot());
+    const row = (label, a, b) => {
+      const same = String(a) === String(b);
+      return `<tr><td style="padding:4px 10px 4px 0;color:var(--text-2);">${escapeHtmlAttr(label)}</td>
+        <td style="padding:4px 14px 4px 0;font-weight:800;">${escapeHtmlAttr(String(a))}</td>
+        <td style="padding:4px 0;font-weight:800;color:${same ? 'var(--text-2)' : 'var(--red)'};">${escapeHtmlAttr(String(b))}</td></tr>`;
+    };
+    if (box) box.innerHTML = `
+      <div style="font-size:12.5px;color:var(--text-2);margin-bottom:8px;">
+        ไฟล์: <b>${escapeHtmlAttr(file.name)}</b>${parsed && parsed.savedAt
+          ? ' · สำรองเมื่อ <b>' + escapeHtmlAttr(new Date(parsed.savedAt).toLocaleString('th-TH')) + '</b>' : ''}
+        ${parsed && parsed.savedBy ? ' · โดย <b>' + escapeHtmlAttr(parsed.savedBy) + '</b>' : ''}</div>
+      <table style="font-size:12.5px;border-collapse:collapse;margin-bottom:12px;">
+        <tr><td></td><td style="padding-right:14px;font-weight:800;color:var(--text-3);">ในเครื่องตอนนี้</td>
+          <td style="font-weight:800;color:var(--text-3);">ในไฟล์</td></tr>
+        ${row('แผนงาน (ใบ)', c.planTasks, f.planTasks)}
+        ${row('ทะเบียน Roll (ลูก)', c.rolls, f.rolls)}
+        ${row('Roll SQ (ชิ้น)', c.sq, f.sq)}
+        ${row('บันทึกรายชิ้น (วัน)', c.pieceDays, f.pieceDays)}
+        ${row('วันล่าสุดที่มีบันทึก', c.lastPieceDay, f.lastPieceDay)}
+        ${row('ชิ้นที่ทำเสร็จรวม', c.donePieces, f.donePieces)}
+        ${row('ล็อกขนาด OD', c.sizeLogs, f.sizeLogs)}
+      </table>
+      <button class="btn" onclick="applyBackupState()"
+        style="font-size:14px;font-weight:800;padding:10px 20px;border-radius:9px;
+               background:var(--red);color:#fff;border:1px solid var(--red);">
+        ⚠ เขียนทับข้อมูลในเครื่องนี้ด้วยข้อมูลในไฟล์</button>`;
+  };
+  rd.readAsText(file);
+}
+
+function applyBackupState() {
+  if (!backupPendingState || !canEditPlan()) return;
+  const f = stateSummary(backupPendingState), c = stateSummary(buildStateSnapshot());
+  if (!confirm('เขียนทับข้อมูลในเครื่องนี้ทั้งหมดด้วยข้อมูลในไฟล์?\n\n'
+    + 'ในเครื่องตอนนี้: แผนงาน ' + c.planTasks + ' ใบ · บันทึกรายชิ้น ' + c.pieceDays + ' วัน (ล่าสุด ' + c.lastPieceDay + ')\n'
+    + 'ในไฟล์:        แผนงาน ' + f.planTasks + ' ใบ · บันทึกรายชิ้น ' + f.pieceDays + ' วัน (ล่าสุด ' + f.lastPieceDay + ')\n\n'
+    + 'ข้อมูลเดิมในเครื่องนี้จะหายไป กู้กลับไม่ได้ ถ้ายังไม่ได้เซฟไฟล์สำรองของเครื่องนี้ไว้ ให้กดยกเลิกแล้วไปกดดาวน์โหลดก่อน')) return;
+  applyState(backupPendingState);
+  cacheStateLocally();          // เก็บลงเครื่องอย่างเดียว ไม่ยิงขึ้นคลาวด์เอง
+  backupPendingState = null;
+  const input = document.getElementById('backup-file-input');
+  if (input) input.value = '';
+  alert('นำเข้าข้อมูลเรียบร้อย — ข้อมูลนี้ยังอยู่แค่ในเครื่องนี้\n'
+    + 'จะถูกส่งขึ้นคลาวด์ก็ต่อเมื่อคลาวด์กลับมาใช้ได้ และมีการกดแก้ไขอะไรสักอย่าง');
+  showPage('backup');
+}
+
 // ─── การเขียนขึ้น cloud แบบตรวจเวอร์ชันก่อน (optimistic concurrency) ──────────
 // เดิม persistState() ส่ง upsert ทับทั้งก้อนทุกครั้งโดยไม่ตรวจอะไรเลย ทำให้เครื่องที่เปิดหน้าค้างไว้
 // (เช่นมือถือที่พักจอไปแล้วพลาด realtime) เขียนข้อมูลเก่าทับงานใหม่ของเครื่องอื่นหายทั้งก้อน
@@ -19785,7 +19972,7 @@ async function initCloudSync() {
       const ins = await supabaseClient.from('app_state').upsert({ id: 'main', data: buildStateSnapshot(), updated_at: stamp }).select('updated_at');
       cloudUpdatedAt = (ins.data && ins.data.length) ? ins.data[0].updated_at : stamp;
     }
-    cloudSyncReady = true; // เปิดให้ persistState() ส่งขึ้น cloud ได้ตั้งแต่ตอนนี้ — ก่อนหน้านี้ยังไม่รู้ว่าข้อมูลจริงบน cloud คืออะไร จึงห้ามส่งทับ
+    cloudSyncReady = true; updateBackupBadge(); // เปิดให้ persistState() ส่งขึ้น cloud ได้ตั้งแต่ตอนนี้ — ก่อนหน้านี้ยังไม่รู้ว่าข้อมูลจริงบน cloud คืออะไร จึงห้ามส่งทับ
     supabaseClient
       .channel('app_state_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state', filter: 'id=eq.main' }, payload => {
@@ -19815,6 +20002,7 @@ async function initCloudSync() {
   } catch (e) {
     // ดึงครั้งแรกไม่สำเร็จ (เน็ตมือถือสะดุด, เบราว์เซอร์ใน LINE, Supabase ตอบช้า)
     // ถ้าไม่ลองใหม่ หน้าจอจะค้างอยู่กับข้อมูลตั้งต้นจนกว่าผู้ใช้จะรีเฟรชเอง — ดูเหมือนข้อมูลหาย
+    updateBackupBadge();   // เชื่อมไม่ได้ — ขึ้นจุดแดงที่เมนูสำรองข้อมูลให้รู้ตัว
     if (cloudSyncRetries < 5) {
       cloudSyncRetries++;
       setTimeout(initCloudSync, 2000 * cloudSyncRetries);
