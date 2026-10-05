@@ -17351,6 +17351,13 @@ function syncPieceStatusAcrossChains() {
       if (!real(e.status)) return;
       if (!src || (e.status === 'done' && src.status !== 'done')) src = e;
     });
+    // ใบที่ถูกปิด "ทั้งใบ" ถือว่าทุกชิ้นในใบนั้นเสร็จ แม้จะไม่มีบันทึกรายชิ้นของตัวเอง
+    // เจอจริง: ชิ้นที่ 1 ถูกตัดอยู่ 2 ใบ ใบแรกปิดทั้งใบไปแล้ว ส่วนใบหลังไม่มีบันทึกของชิ้นนั้น
+    // ใบหลังจึงค้างเป็น "เริ่มงานแล้วแต่ยังไม่เสร็จ" ตลอด ทั้งที่งานจบไปแล้วจริง
+    if (!src || src.status !== 'done') {
+      const whole = list.find(({ t }) => (dailyStatusByDate[dailyStatusDateFor(t.id)] || {})[t.id] === 'done');
+      if (whole) src = { status: 'done' };
+    }
     if (!src) return;
     list.forEach(({ t, idx }) => {
       const e = getDailyPieceEntry(t.id, idx) || {};
