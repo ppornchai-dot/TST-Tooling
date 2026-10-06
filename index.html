@@ -3188,7 +3188,14 @@ function inUseCalRangeData(dayList) {
     inUseDayRunGroups(iso, running).forEach(([sizeLabel, list]) => {
       list.forEach(x => {
         const info = inUseDayMachineInfo(iso, x.set, x.colorKey, machineMap, running);
-        const mc = info.machines.length ? info.machines.slice().sort().join('/') : 'ไม่ทราบเครื่อง';
+        // ยอดผลิตถูกรวมตาม "Size Roll" ไม่แยกชุดสี — Size Roll เดียวกันที่เดินสองเครื่องคนละชุดสี
+        // จึงได้เครื่องกลับมาทั้งสองตัว แล้วแถวในปฏิทินกลายเป็น "P2/P3" แทนที่จะอยู่แถวเครื่องของตัวเอง
+        // ถ้าชุดสีนั้นผูกเครื่องไว้ชัดเจนแล้ว ให้ยึดเครื่องนั้นเป็นหลัก
+        let mcList = info.machines;
+        const ownMc = rollColorStatusFor(x.set, x.colorKey) === 'inuse'
+          ? rollColorActiveMachineFor(x.set, x.colorKey) : null;
+        if (ownMc && mcList.length > 1 && mcList.includes(ownMc)) mcList = [ownMc];
+        const mc = mcList.length ? mcList.slice().sort().join('/') : 'ไม่ทราบเครื่อง';
         if (!machines.includes(mc)) machines.push(mc);
         const cat = x.cat || '—';
         if (!cells[mc]) cells[mc] = {};
