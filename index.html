@@ -3181,10 +3181,12 @@ function inUseCalRangeData(dayList) {
   const need = [];
   const cells = {};      // machine -> cat -> iso -> entry
   const machines = [];
+  const runningByIso = new Map();
   dayList.forEach((iso, idx) => {
     if (startIso && iso < startIso) return;
     if (iso <= today) need.push(iso);
     const running = inUseRunningSetsSafe(iso);
+    runningByIso.set(iso, running);
     inUseDayRunGroups(iso, running).forEach(([sizeLabel, list]) => {
       list.forEach(x => {
         const info = inUseDayMachineInfo(iso, x.set, x.colorKey, machineMap, running);
@@ -3203,6 +3205,34 @@ function inUseCalRangeData(dayList) {
         cells[mc][cat][iso] = { set: x.set, colorKey: x.colorKey, sizeLabel,
           inferred: !!x.inferred, sure: !!info.sure, note: info.note || '',
           kg: ((running.get(x.set) || {}).kg) || 0, col: idx + 1 };
+      });
+    });
+  });
+  // เติมช่องของเครื่องที่ "ตั้งชุดที่ใช้งานไว้แล้ว แต่ไม่มีบันทึกชุดสีของวันนั้น"
+  // เกิดกับ Size Roll เดียวกันที่เดินสองเครื่องคนละชุดสี เพราะบันทึกชุดสีที่เดินมีช่องเดียว
+  // ต่อ 1 Size Roll ต่อวัน (ผูกกับ วัน+Size Roll ไม่ได้ผูกเครื่อง) สีของอีกเครื่องจึงไม่มีที่ลง
+  // เติมเฉพาะวันที่ "ยอดผลิตยืนยันว่าเครื่องนั้นเดินขนาดนี้จริง" — ไม่เดาย้อนหลังให้วันที่ไม่ได้เดิน
+  // ทำเครื่องหมายเป็นค่าที่อนุมาน (*) เหมือนช่องอื่นที่ระบบเดาให้
+  dayList.forEach((iso, idx) => {
+    if (startIso && iso < startIso) return;
+    if (iso > today) return;
+    const running = runningByIso.get(iso);
+    if (!running || !running.size) return;
+    ROLL_MACHINES.forEach(m => {
+      ['Forming', 'Sizing', 'TH'].forEach(cat => {
+        if (((cells[m] || {})[cat] || {})[iso]) return;      // มีช่องอยู่แล้ว
+        const set = inUseSetOnMachineForCategory(m, cat);
+        if (!set) return;
+        const hit = running.get(set);
+        if (!hit || !(hit.machines || []).includes(m)) return; // ยอดผลิตไม่ได้ยืนยันว่าเครื่องนี้เดิน
+        const colorKey = inUseColorOnMachine(set, m);
+        if (!colorKey) return;
+        if (!machines.includes(m)) machines.push(m);
+        if (!cells[m]) cells[m] = {};
+        if (!cells[m][cat]) cells[m][cat] = {};
+        cells[m][cat][iso] = { set, colorKey, sizeLabel: rollSetSizeGroupLabel(set),
+          inferred: true, sure: true, note: 'อ้างจากชุดที่ตั้งว่ากำลังใช้งานที่เครื่องนี้ (บันทึกชุดสีของวันนั้นมีช่องเดียวต่อ Size Roll)',
+          kg: 0, col: idx + 1 };
       });
     });
   });
