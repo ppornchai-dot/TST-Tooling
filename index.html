@@ -12972,6 +12972,57 @@ function applyRunColor(date, setName, target) {
   renderProdWeight();
 }
 
+// แถวย่อย "ระบุชุดสีของแต่ละเครื่อง" — ขึ้นเฉพาะวันที่ขนาดนั้นเดินตั้งแต่ 2 เครื่องขึ้นไป
+// วันที่เดินเครื่องเดียวไม่ต้องขึ้น ใช้แถวหลักพอ จะได้ไม่รกโดยไม่จำเป็น
+function runColorMachineRowsHtml(date, setName, palette, runInfo, effective) {
+  const machines = (runInfo && runInfo.machines) ? runInfo.machines.slice().sort() : [];
+  if (machines.length < 2) return '';
+  const rows = machines.map(m => {
+    const cur = (rollRunColorMc[date] || {})[setName + '|' + m] || null;
+    const chips = palette.map(c => {
+      const on = cur ? cur === c.key : effective === c.key;
+      return `<button onclick="${jsCallAttr('setRunColorForMachine', date, setName, m, c.key)}"
+        title="${escapeHtmlAttr(cur === c.key ? 'ระบุไว้ว่าเครื่อง ' + m + ' เดิน' + c.label + ' — กดซ้ำเพื่อยกเลิก'
+          : 'ระบุว่าเครื่อง ' + m + ' เดิน' + c.label)}"
+        style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;cursor:pointer;
+               font-size:10.5px;font-weight:${on ? 800 : 600};
+               border:${cur === c.key ? '2px solid var(--accent)' : (on ? '1px dashed var(--border)' : '1px solid var(--border)')};
+               background:${cur === c.key ? 'var(--accent-glow)' : 'transparent'};
+               color:${on ? 'var(--accent)' : 'var(--text-2)'};">
+        <span style="width:9px;height:9px;border-radius:50%;background:${c.dot};flex-shrink:0;
+                     box-shadow:inset 0 0 0 1px rgba(0,0,0,.32);"></span>${escapeHtmlAttr(c.label)}${cur === c.key ? ' ✓' : ''}</button>`;
+    }).join('');
+    return `<span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;">
+      <span style="font-size:10.5px;font-weight:800;color:#fff;background:var(--accent);
+                   padding:1px 7px;border-radius:5px;flex-shrink:0;">เครื่อง ${escapeHtmlAttr(m)}</span>${chips}</span>`;
+  }).join('');
+  return `<span style="flex-basis:100%;display:flex;flex-direction:column;gap:4px;margin-top:5px;
+      padding:6px 8px;border-radius:6px;background:var(--bg-panel);">
+    <span style="font-size:10.5px;font-weight:700;color:var(--text-2);">
+      ขนาดนี้เดิน ${machines.length} เครื่องในวันนี้ — ระบุชุดสีของแต่ละเครื่องแยกกันได้
+      <span style="font-weight:400;color:var(--text-3);">น้ำหนักของเครื่องไหนจะลงชุดสีที่ระบุไว้ของเครื่องนั้น</span></span>
+    ${rows}</span>`;
+}
+
+// ระบุชุดสีที่เดิน "แยกรายเครื่อง" — ใช้เมื่อขนาดเดียวกันเดินมากกว่า 1 เครื่องคนละชุดสี
+// ค่าที่ระบุรายเครื่องชนะบันทึกหลักเสมอตอนคิดน้ำหนัก (ดู runColorOnMachine)
+function applyRunColorMc(date, setName, machine, target) {
+  const k = setName + '|' + machine;
+  if (!rollRunColorMc[date]) rollRunColorMc[date] = {};
+  if (target) rollRunColorMc[date][k] = target;
+  else delete rollRunColorMc[date][k];
+  if (!Object.keys(rollRunColorMc[date]).length) delete rollRunColorMc[date];
+  persistState();
+  renderRunColorPicker();
+  renderProdWeightRunBanner();
+  renderProdWeight();
+}
+function setRunColorForMachine(date, setName, machine, colorKey) {
+  const cur = (rollRunColorMc[date] || {})[setName + '|' + machine];
+  const target = cur === colorKey ? null : colorKey;   // กดสีเดิมซ้ำ = ยกเลิกการระบุของเครื่องนั้น
+  withCloudRetry(() => applyRunColorMc(date, setName, machine, target));
+}
+
 function setRunColor(date, setName, colorKey) {
   // กดสีเดิมซ้ำ = ยกเลิก (วันนั้นไม่ได้ระบุว่าเดินสีไหน) — ตัดสินใจครั้งเดียวตรงนี้
   // แล้วส่งเป็น "ค่าที่ต้องการ" ให้ตัวทำซ้ำ ไม่งั้นถ้าเขียนไม่ผ่านแล้วทำซ้ำ จะกลายเป็นสลับค่ากลับ
@@ -13384,6 +13435,7 @@ function renderRunColorPicker() {
                   ถ้าวันนี้เดินชุดเดิม กดปุ่มนั้นเพื่อยืนยัน</span>`
                 : (!explicit && inuse ? '<span style="flex-basis:100%;font-size:11px;color:var(--text-3);">ยังไม่มีประวัติของชุดนี้ — ค่าอ้างอิงมาจากสถานะ กำลังใช้งาน ในทะเบียน</span>' : '')}
               ${!effective ? '<span style="font-size:10px;color:var(--red);">ยังไม่มีชุดที่กำลังใช้งาน</span>' : ''}
+              ${runColorMachineRowsHtml(d, setName, palette, runInfo, effective)}
             </span>
           </div>`;
         }).join('');
