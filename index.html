@@ -13435,7 +13435,10 @@ async function loadFgRunningOn(dateIso, maxAgeMs) {
     const res = await fetch(FG_API_URL + '?from=' + dateIso + '&to=' + dateIso);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
-    const kgByKey = {}, machinesByKey = {}, latestByMachine = {};
+    // kgByKeyMc = น้ำหนักแยกตามเครื่อง (ขนาด → เครื่อง → กก.)
+    // จำเป็นเมื่อเครื่องสองเครื่องเดินขนาดเดียวกันคนละชุดสี — น้ำหนักต้องแยกลงคนละชุด
+    // ข้อมูลดิบมี machine_id รายแถวอยู่แล้ว เดิมแค่รวมทิ้งไปตอนบวกเข้า kgByKey
+    const kgByKey = {}, kgByKeyMc = {}, machinesByKey = {}, latestByMachine = {};
     // ขอวันเดียวเป็นกรณีที่ API ไม่เติม production_date ให้บ่อยที่สุด — เติมก่อนคิด
     const dayRows = json.rows || [];
     await fgBackfillMissingDates(dayRows);
@@ -13447,7 +13450,12 @@ async function loadFgRunningOn(dateIso, maxAgeMs) {
       if (fgRowIsScrap(r)) return;
       const key = fgProductCodeToKey(r.product_code);
       if (!key) return;
-      kgByKey[key] = (kgByKey[key] || 0) + (parseFloat(r.weight_kg) || 0);
+      const w = parseFloat(r.weight_kg) || 0;
+      kgByKey[key] = (kgByKey[key] || 0) + w;
+      if (r.machine_id) {
+        if (!kgByKeyMc[key]) kgByKeyMc[key] = {};
+        kgByKeyMc[key][r.machine_id] = (kgByKeyMc[key][r.machine_id] || 0) + w;
+      }
       if (!machinesByKey[key]) machinesByKey[key] = [];
       if (r.machine_id && !machinesByKey[key].includes(r.machine_id)) machinesByKey[key].push(r.machine_id);
       // ขนาดที่ "เดินล่าสุด" ของแต่ละเครื่อง — เครื่องหนึ่งเปลี่ยน Size กลางวันได้ ต้องรู้ว่าตอนนี้เดินอะไรอยู่
@@ -13459,9 +13467,9 @@ async function loadFgRunningOn(dateIso, maxAgeMs) {
       }
     });
     Object.values(machinesByKey).forEach(list => list.sort());
-    fgRunningCache[dateIso] = { kgByKey, machinesByKey, latestByMachine, at: Date.now() };
+    fgRunningCache[dateIso] = { kgByKey, kgByKeyMc, machinesByKey, latestByMachine, at: Date.now() };
   } catch (e) {
-    fgRunningCache[dateIso] = { kgByKey: {}, machinesByKey: {}, latestByMachine: {}, error: e.message, at: Date.now() };
+    fgRunningCache[dateIso] = { kgByKey: {}, kgByKeyMc: {}, machinesByKey: {}, latestByMachine: {}, error: e.message, at: Date.now() };
   }
   return fgRunningCache[dateIso];
 }
