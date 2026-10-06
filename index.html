@@ -13690,14 +13690,19 @@ function renderProdWeightRunBanner() {
   const complete = !missing.length;
   const accent = complete ? 'var(--green)' : 'var(--amber)';
   const bg = complete ? 'var(--green-dim)' : 'var(--amber-dim)';
-  const machineOf = s => (running.get(s).machines || []).join('/');
-  // เรียงตามเครื่อง (P1 → P4) ก่อน แล้วจึงตามชื่อขนาด — ไล่ดูทีละเครื่องได้ตรงกับหน้างาน
-  // ขนาดที่ยังไม่รู้ว่าอยู่เครื่องไหน ไปอยู่ท้ายสุด
-  const machineOfSize = label => [...new Set(sets.filter(s => rollSetSizeGroupLabel(s) === label)
-    .map(machineOf).filter(Boolean))].sort().join('/');
+  // ลำดับเครื่องตามทะเบียน (P1 → P4) เครื่องที่ไม่รู้จัก/ไม่ทราบ ไว้ท้ายสุด
+  const mcRank = m => { const i = ROLL_MACHINES.indexOf(m); return i >= 0 ? i : 999; };
+  // เครื่องที่ขนาดนี้เดินอยู่ — คืนเป็น "รายตัว" ไม่ใช่สตริงรวม
+  // เดิมรวมเป็นสตริง (P3/P2) แล้วเอาไปจัดกลุ่ม ขนาดที่เดินสองเครื่องจึงได้บรรทัดชื่อแปลกๆ
+  // อย่าง "P3/P3/P2" แทนที่จะแยกไปอยู่บรรทัดของ P2 และ P3 ตามลำดับ
+  const machinesOfSize = label => [...new Set(sets
+    .filter(s => rollSetSizeGroupLabel(s) === label)
+    .flatMap(s => ((running.get(s) || {}).machines || [])))]
+    .sort((a, b) => mcRank(a) - mcRank(b));
+  const firstMcRank = label => Math.min(...machinesOfSize(label).map(mcRank), 999);
   const sizes = [...new Set(sets.map(s => rollSetSizeGroupLabel(s)))].sort((a, b) => {
-    const ma = machineOfSize(a) || 'zzz', mb = machineOfSize(b) || 'zzz';
-    return ma !== mb ? ma.localeCompare(mb, 'th') : a.localeCompare(b, 'th');
+    const ra = firstMcRank(a), rb = firstMcRank(b);
+    return ra !== rb ? ra - rb : a.localeCompare(b, 'th');
   });
   // ป้ายของหนึ่งขนาด — ชื่อขนาด + ชุดสีของแต่ละหมวด (F/S/T) + สถานะการระบุ
   // บอกหมวดกำกับทุกสีเสมอ (ไม่ใช่เฉพาะตอนสีต่างกัน) จะได้รู้ว่า F/S/T เดินสีอะไรบ้าง
@@ -13736,11 +13741,14 @@ function renderProdWeightRunBanner() {
   };
 
   // แสดงเครื่องละบรรทัด — เครื่องหนึ่งเดินได้หลายขนาด ป้ายขนาดจึงเรียงอยู่ในบรรทัดของเครื่องนั้น
+  // ขนาดที่เดินสองเครื่องขึ้นทั้งสองบรรทัด (เป็นเรื่องจริงของหน้างาน ไม่ใช่บรรทัดรวม "P3/P2")
   const byMachine = new Map();
   sizes.forEach(label => {
-    const key = machineOfSize(label) || '—';
-    if (!byMachine.has(key)) byMachine.set(key, []);
-    byMachine.get(key).push(label);
+    const ms = machinesOfSize(label);
+    (ms.length ? ms : ['—']).forEach(m => {
+      if (!byMachine.has(m)) byMachine.set(m, []);
+      byMachine.get(m).push(label);
+    });
   });
   // หมวดที่มาก่อนสุดของขนาดนั้น (F=0 · S=1 · T=2) — ใช้เรียงป้ายในบรรทัดของเครื่อง
   // เครื่องหนึ่งอาจเดิน F ของขนาดหนึ่ง และ S/T ของอีกขนาด ต้องอ่านได้เป็น F → S → T
@@ -13752,7 +13760,9 @@ function renderProdWeightRunBanner() {
     const ra = sizeCatRank(a), rb = sizeCatRank(b);
     return ra !== rb ? ra - rb : a.localeCompare(b, 'th');
   }));
-  const sizeChips = [...byMachine.entries()].map(([mc, labels]) => `
+  const sizeChips = [...byMachine.entries()]
+    .sort((a, b) => mcRank(a[0]) - mcRank(b[0]))
+    .map(([mc, labels]) => `
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:3px 0;">
       <span style="flex:0 0 auto;min-width:74px;font-size:12px;font-weight:800;padding:2px 9px;border-radius:6px;
                    background:var(--accent);color:#fff;text-align:center;">${mc === '—' ? 'ไม่ทราบเครื่อง' : 'เครื่อง ' + escapeHtmlAttr(mc)}</span>
