@@ -13707,7 +13707,10 @@ function renderProdWeightRunBanner() {
   // ป้ายของหนึ่งขนาด — ชื่อขนาด + ชุดสีของแต่ละหมวด (F/S/T) + สถานะการระบุ
   // บอกหมวดกำกับทุกสีเสมอ (ไม่ใช่เฉพาะตอนสีต่างกัน) จะได้รู้ว่า F/S/T เดินสีอะไรบ้าง
   const sizeChipHtml = (label, mc) => {
-    const inSize = sets.filter(s => rollSetSizeGroupLabel(s) === label);
+    // เอาเฉพาะหมวดที่ "เดินอยู่ที่เครื่องนี้จริง" — ขนาดเดียวกันอาจแยกกันคนละเครื่อง
+    // (เช่น Forming อยู่ P2 ส่วน Sizing/TH อยู่ P3) ถ้าไม่กรอง จะขึ้น F S T ครบทุกบรรทัด
+    const inSize = sets.filter(s => rollSetSizeGroupLabel(s) === label
+      && (!mc || mc === '—' || ((running.get(s) || {}).machines || []).includes(mc)));
     const left = inSize.filter(s => !explicitRunColorFor(today, s)).length;
     // สีของแต่ละหมวด "บนเครื่องนี้" — ยึดชุดสีที่ตั้งว่ากำลังใช้งานที่เครื่องนี้ก่อน
     // บันทึกชุดสีที่เดินมีช่องเดียวต่อ 1 Size Roll ต่อวัน (ผูกกับ วัน+Size Roll ไม่ได้ผูกเครื่อง)
