@@ -4297,13 +4297,15 @@ function setInUseRollForMachine(machine, setName, colorKey, forceSet, silent) {
     cloudReapply = () => setInUseRollForMachine(machine, setName, colorKey, !already, true);
     cloudReapplyTries = 0;
   }
-  // Size Roll หนึ่งใช้ได้ทีละสีเท่านั้น (ของจริงใส่เข้าเครื่องได้ชุดเดียว) ล้างสีอื่นของชุดนี้ก่อน
-  Object.keys(rollColorStatus).forEach(k => {
-    if (k.startsWith(setName + '|') && rollColorStatus[k] === 'inuse') {
-      delete rollColorStatus[k];
-      delete rollColorActiveMachine[k];
-    }
-  });
+  // กดสีเดิมซ้ำ = ปลดเฉพาะสีนั้นออก ไม่ไปแตะสีอื่นของ Size Roll เดียวกันที่อยู่เครื่องอื่น
+  // เดิมล้างทุกสีของ Size Roll นั้นทิ้งหมดไม่ว่าอยู่เครื่องไหน Size Roll หนึ่งจึงตั้งได้ทีละเครื่อง
+  // ของจริงมีหลายเครื่อง และชุดสีคนละชุดก็คือ Roll คนละชุด ใส่พร้อมกันคนละเครื่องได้
+  // ส่วนการชนกัน "ในเครื่องเดียวกัน" ให้ clearInUseMachineConflicts จัดการ (รวมถึง Size Roll เดียวกัน)
+  if (already) {
+    const k0 = setName + '|' + colorKey;
+    delete rollColorStatus[k0];
+    delete rollColorActiveMachine[k0];
+  }
   inUsePickerNotice = '';
   let cleared = [];
   if (!already) {
@@ -4350,7 +4352,9 @@ function clearInUseMachineConflicts(setName, colorKey) {
     const sep = k.lastIndexOf('|');
     if (sep < 0) return;
     const s = k.slice(0, sep), c = k.slice(sep + 1);
-    if (s === setName) return; // ชุดเดียวกัน มีกฎ "สีเดียวต่อ Size Roll" คุมอยู่แล้ว
+    if (s === setName && c === colorKey) return; // ตัวที่เพิ่งตั้งเอง
+    // Size Roll เดียวกันคนละชุดสี ชนกันเฉพาะตอนอยู่เครื่องเดียวกัน (เครื่องหนึ่งใส่ได้ชุดเดียว)
+    // คนละเครื่องไม่ชน — ตัวกรองเครื่องด้านล่างคุมให้แล้ว
     if (parseSizeRollName(s).category !== cat) return;
     if (!inUseMachineScope(s, c).some(m => mine.has(m))) return;
     delete rollColorStatus[k];
