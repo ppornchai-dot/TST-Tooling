@@ -2784,6 +2784,7 @@ async function inUseCalPrefetchMachines(isoList) {
   } catch (e) { /* loadFgRunningOn เก็บ error ลงแคชเองแล้ว ที่นี่แค่ไม่ให้ค้างสถานะกำลังดึง */ }
   inUseCalFetching = false;
   autoRecordCarriedRunColors(isoList);   // ยอดผลิตมาครบแล้ว จึงรู้ว่าวันไหนเดินชุดไหนจริง
+  autoRecordMachineRunColors(isoList);   // ขนาดที่เดินหลายเครื่อง บันทึกชุดสีแยกรายเครื่องด้วย
   renderInUseCalendar();
 }
 
@@ -4066,6 +4067,7 @@ async function refreshSizeChangeWatch(force) {
   await loadFgRunningOn(today);
   // วันนี้เดินชุดเดิมอยู่และไม่มีการเปลี่ยน Roll → ระบุชุดสีให้เลย ไม่ต้องรอให้เปิดหน้าปฏิทิน
   autoRecordCarriedRunColors([today]);
+  autoRecordMachineRunColors([today]);
   syncRollSizeChangeQueue(today);
   renderDashboardSizeChangeAlert();
   // แถบบนหน้าน้ำหนักผลิตอ่านจากแคชก้อนเดียวกัน — ดึงใหม่แล้วต้องวาดใหม่ ไม่งั้นค้างของเก่า
@@ -12184,6 +12186,11 @@ let cloudSyncReady = false;
 // ถ้าประกาศไว้ท้ายไฟล์ let จะยังอยู่ใน TDZ แล้ว buildStateSnapshot() จะโยน ReferenceError
 // ทำให้สคริปต์ตายกลางทาง โหลด state ไม่เสร็จ และ initCloudSync() ไม่ได้รันเลย
 let rollRunColor = {};
+// ชุดสีที่เดินของวันนั้น แยกตามเครื่อง (วัน → "ชื่อชุด|เครื่อง" → สี)
+// จำเป็นเมื่อเครื่องสองเครื่องเดิน Size Roll เดียวกันคนละชุดสี — rollRunColor มีช่องเดียวต่อชุดต่อวัน
+// ไม่มีค่าที่นี่ = ใช้ rollRunColor ตามเดิม ข้อมูลเก่าจึงอ่านได้เหมือนเดิมทุกอย่าง
+// ประกาศตรงนี้ด้วยเหตุผลเดียวกับ rollRunColor (TDZ ตอน buildStateSnapshot ระหว่างบูต)
+let rollRunColorMc = {};
 
 // เครื่องที่หัวหน้างาน "ยืนยันเอง" ว่าวันนั้นเดินชุดนี้อยู่ที่เครื่องไหน
 // { 'YYYY-MM-DD': { 'ชื่อชุด Roll': 'P1' หรือ 'P1/P4' } }
@@ -12215,7 +12222,7 @@ function buildStateSnapshot() {
     dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
     dailyPieceStatus, rollSizeLog, rollSizeLogSeq, dailyPauseLog, dailyPauseLogSeq,
     prodBlockProducts, prodBlockSeq, prodBlockCells, prodBlockPM, prodBlockSummary,
-    prodBlockEntries, prodBlockEntrySeq, prodBlockActiveMachine, prodBlockViewMonth, rollRunColor, rollRunMachine, rollSizeChangeQueue,
+    prodBlockEntries, prodBlockEntrySeq, prodBlockActiveMachine, prodBlockViewMonth, rollRunColor, rollRunColorMc, rollRunMachine, rollSizeChangeQueue,
     rollDressReset, rollDressResetLog, rollCarryTon
   };
 }
@@ -12495,6 +12502,7 @@ function applyState(saved) {
   if (saved.rollSetCategoryTemplates) rollSetCategoryTemplates = saved.rollSetCategoryTemplates;
   if (saved.rollLifeSpec) rollLifeSpec = saved.rollLifeSpec;
   if (saved.rollRunColor) rollRunColor = saved.rollRunColor;
+  if (saved.rollRunColorMc) rollRunColorMc = saved.rollRunColorMc;
   if (saved.rollRunMachine) rollRunMachine = saved.rollRunMachine;
   if (Array.isArray(saved.rollSizeChangeQueue)) rollSizeChangeQueue = saved.rollSizeChangeQueue;
   if (saved.rollDressReset) rollDressReset = saved.rollDressReset;
@@ -12889,6 +12897,47 @@ function inUseColorFor(setName) {
 }
 function runColorFor(date, setName) {
   return explicitRunColorFor(date, setName) || inUseColorFor(setName);
+}
+
+// ชุดสีที่ "เครื่องนั้น" เดินในวันนั้น — มีบันทึกแยกเครื่องก็ใช้ตัวนั้น ไม่มีก็ใช้ของทั้งชุดตามเดิม
+// ใช้เป็นตัวตัดสินว่าน้ำหนักที่ผลิตจากเครื่องไหน ควรไปลงชุดสีไหน
+function runColorOnMachine(date, setName, machine) {
+  if (machine) {
+    const v = (rollRunColorMc[date] || {})[setName + '|' + machine];
+    if (v) return v;
+  }
+  return runColorFor(date, setName);
+}
+
+// บันทึกชุดสีที่เดินแยกรายเครื่องให้อัตโนมัติ — ใช้ตอนที่ Size Roll เดียวกันเดินมากกว่า 1 เครื่อง
+// ยึดหลักฐาน 2 ชั้น: ยอดผลิตบอกว่าเครื่องนั้นผลิตขนาดนี้จริง + ทะเบียนบอกว่าเครื่องนั้นใส่ชุดสีไหน
+// เงื่อนไขเดียวกับ autoRecordCarriedRunColors: ไม่เขียนทับค่าที่มีอยู่ ไม่เขียนล่วงหน้า
+// และวันที่มีเครื่องเดียวไม่ต้องเขียน (rollRunColor เดิมพอแล้ว) จะได้ไม่ทำข้อมูลบวมเปล่า ๆ
+function autoRecordMachineRunColors(isoList) {
+  if (!canEditPlan()) return 0;
+  const today = toISODate(new Date());
+  let changed = 0;
+  [...new Set(isoList || [])].sort().forEach(iso => {
+    if (!iso || iso > today) return;
+    const cached = fgRunningCache[iso];
+    if (!cached || !cached.kgByKeyMc) return;
+    getRollSets().forEach(set => {
+      const byMc = cached.kgByKeyMc[rollSetFgKey(set)];
+      if (!byMc) return;
+      const machines = Object.keys(byMc).filter(m => byMc[m] > 0);
+      if (machines.length < 2) return;        // เครื่องเดียว ใช้บันทึกเดิมพอ
+      machines.forEach(m => {
+        const k = set + '|' + m;
+        if ((rollRunColorMc[iso] || {})[k]) return;
+        const color = inUseColorOnMachine(set, m);
+        if (!color) return;
+        (rollRunColorMc[iso] = rollRunColorMc[iso] || {})[k] = color;
+        changed++;
+      });
+    });
+  });
+  if (changed) persistState();
+  return changed;
 }
 
 // ชุดสีที่ใช้เดินของวันนั้น สำหรับ "ตารางน้ำหนักผลิต" — ต้องหาให้ได้สักทาง
@@ -14508,11 +14557,42 @@ function producedTonForRollSet(setName, colorKey, byKeyDate, dates, sinceIso) {
   let kg = 0;
   dates.forEach(d => {
     if (sinceIso && d < sinceIso) return;
+    // มีน้ำหนักแยกตามเครื่องของวันนั้น → ลงชุดสีของ "เครื่องที่ผลิตก้อนนั้นจริง"
+    // จำเป็นเมื่อสองเครื่องเดินขนาดเดียวกันคนละชุดสี ไม่งั้นน้ำหนักทั้งวันจะไปกองที่สีเดียว
+    const perMc = (fgRunningCache[d] || {}).kgByKeyMc;
+    const byMcOwn = perMc && perMc[rollSetFgKey(setName)];
+    if (byMcOwn && machineKgCoversTotal(byMcOwn, own[d])) {
+      kg += kgOfColorByMachine(d, setName, colorKey, byMcOwn);
+      srcs.forEach(k => {
+        const b = perMc[k];
+        if (b && machineKgCoversTotal(b, (byKeyDate[k] || {})[d])) kg += kgOfColorByMachine(d, setName, colorKey, b);
+        else if (runColorFor(d, setName) === colorKey) kg += (byKeyDate[k] || {})[d] || 0;
+      });
+      return;
+    }
+    // ไม่มีข้อมูลแยกเครื่องของวันนั้น (ยังไม่ได้ดึง/วันเก่า) — คิดทั้งก้อนตามเกณฑ์เดิม
     if (runColorFor(d, setName) !== colorKey) return;
     kg += own[d] || 0;
     srcs.forEach(k => { kg += (byKeyDate[k] || {})[d] || 0; });
   });
   return Math.round(kg / 1000 * 100) / 100;
+}
+
+// น้ำหนักแยกเครื่องครอบยอดรวมของวันนั้นครบไหม — แถวที่ไม่ได้ระบุเครื่องจะทำให้ขาด
+// ขาดเมื่อไหร่ให้ถอยไปคิดทั้งก้อนแบบเดิม ดีกว่านับน้ำหนักหายไปเงียบ ๆ
+function machineKgCoversTotal(byMc, total) {
+  const t = parseFloat(total) || 0;
+  if (!(t > 0)) return false;
+  const sum = Object.keys(byMc).reduce((n, m) => n + (byMc[m] || 0), 0);
+  return Math.abs(sum - t) <= Math.max(1, t * 0.001);   // คลาดได้ 0.1% หรือ 1 กก.
+}
+
+function kgOfColorByMachine(date, setName, colorKey, byMc) {
+  let kg = 0;
+  Object.keys(byMc).forEach(m => {
+    if (runColorOnMachine(date, setName, m) === colorKey) kg += byMc[m] || 0;
+  });
+  return kg;
 }
 
 // ─── รีน้ำหนักผลิตหลังแต่ง Roll เสร็จ ───────────────────────────────────────
