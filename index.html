@@ -12922,8 +12922,14 @@ function autoRecordMachineRunColors(isoList) {
     const cached = fgRunningCache[iso];
     if (!cached || !cached.kgByKeyMc) return;
     getRollSets().forEach(set => {
-      const byMc = cached.kgByKeyMc[rollSetFgKey(set)];
-      if (!byMc) return;
+      // รวมเครื่องจากขนาดของตัวเอง + ขนาดที่ "ยืม Forming ชุดนี้ไปเดิน" ด้วย
+      // ไม่งั้นกรณีที่ P3 เดินขนาดตัวเอง ส่วน P2 ยืม Forming ชุดเดียวกันไปเดินอีกขนาด
+      // จะนับได้เครื่องเดียวแล้วไม่บันทึกแยก ทั้งที่สองเครื่องใช้ Forming ชุดนี้คนละสีกันจริง
+      const keys = [rollSetFgKey(set), ...sharedFormingSources(set)];
+      const byMc = {};
+      keys.forEach(k => Object.entries(cached.kgByKeyMc[k] || {}).forEach(([m, v]) => {
+        byMc[m] = (byMc[m] || 0) + (v || 0);
+      }));
       const machines = Object.keys(byMc).filter(m => byMc[m] > 0);
       if (machines.length < 2) return;        // เครื่องเดียว ใช้บันทึกเดิมพอ
       machines.forEach(m => {
@@ -14225,9 +14231,26 @@ async function renderProdWeight(force) {
       return palette.map(c => {
         const cells = days.map(d => {
           const res = resolveRunColorForWeight(d, setName, usedKeys);
-          const mine = res.key === c.key;
-          const ownKg = mine ? (perDay[d] || 0) : 0;
-          const shareKg = mine ? sharedPerDay(d) : 0;
+          // มีน้ำหนักแยกตามเครื่องของวันนั้น → แบ่งลงชุดสีของเครื่องที่ผลิตก้อนนั้นจริง
+          // (สองเครื่องเดินขนาดเดียวกันคนละชุดสี ต้องไม่กองลงสีเดียวเหมือนเดิม)
+          const perMc = (fgRunningCache[d] || {}).kgByKeyMc;
+          const ownByMc = perMc && perMc[g.fgKey];
+          const splitByMc = ownByMc && machineKgCoversTotal(ownByMc, perDay[d]);
+          let mine, ownKg, shareKg;
+          if (splitByMc) {
+            ownKg = kgOfColorByMachine(d, setName, c.key, ownByMc);
+            shareKg = sharedSrc.reduce((s, k) => {
+              const b = perMc[k], tot = (fgWeightByKeyDate[k] || {})[d];
+              if (b && machineKgCoversTotal(b, tot)) return s + kgOfColorByMachine(d, setName, c.key, b);
+              return s + (res.key === c.key ? (tot || 0) : 0);
+            }, 0);
+            mine = (ownKg + shareKg) > 0;
+          } else {
+          const mine0 = res.key === c.key;
+          mine = mine0;
+          ownKg = mine0 ? (perDay[d] || 0) : 0;
+          shareKg = mine0 ? sharedPerDay(d) : 0;
+          }
           // ไม่ได้ระบุเจาะจงของวันนั้น = ค่าที่อนุมานให้ — ทำให้ดูต่างกันเล็กน้อยและมี * กำกับ
           return { d, kg: ownKg + shareKg, shareKg, dateGuessKg: mine ? guessPerDay(d) : 0,
                    inferred: mine && res.kind !== 'explicit', kind: res.kind, from: res.from };
