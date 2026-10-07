@@ -12977,8 +12977,15 @@ function applyRunColor(date, setName, target) {
 function runColorMachineRowsHtml(date, setName, palette, runInfo, effective) {
   const machines = (runInfo && runInfo.machines) ? runInfo.machines.slice().sort() : [];
   if (machines.length < 2) return '';
+  // น้ำหนักของแต่ละเครื่องในวันนั้น — บอกไว้ข้างชื่อเครื่อง จะได้เห็นเลยว่าแต่ละชุดสีจะได้เท่าไร
+  // รวมยอดของขนาดที่ยืม Forming ชุดนี้ไปเดินด้วย (เกณฑ์เดียวกับตอนคิดน้ำหนักจริง)
+  const perMc = (fgRunningCache[date] || {}).kgByKeyMc || {};
+  const keys = [rollSetFgKey(setName), ...sharedFormingSources(setName)];
+  const kgOf = m => keys.reduce((n, k) => n + ((perMc[k] || {})[m] || 0), 0);
+  const tonText = kg => kg > 0 ? (Math.round(kg / 10) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' ต.' : '';
   const rows = machines.map(m => {
     const cur = (rollRunColorMc[date] || {})[setName + '|' + m] || null;
+    const mcTon = tonText(kgOf(m));
     const chips = palette.map(c => {
       const on = cur ? cur === c.key : effective === c.key;
       return `<button onclick="${jsCallAttr('setRunColorForMachine', date, setName, m, c.key)}"
@@ -12994,7 +13001,9 @@ function runColorMachineRowsHtml(date, setName, palette, runInfo, effective) {
     }).join('');
     return `<span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;">
       <span style="font-size:10.5px;font-weight:800;color:#fff;background:var(--accent);
-                   padding:1px 7px;border-radius:5px;flex-shrink:0;">เครื่อง ${escapeHtmlAttr(m)}</span>${chips}</span>`;
+                   padding:1px 7px;border-radius:5px;flex-shrink:0;">เครื่อง ${escapeHtmlAttr(m)}</span>
+      ${mcTon ? `<span style="font-size:10.5px;font-weight:800;color:var(--text-2);flex-shrink:0;"
+         title="${escapeHtmlAttr('น้ำหนักที่เครื่อง ' + m + ' ผลิตขนาดนี้ในวันนั้น — จะลงชุดสีที่ระบุไว้ของเครื่องนี้')}">${escapeHtmlAttr(mcTon)}</span>` : ''}${chips}</span>`;
   }).join('');
   return `<span style="flex-basis:100%;display:flex;flex-direction:column;gap:4px;margin-top:5px;
       padding:6px 8px;border-radius:6px;background:var(--bg-panel);">
