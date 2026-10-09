@@ -3201,10 +3201,12 @@ function inUseCalRangeData(dayList) {
         const mc = mcList.length ? mcList.slice().sort().join('/') : 'ไม่ทราบเครื่อง';
         if (!machines.includes(mc)) machines.push(mc);
         const cat = x.cat || '—';
+        // ระบุไว้เจาะจงเครื่องนี้แล้วให้ยึดค่านั้น — ชนะบันทึกของทั้งวันที่แยกเครื่องไม่ได้
+        const pinned = mcList.length === 1 ? explicitRunColorOnMachine(iso, x.set, mcList[0]) : null;
         if (!cells[mc]) cells[mc] = {};
         if (!cells[mc][cat]) cells[mc][cat] = {};
-        cells[mc][cat][iso] = { set: x.set, colorKey: x.colorKey, sizeLabel,
-          inferred: !!x.inferred, sure: !!info.sure, note: info.note || '',
+        cells[mc][cat][iso] = { set: x.set, colorKey: pinned || x.colorKey, sizeLabel,
+          inferred: pinned ? false : !!x.inferred, sure: !!info.sure, note: info.note || '',
           kg: ((running.get(x.set) || {}).kg) || 0, col: idx + 1 };
       });
     });
@@ -3226,13 +3228,16 @@ function inUseCalRangeData(dayList) {
         if (!set) return;
         const hit = running.get(set);
         if (!hit || !(hit.machines || []).includes(m)) return; // ยอดผลิตไม่ได้ยืนยันว่าเครื่องนี้เดิน
-        const colorKey = inUseColorOnMachine(set, m);
+        // ที่ระบุไว้เจาะจงเครื่องนี้ของวันนั้นมาก่อน — ไม่ใช่ค่าอนุมาน ไม่ต้องติดดอกจัน
+        const pinned = explicitRunColorOnMachine(iso, set, m);
+        const colorKey = pinned || inUseColorOnMachine(set, m);
         if (!colorKey) return;
         if (!machines.includes(m)) machines.push(m);
         if (!cells[m]) cells[m] = {};
         if (!cells[m][cat]) cells[m][cat] = {};
         cells[m][cat][iso] = { set, colorKey, sizeLabel: rollSetSizeGroupLabel(set),
-          inferred: true, sure: true, note: 'อ้างจากชุดที่ตั้งว่ากำลังใช้งานที่เครื่องนี้ (บันทึกชุดสีของวันนั้นมีช่องเดียวต่อ Size Roll)',
+          inferred: !pinned, sure: true,
+          note: pinned ? '' : 'อ้างจากชุดที่ตั้งว่ากำลังใช้งานที่เครื่องนี้ (บันทึกชุดสีของวันนั้นมีช่องเดียวต่อ Size Roll)',
           kg: 0, col: idx + 1 };
       });
     });
@@ -12909,6 +12914,14 @@ function runColorOnMachine(date, setName, machine) {
   return runColorFor(date, setName);
 }
 
+// ค่าที่ "คนกดระบุไว้เองแยกรายเครื่อง" ของวันนั้น — null ถ้าไม่ได้ระบุ
+// แยกออกมาจาก runColorOnMachine เพราะหน้าแสดงผลต้องรู้ด้วยว่าค่าที่ได้มาจากการระบุจริง
+// หรือมาจากการอนุมาน (ทะเบียน/บันทึกของทั้งวัน) จะได้ไม่ขึ้นเครื่องหมาย "อนุมาน" ผิด
+function explicitRunColorOnMachine(date, setName, machine) {
+  if (!machine || machine === '—' || machine === 'ไม่ทราบเครื่อง') return null;
+  return (rollRunColorMc[date] || {})[setName + '|' + machine] || null;
+}
+
 // บันทึกชุดสีที่เดินแยกรายเครื่องให้อัตโนมัติ — ใช้ตอนที่ Size Roll เดียวกันเดินมากกว่า 1 เครื่อง
 // ยึดหลักฐาน 2 ชั้น: ยอดผลิตบอกว่าเครื่องนั้นผลิตขนาดนี้จริง + ทะเบียนบอกว่าเครื่องนั้นใส่ชุดสีไหน
 // เงื่อนไขเดียวกับ autoRecordCarriedRunColors: ไม่เขียนทับค่าที่มีอยู่ ไม่เขียนล่วงหน้า
@@ -13835,14 +13848,23 @@ function renderProdWeightRunBanner() {
     // (เช่น Forming อยู่ P2 ส่วน Sizing/TH อยู่ P3) ถ้าไม่กรอง จะขึ้น F S T ครบทุกบรรทัด
     const inSize = sets.filter(s => rollSetSizeGroupLabel(s) === label
       && (!mc || mc === '—' || ((running.get(s) || {}).machines || []).includes(mc)));
-    const left = inSize.filter(s => !explicitRunColorFor(today, s)).length;
-    // สีของแต่ละหมวด "บนเครื่องนี้" — ยึดชุดสีที่ตั้งว่ากำลังใช้งานที่เครื่องนี้ก่อน
-    // บันทึกชุดสีที่เดินมีช่องเดียวต่อ 1 Size Roll ต่อวัน (ผูกกับ วัน+Size Roll ไม่ได้ผูกเครื่อง)
-    // ถ้ายึดบันทึกอย่างเดียว เครื่องที่เดิน Size เดียวกันคนละชุดสีจะขึ้นสีเดียวกันหมด
-    const fromMachine = s => (mc && mc !== '—') ? inUseColorOnMachine(s, mc) : null;
+    // "รอระบุ" ของเครื่องนี้ — ระบุไว้เจาะจงเครื่องนี้แล้วก็ถือว่าระบุแล้ว ไม่ต้องรออีก
+    const left = inSize.filter(s => !explicitRunColorOnMachine(today, s, mc) && !explicitRunColorFor(today, s)).length;
+    // สีของแต่ละหมวด "บนเครื่องนี้" เรียงตามความน่าเชื่อถือ:
+    //   1) ที่ระบุไว้เจาะจงเครื่องนี้ของวันนี้ (คนกดเอง) — ชนะทุกอย่าง
+    //   2) ชุดสีที่ทะเบียนบอกว่ากำลังใช้งานอยู่ที่เครื่องนี้
+    //   3) บันทึกชุดสีของทั้งวัน ซึ่งมีช่องเดียวต่อ 1 Size Roll (ผูกกับ วัน+Size Roll ไม่ได้ผูกเครื่อง)
+    // เดิมเริ่มที่ข้อ 2 — พอสลับชุดสีที่เครื่องแล้วระบุไว้เอง แถบนี้ยังขึ้นสีเดิมตามทะเบียนอยู่
+    const pickColor = s => {
+      const own = explicitRunColorOnMachine(today, s, mc);
+      if (own) return { key: own, src: 'mc' };
+      const reg = (mc && mc !== '—') ? inUseColorOnMachine(s, mc) : null;
+      if (reg) return { key: reg, src: 'reg' };
+      return { key: explicitRunColorFor(today, s), src: 'day' };
+    };
     const picked = inSize.map(s => {
-      const own = fromMachine(s);
-      return { set: s, key: own || explicitRunColorFor(today, s), byMachine: !!own };
+      const r = pickColor(s);
+      return { set: s, key: r.key, byMachine: r.src === 'reg' };
     }).filter(x => x.key);
     const byColor = new Map();
     picked.forEach(x => {
