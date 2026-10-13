@@ -1386,7 +1386,7 @@ canvas{display:block;}
               <div class="table-wrap" style="overflow-x:auto;">
                 <table>
                   <thead><tr>
-                    <th>Size</th><th>ชื่อ Roll</th><th title="ขนาดตอนใส่ครั้งแรก — ไม่เปลี่ยนตามการแต่ง Roll">Ø มาตรฐาน</th><th title="ขนาดล่าสุดหลังแต่ง Roll — อัปเดตทุกครั้งที่จบงานแต่งพร้อมกรอกขนาด">Ø ปัจจุบัน</th><th>ความหนา</th><th>รอบการใช้งาน</th><th>แต่งครั้งที่</th><th>เวลาแต่ง Roll (นาที)</th><th>เวลาขัด Roll (นาที)</th><th>แต่งล่าสุด</th><th>สถานะ</th><th></th>
+                    <th>Size</th><th>ชื่อ Roll</th><th title="ขนาดตอนใส่ครั้งแรก — ไม่เปลี่ยนตามการแต่ง Roll">Ø มาตรฐาน</th><th title="ขนาดล่าสุดหลังแต่ง Roll — อัปเดตทุกครั้งที่จบงานแต่งพร้อมกรอกขนาด">Ø ปัจจุบัน</th><th title="ขนาดเล็กสุดที่ยังใช้ได้ — เล็กกว่านี้ถือว่าหมดอายุ ต้องเปลี่ยนลูกใหม่">Ø หมดอายุ</th><th>ความหนา</th><th>รอบการใช้งาน</th><th>แต่งครั้งที่</th><th>เวลาแต่ง Roll (นาที)</th><th>เวลาขัด Roll (นาที)</th><th>แต่งล่าสุด</th><th>สถานะ</th><th></th>
                   </tr></thead>
                   <tbody id="tbody-roll"></tbody>
                 </table>
@@ -5766,9 +5766,10 @@ const MODAL_FORMS = {
         <div class="form-group"><label class="form-label">Size</label><input class="form-input" id="f-id" placeholder="เช่น RL-0031"></div>
         <div class="form-group"><label class="form-label">ชื่อ Roll</label><input class="form-input" id="f-name" placeholder="เช่น Work Roll #3 (Top)"></div>
       </div>
-      <div class="modal-row">
+      <div class="modal-row four">
         <div class="form-group"><label class="form-label">Ø มาตรฐาน <span style="text-transform:none;">(mm. — ตอนใส่ครั้งแรก)</span></label><input class="form-input" id="f-diameter-std" placeholder="เช่น 320"></div>
         <div class="form-group"><label class="form-label">Ø ปัจจุบัน <span style="text-transform:none;">(mm. — หลังแต่งล่าสุด)</span></label><input class="form-input" id="f-diameter" placeholder="เช่น 320"></div>
+        <div class="form-group"><label class="form-label">Ø หมดอายุ <span style="text-transform:none;">(mm. — เล็กกว่านี้เลิกใช้)</span></label><input class="form-input" id="f-diameter-min" placeholder="เช่น 280"></div>
         <div class="form-group"><label class="form-label">ความหนา <span style="text-transform:none;">(mm.)</span></label><input class="form-input" id="f-width" placeholder="เช่น 10"></div>
       </div>
       <div class="modal-row">
@@ -6045,6 +6046,8 @@ function saveModal() {
     const newRoll = {
       id: g('f-id')||'RL-NEW', name: g('f-name')||'(ไม่มีชื่อ)',
       material: '—', diameter: g('f-diameter-std') !== '—' ? g('f-diameter-std') : g('f-diameter'),
+      // Ø หมดอายุ เว้นว่างได้ = ยังไม่กำหนดรายลูก ตารางจะยืมเกณฑ์ของทั้งชุดมาแสดงแทน
+      diameterMin: ((document.getElementById('f-diameter-min') || {}).value || '').trim() || null,
       width: g('f-width'), position: '—',
       usage: g('f-usage'), regrind: g('f-regrind'),
       grindTime: g('f-grindtime')||'—', polishTime: g('f-polishtime')||'—', lastService: g('f-service'), status: g('f-status'),
@@ -15819,6 +15822,7 @@ function renderRollTable(page) {
       <td><strong>${colorDot}${r.name}</strong></td>
       <td class="muted">${rollStdDiameter(r)}</td>
       <td>${rollCurrentOdHtml(r)}</td>
+      <td>${rollMinOdHtml(r)}</td>
       <td>${r.width}</td>
       <td class="muted">${r.usage}</td>
       <td class="muted">${r.regrind}</td>
@@ -15831,7 +15835,7 @@ function renderRollTable(page) {
         <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteRoll(${realIdx})">ลบ</button>
       </td>
     </tr>`;
-  }).join('') || `<tr><td colspan="11" class="empty" style="padding:32px;text-align:center;color:var(--text-3);">ไม่พบ Roll ตามเงื่อนไขที่เลือก</td></tr>`;
+  }).join('') || `<tr><td colspan="13" class="empty" style="padding:32px;text-align:center;color:var(--text-3);">ไม่พบ Roll ตามเงื่อนไขที่เลือก</td></tr>`;
 
   document.getElementById('tbody-roll').innerHTML = html;
   const tp = Math.max(1, Math.ceil(data.length/PAGE_SIZE));
@@ -15851,6 +15855,10 @@ function editRoll(idx) {
   document.getElementById('f-diameter').value = (!rollHasCurrentOd(r) || r.diameter === '—') ? '' : r.diameter;
   const stdEl = document.getElementById('f-diameter-std');
   if (stdEl) { const s = rollStdDiameter(r); stdEl.value = s === '—' ? '' : s; }
+  // Ø หมดอายุ: โชว์เฉพาะค่าที่กรอกให้ลูกนี้จริง ไม่เอาค่าของทั้งชุดมาใส่
+  // ไม่งั้นกดบันทึกเฉยๆ ค่าของทั้งชุดจะถูกยึดเป็นค่าประจำลูกนี้ไปเลย
+  const minEl = document.getElementById('f-diameter-min');
+  if (minEl) { const m = String(r.diameterMin || '').trim(); minEl.value = m === '—' ? '' : m; }
   document.getElementById('f-width').value = r.width === '—' ? '' : r.width;
   document.getElementById('f-usage').value = r.usage === '—' ? '' : r.usage;
   document.getElementById('f-regrind').value = r.regrind === '—' ? '' : r.regrind;
@@ -15874,6 +15882,7 @@ function editRoll(idx) {
       id: g('f-id'), name: g('f-name'), material: r.material,
       diameter: (hasCur ? rawCur : stdVal) || '—',
       ...(hasCur ? { diameterStd: stdVal || rawCur } : {}),
+      diameterMin: ((document.getElementById('f-diameter-min') || {}).value || '').trim() || null,
       width: g('f-width'), position: r.position,
       usage: g('f-usage'), regrind: g('f-regrind'),
       grindTime: g('f-grindtime'), polishTime: g('f-polishtime'), lastService: g('f-service'), status: g('f-status'),
@@ -17771,6 +17780,42 @@ function rollHasCurrentOd(roll) {
 function rollCurrentOdHtml(roll) {
   if (!rollHasCurrentOd(roll)) return '<span class="muted" title="ยังไม่ได้แต่ง Roll หรือยังไม่ได้กรอกขนาดหลังแต่ง">—</span>';
   return '<strong>' + escapeHtmlAttr(String(roll.diameter || '—')) + '</strong>' + rollWearHtml(roll);
+}
+
+// ─── Ø หมดอายุ (ขนาดเล็กสุดที่ยังใช้ได้) ─────────────────────────────────────
+// กรอกรายลูกได้ (roll.diameterMin) เพราะชุดหนึ่งมีหลายลูกและขนาดไม่เท่ากัน
+// (เช่น Ø300 กับ Ø175 อยู่ชุดเดียวกัน — ใช้ค่าเดียวร่วมกันไม่ได้)
+// ยังไม่กรอกรายลูก ให้ยืม "OD เล็กสุด" ของเกณฑ์อายุ Roll ของชุดนั้นมาแสดงไว้ก่อน
+// และทำเครื่องหมายว่าเป็นค่าของทั้งชุด ไม่ใช่ค่าที่กรอกให้ลูกนี้โดยเฉพาะ
+function rollMinDiameterInfo(roll) {
+  const own = String((roll || {}).diameterMin || '').trim();
+  if (own && own !== '—') return { text: own, num: rollLifeNum(own), fromSpec: false };
+  const spec = ((typeof rollLifeSpec !== 'undefined' ? rollLifeSpec : {})[(roll || {}).set] || {}).minOD;
+  const s = String(spec == null ? '' : spec).trim();
+  if (s) return { text: s, num: rollLifeNum(s), fromSpec: true };
+  return { text: '', num: null, fromSpec: false };
+}
+
+// ช่อง "Ø หมดอายุ" — ตัวเลข + บอกว่าเหลือให้แต่งอีกกี่ มม. ก่อนถึงขนาดที่ต้องเลิกใช้
+// ถึง/เลยขนาดหมดอายุแล้วขึ้นแดงพร้อมป้าย (เกณฑ์เดียวกับ OD หมดอายุ ของทะเบียน Roll SQ)
+function rollMinOdHtml(roll) {
+  const info = rollMinDiameterInfo(roll);
+  if (!info.text) {
+    return '<span class="muted" title="ยังไม่ได้กำหนดขนาดหมดอายุของลูกนี้ — กรอกได้ที่ปุ่มแก้ไข หรือกำหนดทั้งชุดที่หน้าอายุ Roll">—</span>';
+  }
+  const head = info.fromSpec
+    ? `<span class="muted" title="อ้างจาก OD เล็กสุด ของเกณฑ์อายุ Roll ชุดนี้ (ยังไม่ได้กรอกเฉพาะลูกนี้)">${escapeHtmlAttr(info.text)} <span style="font-size:10px;">ทั้งชุด</span></span>`
+    : `<strong>${escapeHtmlAttr(info.text)}</strong>`;
+  // เทียบกับ Ø ปัจจุบันเฉพาะลูกที่วัดมาแล้วจริง — ยังไม่วัดก็ไม่เดาว่าเหลือเท่าไร
+  const cur = rollHasCurrentOd(roll) ? rollLifeNum(roll.diameter) : null;
+  if (cur == null || info.num == null) return head;
+  const left = Math.round((cur - info.num) * 100) / 100;
+  if (left <= 0) {
+    return head + `<div style="font-size:10.5px;font-weight:800;color:var(--red);"
+      title="Ø ปัจจุบัน ${escapeHtmlAttr(String(roll.diameter))} มม. ถึงขนาดหมดอายุแล้ว — ควรเปลี่ยนลูกใหม่">หมดอายุแล้ว</div>`;
+  }
+  return head + `<div class="muted" style="font-size:10.5px;font-weight:700;"
+    title="จาก Ø ปัจจุบัน ${escapeHtmlAttr(String(roll.diameter))} มม. ยังแต่งลงได้อีก ${escapeHtmlAttr(String(left))} มม. ก่อนถึงขนาดหมดอายุ">เหลือ ${escapeHtmlAttr(String(left))} มม.</div>`;
 }
 
 // บอกว่าสึกไปกี่ มม. เทียบกับ Ø มาตรฐาน — โชว์เฉพาะตอนที่ต่างกันจริง
