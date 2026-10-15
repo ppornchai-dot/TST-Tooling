@@ -2246,7 +2246,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-15.7';
+const APP_BUILD = '2026-10-15.8';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -4824,7 +4824,7 @@ function getWorkingRollEntries(workType) {
   // งานแทรกเก่าที่ยังไม่ระบุประเภทถือเป็นงานแต่ง Roll (CNC) เกณฑ์เดียวกับตารางงานประจำวัน
   const inserts = [];
   (dailyChecklistTasks || []).forEach(t => {
-    const wt = t.workType === 'polish' ? 'polish' : 'cnc';
+    const wt = insertTaskWorkType(t);
     if (wt !== workType) return;
     const d = t.date || today;
     const st = (dailyStatusByDate[d] || {})[t.id];
@@ -8053,11 +8053,18 @@ function addPlanTaskOnDate(dateIso, workType, shiftKey) {
 // shiftKey ส่งมาเมื่อหมวดนั้นแยกกะ (CNC เช้า/ดึก) — ยึดกะจากเวลาที่เริ่มจริง ไม่รู้ก็ไปกะแรก
 // ใช้ owningShiftKeyForTime ที่นับช่วง OT เป็นของกะที่มันต่อท้าย — ไม่งั้นงานแทรกที่เริ่มตอน OT
 // (17:00–20:00) ไม่ตรงกับหมวดกะไหนเลย แล้วหายไปจากตารางทั้งสองกะ
+// ประเภทงานของงานแทรกหนึ่งรายการ — ของเก่าที่ไม่ระบุ (หรือระบุค่าที่ไม่รู้จัก) ถือเป็น CNC
+// ใช้ร่วมกันทุกที่ ไม่งั้นแต่ละหน้าจะเช็กกันเองแล้วหลุดประเภทใหม่ไปทีละจุด
+function insertTaskWorkType(t) {
+  const wt = (t || {}).workType;
+  return PLAN_DAY_SECTIONS.some(x => x.key === wt) ? wt : 'cnc';
+}
+
 function planInsertTasksFor(iso, sectionKey, shiftKey) {
   const shifts = planDayEndShiftsFor('cnc');
   return (dailyChecklistTasks || []).filter(t => {
     if (t.date && t.date !== iso) return false;
-    const wt = t.workType === 'polish' ? 'polish' : 'cnc';
+    const wt = insertTaskWorkType(t);
     if (wt !== sectionKey) return false;
     if (!shiftKey) return true;
     const at = ((dailyActualTimes[iso] || {})[t.id] || {}).startTime || t.time || null;
@@ -18552,7 +18559,7 @@ function renderDailyTasks() {
       who: t.who, workerId: null, editable: true, expandable: false,
       // งานแทรกแยกหัวข้อตามประเภทงานเหมือนงานตามแผน — ของเก่าที่ยังไม่ระบุประเภท
       // ถือเป็นงานแต่ง Roll (CNC) ตามที่เจอในทางปฏิบัติ แก้ประเภทได้จากปุ่มแก้ไข
-      section: t.workType === 'polish' ? 'checklist-polish' : 'checklist-cnc',
+      section: 'checklist-' + insertTaskWorkType(t),
     }));
   const forcedType = forcedWorkTypeForRole();
   // ใช้ "ส่วนของแต่ละวัน" ชุดเดียวกับหน้าวางแผน (planDayPartsByDate) ไม่ใช่กรองงานก้อนจริงด้วยวันเริ่ม
@@ -18690,10 +18697,10 @@ function renderDailyTasks() {
   // แยกปุ่มตามประเภทงาน จะได้ไม่ต้องเดาว่ากำลังเพิ่มงานแทรกของงานไหน
   const addChecklistRow = s => `<tr><td colspan="12" style="padding:10px 12px;border-bottom:2px solid ${s.color};">
       <button class="btn" onclick="${jsCallAttr('openDailyChecklistModal', 'add', '', s.addType)}"
-        title="${escapeHtmlAttr('เพิ่มงานแทรกของ' + (s.addType === 'polish' ? 'งานขัด Roll' : 'งานแต่ง Roll (CNC)') + ' ของวันที่กำลังดู')}"
+        title="${escapeHtmlAttr('เพิ่มงานแทรกของงาน' + planWorkTypeShortLabel(s.addType) + ' ของวันที่กำลังดู')}"
         style="font-size:15px;font-weight:800;padding:11px 22px;border-radius:10px;
                background:${s.color};color:#fff;border:1px solid ${s.color};box-shadow:0 1px 3px rgba(0,0,0,.18);">
-        + เพิ่มงานแทรก${escapeHtmlAttr(s.addType === 'polish' ? ' (ขัด Roll)' : ' (CNC)')}</button>
+        + เพิ่มงานแทรก ${escapeHtmlAttr('(' + planWorkTypeShortLabel(s.addType) + ')')}</button>
     </td></tr>`;
 
   // เรียงเป็นคู่: งานตามแผนของประเภทนั้น แล้วต่อด้วยงานแทรกของประเภทเดียวกันทันที
@@ -18706,7 +18713,9 @@ function renderDailyTasks() {
     // แต่ง Roll SQ — ช่าง/เครื่องคนละชุดกับงานแต่ง Roll (CNC) จึงเป็นหัวข้อของตัวเอง
     // ยังไม่มีหัวข้อ "งานแทรก" ของ SQ เพราะงานแทรกยังรองรับแค่ CNC/ขัด Roll
     { key: 'sq',        icon: '◆', label: 'แต่ง Roll SQ',     color: 'var(--amber)',  bg: 'var(--amber-dim)',   empty: 'ไม่มีงานแต่ง Roll SQ ในวันนี้', always: true },
+    { key: 'checklist-sq',     icon: '＋', label: 'งานแทรก — แต่ง Roll SQ',  color: 'var(--amber)', bg: 'var(--bg-panel)', empty: 'ยังไม่มีงานแทรกของงานแต่ง Roll SQ ในวันนี้', always: true, addType: 'sq' },
     { key: 'saw',       icon: '✧', label: 'ลับคมใบเลื่อย',     color: 'var(--green)',  bg: 'var(--green-dim)',   empty: 'ไม่มีงานลับคมใบเลื่อยในวันนี้', always: true },
+    { key: 'checklist-saw',    icon: '＋', label: 'งานแทรก — ลับคมใบเลื่อย', color: 'var(--green)', bg: 'var(--bg-panel)', empty: 'ยังไม่มีงานแทรกของงานลับคมใบเลื่อยในวันนี้', always: true, addType: 'saw' },
   ];
   // แท็บประเภทงาน — แสดงเฉพาะหัวข้อของประเภทที่เลือก พร้อมหัวข้องานแทรกของประเภทเดียวกัน
   const tabType = activeWorkTypeTab();
@@ -18797,14 +18806,14 @@ function collectHistoryRecords() {
       const st = dayMap[t.id];
       // งานที่พักอยู่ต้องขึ้นประวัติด้วย ไม่งั้นงานที่เริ่มแล้วพักไว้จะหายไปจากประวัติทั้งที่ทำไปแล้วบางส่วน
       if (st !== 'done' && st !== 'in_progress' && st !== 'paused') return;
-      const wt = t.workType === 'polish' ? 'polish' : 'cnc';
+      const wt = insertTaskWorkType(t);
       const actual = (dailyActualTimes[dateIso] || {})[t.id] || {};
       const startAt = actual.startTime || null;
       const endAt = actual.endTime || null;
       const sk = historyShiftKeyForTime(startAt, wt) || 'unknown';
       records.push({
         date: dateIso, wo: t.id, typeKey: wt,
-        typeLabel: (wt === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)') + ' · งานแทรก',
+        typeLabel: planWorkTypeShortLabel(wt) + ' · งานแทรก',
         tooling: 'งานแทรก' + (t.ref && t.ref !== '—' ? ' · ' + t.ref : ''),
         detail: t.task, who: t.who || '—',
         // งานแทรกไม่มีเวลาตามแผน จึงไม่มี Standard — เห็นเวลาที่ใช้จริงจากบรรทัด "ทำจริง"
@@ -18852,7 +18861,7 @@ function collectHistoryRecords() {
           || (t.shift === 'both' ? 'unknown' : (t.shift || 'unknown'));
         records.push({
           date: dateIso, wo: taskId, typeKey: t.workType,
-          typeLabel: t.workType === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)',
+          typeLabel: planWorkTypeShortLabel(t.workType),
           tooling: `${t.rollSet || '—'}${t.rollColor ? ' — ' + planRollColorLabel(t) : ''}`,
           detail: (roll ? roll.name : 'ชิ้นที่ ' + (idxNum + 1)) + (seq >= 0 && order.length ? ` (ชิ้นที่ ${seq + 1}/${order.length})` : ''),
           measuredSize: entry.measuredSize || null,
@@ -19445,8 +19454,7 @@ function dailyChecklistFormFields(mode) {
     <div class="modal-row full">
       <div class="form-group"><label class="form-label">ประเภทงาน</label>
         <select class="form-select" id="dcf-worktype">
-          <option value="cnc">แต่ง Roll (CNC)</option>
-          <option value="polish">ขัด Roll</option>
+          ${PLAN_DAY_SECTIONS.map(x => `<option value="${x.key}">${escapeHtmlAttr(planWorkTypeShortLabel(x.key))}</option>`).join('')}
         </select></div>
     </div>
     ${mode === 'edit' ? '' : `<div class="muted" style="font-size:12px;margin-top:-4px;">บันทึกเป็นงานของวันที่กำลังดูอยู่ · เวลาใช้ตอนกดบันทึก · ผู้รับผิดชอบ: <strong>${escapeHtmlAttr(effectiveUserName())}</strong></div>`}`;
@@ -19459,14 +19467,14 @@ function openDailyChecklistModal(mode, taskId, workType) {
   document.getElementById('modal-body').innerHTML = dailyChecklistFormFields(mode);
   document.getElementById('dcf-task').value = task ? task.task : '';
   const wtSel = document.getElementById('dcf-worktype');
-  if (wtSel) wtSel.value = (task ? task.workType : workType) === 'polish' ? 'polish' : 'cnc';
+  if (wtSel) wtSel.value = insertTaskWorkType({ workType: task ? task.workType : workType });
   document.getElementById('modal-overlay').classList.add('open');
 
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const taskName = document.getElementById('dcf-task').value.trim();
     if (!taskName) { alert('กรุณากรอกชื่องาน'); return; }
     // แก้ไข: เปลี่ยนแค่ชื่องาน ค่าอื่นที่บันทึกไว้เดิม (เวลา/ผู้รับผิดชอบ/ประเภท) คงไว้ ไม่ทับทิ้ง
-    const wt = ((document.getElementById('dcf-worktype') || {}).value === 'polish') ? 'polish' : 'cnc';
+    const wt = insertTaskWorkType({ workType: (document.getElementById('dcf-worktype') || {}).value });
     const data = mode === 'edit'
       ? { task: taskName, workType: wt }
       : { task: taskName, workType: wt, time: nowHHMM(), type: '—', who: effectiveUserName(), ref: '—', date: dailyViewDate };
