@@ -963,7 +963,7 @@ canvas{display:block;}
   <div class="nav">
     <div class="nav-section">
       <div class="nav-label">ภาพรวม</div>
-      <button class="nav-item active" data-roles="admin,lead,operator" onclick="showPage('dashboard')">
+      <button class="nav-item active" data-roles="admin,lead,operator,saw" onclick="showPage('dashboard')">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
         Dashboard
       </button>
@@ -974,7 +974,7 @@ canvas{display:block;}
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         ทะเบียน Tooling
       </button>
-      <button class="nav-item" data-roles="admin,lead,operator" onclick="showPage('standard')">
+      <button class="nav-item" data-roles="admin,lead,operator,saw" onclick="showPage('standard')">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="4" x2="8" y2="20"/></svg>
         Production Block
       </button>
@@ -2243,7 +2243,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-15.4';
+const APP_BUILD = '2026-10-15.5';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -17569,7 +17569,7 @@ function dailyRelativeDayLabel(iso) {
 
 function isDailyTechRole() {
   const r = effectiveRole();
-  return r === 'cnc' || r === 'polish' || r === 'sq' || r === 'operator';
+  return r === 'cnc' || r === 'polish' || r === 'sq' || r === 'saw' || r === 'operator';
 }
 
 // วันที่ที่หน้างานประจำวันควรเปิดมา / ปุ่ม "วันนี้" ควรพาไป
@@ -19452,7 +19452,7 @@ function teamOnTimeColor(pct) {
   return 'var(--red)';
 }
 
-const TEAM_ROLE_ORDER = ['admin', 'lead', 'cnc', 'polish', 'sq', 'operator'];
+const TEAM_ROLE_ORDER = ['admin', 'lead', 'cnc', 'polish', 'sq', 'saw', 'operator'];
 
 // ระดับที่ไม่ได้ลงมือแต่ง/ขัด Roll เอง — ตัวเลข งานเดือนนี้ / งานค้าง / On Time
 // ไม่มีความหมายกับคนกลุ่มนี้ จึงไม่ต้องขึ้นบนการ์ด (ขึ้นแต่ขีด — ดูแล้วเหมือนข้อมูลขาด)
@@ -19527,6 +19527,7 @@ function teamMemberFormFields() {
           <option value="cnc">ช่าง CNC</option>
           <option value="polish">ช่างขัด Roll</option>
           <option value="sq">ช่างแต่ง Roll SQ</option>
+          <option value="saw">ช่างลับคมใบเลื่อย</option>
           <option value="operator">ช่างเครื่อง</option>
         </select>
       </div>
@@ -20334,8 +20335,8 @@ function onProdBlockExcelSelected(event) {
 // ─── LOGIN / ROLE-BASED UI (UX only — ไม่ใช่ระบบความปลอดภัยจริง) ─────────────
 const AUTH_STORAGE_KEY = 'tstCurrentUser';
 
-const ROLE_LABELS = { admin: 'Admin', lead: 'หัวหน้า', cnc: 'ช่าง CNC', polish: 'ช่างขัด Roll', sq: 'ช่างแต่ง Roll SQ', operator: 'ช่างเครื่อง' };
-const ROLE_COLORS = { admin: 'var(--red)', lead: 'var(--accent)', cnc: 'var(--purple)', polish: 'var(--amber)', sq: 'var(--inuse)', operator: 'var(--green)' };
+const ROLE_LABELS = { admin: 'Admin', lead: 'หัวหน้า', cnc: 'ช่าง CNC', polish: 'ช่างขัด Roll', sq: 'ช่างแต่ง Roll SQ', saw: 'ช่างลับคมใบเลื่อย', operator: 'ช่างเครื่อง' };
+const ROLE_COLORS = { admin: 'var(--red)', lead: 'var(--accent)', cnc: 'var(--purple)', polish: 'var(--amber)', sq: 'var(--inuse)', saw: 'var(--st-waitpolish)', operator: 'var(--green)' };
 function roleLabel(role) { return ROLE_LABELS[role] || role; }
 function roleColor(role) { return ROLE_COLORS[role] || 'var(--accent)'; }
 
