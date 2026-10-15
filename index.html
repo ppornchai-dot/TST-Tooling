@@ -1709,6 +1709,8 @@ canvas{display:block;}
          PAGE: DAILY TASKS
     ══════════════════════════════════════════ -->
     <div class="page" id="page-daily">
+      <!-- แท็บประเภทงาน — ชุดเดียวกับหน้าวางแผน (ใช้ตัวเลือกร่วมกัน เปลี่ยนที่ไหนก็ตรงกันทั้งสองหน้า) -->
+      <div class="reg-tab-bar" id="daily-worktype-tabs" style="margin-bottom:14px;"></div>
       <!-- ช่างขัด Roll ไม่พอ ช่าง CNC ที่ว่างเข้ามาช่วยได้ — แต่บทบาทล็อกให้เห็นแต่งานประเภทตัวเอง
            ปุ่มนี้เปิดให้เห็นงานขัด Roll ด้วย แล้วเลื่อนไปที่หัวข้อนั้นให้เลย (ดู toggleHelpPolish)
            โผล่เฉพาะบทบาทช่าง CNC — บทบาทอื่นเห็นงานทั้งสองประเภทอยู่แล้ว -->
@@ -1795,6 +1797,9 @@ canvas{display:block;}
       <!-- เอาปุ่มกรองกะ (ทั้งหมด/กะเช้า/กะดึก/2 กะ) ออกแล้ว — ทุกมุมมองแสดงงานทุกกะเสมอ
            กะของแต่ละงานดูได้จากคอลัมน์ "กะ" ในมุมมองรายวัน และจากทูลทิปของป้ายงานในรายสัปดาห์/รายเดือน -->
       <div id="plan-sticky-head">
+      <!-- แยกประเภทงานเป็นปุ่มแท็บ (รูปแบบเดียวกับแท็บของหน้าทะเบียน) — ดูทีละประเภท
+           ก่อนหน้านี้ทั้งสามประเภทเรียงต่อกันลงมาในหน้าเดียว ยาวจนหางานของตัวเองยาก -->
+      <div class="reg-tab-bar" id="plan-worktype-tabs" style="margin-bottom:12px;"></div>
       <div class="mobile-wrap" id="plan-shift-row" style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
         <button class="btn btn-ghost btn-sm plan-edit-only" onclick="openCompanyHolidaysModal()">📅 เพิ่มวันหยุดในปฏิทิน</button>
         <button class="btn btn-ghost btn-sm plan-edit-only" style="color:var(--red);border-color:var(--red);" onclick="togglePlanDeleteMode()">🗑 ลบแผนงาน</button>
@@ -6639,6 +6644,7 @@ let planViewDate = parseISODate(toISODate(new Date()));
 function renderCurrentPlanView() {
   // แผนอาจเพิ่งถูกแก้ — ล้างแคชนาทีต่อชิ้นก่อนวาด ไม่งั้นสัดส่วนบนชิปค้างของเก่า
   if (typeof clearPlanGroupPieceMinutesCache === 'function') clearPlanGroupPieceMinutesCache();
+  renderWorkTypeTabs();
   if (currentPlanView === 'day') renderPlanDay();
   else if (currentPlanView === 'week') renderPlanWeek();
   else if (currentPlanView === 'month') renderPlanMonth();
@@ -7475,6 +7481,84 @@ const PLAN_DAY_SECTIONS = [
   { key: 'polish', icon: '✦', label: 'ขัด Roll',        color: 'var(--purple)', bg: 'var(--purple-dim)',  empty: 'ไม่มีงานขัด Roll ในวันนี้' },
   { key: 'sq',     icon: '◆', label: 'แต่ง Roll SQ',    color: 'var(--amber)',  bg: 'var(--amber-dim)',   empty: 'ไม่มีงานแต่ง Roll SQ ในวันนี้' },
 ];
+// ─── แท็บประเภทงาน (ใช้ร่วมกันทั้งหน้าวางแผนและหน้างานประจำวัน) ────────────────
+// ดูทีละประเภทเหมือนแท็บของหน้าทะเบียน — เลือกไว้ที่หน้าไหน อีกหน้าก็ตามด้วย
+// ช่างที่บทบาทล็อกประเภทงานไว้ (forcedWorkTypeForRole) ยึดของบทบาทเสมอ แถบปุ่มจึงไม่ต้องขึ้น
+let currentWorkTypeTab = 'cnc';
+function activeWorkTypeTab() {
+  const forced = forcedWorkTypeForRole();
+  if (forced) return forced;
+  return PLAN_DAY_SECTIONS.some(x => x.key === currentWorkTypeTab) ? currentWorkTypeTab : 'cnc';
+}
+function switchWorkTypeTab(key) {
+  if (!PLAN_DAY_SECTIONS.some(x => x.key === key)) return;
+  currentWorkTypeTab = key;
+  renderWorkTypeTabs();
+  if (currentPage === 'plan' && typeof renderCurrentPlanView === 'function') renderCurrentPlanView();
+  if (currentPage === 'daily' && typeof renderDailyTasks === 'function') renderDailyTasks();
+}
+
+// วันที่ที่หน้าวางแผนกำลังแสดงอยู่ — ใช้เป็นขอบเขตของตัวเลขบนปุ่ม
+// (สัปดาห์เริ่มวันอาทิตย์ ให้ตรงกับหัวตารางของปฏิทินรายสัปดาห์/รายเดือน)
+function planVisibleIsoList() {
+  const d = new Date(planViewDate);
+  if (currentPlanView === 'day') return [toISODate(d)];
+  if (currentPlanView === 'week') {
+    const start = new Date(d); start.setDate(start.getDate() - start.getDay());
+    return Array.from({ length: 7 }, (_, i) => {
+      const x = new Date(start); x.setDate(start.getDate() + i); return toISODate(x);
+    });
+  }
+  const first = new Date(d.getFullYear(), d.getMonth(), 1);
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  const out = [];
+  for (let x = new Date(first); x <= last; x.setDate(x.getDate() + 1)) out.push(toISODate(x));
+  return out;
+}
+
+// จำนวนงานของแต่ละประเภทในขอบเขตที่กำลังดู — นับเป็น "ใบงาน" ไม่ใช่ชิ้น (เหมือนหัวข้อในตาราง)
+function workTypeTabCounts(isoList) {
+  const byKey = {};
+  PLAN_DAY_SECTIONS.forEach(sx => { byKey[sx.key] = new Set(); });
+  const parts = planDayPartsByDate();
+  (isoList || []).forEach(iso => (parts.get(iso) || []).forEach(t => {
+    const k = planTaskSectionKey(t);
+    if (byKey[k]) byKey[k].add((t.__origin || t).id);
+  }));
+  const out = {};
+  Object.keys(byKey).forEach(k => { out[k] = byKey[k].size; });
+  return out;
+}
+
+function workTypeTabBarHtml(counts) {
+  const active = activeWorkTypeTab();
+  return PLAN_DAY_SECTIONS.map(sec => {
+    const n = (counts || {})[sec.key];
+    return `<button class="reg-tab${sec.key === active ? ' active' : ''}" onclick="switchWorkTypeTab('${sec.key}')"
+        title="${escapeHtmlAttr('ดูเฉพาะงาน' + sec.label)}">
+      <span class="reg-tab-icon" style="background:${sec.bg};color:${sec.color};">${sec.icon}</span>
+      ${escapeHtmlAttr(sec.label)}
+      <span class="reg-tab-count">${n == null ? '—' : n}</span>
+    </button>`;
+  }).join('');
+}
+
+// วาดแถบปุ่มของทั้งสองหน้า — ตัวเลขของหน้าวางแผนนับตามช่วงที่กำลังดู
+// ส่วนหน้างานประจำวันนับของวันที่กำลังดูวันเดียว
+function renderWorkTypeTabs() {
+  const forced = forcedWorkTypeForRole();
+  const planEl = document.getElementById('plan-worktype-tabs');
+  const dailyEl = document.getElementById('daily-worktype-tabs');
+  if (planEl) {
+    planEl.style.display = forced ? 'none' : '';
+    if (!forced) planEl.innerHTML = workTypeTabBarHtml(workTypeTabCounts(planVisibleIsoList()));
+  }
+  if (dailyEl) {
+    dailyEl.style.display = forced ? 'none' : '';
+    if (!forced) dailyEl.innerHTML = workTypeTabBarHtml(workTypeTabCounts([dailyViewDate]));
+  }
+}
+
 // งานเก่าที่ไม่มี workType ถือเป็นงาน CNC เหมือนที่ทุกหน้าทำอยู่
 function planTaskSectionKey(t) {
   if (t.workType === 'polish') return 'polish';
@@ -7483,8 +7567,9 @@ function planTaskSectionKey(t) {
 }
 // ช่าง CNC / ช่างขัด Roll เห็นหัวข้อของตัวเองอย่างเดียว
 function planSectionsForRole() {
-  const forced = forcedWorkTypeForRole();
-  return PLAN_DAY_SECTIONS.filter(s => !forced || s.key === forced);
+  // แยกเป็นแท็บแล้ว — แสดงทีละประเภทตามปุ่มที่เลือก (บทบาทที่ล็อกไว้ยึดของบทบาท)
+  const active = activeWorkTypeTab();
+  return PLAN_DAY_SECTIONS.filter(s => s.key === active);
 }
 // นับงานของหัวข้อนี้ในช่วงวันที่กำลังดู พร้อมเวลารวม — ใช้โชว์ข้างหัวข้อทุกมุมมอง
 // shiftKey (ถ้าส่งมา) = นับเฉพาะงานที่ "เริ่มงาน" ในกะนั้น — ใช้ตอนแยกหมวด CNC เป็นกะเช้า/กะดึก
@@ -18329,6 +18414,7 @@ function renderDailyTasks() {
   // ช่างดูได้แค่ เมื่อวาน/วันนี้/พรุ่งนี้ — ค้างอยู่วันนอกช่วงให้ดึงกลับมาวันนี้
   // (เช่น Admin เลื่อนไปดูวันอื่นไว้แล้วสลับมุมมองเป็นช่าง หรือเปิดหน้าค้างข้ามวัน)
   if (isDailyTechRole()) dailyViewDate = clampDailyTechDate(dailyViewDate);
+  renderWorkTypeTabs();   // ตัวเลขบนปุ่มเป็นของ "วันที่กำลังดู" ต้องวาดใหม่ทุกครั้งที่เปลี่ยนวัน
 
   const dateLabel = document.getElementById('daily-daterange-label');
   if (dateLabel) dateLabel.textContent = fmtDateThai(parseISODate(dailyViewDate));
@@ -18507,11 +18593,11 @@ function renderDailyTasks() {
     // ยังไม่มีหัวข้อ "งานแทรก" ของ SQ เพราะงานแทรกยังรองรับแค่ CNC/ขัด Roll
     { key: 'sq',        icon: '◆', label: 'แต่ง Roll SQ',     color: 'var(--amber)',  bg: 'var(--amber-dim)',   empty: 'ไม่มีงานแต่ง Roll SQ ในวันนี้', always: true },
   ];
+  // แท็บประเภทงาน — แสดงเฉพาะหัวข้อของประเภทที่เลือก พร้อมหัวข้องานแทรกของประเภทเดียวกัน
+  const tabType = activeWorkTypeTab();
   tbody.innerHTML = DAILY_SECTIONS.filter(s => {
-    if (forcedType && (s.key === 'cnc' || s.key === 'polish' || s.key === 'sq')) return s.key === forcedType;
-    // ช่างเห็นงานแทรกของประเภทตัวเองอย่างเดียว (เกณฑ์เดียวกับงานตามแผน)
-    if (forcedType && s.addType) return s.addType === forcedType;
-    return s.always || allItems.some(it => it.section === s.key);
+    if (s.addType) return s.addType === tabType;
+    return s.key === tabType;
   }).map(s => {
     const items = allItems.filter(it => it.section === s.key);
     return sectionHeader(s, items) + (items.length ? items.map(rowHtmlFor).join('') : emptyRow(s.empty))
