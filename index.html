@@ -2243,7 +2243,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-15.2';
+const APP_BUILD = '2026-10-15.3';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -19445,6 +19445,11 @@ function teamOnTimeColor(pct) {
 
 const TEAM_ROLE_ORDER = ['admin', 'lead', 'cnc', 'polish', 'operator'];
 
+// ระดับที่ไม่ได้ลงมือแต่ง/ขัด Roll เอง — ตัวเลข งานเดือนนี้ / งานค้าง / On Time
+// ไม่มีความหมายกับคนกลุ่มนี้ จึงไม่ต้องขึ้นบนการ์ด (ขึ้นแต่ขีด — ดูแล้วเหมือนข้อมูลขาด)
+// COO ใช้ role 'lead' เหมือนหัวหน้า (ต่างกันที่ roleLabel) จึงครอบคลุมด้วยคีย์เดียว
+const TEAM_ROLES_WITHOUT_STATS = ['admin', 'lead'];
+
 function renderTeamGrid() {
   const grid = document.getElementById('team-grid');
   if (!grid) return;
@@ -19463,11 +19468,11 @@ function renderTeamGrid() {
           <div style="margin-top:4px;"><span class="chip ${st.chip}" style="font-size:10px;">● ${st.label}</span></div>
         </div>
       </div>
-      <div class="team-stats">
+      ${TEAM_ROLES_WITHOUT_STATS.includes(m.role) ? '' : `<div class="team-stats">
         <div class="team-stat"><div class="team-stat-val">${val(m.monthTasks)}</div><div class="team-stat-lbl">งานเดือนนี้</div></div>
         <div class="team-stat"><div class="team-stat-val">${val(m.pendingTasks)}</div><div class="team-stat-lbl">งานค้าง</div></div>
         <div class="team-stat"><div class="team-stat-val" style="color:${teamOnTimeColor(m.onTimePct)};">${m.onTimePct === null || m.onTimePct === undefined ? '—' : m.onTimePct + '%'}</div><div class="team-stat-lbl">On Time</div></div>
-      </div>
+      </div>`}
       <div class="team-skills">${skillsHtml}</div>
       <div style="display:flex;gap:6px;margin-top:12px;">
         <button class="btn btn-ghost btn-sm" style="flex:1;" onclick="openTeamMemberModal('edit','${m.id}')">แก้ไข</button>
