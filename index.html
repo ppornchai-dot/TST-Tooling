@@ -2243,7 +2243,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-15.3';
+const APP_BUILD = '2026-10-15.4';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6516,6 +6516,13 @@ const PLAN_WORKTYPE_META = {
   // เวลาต่อชิ้นอ่านจากช่อง "เวลาแต่ง (นาที)" ของทะเบียน Roll SQ (ชื่อฟิลด์เดียวกับ Roll)
   sq:     { label: 'แผนงานแต่ง Roll SQ', field: 'grindTime', metricLabel: 'เวลาแต่ง Roll SQ (นาที)', shifts: ['morning', 'night', 'both'], otMaxMin: 3 * 60, fillSameSetOnly: true, otNote: 'สูงสุด 3 ชม. — กะเช้า OT 17:00–20:00 / กะดึก 05:00–08:00 (หักพัก 20 นาที เหลือทำงาน 2 ชม. 40 นาที)' },
 };
+// ชื่อประเภทงานแบบสั้น ใช้ในหัวข้อกล่องต่างๆ — เดิมเขียนเป็นเงื่อนไขสองทาง (ขัด/CNC) กระจายหลายที่
+// พอมีประเภทที่สามเข้ามาจึงรวมไว้ที่เดียว
+function planWorkTypeShortLabel(workType) {
+  if (workType === 'polish') return 'ขัด Roll';
+  if (workType === 'sq') return 'แต่ง Roll SQ';
+  return 'แต่ง Roll (CNC)';
+}
 function planWorkTypeShifts(workType) {
   return (PLAN_WORKTYPE_META[workType] || {}).shifts || ['morning', 'night', 'both'];
 }
@@ -11057,12 +11064,12 @@ function openPlanDayWorkerModal(dateIso, workType, onlyShift) {
   if (!canEditPlan()) { alert('ไม่มีสิทธิ์กำหนดผู้ปฏิบัติงาน'); return; }
   dayWorkerTarget = { dateIso, workType, onlyShift: onlyShift || null };
   document.getElementById('modal-title').textContent =
-    'ผู้ปฏิบัติงาน ' + (workType === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)')
+    'ผู้ปฏิบัติงาน ' + planWorkTypeShortLabel(workType)
     + (onlyShift ? ' ' + SHIFTS[onlyShift].label : '') + ' — ' + fmtDateThai(parseISODate(dateIso));
   // รายชื่อทีมไว้กดเติมเร็ว ๆ (ยังพิมพ์ชื่อเองได้ตามปกติ เผื่อคนที่ไม่ได้อยู่ในทะเบียนทีม)
   // เลือกได้เฉพาะช่างของงานนั้นจริง ๆ — งาน CNC เลือกได้แต่ช่าง CNC / งานขัด Roll เลือกได้แต่ช่างขัด Roll
   // (หัวหน้า/พนักงานเดินเครื่องไม่ขึ้นในรายชื่อ แต่ถ้าจำเป็นยังพิมพ์ชื่อเองได้)
-  const roles = workType === 'polish' ? ['polish'] : ['cnc'];
+  const roles = [workType === 'polish' ? 'polish' : workType === 'sq' ? 'sq' : 'cnc'];
   const suggest = teamMembers.filter(m => roles.includes(m.role));
   const rows = dayWorkerFormShifts().map(k => {
     const sh = SHIFTS[k];
@@ -11180,7 +11187,7 @@ function openPlanDayEndModal(dateIso, workType, onlyShift) {
   dayEndTarget = { dateIso, workType, onlyShift: onlyShift || null };
   const meta = PLAN_WORKTYPE_META[workType] || PLAN_WORKTYPE_META.cnc;
   document.getElementById('modal-title').textContent =
-    'เวลาเลิกงาน ' + (workType === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)')
+    'เวลาเลิกงาน ' + planWorkTypeShortLabel(workType)
     + (onlyShift ? ' ' + SHIFTS[onlyShift].label : '') + ' — ' + fmtDateThai(parseISODate(dateIso));
   const rows = dayEndFormShifts().map(k => {
     const sh = SHIFTS[k];
@@ -11195,7 +11202,7 @@ function openPlanDayEndModal(dateIso, workType, onlyShift) {
   }).join('');
   document.getElementById('modal-body').innerHTML = `
     <div class="muted" style="font-size:12px;line-height:1.6;margin-bottom:10px;">
-      กรอกว่าวันนี้ทีม${escapeHtmlAttr(workType === 'polish' ? 'ขัด Roll' : 'CNC')}เลิกงานกี่โมง แล้วระบบจะคิดเวลา OT ให้ทุกงานของวันนี้เอง<br>
+      กรอกว่าวันนี้ทีม${escapeHtmlAttr(workType === 'polish' ? 'ขัด Roll' : workType === 'sq' ? 'แต่ง Roll SQ' : 'CNC')}เลิกงานกี่โมง แล้วระบบจะคิดเวลา OT ให้ทุกงานของวันนี้เอง<br>
       เลิกเท่ากับหรือก่อนหมดเวลาปกติ = ไม่มี OT · เลิกช้าสุดได้ถึง <b>${escapeHtmlAttr(planDayEndShiftsFor(workType).map(k => SHIFTS[k].label + ' ' + planDayEndMaxFor(workType, k)).join(' · '))}</b><br>
       บันทึกแล้ว: งานที่เกินเวลาจะไหลไปวันถัดไปให้เอง และถ้าเวลายังเหลือจะถามว่าจะดึงงานวันถัดไปมาเติมไหม
     </div>
@@ -17562,7 +17569,7 @@ function dailyRelativeDayLabel(iso) {
 
 function isDailyTechRole() {
   const r = effectiveRole();
-  return r === 'cnc' || r === 'polish' || r === 'operator';
+  return r === 'cnc' || r === 'polish' || r === 'sq' || r === 'operator';
 }
 
 // วันที่ที่หน้างานประจำวันควรเปิดมา / ปุ่ม "วันนี้" ควรพาไป
@@ -17750,6 +17757,7 @@ function forcedWorkTypeForRole() {
   const r = effectiveRole();
   if (r === 'cnc') return helpPolishActive() ? 'polish' : 'cnc';
   if (r === 'polish') return 'polish';
+  if (r === 'sq') return 'sq';
   return null;
 }
 
@@ -18825,6 +18833,7 @@ function forcedHistoryTypeForRole() {
   const r = effectiveRole();
   if (r === 'cnc') return helpPolishActive() ? 'polish' : 'cnc';
   if (r === 'polish') return 'polish';
+  if (r === 'sq') return 'sq';
   return null;
 }
 
@@ -19270,7 +19279,7 @@ function collectOverdueRecords() {
   const forcedType = forcedWorkTypeForRole();
   const records = [];
   planTasks.forEach(t => {
-    if (forcedType && (t.workType === 'polish' ? 'polish' : 'cnc') !== forcedType) return;
+    if (forcedType && planTaskSectionKey(t) !== forcedType) return;
     const dateIso = taskDisplayDate(t);
     // ยึดสถานะรายชิ้นเป็นตัวจริง ไม่ใช่แค่ธงสถานะระดับวัน — งานที่กดจบครบทุกชิ้นแล้วแต่ธงระดับวัน
     // ยังค้างเป็น "กำลังทำ" (เช่นงานที่ถูกแก้/ย้ายวันทีหลัง) จะขึ้นเป็นงานค้างตลอดไปทั้งที่เสร็จแล้ว
@@ -19443,7 +19452,7 @@ function teamOnTimeColor(pct) {
   return 'var(--red)';
 }
 
-const TEAM_ROLE_ORDER = ['admin', 'lead', 'cnc', 'polish', 'operator'];
+const TEAM_ROLE_ORDER = ['admin', 'lead', 'cnc', 'polish', 'sq', 'operator'];
 
 // ระดับที่ไม่ได้ลงมือแต่ง/ขัด Roll เอง — ตัวเลข งานเดือนนี้ / งานค้าง / On Time
 // ไม่มีความหมายกับคนกลุ่มนี้ จึงไม่ต้องขึ้นบนการ์ด (ขึ้นแต่ขีด — ดูแล้วเหมือนข้อมูลขาด)
@@ -19517,6 +19526,7 @@ function teamMemberFormFields() {
           <option value="lead">หัวหน้า</option>
           <option value="cnc">ช่าง CNC</option>
           <option value="polish">ช่างขัด Roll</option>
+          <option value="sq">ช่างแต่ง Roll SQ</option>
           <option value="operator">ช่างเครื่อง</option>
         </select>
       </div>
@@ -20324,8 +20334,8 @@ function onProdBlockExcelSelected(event) {
 // ─── LOGIN / ROLE-BASED UI (UX only — ไม่ใช่ระบบความปลอดภัยจริง) ─────────────
 const AUTH_STORAGE_KEY = 'tstCurrentUser';
 
-const ROLE_LABELS = { admin: 'Admin', lead: 'หัวหน้า', cnc: 'ช่าง CNC', polish: 'ช่างขัด Roll', operator: 'ช่างเครื่อง' };
-const ROLE_COLORS = { admin: 'var(--red)', lead: 'var(--accent)', cnc: 'var(--purple)', polish: 'var(--amber)', operator: 'var(--green)' };
+const ROLE_LABELS = { admin: 'Admin', lead: 'หัวหน้า', cnc: 'ช่าง CNC', polish: 'ช่างขัด Roll', sq: 'ช่างแต่ง Roll SQ', operator: 'ช่างเครื่อง' };
+const ROLE_COLORS = { admin: 'var(--red)', lead: 'var(--accent)', cnc: 'var(--purple)', polish: 'var(--amber)', sq: 'var(--inuse)', operator: 'var(--green)' };
 function roleLabel(role) { return ROLE_LABELS[role] || role; }
 function roleColor(role) { return ROLE_COLORS[role] || 'var(--accent)'; }
 
@@ -20402,7 +20412,7 @@ function effectiveWorkerId() {
 }
 
 function defaultPageForRole(role) {
-  return (role === 'cnc' || role === 'polish') ? 'daily' : 'dashboard';
+  return (role === 'cnc' || role === 'polish' || role === 'sq') ? 'daily' : 'dashboard';
 }
 
 function loginAs(user) {
