@@ -2243,7 +2243,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-15.5';
+const APP_BUILD = '2026-10-15.6';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6400,7 +6400,7 @@ let dailyPauseLogSeq = 0;
 
 // ─── TEAM MEMBERS (หน้าทีมงาน) — ข้อมูลอยู่ก่อน restoreState() เพื่อไม่ให้ชนกับ TDZ ─
 const TEAM_STATUS_META = {
-  available: { label: 'พร้อมงาน', chip: 'chip-green' },
+  available: { label: 'พร้อมทำงาน', chip: 'chip-green' },
   working:   { label: 'กำลังทำงาน', chip: 'chip-blue' },
   leave:     { label: 'ลาวันนี้', chip: 'chip-amber' },
 };
@@ -19534,7 +19534,7 @@ function teamMemberFormFields() {
       <div class="form-group"><label class="form-label">ตำแหน่ง/รายละเอียด</label><input class="form-input" id="tf-rolelabel" placeholder="เช่น หัวหน้าฝ่าย Tooling"></div>
       <div class="form-group"><label class="form-label">สถานะ</label>
         <select class="form-select" id="tf-status">
-          <option value="available">พร้อมงาน</option>
+          <option value="available">พร้อมทำงาน</option>
           <option value="working">กำลังทำงาน</option>
           <option value="leave">ลาวันนี้</option>
         </select>
