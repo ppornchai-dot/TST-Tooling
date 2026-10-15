@@ -354,12 +354,8 @@ table.daily-tech-view > tbody > tr > td:nth-child(9):not([colspan]){display:none
 /* ปุ่มเริ่ม/พัก/จบงานรายชิ้น — ในมุมมองช่างทำให้ใหญ่ มีสีพื้น กดด้วยนิ้วง่ายและเห็นชัดจากระยะไกล
    ใช้คลาสเจาะจงแทนการไล่ตาม onclick และจำกัดใต้ .daily-tech-view เท่านั้น หน้าวางแผนจึงไม่เปลี่ยน */
 /* nowrap ด้วย — ช่องแคบทำให้ "▶ เริ่มงาน" ตัดเป็น 2 บรรทัด ปุ่มสูงไม่เท่ากัน (39px กับ 56px) */
-/* ปุ่มเลือกประเภทงานหน้าประวัติ — ใหญ่กว่าปุ่มทั่วไป และตัวที่กำลังดูเป็นปุ่มทึบสีเน้น ไม่ใช่แค่เปลี่ยนสีตัวอักษร */
-.history-type-btn{padding:11px 18px;font-size:14.5px;font-weight:800;border-radius:10px;line-height:1.2;white-space:nowrap;}
-.history-type-btn .history-type-count{display:inline-block;min-width:22px;padding:1px 7px;margin-left:6px;border-radius:99px;
-  background:var(--bg-hover);color:var(--text-2);font-size:12.5px;font-weight:800;text-align:center;}
-.history-type-btn[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff;}
-.history-type-btn[aria-pressed="true"] .history-type-count{background:rgba(255,255,255,.25);color:#fff;}
+/* ปุ่มเลือกประเภทงานหน้าประวัติ — ใช้หน้าตาเดียวกับแท็บของหน้าทะเบียน/วางแผน (.reg-tab)
+   คลาส .history-type-btn เหลือไว้เป็นจุดเกาะของ JS (หาเพื่อนับจำนวน/ไฮไลต์) ไม่ได้จัดรูปเองแล้ว */
 table.daily-tech-view .daily-act{padding:10px 16px;font-size:14.5px;font-weight:800;border-radius:9px;line-height:1.2;white-space:nowrap;}
 /* ปุ่ม "จบงาน"/"ทำต่อ" มี style="color:var(--accent)" ติดมาในแท็ก ซึ่งชนะคลาสเสมอ
    ถ้าไม่ทับด้วย !important ตัวอักษรจะเป็นสีเดียวกับพื้นที่เพิ่งใส่ให้ = อ่านไม่เห็นเลย */
@@ -1926,11 +1922,21 @@ canvas{display:block;}
           onmouseover="this.style.filter='brightness(1.06)'" onmouseout="this.style.filter='none'"></button>
       </div>
 
-      <!-- แยกดูตามประเภทงาน — ใช้ปุ่มแท็บแบบเดียวกับหน้างานประจำวัน/วางแผน แทน dropdown เดิม เพื่อให้เห็นและสลับได้ทันที -->
-      <div class="mobile-wrap" style="display:flex;gap:8px;margin-bottom:12px;">
-        <button class="btn btn-ghost history-type-btn" data-histtype="" aria-pressed="true" onclick="switchHistoryType('')">ทั้งหมด <span class="history-type-count" data-count-for=""></span></button>
-        <button class="btn btn-ghost history-type-btn" data-histtype="cnc" aria-pressed="false" onclick="switchHistoryType('cnc')">⚙ แต่ง Roll (CNC) <span class="history-type-count" data-count-for="cnc"></span></button>
-        <button class="btn btn-ghost history-type-btn" data-histtype="polish" aria-pressed="false" onclick="switchHistoryType('polish')">✦ ขัด Roll <span class="history-type-count" data-count-for="polish"></span></button>
+      <!-- แยกดูตามประเภทงาน — ปุ่มแท็บชุดเดียวกับหน้าทะเบียน/วางแผน/งานประจำวัน
+           หน้านี้มี "ทั้งหมด" เพิ่มมาด้วย เพราะประวัติมักต้องไล่ดูรวมทุกประเภท -->
+      <div class="reg-tab-bar">
+        <button class="reg-tab history-type-btn active" data-histtype="" aria-pressed="true" onclick="switchHistoryType('')">
+          <span class="reg-tab-icon" style="background:var(--bg-hover);color:var(--text-2);">≡</span>
+          ทั้งหมด <span class="reg-tab-count history-type-count" data-count-for=""></span></button>
+        <button class="reg-tab history-type-btn" data-histtype="cnc" aria-pressed="false" onclick="switchHistoryType('cnc')">
+          <span class="reg-tab-icon" style="background:var(--accent-glow);color:var(--accent);">⚙</span>
+          แต่ง Roll (CNC) <span class="reg-tab-count history-type-count" data-count-for="cnc"></span></button>
+        <button class="reg-tab history-type-btn" data-histtype="polish" aria-pressed="false" onclick="switchHistoryType('polish')">
+          <span class="reg-tab-icon" style="background:var(--purple-dim);color:var(--purple);">✦</span>
+          ขัด Roll <span class="reg-tab-count history-type-count" data-count-for="polish"></span></button>
+        <button class="reg-tab history-type-btn" data-histtype="sq" aria-pressed="false" onclick="switchHistoryType('sq')">
+          <span class="reg-tab-icon" style="background:var(--amber-dim);color:var(--amber);">◆</span>
+          แต่ง Roll SQ <span class="reg-tab-count history-type-count" data-count-for="sq"></span></button>
       </div>
 
       <!-- ช่วงวันที่อยู่ซ้ายสุด ช่องค้นหายืดเต็มพื้นที่ที่เหลือ -->
@@ -18789,6 +18795,7 @@ function refreshHistoryTypeButtons() {
   document.querySelectorAll('.history-type-btn').forEach(b => {
     const active = (b.getAttribute('data-histtype') || '') === currentHistoryType;
     b.setAttribute('aria-pressed', active ? 'true' : 'false');
+    b.classList.toggle('active', active);
   });
 }
 function switchHistoryType(key) {
@@ -18806,7 +18813,10 @@ function switchHistoryType(key) {
 const HISTORY_CAL_TYPE = {
   cnc:    { icon: '⚙', label: 'แต่ง Roll (CNC)', color: 'var(--accent)', bg: 'var(--accent-glow)' },
   polish: { icon: '✦', label: 'ขัด Roll',        color: 'var(--purple)', bg: 'var(--purple-dim)' },
+  sq:     { icon: '◆', label: 'แต่ง Roll SQ',    color: 'var(--amber)',  bg: 'var(--amber-dim)' },
 };
+// ลำดับที่ใช้เรียงบรรทัดในช่องวันของปฏิทิน — ไล่ตามลำดับงานจริง (แต่ง → ขัด → แต่ง SQ)
+const HISTORY_CAL_TYPE_ORDER = ['cnc', 'polish', 'sq'];
 let historyCalMonth = null;   // เดือนที่กำลังดู (วันที่ 1 ของเดือนนั้น)
 // เปิด/ปิดค้างไว้ตามเครื่อง — บางคนใช้หน้านี้ค้นรายการอย่างเดียว ไม่อยากให้ปฏิทินดันตารางลงไป
 // เก็บใน localStorage ไม่ใช่ข้อมูลกลาง เพราะเป็นความชอบของเครื่องที่ใช้ ไม่ใช่ข้อมูลงาน
@@ -18982,7 +18992,7 @@ function renderHistoryCalendar(records, fromIso, toIso) {
     });
     // งานแต่ง Roll ขึ้นก่อนงานขัด แล้วเรียงตามชื่อชุด — ลำดับเดียวกันทุกวัน กวาดตาข้ามวันได้
     return [...map.values()].sort((a, b) =>
-      a.typeKey !== b.typeKey ? (a.typeKey === 'cnc' ? -1 : 1)
+      a.typeKey !== b.typeKey ? (HISTORY_CAL_TYPE_ORDER.indexOf(a.typeKey) - HISTORY_CAL_TYPE_ORDER.indexOf(b.typeKey))
         : String(a.set || '').localeCompare(String(b.set || ''), 'th'));
   };
 
@@ -18990,7 +19000,7 @@ function renderHistoryCalendar(records, fromIso, toIso) {
   const leading = new Date(year, month, 1).getDay();   // 0 = อาทิตย์
   const today = dailyTodayIso();
   const dayNames = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
-  const monthTotal = { cnc: 0, polish: 0, days: 0, hours: 0 };
+  const monthTotal = { cnc: 0, polish: 0, sq: 0, days: 0, hours: 0 };
 
   let cells = '';
   for (let i = 0; i < leading; i++) cells += '<div style="min-height:74px;"></div>';
@@ -19073,6 +19083,9 @@ function renderHistoryCalendar(records, fromIso, toIso) {
       <span style="display:inline-flex;align-items:center;gap:5px;font-weight:800;color:var(--purple);">
         <span style="font-size:9px;padding:0 4px;border-radius:3px;line-height:1.6;background:var(--purple);color:#fff;">✦</span>
         ขัด Roll ${monthTotal.polish.toLocaleString()} ชิ้น</span>
+      ${monthTotal.sq ? `<span style="display:inline-flex;align-items:center;gap:5px;font-weight:800;color:var(--amber);">
+        <span style="font-size:9px;padding:0 4px;border-radius:3px;line-height:1.6;background:var(--amber);color:#fff;">◆</span>
+        แต่ง Roll SQ ${monthTotal.sq.toLocaleString()} ชิ้น</span>` : ''}
       <span style="color:var(--text-3);">มีงาน ${monthTotal.days} วัน${
         monthTotal.hours ? ' · รวม ' + (Math.round(monthTotal.hours * 10) / 10).toLocaleString() + ' ชม.' : ''}</span>
       <span style="margin-left:auto;color:var(--text-3);">ตัวเลขท้ายบรรทัด = จำนวนชิ้น · <b style="color:var(--amber);">•</b> = มีชิ้นที่ยังไม่สำเร็จ ·
