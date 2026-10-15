@@ -4696,6 +4696,20 @@ function renderDashboardRollWeight() {
 // แยกงานเป็น 3 กลุ่ม: late = เลยวันที่วางแผนไว้แล้วยังไม่เสร็จ (งานค้าง)
 // doing = เริ่มแล้วและยังอยู่ในกำหนด, wait = ยังไม่เริ่ม และวันที่วางแผนยังไม่ถึง/เป็นวันนี้
 // รวมยอดแยกตามกลุ่ม (set|สี|กลุ่ม) ไม่ยุบข้ามกลุ่ม เพราะชุดเดียวกันอาจมีทั้งงานค้างและงานรอทำคนละวัน
+// ชิ้นที่ยังไม่ทำของใบนี้ ถูกวางไว้ในส่วนของวันนี้/วันข้างหน้าหมดแล้วหรือยัง
+// งานที่ทำข้ามวันถูกตัดเป็น "ส่วนของแต่ละวัน" — ส่วนของเมื่อวานอาจทำครบแล้ว
+// และที่เหลือถูกวางไว้ให้ทำวันนี้ การยึด "วันของใบ" (ซึ่งเป็นวันเริ่ม) จึงกลายเป็น
+// งานค้างทันทีที่ข้ามวัน ทั้งที่ยังไม่ถึงคิวของส่วนที่เหลือด้วยซ้ำ
+// (เกณฑ์เดียวกับ leftoverWorkTasks ที่ไม่นับงานแบบนี้เป็นงานค้างที่ต้องยกไปวันถัดไป)
+function taskRemainderScheduledAhead(origin, isDone) {
+  const ids = (origin && origin.rollIds) || [];
+  const remaining = ids.filter(i => !isDone(i));
+  if (!remaining.length) return false;
+  const parts = planTaskDayParts(origin).filter(p => (p.rollIds || []).some(i => remaining.includes(i)));
+  const today = dailyTodayIso();
+  return parts.length > 0 && parts.every(p => taskDisplayDate(p) >= today);
+}
+
 function getWorkingRollEntries(workType) {
   // การ์ดนี้วาดนอกรอบของหน้าวางแผน — ล้างแคชนาทีต่อชิ้นเองก่อน ไม่งั้นสัดส่วนค้างของเก่า
   if (typeof clearPlanGroupPieceMinutesCache === 'function') clearPlanGroupPieceMinutesCache();
@@ -4731,7 +4745,11 @@ function getWorkingRollEntries(workType) {
     // งานที่จบครบทุกชิ้นแล้วไม่ใช่งานค้างอีก ไม่ต้องแสดง
     if (dayStatus === 'done' || (rollIds.length && done >= rollIds.length)) return;
     const started = !!(doing || done || dayStatus === 'in_progress');
-    const cat = (d < today) ? 'late' : (started ? 'doing' : 'wait');
+    // เลยวันของใบไปแล้วยังไม่นับเป็น "ค้าง" ทันที — ถ้าชิ้นที่เหลือถูกวางไว้วันนี้/วันข้างหน้าแล้ว
+    // ก็แค่ยังไม่ถึงคิว (ดู taskRemainderScheduledAhead)
+    const lateNow = d < today
+      && !taskRemainderScheduledAhead(t, i => (pieces[i] || {}).status === 'done');
+    const cat = lateNow ? 'late' : (started ? 'doing' : 'wait');
     const colorKey = t.rollColor || NO_COLOR_KEY;
     const key = t.rollSet + '|' + colorKey + '|' + cat;
     if (!byKey.has(key)) {
@@ -8179,7 +8197,13 @@ function planTaskProgressState(t) {
   if (dayStatus === 'done' || (ids.length && done >= ids.length)) return 'done';
   const started = !!(doing || done || dayStatus === 'in_progress');
   // "ค้าง" เทียบกับวันของส่วนนี้เอง — ส่วนที่วางไว้วันที่ 19 ถือว่าค้างเมื่อถึงวันที่ 20
-  if (taskDisplayDate(t) < dailyTodayIso()) return 'late';
+  // ยกเว้นตอนที่ส่งใบเต็มเข้ามา (ไม่ใช่ส่วนย่อย เช่น KPI หน้า Dashboard ที่นับทั้งใบ)
+  // ใบที่ทำข้ามวันจะมีวันของใบ = วันเริ่มเสมอ ถ้าชิ้นที่เหลือถูกวางไว้วันนี้/วันข้างหน้าแล้ว
+  // ก็ยังไม่ใช่งานค้าง — แค่ยังไม่ถึงคิว (ดู taskRemainderScheduledAhead)
+  if (taskDisplayDate(t) < dailyTodayIso()
+      && !(!t.__origin && taskRemainderScheduledAhead(origin, i => (pieces[i] || {}).status === 'done'))) {
+    return 'late';
+  }
   return started ? 'doing' : 'wait';
 }
 
