@@ -1472,7 +1472,7 @@ canvas{display:block;}
           <div class="table-wrap">
             <table>
               <thead><tr>
-                <th>รหัส</th><th>ชื่อ / ยี่ห้อ</th><th>เส้นผ่าศูนย์กลาง</th><th>จำนวนฟัน</th><th>ความหนา kerf</th><th>วัสดุ</th><th>เครื่องที่ใช้</th><th>ตัดสะสม (ตัน)</th><th>Regrind ครั้งที่</th><th>สถานะ</th><th></th>
+                <th>รหัส</th><th>ชื่อ / ยี่ห้อ</th><th>เส้นผ่าศูนย์กลาง</th><th>จำนวนฟัน</th><th>ความหนา kerf</th><th>วัสดุ</th><th>เครื่องที่ใช้</th><th>ตัดสะสม (ตัน)</th><th>Regrind ครั้งที่</th><th title="เวลาที่ใช้ลับคมใบนี้ — ใช้คิดเวลาเริ่ม-จบของงานลับคมใบเลื่อยในหน้าวางแผน">เวลาลับคม (นาที)</th><th>สถานะ</th><th></th>
               </tr></thead>
               <tbody>
               <tbody id="tbody-saw"></tbody>
@@ -1953,6 +1953,9 @@ canvas{display:block;}
         <button class="reg-tab history-type-btn" data-histtype="sq" aria-pressed="false" onclick="switchHistoryType('sq')">
           <span class="reg-tab-icon" style="background:var(--amber-dim);color:var(--amber);">◆</span>
           แต่ง Roll SQ <span class="reg-tab-count history-type-count" data-count-for="sq"></span></button>
+        <button class="reg-tab history-type-btn" data-histtype="saw" aria-pressed="false" onclick="switchHistoryType('saw')">
+          <span class="reg-tab-icon" style="background:var(--green-dim);color:var(--green);">✧</span>
+          ลับคมใบเลื่อย <span class="reg-tab-count history-type-count" data-count-for="saw"></span></button>
       </div>
 
       <!-- ช่วงวันที่อยู่ซ้ายสุด ช่องค้นหายืดเต็มพื้นที่ที่เหลือ -->
@@ -2243,7 +2246,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-15.6';
+const APP_BUILD = '2026-10-15.7';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5997,6 +6000,13 @@ const MODAL_FORMS = {
             <option>มีปัญหา</option><option>หมดอายุ</option>
           </select>
         </div>
+      </div>
+      <!-- อยู่ท้ายสุดเพราะฟอร์มนี้อ่านค่าตามลำดับช่อง ถ้าแทรกไว้กลางฟอร์มค่าอื่นจะเลื่อนหมด
+           (ตัวนี้อ่านด้วย id ไม่ได้อ่านตามลำดับ) -->
+      <div class="modal-row">
+        <div class="form-group"><label class="form-label">เวลาลับคม (นาที)</label>
+          <input class="form-input" id="f-saw-grind" type="number" step="1" placeholder="เช่น 45"></div>
+        <div class="form-group"></div>
       </div>`
   },
   slitter: {
@@ -6162,7 +6172,8 @@ function saveModal() {
       diameter: vals[2]||'—', teeth: vals[3]||'—', kerf: vals[4]||'—',
       material: vals[5]||'—', machine: vals[6]||'—',
       usage: (vals[7]||'0')+' ตัน', regrind: vals[8]||'—',
-      status: vals[9]||'พร้อมใช้'
+      status: vals[9]||'พร้อมใช้',
+      grindTime: ((document.getElementById('f-saw-grind') || {}).value || '').trim(),
     });
     const lastPage = Math.ceil(toolingData.saw.length / PAGE_SIZE);
     pageState.saw = lastPage;
@@ -6514,6 +6525,9 @@ const PLAN_WORKTYPE_META = {
   // ซึ่งแปลว่ามีคิวเวลาของตัวเอง เดินคู่ขนานกับ CNC ได้ ไม่ต้องรอกัน (ทุกตัวที่จัดคิว/เติมเวลา
   // ไล่ทีละประเภทงานอยู่แล้ว เช่น autoFixPlanSequencing · rechainPlanTasksAfter)
   // เวลาต่อชิ้นอ่านจากช่อง "เวลาแต่ง (นาที)" ของทะเบียน Roll SQ (ชื่อฟิลด์เดียวกับ Roll)
+  // ลับคมใบเลื่อย — ช่าง/เครื่องคนละชุดกับงานอื่น จึงมีคิวเวลาของตัวเองเช่นกัน
+  // ไม่จัดกลุ่มใบเลื่อย หนึ่งใบงานเลือกใบไหนก็ได้ (ดู SAW_PLAN_SET)
+  saw:    { label: 'แผนงานลับคมใบเลื่อย', field: 'grindTime', metricLabel: 'เวลาลับคม (นาที)', shifts: ['morning', 'night', 'both'], otMaxMin: 3 * 60, otNote: 'สูงสุด 3 ชม. — กะเช้า OT 17:00–20:00 / กะดึก 05:00–08:00 (หักพัก 20 นาที เหลือทำงาน 2 ชม. 40 นาที)' },
   sq:     { label: 'แผนงานแต่ง Roll SQ', field: 'grindTime', metricLabel: 'เวลาแต่ง Roll SQ (นาที)', shifts: ['morning', 'night', 'both'], otMaxMin: 3 * 60, fillSameSetOnly: true, otNote: 'สูงสุด 3 ชม. — กะเช้า OT 17:00–20:00 / กะดึก 05:00–08:00 (หักพัก 20 นาที เหลือทำงาน 2 ชม. 40 นาที)' },
 };
 // ชื่อประเภทงานแบบสั้น ใช้ในหัวข้อกล่องต่างๆ — เดิมเขียนเป็นเงื่อนไขสองทาง (ขัด/CNC) กระจายหลายที่
@@ -6521,6 +6535,7 @@ const PLAN_WORKTYPE_META = {
 function planWorkTypeShortLabel(workType) {
   if (workType === 'polish') return 'ขัด Roll';
   if (workType === 'sq') return 'แต่ง Roll SQ';
+  if (workType === 'saw') return 'ลับคมใบเลื่อย';
   return 'แต่ง Roll (CNC)';
 }
 function planWorkTypeShifts(workType) {
@@ -7307,7 +7322,7 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
             title="${escapeHtmlAttr('Roll ลูกเดียวกับที่อยู่' + where + (prevPart ? ' (' + prevPart.startTime + '–' + prevPart.endTime + ')' : '') + ' — ถูกตัดเวลามาทำสองช่วง กดปุ่มที่แถวนั้นได้เลย มีผลกับทั้งชิ้น')}">ชิ้นเดียวกับ${where}</span>`;
         } else if (pieceStatus === 'done') {
           // งานแต่ง Roll (CNC) แก้ขนาด OD ที่บันทึกไปแล้วได้ — งานขัด Roll ไม่ได้บันทึกขนาดจึงไม่มีปุ่มนี้
-          const canEditOD = t.workType !== 'polish';
+          const canEditOD = workTypeMeasuresOd(t.workType);
           inner = `<span class="chip chip-green">✓ เสร็จ</span>${canEditOD ? ` <button class="btn btn-ghost btn-sm" ${lockReason ? `disabled title="${lockReason} — แก้ขนาดไม่ได้"` : 'title="แก้ขนาด OD ที่บันทึกไปแล้ว"'} onclick="editDailyPieceSize('${t.id}','${rollIdx}','${t.workerId || ''}')">✎ แก้ไข OD</button>` : ''}`;
         } else if (pieceStatus === 'paused') {
           inner = `<span class="chip chip-amber">⏸ ${DL().paused}</span> <button class="btn btn-ghost btn-sm daily-act daily-act-resume" style="color:var(--purple);" ${lockReason ? `disabled title="${lockReason} — ทำต่อไม่ได้"` : ''} onclick="resumeDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ ${DL().resume}</button>`;
@@ -7531,6 +7546,7 @@ const PLAN_DAY_SECTIONS = [
   { key: 'cnc',    icon: '⚙', label: 'แต่ง Roll (CNC)', color: 'var(--accent)', bg: 'var(--accent-glow)', empty: 'ไม่มีงานแต่ง Roll ในวันนี้' },
   { key: 'polish', icon: '✦', label: 'ขัด Roll',        color: 'var(--purple)', bg: 'var(--purple-dim)',  empty: 'ไม่มีงานขัด Roll ในวันนี้' },
   { key: 'sq',     icon: '◆', label: 'แต่ง Roll SQ',    color: 'var(--amber)',  bg: 'var(--amber-dim)',   empty: 'ไม่มีงานแต่ง Roll SQ ในวันนี้' },
+  { key: 'saw',    icon: '✧', label: 'ลับคมใบเลื่อย',    color: 'var(--green)',  bg: 'var(--green-dim)',   empty: 'ไม่มีงานลับคมใบเลื่อยในวันนี้' },
 ];
 // ─── แท็บประเภทงาน (ใช้ร่วมกันทั้งหน้าวางแผนและหน้างานประจำวัน) ────────────────
 // ดูทีละประเภทเหมือนแท็บของหน้าทะเบียน — เลือกไว้ที่หน้าไหน อีกหน้าก็ตามด้วย
@@ -7614,6 +7630,7 @@ function renderWorkTypeTabs() {
 function planTaskSectionKey(t) {
   if (t.workType === 'polish') return 'polish';
   if (t.workType === 'sq') return 'sq';
+  if (t.workType === 'saw') return 'saw';
   return 'cnc';
 }
 // ช่าง CNC / ช่างขัด Roll เห็นหัวข้อของตัวเองอย่างเดียว
@@ -8996,6 +9013,11 @@ function planFormRequiredColorStatus() {
 function populatePlanRollSetSelect(selectedSet) {
   const sel = document.getElementById('pf-rollset');
   if (!sel) return;
+  // งานลับคมใบเลื่อยไม่มีกลุ่มให้เลือก — มีตัวเลือกเดียวและเลือกให้เลย
+  if (planFormWorkType() === 'saw') {
+    sel.innerHTML = `<option value="${SAW_PLAN_SET}" selected>${escapeHtmlAttr(planSetLabel(SAW_PLAN_SET))}</option>`;
+    return;
+  }
   // งานแต่ง Roll SQ เลือกจาก "ชุด Roll SQ" ในทะเบียน ไม่ใช่ Size Roll
   // เอาเฉพาะชุดที่กรอกเวลาแต่งไว้แล้ว ชุดที่ยังไม่กรอกคิดเวลาเริ่ม-จบไม่ได้
   if (planFormWorkType() === 'sq') {
@@ -9027,6 +9049,11 @@ function populatePlanRollColorSelect(setName, selectedColor) {
   // ชุด Roll SQ ระบุสีมาในตัวชุดอยู่แล้ว (ขนาด+ประเภท+สี+ลำดับชุด) ไม่มีอะไรให้เลือกต่อ
   if (isSqPlanSet(setName) || planFormWorkType() === 'sq') {
     sel.innerHTML = '<option value="">— ชุด Roll SQ ระบุสีมาในชุดแล้ว —</option>';
+    sel.disabled = true;
+    return null;
+  }
+  if (isSawPlanSet(setName) || planFormWorkType() === 'saw') {
+    sel.innerHTML = '<option value="">— งานลับคมใบเลื่อยไม่มีชุดสี —</option>';
     sel.disabled = true;
     return null;
   }
@@ -9081,6 +9108,7 @@ function sqAttachPlanAliases(r) {
 
 // ชื่อชุดที่เอาไว้โชว์ — Roll ใช้ชื่อ Size Roll ตรงๆ ส่วน Roll SQ ต้องแปลงจากคีย์ก่อน
 function planSetLabel(setName) {
+  if (isSawPlanSet(setName)) return 'ใบเลื่อย (ทั้งทะเบียน)';
   if (!isSqPlanSet(setName)) return setName || '—';
   const k = sqPlanSetKeyOf(setName);
   const head = (toolingData.sq || []).find(r => sqSetKey(r) === k);
@@ -9093,8 +9121,16 @@ function sqPlannableSets() {
     .filter(set => set.some(r => (parseFloat(r.grindTime) || 0) > 0));
 }
 
+// ใบเลื่อยไม่ได้จัดกลุ่ม — หนึ่งใบงานเลือกใบไหนก็ได้จากทั้งทะเบียน จึงใช้คีย์เดียวตายตัว
+const SAW_PLAN_SET = 'SAW:all';
+function isSawPlanSet(setName) { return setName === SAW_PLAN_SET; }
+
+// ประเภทงานที่ต้องวัด OD ตอนจบงาน — งานขัด Roll กับงานลับคมใบเลื่อยไม่ได้วัด
+function workTypeMeasuresOd(workType) { return workType === 'cnc' || workType === 'sq'; }
+
 function getMatchingRollsForPlan(setName, colorKey) {
   if (!setName) return [];
+  if (isSawPlanSet(setName)) return (toolingData.saw || []);
   // ชุด Roll SQ — ชิ้นในชุด (R แล้ว L) ทำหน้าที่เป็น "ชิ้น Roll" ของงานตามแผน
   if (isSqPlanSet(setName)) {
     const k = sqPlanSetKeyOf(setName);
@@ -9944,8 +9980,8 @@ function clearPlanFieldWarn(id) { const e = document.getElementById(id); if (e) 
 function onPlanRollSetChange() {
   const setName = document.getElementById('pf-rollset').value;
   clearPlanFieldWarn('pf-rollset');
-  // งานแต่ง Roll SQ ไม่มีขั้นเลือกชุดสี — เลือกชุดแล้วไปติ๊กรายชื่อ Roll ต่อได้เลย
-  if (isSqPlanSet(setName)) {
+  // งานแต่ง Roll SQ / ลับคมใบเลื่อย ไม่มีขั้นเลือกชุดสี — ไปติ๊กรายชื่อต่อได้เลย
+  if (isSqPlanSet(setName) || isSawPlanSet(setName)) {
     populatePlanRollColorSelect(setName, null);
     fillPlanRollReadonly(setName, null, null, currentEditingPlanTaskId);
     if (setName) openRollDropdown();
@@ -17416,6 +17452,29 @@ function renderSqRegistry(page) {
   renderSqTable(page || pageState.sq || 1);
 }
 
+// ช่อง "เวลาลับคม (นาที)" ในตารางใบเลื่อย — แก้ในตารางได้เลย
+// ทะเบียนใบเลื่อยยังไม่มีฟอร์มแก้ไขรายตัว (ปุ่มท้ายแถวเป็น "ดู" ที่ยังไม่ได้ทำ)
+// ถ้าไม่ให้แก้ตรงนี้ ใบที่ลงทะเบียนไว้แล้วจะกรอกเวลาไม่ได้เลย แล้วเอาไปวางแผนไม่ได้
+function sawGrindTimeCellHtml(r) {
+  const idx = (toolingData.saw || []).indexOf(r);
+  const v = String(r.grindTime == null ? '' : r.grindTime).trim();
+  return `<input type="number" step="1" min="0" value="${escapeHtmlAttr(v)}" placeholder="—"
+    onchange="setSawGrindTime(${idx}, this.value)"
+    title="เวลาที่ใช้ลับคมใบนี้ — ใบที่ยังไม่กรอกจะเอาไปวางแผนงานลับคมไม่ได้"
+    style="width:74px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;
+           font-family:inherit;font-size:12px;font-weight:700;text-align:right;background:var(--bg-surface);color:var(--text-1);">`;
+}
+function setSawGrindTime(idx, value) {
+  const v = String(value == null ? '' : value).trim();
+  withCloudRetry(() => {
+    const r = (toolingData.saw || [])[idx];
+    if (!r) return;
+    r.grindTime = v;
+    persistState();
+    renderSawTable(pageState.saw || 1);
+  });
+}
+
 function renderSawTable(page) {
   const data = toolingData.saw;
   const rows = data.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
@@ -17430,6 +17489,7 @@ function renderSawTable(page) {
       <td>${r.machine}</td>
       <td class="muted">${r.usage}</td>
       <td class="muted">${r.regrind}</td>
+      <td>${sawGrindTimeCellHtml(r)}</td>
       <td>${statusChip(r.status)}</td>
       <td><button class="btn btn-ghost btn-sm">ดู</button></td>
     </tr>`).join('');
@@ -17758,6 +17818,7 @@ function forcedWorkTypeForRole() {
   if (r === 'cnc') return helpPolishActive() ? 'polish' : 'cnc';
   if (r === 'polish') return 'polish';
   if (r === 'sq') return 'sq';
+  if (r === 'saw') return 'saw';
   return null;
 }
 
@@ -18164,7 +18225,7 @@ async function finishDailyPiece(taskId, rollIdx, workerId) {
   if (!task) return;
   const scoped = getMatchingRollsForPlan(task.rollSet, task.rollColor);
   const roll = scoped[rollIdx];
-  const needsMeasuredSize = task.workType !== 'polish';
+  const needsMeasuredSize = workTypeMeasuresOd(task.workType);
   let size = null;
   if (needsMeasuredSize) {
     const curOd = pieceCurrentOdOf(roll);
@@ -18232,7 +18293,7 @@ async function finishDailyPiece(taskId, rollIdx, workerId) {
 async function editDailyPieceSize(taskId, rollIdx, workerId) {
   if (!canActOnDailyItem(workerId)) return;
   const task = planTasks.find(t => t.id === taskId);
-  if (!task || task.workType === 'polish') return;
+  if (!task || !workTypeMeasuresOd(task.workType)) return;
   const prevEntry = getDailyPieceEntry(taskId, rollIdx);
   if (prevEntry.status !== 'done') return;
   const scoped = getMatchingRollsForPlan(task.rollSet, task.rollColor);
@@ -18645,6 +18706,7 @@ function renderDailyTasks() {
     // แต่ง Roll SQ — ช่าง/เครื่องคนละชุดกับงานแต่ง Roll (CNC) จึงเป็นหัวข้อของตัวเอง
     // ยังไม่มีหัวข้อ "งานแทรก" ของ SQ เพราะงานแทรกยังรองรับแค่ CNC/ขัด Roll
     { key: 'sq',        icon: '◆', label: 'แต่ง Roll SQ',     color: 'var(--amber)',  bg: 'var(--amber-dim)',   empty: 'ไม่มีงานแต่ง Roll SQ ในวันนี้', always: true },
+    { key: 'saw',       icon: '✧', label: 'ลับคมใบเลื่อย',     color: 'var(--green)',  bg: 'var(--green-dim)',   empty: 'ไม่มีงานลับคมใบเลื่อยในวันนี้', always: true },
   ];
   // แท็บประเภทงาน — แสดงเฉพาะหัวข้อของประเภทที่เลือก พร้อมหัวข้องานแทรกของประเภทเดียวกัน
   const tabType = activeWorkTypeTab();
@@ -18834,6 +18896,7 @@ function forcedHistoryTypeForRole() {
   if (r === 'cnc') return helpPolishActive() ? 'polish' : 'cnc';
   if (r === 'polish') return 'polish';
   if (r === 'sq') return 'sq';
+  if (r === 'saw') return 'saw';
   return null;
 }
 
@@ -18862,9 +18925,10 @@ const HISTORY_CAL_TYPE = {
   cnc:    { icon: '⚙', label: 'แต่ง Roll (CNC)', color: 'var(--accent)', bg: 'var(--accent-glow)' },
   polish: { icon: '✦', label: 'ขัด Roll',        color: 'var(--purple)', bg: 'var(--purple-dim)' },
   sq:     { icon: '◆', label: 'แต่ง Roll SQ',    color: 'var(--amber)',  bg: 'var(--amber-dim)' },
+  saw:    { icon: '✧', label: 'ลับคมใบเลื่อย',    color: 'var(--green)',  bg: 'var(--green-dim)' },
 };
 // ลำดับที่ใช้เรียงบรรทัดในช่องวันของปฏิทิน — ไล่ตามลำดับงานจริง (แต่ง → ขัด → แต่ง SQ)
-const HISTORY_CAL_TYPE_ORDER = ['cnc', 'polish', 'sq'];
+const HISTORY_CAL_TYPE_ORDER = ['cnc', 'polish', 'sq', 'saw'];
 let historyCalMonth = null;   // เดือนที่กำลังดู (วันที่ 1 ของเดือนนั้น)
 // เปิด/ปิดค้างไว้ตามเครื่อง — บางคนใช้หน้านี้ค้นรายการอย่างเดียว ไม่อยากให้ปฏิทินดันตารางลงไป
 // เก็บใน localStorage ไม่ใช่ข้อมูลกลาง เพราะเป็นความชอบของเครื่องที่ใช้ ไม่ใช่ข้อมูลงาน
@@ -18929,7 +18993,7 @@ function openHistoryCalDetail(iso, typeKey, setName, colorKey) {
   const colorName = setName && colorKey ? rollColorLabelFor(setName, colorKey) : '';
   const dot = setName && colorKey ? inUseColorDot(setName, colorKey) : null;
   // งานขัด Roll ไม่ได้บันทึกขนาด OD (ไม่ได้แต่งเนื้อ Roll) — ตัดคอลัมน์ทิ้งไปเลย ไม่ต้องโชว์ขีดเปล่าทั้งแถว
-  const showOd = typeKey !== 'polish';
+  const showOd = workTypeMeasuresOd(typeKey);
   const actualOf = r => actualMinutesBetween(r.startTime, r.endTime);
   const sumActual = list.reduce((s, r) => s + (actualOf(r) || 0), 0);
   const sumPlan = list.reduce((s, r) => s + (r.minutes || 0), 0);
@@ -19048,7 +19112,7 @@ function renderHistoryCalendar(records, fromIso, toIso) {
   const leading = new Date(year, month, 1).getDay();   // 0 = อาทิตย์
   const today = dailyTodayIso();
   const dayNames = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
-  const monthTotal = { cnc: 0, polish: 0, sq: 0, days: 0, hours: 0 };
+  const monthTotal = { cnc: 0, polish: 0, sq: 0, saw: 0, days: 0, hours: 0 };
 
   let cells = '';
   for (let i = 0; i < leading; i++) cells += '<div style="min-height:74px;"></div>';
@@ -19134,6 +19198,9 @@ function renderHistoryCalendar(records, fromIso, toIso) {
       ${monthTotal.sq ? `<span style="display:inline-flex;align-items:center;gap:5px;font-weight:800;color:var(--amber);">
         <span style="font-size:9px;padding:0 4px;border-radius:3px;line-height:1.6;background:var(--amber);color:#fff;">◆</span>
         แต่ง Roll SQ ${monthTotal.sq.toLocaleString()} ชิ้น</span>` : ''}
+      ${monthTotal.saw ? `<span style="display:inline-flex;align-items:center;gap:5px;font-weight:800;color:var(--green);">
+        <span style="font-size:9px;padding:0 4px;border-radius:3px;line-height:1.6;background:var(--green);color:#fff;">✧</span>
+        ลับคมใบเลื่อย ${monthTotal.saw.toLocaleString()} ใบ</span>` : ''}
       <span style="color:var(--text-3);">มีงาน ${monthTotal.days} วัน${
         monthTotal.hours ? ' · รวม ' + (Math.round(monthTotal.hours * 10) / 10).toLocaleString() + ' ชม.' : ''}</span>
       <span style="margin-left:auto;color:var(--text-3);">ตัวเลขท้ายบรรทัด = จำนวนชิ้น · <b style="color:var(--amber);">•</b> = มีชิ้นที่ยังไม่สำเร็จ ·
@@ -20413,7 +20480,7 @@ function effectiveWorkerId() {
 }
 
 function defaultPageForRole(role) {
-  return (role === 'cnc' || role === 'polish' || role === 'sq') ? 'daily' : 'dashboard';
+  return ['cnc', 'polish', 'sq', 'saw'].includes(role) ? 'daily' : 'dashboard';
 }
 
 function loginAs(user) {
