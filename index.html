@@ -1030,6 +1030,19 @@ canvas{display:block;}
     </div>
   </div>
 
+  <!-- เวอร์ชันของไฟล์ที่เบราว์เซอร์กำลังใช้อยู่จริง — ไว้เช็คว่าได้ตัวใหม่แล้วหรือยัง
+       เบราว์เซอร์แคชไฟล์ index.html ไว้ การปิดแท็บเปิดใหม่ไม่ได้ล้างแคช
+       ถ้าเลขนี้ไม่ตรงกับที่แจ้งไว้ แปลว่ายังเป็นของเก่า ให้กด Ctrl+Shift+R
+       กดที่ตัวเลขเพื่อโหลดใหม่แบบข้ามแคชได้เลย -->
+  <div style="padding:10px 16px 14px;">
+    <button onclick="hardReloadApp()" title="กดเพื่อโหลดเวอร์ชันล่าสุดใหม่ (ข้ามแคชของเบราว์เซอร์)"
+      style="width:100%;border:1px dashed var(--border);background:transparent;border-radius:7px;cursor:pointer;
+             font-family:inherit;font-size:10.5px;font-weight:700;color:var(--text-3);padding:6px 8px;line-height:1.5;">
+      เวอร์ชัน <span id="app-build-stamp">—</span>
+      <span style="display:block;font-weight:400;opacity:.8;">กดเพื่อโหลดใหม่</span>
+    </button>
+  </div>
+
 </nav>
 
 <!-- MAIN -->
@@ -2221,6 +2234,28 @@ const PAGE_META = {
   team:       { title: 'ทีมงาน' },
   backup:     { title: 'สำรองข้อมูล' },
 };
+
+// ─── เวอร์ชันของไฟล์ ─────────────────────────────────────────────────────────
+// เบราว์เซอร์แคชไฟล์ index.html ไว้ และการปิดแท็บเปิดใหม่ไม่ได้ล้างแคช
+// จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
+// "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
+// ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
+const APP_BUILD = '2026-10-15.1';
+function renderAppBuildStamp() {
+  const el = document.getElementById('app-build-stamp');
+  if (el) el.textContent = APP_BUILD;
+}
+// โหลดใหม่แบบข้ามแคช — reload(true) ไม่ได้ผลแล้วในเบราว์เซอร์ปัจจุบัน
+// วิธีที่ได้ผลจริงคือเปลี่ยน URL ให้ไม่ซ้ำเดิม เบราว์เซอร์จึงต้องไปดึงไฟล์ใหม่
+function hardReloadApp() {
+  try {
+    const u = new URL(location.href);
+    u.searchParams.set('v', Date.now().toString(36));
+    location.replace(u.toString());
+  } catch (e) {
+    location.reload();
+  }
+}
 
 function toggleMobileSidebar() {
   document.getElementById('sidebar').classList.toggle('open');
@@ -20577,6 +20612,7 @@ async function initCloudSync() {
   }
 }
 let cloudSyncRetries = 0;
+renderAppBuildStamp();   // บอกว่าเครื่องนี้กำลังใช้ไฟล์รุ่นไหนอยู่ (ดู APP_BUILD)
 initCloudSync();
 
 // ดึงข้อมูลล่าสุดใหม่เมื่อเครื่องกลับมาใช้งาน — มือถือที่พักจอไว้นานมักหลุด realtime แล้วถือข้อมูลเก่าไว้
