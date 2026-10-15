@@ -17391,6 +17391,77 @@ function finishDailyTask(idx, workerId) {
   });
 }
 
+// ─── แถวที่ "ส่วนของวันนี้" เหลือชิ้นเดียว ────────────────────────────────────
+// งานก้อนหนึ่งถูกตัดเป็นส่วนของแต่ละวัน ส่วนสุดท้ายมักเหลือเศษของชิ้นเดียว (เช่น 1 นาที)
+// แถวแบบนี้ไม่เข้าเงื่อนไข "งานหลายชิ้น" จึงเคยได้ปุ่มระดับใบงาน (startDailyTask/finishDailyTask)
+// กดจบครั้งเดียวจึงปิดทั้งใบ รวมชิ้นที่ยังไม่ได้เริ่มด้วย และไม่ถามขนาด OD ที่วัดได้
+// อาการที่เห็น: แถวขึ้น "สำเร็จ" แต่จำนวนชิ้นยังนับไม่จบ และเวลาของชิ้นที่ทำอยู่ยังเดินต่อ
+// แก้เป็นใช้ปุ่ม "รายชิ้น" ชุดเดียวกับตารางรายชิ้น — มีผลเฉพาะชิ้นนั้น และบันทึก OD ตามปกติ
+function dailySinglePieceActionsHtml(item, rollIdx, blockReason) {
+  const origin = item.raw.__origin || item.raw;
+  const owner = pieceButtonOwnerId(origin, rollIdx);
+  const st = (getDailyPieceEntry(owner, rollIdx) || {}).status || 'pending';
+  const chip = st === 'done' ? '<span class="chip chip-green">✓ เสร็จ</span>'
+    : st === 'paused' ? `<span class="chip chip-amber">⏸ ${DL().paused}</span>`
+    : st === 'in_progress' ? '<span class="chip chip-blue">กำลังทำ</span>' : '';
+  // ชิ้นเดียวกันที่โผล่หลายแถวในวันเดียว ให้มีปุ่มอยู่แถวเดียว (เกณฑ์เดียวกับตารางรายชิ้น)
+  if (owner !== origin.id) {
+    return `${chip}<span class="muted" style="font-size:10.5px;display:block;margin-top:2px;"
+      title="Roll ลูกเดียวกับอีกแถวของวันนี้ — กดปุ่มที่แถวนั้นได้เลย มีผลกับทั้งชิ้น">ชิ้นเดียวกับอีกแถว</span>`;
+  }
+  const dis = blockReason ? `disabled title="${escapeHtmlAttr(blockReason)}"` : '';
+  const w = origin.workerId || '';
+  if (st === 'done') return chip;
+  if (st === 'paused') {
+    return `${chip} <button class="btn btn-ghost btn-sm daily-act daily-act-resume" style="color:var(--purple);" ${dis}
+      onclick="resumeDailyPiece('${origin.id}','${rollIdx}','${w}')">▶ ${DL().resume}</button>`;
+  }
+  if (st === 'in_progress') {
+    return `<div class="daily-act-wrap" style="display:flex;gap:4px;">
+      <button class="btn btn-ghost btn-sm daily-act daily-act-finish" style="color:var(--accent);" ${dis}
+        onclick="finishDailyPiece('${origin.id}','${rollIdx}','${w}')">■ ${DL().finish}</button>
+      <button class="btn btn-ghost btn-sm daily-act daily-act-pause" ${dis}
+        onclick="pauseDailyPiece('${origin.id}','${rollIdx}','${w}')">⏸ ${DL().pause}</button></div>`;
+  }
+  return `<button class="btn btn-ghost btn-sm daily-act daily-act-start" ${dis}
+    onclick="startDailyPiece('${origin.id}','${rollIdx}','${w}')">▶ ${DL().start}</button>`;
+}
+
+// งานตามแผนหลายชิ้นที่ถูกกด "จบงาน" ทั้งใบ ทั้งที่ยังไม่มีชิ้นไหนทำจบเลย — อาการของการกดผิดแถว
+// ของเดิมไม่มีทางยกเลิกเอง (ช่องติ๊กหน้าแถวปิดใช้งานสำหรับงานตามแผน) ต้องรอให้แก้ข้อมูลให้
+function planTaskFinishedWithoutAnyPiece(t) {
+  const origin = (t && (t.__origin || t)) || null;
+  const ids = (origin && origin.rollIds) || [];
+  if (ids.length < 2) return false;
+  return !ids.some(i => (getDailyPieceEntry(origin.id, i) || {}).status === 'done');
+}
+
+// ยกเลิกการกด "จบงาน" ระดับใบที่กดผิด — คืนสถานะตามงานจริงรายชิ้น
+// และลบเวลาจบที่บันทึกไว้ด้วย ไม่งั้นแถวจะยังโชว์ "(จริง HH:MM)" ของการกดที่ผิดนั้นต่อไป
+function undoDailyTaskFinish(idx) {
+  if (!confirm('ยกเลิกการกด "จบงาน" ของงานนี้?\n\n'
+    + 'สถานะจะกลับไปตามงานจริงรายชิ้น และเวลาจบที่บันทึกไว้จะถูกลบ')) return;
+  withCloudRetry(() => {
+    const date = dailyStatusDateFor(idx);
+    const t = planTasks.find(x => x.id === idx);
+    const running = (t && (t.rollIds || []).some(i => {
+      const s = (getDailyPieceEntry(idx, i) || {}).status;
+      return s === 'in_progress' || s === 'paused';
+    })) || false;
+    const dayMap = dailyStatusByDate[date] || (dailyStatusByDate[date] = {});
+    if (running) dayMap[idx] = 'in_progress'; else delete dayMap[idx];
+    if (!Object.keys(dayMap).length) delete dailyStatusByDate[date];
+    const times = dailyActualTimes[date];
+    if (times && times[idx]) {
+      delete times[idx].endTime;
+      if (!Object.keys(times[idx]).some(k => times[idx][k] != null)) delete times[idx];
+      if (!Object.keys(times).length) delete dailyActualTimes[date];
+    }
+    persistState();
+    renderDailyTasks();
+  });
+}
+
 // พักงานแทรก — ต้องระบุเหตุผลเสมอ เก็บลง dailyPauseLog ก้อนเดียวกับการพักงานรายชิ้น
 // (rollIdx = null เพราะงานแทรกไม่มีชิ้นย่อย) เวลาที่พักเก็บไว้ในเวลาจริงของงานนั้น
 async function pauseDailyTask(idx, workerId) {
@@ -18235,6 +18306,9 @@ function renderDailyTasks() {
     const actual = getDailyActualTimes(item.key);
     const startTimeDisplay = escapeHtmlAttr(item.startTime) + (actual.startTime ? ` <span class="muted" style="font-size:11px;">(จริง ${escapeHtmlAttr(actual.startTime)})</span>` : '');
     const endTimeDisplay = item.endTimeHtml + (actual.endTime ? ` <span class="muted" style="font-size:11px;">(จริง ${escapeHtmlAttr(actual.endTime)})</span>` : '');
+    // ส่วนของวันนี้ที่เหลือชิ้นเดียว — ปุ่มต้องมีผลกับ "ชิ้นนั้น" ไม่ใช่ทั้งใบงาน
+    const dayPartIds = (!item.editable && item.raw) ? (item.raw.rollIds || []) : [];
+    const singlePieceIdx = dayPartIds.length === 1 ? dayPartIds[0] : null;
     let actions;
     if (item.editable) {
       // งานแทรกกดเริ่ม/จบงานได้เหมือนงานตามแผน — สถานะกับเวลาจริงเก็บที่เดียวกัน
@@ -18254,6 +18328,14 @@ function renderDailyTasks() {
     } else if (item.expandable) {
       // งานที่มีหลาย Roll ให้กดเริ่ม/จบงานแยกทีละชิ้นในตารางย่อยด้านล่างแทน ไม่มีปุ่มรวมตรงนี้
       actions = '';
+    } else if (singlePieceIdx != null && status !== 'done') {
+      // ส่วนของวันนี้มีชิ้นเดียว — ใช้ปุ่มรายชิ้น ไม่ใช่ปุ่มระดับใบงาน (ดู dailySinglePieceActionsHtml)
+      actions = dailySinglePieceActionsHtml(item, singlePieceIdx, blockReason);
+    } else if (!item.editable && status === 'done' && planTaskFinishedWithoutAnyPiece(item.raw)) {
+      // ใบนี้ถูกปิดทั้งที่ยังไม่มีชิ้นไหนจบเลย — เปิดทางให้ยกเลิกเองได้ ไม่ต้องรอแก้ข้อมูลให้
+      actions = `<button class="btn btn-ghost btn-sm" style="color:var(--red);"
+        title="งานนี้ถูกกดจบทั้งใบ ทั้งที่ยังไม่มีชิ้นไหนทำจบเลย — กดเพื่อยกเลิก"
+        onclick="undoDailyTaskFinish('${item.key}')">↩ ยกเลิกจบงาน</button>`;
     } else if (status === 'pending') {
       actions = `<button class="btn btn-ghost btn-sm daily-act daily-act-start" ${blockReason ? `disabled title="${blockReason} — เริ่มงานนี้ไม่ได้"` : ''} onclick="startDailyTask('${item.key}','${item.workerId || ''}')">▶ ${DL().start}</button>`;
     } else if (status === 'in_progress') {
