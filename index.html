@@ -1437,7 +1437,7 @@ canvas{display:block;}
             <div class="table-wrap" style="overflow-x:auto;">
               <table>
                 <thead><tr>
-                  <th>Size SQ</th><th title="หน้ากว้างของฟิล์มที่ใช้กับชุดนี้ — เป็นค่าของทั้งชุด">หน้าฟิล์ม</th><th title="ความหนาของวัสดุที่ชุดนี้เดิน — เป็นค่าของทั้งชุด">ความหนา</th><th>ประเภท</th><th>ชุดสี</th><th title="สถานะของทั้งชุด — ใช้เป็นตัวบอกการ์ด 'ชุด Roll SQ กำลังแต่ง' บนหน้า Dashboard">สถานะชุด</th><th title="ชิ้นงานในชุด — R = ขวา · L = ซ้าย">ชิ้นงาน</th><th title="รหัสประจำ Roll ลูกนั้น">รหัส Roll</th><th>เดือน/ปี ที่ผลิต</th><th title="ขนาดตอนใส่ครั้งแรก — ไม่เปลี่ยนตามการแต่ง">OD Standard</th><th title="ขนาดล่าสุดหลังแต่ง">OD ปัจจุบัน</th><th title="OD ที่เล็กที่สุดที่ยังใช้ได้ — ถึงค่านี้แล้วต้องเปลี่ยนลูกใหม่">OD หมดอายุ</th><th></th>
+                  <th>Size SQ</th><th title="หน้ากว้างของฟิล์มที่ใช้กับชุดนี้ — เป็นค่าของทั้งชุด">หน้าฟิล์ม</th><th title="ความหนาของวัสดุที่ชุดนี้เดิน — เป็นค่าของทั้งชุด">ความหนา</th><th>ประเภท</th><th>ชุดสี</th><th title="สถานะของทั้งชุด — ใช้เป็นตัวบอกการ์ด 'ชุด Roll SQ กำลังแต่ง' บนหน้า Dashboard">สถานะชุด</th><th title="ชิ้นงานในชุด — R = ขวา · L = ซ้าย">ชิ้นงาน</th><th title="รหัสประจำ Roll ลูกนั้น">รหัส Roll</th><th>เดือน/ปี ที่ผลิต</th><th title="ขนาดตอนใส่ครั้งแรก — ไม่เปลี่ยนตามการแต่ง">OD Standard</th><th title="ขนาดล่าสุดหลังแต่ง">OD ปัจจุบัน</th><th title="OD ที่เล็กที่สุดที่ยังใช้ได้ — ถึงค่านี้แล้วต้องเปลี่ยนลูกใหม่">OD หมดอายุ</th><th title="เวลาที่ใช้แต่ง Roll ลูกนี้ — ใช้คิดเวลาเริ่ม-จบของงานแต่ง Roll SQ ในหน้าวางแผน">เวลาแต่ง (นาที)</th><th></th>
                 </tr></thead>
                 <tbody id="tbody-sq"></tbody>
               </table>
@@ -5867,6 +5867,14 @@ const MODAL_FORMS = {
         <div class="form-group"><label class="form-label">ชิ้น L · OD หมดอายุ (mm)</label>
           <input class="form-input" id="f-sq-odmin2" type="number" step="0.01" placeholder="เช่น 150"></div>
       </div>
+      <!-- เวลาแต่งของแต่ละชิ้น — ตัวที่หน้าวางแผนใช้คิดเวลาเริ่ม-จบของงานแต่ง Roll SQ
+           เว้นว่างไว้ได้ แต่ชุดที่ยังไม่กรอกจะเอาไปวางแผนไม่ได้ (ไม่รู้ว่าใช้เวลาเท่าไร) -->
+      <div class="modal-row">
+        <div class="form-group"><label class="form-label">ชิ้น R · เวลาแต่ง (นาที)</label>
+          <input class="form-input" id="f-sq-grind1" type="number" step="1" placeholder="เช่น 60"></div>
+        <div class="form-group"><label class="form-label">ชิ้น L · เวลาแต่ง (นาที)</label>
+          <input class="form-input" id="f-sq-grind2" type="number" step="1" placeholder="เช่น 60"></div>
+      </div>
       <datalist id="f-sq-size-list"></datalist>`
   },
   // ฟอร์มแก้ไข = ทีละชิ้น (ปุ่ม ✏️ ที่แถว) — แก้ Size/ประเภท/ชุดสี/เดือน-ปี ที่ชิ้นไหนก็ตามไปทั้งชุด
@@ -5902,13 +5910,15 @@ const MODAL_FORMS = {
         <div class="form-group"><label class="form-label">ความหนา (mm)</label>
           <input class="form-input" id="f-sq-thick" placeholder="เช่น 0.35"></div>
       </div>
-      <div class="modal-row three">
+      <div class="modal-row four">
         <div class="form-group"><label class="form-label">OD Standard (mm)</label>
           <input class="form-input" id="f-sq-odstd" type="number" step="0.01" placeholder="เช่น 120"></div>
         <div class="form-group"><label class="form-label">OD ปัจจุบัน (mm)</label>
           <input class="form-input" id="f-sq-odcur" type="number" step="0.01" placeholder="ยังไม่วัด — เว้นว่างไว้ได้"></div>
         <div class="form-group"><label class="form-label">OD หมดอายุ (mm)</label>
           <input class="form-input" id="f-sq-odmin" type="number" step="0.01" placeholder="เช่น 150"></div>
+        <div class="form-group"><label class="form-label">เวลาแต่ง (นาที)</label>
+          <input class="form-input" id="f-sq-grind" type="number" step="1" placeholder="เช่น 60"></div>
       </div>
       <datalist id="f-sq-size-list"></datalist>`
   },
@@ -6451,6 +6461,11 @@ const PLAN_WORKTYPE_META = {
   //  เช่น GI 2"x2" Forming → Sizing → TH ในวันเดียว) จึงเติมด้วยชุดอื่นได้
   cnc:    { label: 'แผนงาน CNC', field: 'grindTime', metricLabel: 'เวลาแต่ง Roll (นาที)', shifts: ['morning', 'night', 'both'], otMaxMin: 3 * 60, fillSameSetOnly: true, otNote: 'สูงสุด 3 ชม. — กะเช้า OT 17:00–20:00 / กะดึก 05:00–08:00 (หักพัก 20 นาที เหลือทำงาน 2 ชม. 40 นาที)' },
   polish: { label: 'แผนงานขัด Roll', field: 'polishTime', metricLabel: 'เวลาขัด Roll (นาที)', shifts: ['morning'], otMaxMin: 12 * 60, otNote: 'สูงสุด 12 ชม. — OT 17:00–05:00 (หักพัก 20 นาที เหลือทำงาน 11 ชม. 40 นาที)' },
+  // แต่ง Roll SQ — ใช้ช่างและเครื่องคนละชุดกับงานแต่ง Roll (CNC) จึงเป็นประเภทงานแยก
+  // ซึ่งแปลว่ามีคิวเวลาของตัวเอง เดินคู่ขนานกับ CNC ได้ ไม่ต้องรอกัน (ทุกตัวที่จัดคิว/เติมเวลา
+  // ไล่ทีละประเภทงานอยู่แล้ว เช่น autoFixPlanSequencing · rechainPlanTasksAfter)
+  // เวลาต่อชิ้นอ่านจากช่อง "เวลาแต่ง (นาที)" ของทะเบียน Roll SQ (ชื่อฟิลด์เดียวกับ Roll)
+  sq:     { label: 'แผนงานแต่ง Roll SQ', field: 'grindTime', metricLabel: 'เวลาแต่ง Roll SQ (นาที)', shifts: ['morning', 'night', 'both'], otMaxMin: 3 * 60, fillSameSetOnly: true, otNote: 'สูงสุด 3 ชม. — กะเช้า OT 17:00–20:00 / กะดึก 05:00–08:00 (หักพัก 20 นาที เหลือทำงาน 2 ชม. 40 นาที)' },
 };
 function planWorkTypeShifts(workType) {
   return (PLAN_WORKTYPE_META[workType] || {}).shifts || ['morning', 'night', 'both'];
@@ -7458,9 +7473,14 @@ function planDayPartsByDate() {
 const PLAN_DAY_SECTIONS = [
   { key: 'cnc',    icon: '⚙', label: 'แต่ง Roll (CNC)', color: 'var(--accent)', bg: 'var(--accent-glow)', empty: 'ไม่มีงานแต่ง Roll ในวันนี้' },
   { key: 'polish', icon: '✦', label: 'ขัด Roll',        color: 'var(--purple)', bg: 'var(--purple-dim)',  empty: 'ไม่มีงานขัด Roll ในวันนี้' },
+  { key: 'sq',     icon: '◆', label: 'แต่ง Roll SQ',    color: 'var(--amber)',  bg: 'var(--amber-dim)',   empty: 'ไม่มีงานแต่ง Roll SQ ในวันนี้' },
 ];
 // งานเก่าที่ไม่มี workType ถือเป็นงาน CNC เหมือนที่ทุกหน้าทำอยู่
-function planTaskSectionKey(t) { return t.workType === 'polish' ? 'polish' : 'cnc'; }
+function planTaskSectionKey(t) {
+  if (t.workType === 'polish') return 'polish';
+  if (t.workType === 'sq') return 'sq';
+  return 'cnc';
+}
 // ช่าง CNC / ช่างขัด Roll เห็นหัวข้อของตัวเองอย่างเดียว
 function planSectionsForRole() {
   const forced = forcedWorkTypeForRole();
@@ -7945,7 +7965,7 @@ function renderPlanDay() {
     const row = `
     <tr data-taskid="${escapeHtmlAttr(t.id)}"${dragAttrs}${expandable ? ` style="cursor:pointer;" onclick="togglePlanDayTaskDetail('${t.id}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : ''}>
       <td class="muted" style="white-space:nowrap;">${grip}${expandable ? `<span aria-hidden="true" style="display:inline-block;width:12px;transition:transform .15s;transform:rotate(${expanded ? 90 : 0}deg);">▸</span>` : ''}${i + 1}</td>
-      <td>${escapeHtmlAttr(t.rollSet)}</td>
+      <td>${escapeHtmlAttr(planSetLabel(t.rollSet))}</td>
       <td>${escapeHtmlAttr(planRollColorLabel(t))}</td>
       <td class="muted">${escapeHtmlAttr(t.rollId)}${(() => {
         // ความคืบหน้าของส่วนนี้ — เห็นได้ตั้งแต่ยังไม่กางแถว ไม่ต้องกดเข้าไปดูทีละชิ้น
@@ -8232,9 +8252,9 @@ function planCalendarChip(t, editable, extraStyle) {
   // โหมดลบ: คลิกที่งานคือติ๊กเลือก/ยกเลิกเลือก (ไม่เปิดฟอร์มแก้ไข) และมีเครื่องหมายบอกว่าเลือกอยู่
   if (planDeleteMode) {
     const picked = planDeleteSelected.has(t.id);
-    return `<span class="chip plan-cal-chip ${prog.chip}${picked ? ' pcc-picked' : ' pcc-pickable'}" data-taskid="${escapeHtmlAttr(t.id)}" style="${extraStyle || ''}cursor:pointer;" onclick="togglePlanDeleteSelect('${t.id}')" title="${escapeHtmlAttr((picked ? 'เลือกอยู่ — คลิกเพื่อยกเลิก' : 'คลิกเพื่อเลือกลบ') + ' · ' + fullTitle)}"><span class="pcc-set">${picked ? '☑ ' : '☐ '}${typeIcon}${escapeHtmlAttr(t.rollSet)}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span>${timeHtml}</span>`;
+    return `<span class="chip plan-cal-chip ${prog.chip}${picked ? ' pcc-picked' : ' pcc-pickable'}" data-taskid="${escapeHtmlAttr(t.id)}" style="${extraStyle || ''}cursor:pointer;" onclick="togglePlanDeleteSelect('${t.id}')" title="${escapeHtmlAttr((picked ? 'เลือกอยู่ — คลิกเพื่อยกเลิก' : 'คลิกเพื่อเลือกลบ') + ' · ' + fullTitle)}"><span class="pcc-set">${picked ? '☑ ' : '☐ '}${typeIcon}${escapeHtmlAttr(planSetLabel(t.rollSet))}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span>${timeHtml}</span>`;
   }
-  return `<span class="chip plan-cal-chip ${prog.chip}" style="${extraStyle || ''}${editable ? 'cursor:pointer;' : ''}" ${editable ? `onclick="openPlanTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(fullTitle)}"><span class="pcc-set">${typeIcon}${escapeHtmlAttr(t.rollSet)}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span>${timeHtml}</span>`;
+  return `<span class="chip plan-cal-chip ${prog.chip}" style="${extraStyle || ''}${editable ? 'cursor:pointer;' : ''}" ${editable ? `onclick="openPlanTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(fullTitle)}"><span class="pcc-set">${typeIcon}${escapeHtmlAttr(planSetLabel(t.rollSet))}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span>${timeHtml}</span>`;
 }
 
 // ─── รวมชิปงานของชุด Roll เดียวกัน สีเดียวกัน ที่เดินต่อเวลากันพอดี ─────────────
@@ -8839,6 +8859,20 @@ function planFormRequiredColorStatus() {
 function populatePlanRollSetSelect(selectedSet) {
   const sel = document.getElementById('pf-rollset');
   if (!sel) return;
+  // งานแต่ง Roll SQ เลือกจาก "ชุด Roll SQ" ในทะเบียน ไม่ใช่ Size Roll
+  // เอาเฉพาะชุดที่กรอกเวลาแต่งไว้แล้ว ชุดที่ยังไม่กรอกคิดเวลาเริ่ม-จบไม่ได้
+  if (planFormWorkType() === 'sq') {
+    const sets = sqPlannableSets();
+    const opts = sets.map(set => {
+      const v = sqPlanSetNameOf(set[0]);
+      return `<option value="${escapeHtmlAttr(v)}"${v === selectedSet ? ' selected' : ''}>${escapeHtmlAttr(planSetLabel(v))}</option>`;
+    }).join('');
+    // ชุดที่กำลังแก้อยู่ต้องอยู่ในรายการเสมอ ไม่งั้นเปิดฟอร์มแก้งานเก่าแล้วค่าหาย
+    const missing = selectedSet && isSqPlanSet(selectedSet) && !sets.some(set => sqPlanSetNameOf(set[0]) === selectedSet)
+      ? `<option value="${escapeHtmlAttr(selectedSet)}" selected>${escapeHtmlAttr(planSetLabel(selectedSet))}</option>` : '';
+    sel.innerHTML = `<option value="">${sets.length ? '— เลือกชุด Roll SQ —' : '— ยังไม่มีชุด Roll SQ ที่กรอกเวลาแต่งไว้ —'}</option>` + missing + opts;
+    return;
+  }
   const need = planFormRequiredColorStatus();
   let sets = getRollSets();
   if (need) {
@@ -8853,6 +8887,12 @@ function populatePlanRollSetSelect(selectedSet) {
 function populatePlanRollColorSelect(setName, selectedColor) {
   const sel = document.getElementById('pf-rollcolor');
   if (!sel) return;
+  // ชุด Roll SQ ระบุสีมาในตัวชุดอยู่แล้ว (ขนาด+ประเภท+สี+ลำดับชุด) ไม่มีอะไรให้เลือกต่อ
+  if (isSqPlanSet(setName) || planFormWorkType() === 'sq') {
+    sel.innerHTML = '<option value="">— ชุด Roll SQ ระบุสีมาในชุดแล้ว —</option>';
+    sel.disabled = true;
+    return null;
+  }
   if (!setName) {
     sel.innerHTML = '<option value="">— เลือก Size Roll ก่อน —</option>';
     sel.disabled = true;
@@ -8881,8 +8921,51 @@ function populatePlanRollColorSelect(setName, selectedColor) {
 }
 
 // ดึง Roll ทั้งหมดของ Size Roll ชุดนี้ที่ตรงกับชุดสีที่เลือก (ไม่เลือกสี = ทุกสีในกลุ่มนี้)
+// ─── ชุด Roll SQ ในงานตามแผน ─────────────────────────────────────────────────
+// งานตามแผนเก็บ "ชุด" ไว้ในช่อง rollSet ซึ่งของ Roll คือชื่อ Size Roll ตรงๆ
+// ชุด Roll SQ ไม่มีชื่อที่ใช้เป็นคีย์ได้ (ขนาด+สี+ลำดับชุด ซ้ำกันได้และเปลี่ยนได้)
+// จึงเก็บเป็นคีย์ของชุด แล้วแปลงเป็นชื่อที่อ่านออกตอนแสดงผลด้วย planSetLabel()
+const SQ_PLAN_PREFIX = 'SQ:';
+function isSqPlanSet(setName) { return String(setName || '').startsWith(SQ_PLAN_PREFIX); }
+function sqPlanSetKeyOf(setName) { return String(setName || '').slice(SQ_PLAN_PREFIX.length); }
+function sqPlanSetNameOf(r) { return SQ_PLAN_PREFIX + sqSetKey(r); }
+
+// ให้ชิ้น Roll SQ มีชื่อฟิลด์ "name" เหมือนชิ้น Roll ที่งานตามแผนใช้ โดยไม่ต้องเก็บซ้ำลงข้อมูล
+// ประกาศเป็น non-enumerable ค่าจึงไม่ถูก JSON.stringify เก็บขึ้น cloud (ข้อมูลไม่บวมและไม่กิน egress)
+// และยังชี้ไปที่ออบเจกต์ตัวจริงในทะเบียน การแก้ค่าจากหน้างานจึงเข้าทะเบียนตามปกติ
+function sqAttachPlanAliases(r) {
+  if (!r || Object.prototype.hasOwnProperty.call(r, 'name')) return r;
+  Object.defineProperty(r, 'name', {
+    configurable: true, enumerable: false,
+    get() { return this.code || ('ชิ้น ' + (Number(this.piece) === 2 ? 'L' : 'R')); },
+  });
+  return r;
+}
+
+// ชื่อชุดที่เอาไว้โชว์ — Roll ใช้ชื่อ Size Roll ตรงๆ ส่วน Roll SQ ต้องแปลงจากคีย์ก่อน
+function planSetLabel(setName) {
+  if (!isSqPlanSet(setName)) return setName || '—';
+  const k = sqPlanSetKeyOf(setName);
+  const head = (toolingData.sq || []).find(r => sqSetKey(r) === k);
+  return head ? 'SQ ' + sqSetFullLabel(head) : 'SQ — ชุดที่ถูกลบไปแล้ว';
+}
+
+// ชุด Roll SQ ที่กรอกเวลาแต่งไว้ครบแล้ว — ชุดที่ยังไม่กรอกเอาไปวางแผนไม่ได้ (ไม่รู้ว่าใช้เวลาเท่าไร)
+function sqPlannableSets() {
+  return (typeof sqSets === 'function' ? sqSets() : [])
+    .filter(set => set.some(r => (parseFloat(r.grindTime) || 0) > 0));
+}
+
 function getMatchingRollsForPlan(setName, colorKey) {
   if (!setName) return [];
+  // ชุด Roll SQ — ชิ้นในชุด (R แล้ว L) ทำหน้าที่เป็น "ชิ้น Roll" ของงานตามแผน
+  if (isSqPlanSet(setName)) {
+    const k = sqPlanSetKeyOf(setName);
+    return (toolingData.sq || [])
+      .filter(r => sqSetKey(r) === k)
+      .sort((a, b) => (Number(a.piece) || 0) - (Number(b.piece) || 0))
+      .map(sqAttachPlanAliases);
+  }
   let rolls = toolingData.roll.filter(r => r.set === setName);
   if (colorKey) rolls = rolls.filter(r => r.color === colorKey);
   return rolls;
@@ -9724,6 +9807,13 @@ function clearPlanFieldWarn(id) { const e = document.getElementById(id); if (e) 
 function onPlanRollSetChange() {
   const setName = document.getElementById('pf-rollset').value;
   clearPlanFieldWarn('pf-rollset');
+  // งานแต่ง Roll SQ ไม่มีขั้นเลือกชุดสี — เลือกชุดแล้วไปติ๊กรายชื่อ Roll ต่อได้เลย
+  if (isSqPlanSet(setName)) {
+    populatePlanRollColorSelect(setName, null);
+    fillPlanRollReadonly(setName, null, null, currentEditingPlanTaskId);
+    if (setName) openRollDropdown();
+    return;
+  }
   // ถ้าชุดนี้มีสีเดียว populatePlanRollColorSelect จะเลือกให้เอง แล้วคืนค่าสีนั้นมา
   // ต้องเอาไปดึงรายการ Roll ด้วย ไม่งั้นช่องสีขึ้นสีแล้วแต่รายการ Roll ยังเป็นของ "ทั้งหมด"
   const colorKey = populatePlanRollColorSelect(setName, null) || null;
@@ -16687,6 +16777,16 @@ function sqOdExpired(r) {
 // OD ปัจจุบันพร้อมส่วนที่สึกไปจาก Standard — ยังไม่วัดก็บอกตรงๆ ว่ายังไม่วัด ไม่เอา Standard มาใส่แทน
 // (เกณฑ์เดียวกับ Ø ปัจจุบันของทะเบียน Roll ที่เว้นว่างไว้เมื่อยังไม่ได้วัดหลังแต่ง)
 // ถึง OD หมดอายุแล้วขึ้นแดงพร้อมป้าย ไม่ต้องมานั่งเทียบเลขสองช่องเอง
+// ช่อง "เวลาแต่ง (นาที)" ของทะเบียน Roll SQ — ยังไม่กรอกก็บอกตรงๆ ว่ายังวางแผนไม่ได้
+// หน้าวางแผนต้องใช้ค่านี้คิดเวลาเริ่ม-จบของงาน ชุดที่ไม่มีค่าจะถูกกันออกจากตัวเลือก
+function sqGrindTimeCellHtml(r) {
+  const n = sqNum((r || {}).grindTime);
+  if (n == null || !(n > 0)) {
+    return '<span style="color:var(--text-3);" title="ยังไม่ได้กรอกเวลาแต่ง — ชุดนี้ยังเอาไปวางแผนงานแต่ง Roll SQ ไม่ได้">—</span>';
+  }
+  return '<strong>' + escapeHtmlAttr(String(n)) + '</strong>';
+}
+
 function sqOdCurHtml(r) {
   const cur = sqNum(r.odCur), std = sqNum(r.odStd), min = sqNum(r.odMin);
   if (cur == null) return '<span style="color:var(--text-3);">ยังไม่วัด</span>';
@@ -16831,6 +16931,7 @@ function readSqSetForm() {
       odStd: sqFormVal('f-sq-odstd' + i),
       odCur: sqFormVal('f-sq-odcur' + i),   // ว่าง = ยังไม่ได้วัด
       odMin: sqFormVal('f-sq-odmin' + i),
+      grindTime: sqFormVal('f-sq-grind' + i),
     });
   }
   return out;
@@ -16855,6 +16956,7 @@ function editSq(id) {
   document.getElementById('f-sq-odstd').value = r.odStd || '';
   document.getElementById('f-sq-odcur').value = r.odCur || '';
   document.getElementById('f-sq-odmin').value = r.odMin || '';
+  document.getElementById('f-sq-grind').value = r.grindTime || '';
   document.getElementById('modal-overlay').classList.add('open');
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const sizeSq = sqFormVal('f-sq-size');
@@ -16872,7 +16974,8 @@ function editSq(id) {
       color: sqFormVal('f-sq-color') || SQ_COLORS[0].key, madeYm: sqYmFromForm(),
       filmFace: sqFormVal('f-sq-film'), thickness: sqFormVal('f-sq-thick'),
       piece: Number(sqFormVal('f-sq-piece')) || 1, code: sqFormVal('f-sq-code'),
-      odStd: sqFormVal('f-sq-odstd'), odCur: sqFormVal('f-sq-odcur'), odMin: sqFormVal('f-sq-odmin') };
+      odStd: sqFormVal('f-sq-odstd'), odCur: sqFormVal('f-sq-odcur'), odMin: sqFormVal('f-sq-odmin'),
+      grindTime: sqFormVal('f-sq-grind') };
     toolingData.sq[idx] = updated;
     // Size/ประเภท/ชุดสี/เดือน-ปีที่ผลิต/หน้าฟิล์ม/ความหนา เป็นค่าของ "ชุด" — แก้ที่ชิ้นไหนก็ต้องตรงกันทั้งชุด
     // ชุดชี้ด้วย setId แล้ว การเปลี่ยนขนาด/สีจึงไม่ทำให้ชุดแตกออกจากกันอีก
@@ -16975,13 +17078,14 @@ function renderSqTable(page) {
       <td>${std != null ? escapeHtmlAttr(std.toLocaleString(undefined, { maximumFractionDigits: 2 })) : '<span style="color:var(--text-3);">—</span>'}</td>
       <td>${sqOdCurHtml(r)}</td>
       <td>${sqNum(r.odMin) != null ? escapeHtmlAttr(sqNum(r.odMin).toLocaleString(undefined, { maximumFractionDigits: 2 })) : '<span style="color:var(--text-3);">—</span>'}</td>
+      <td class="muted">${sqGrindTimeCellHtml(r)}</td>
       <td style="white-space:nowrap;">
         <button class="btn btn-ghost btn-sm" style="padding:4px 6px;" onclick="${jsCallAttr('editSq', r.id)}" title="แก้ไขชิ้นนี้">✏️</button>
         ${first ? `<button class="btn btn-ghost btn-sm" style="padding:4px 6px;color:var(--red);" onclick="${jsCallAttr('deleteSqSet', r.id)}" title="ลบทั้งชุด (${set.length} ชิ้น)">✕</button>` : ''}
       </td>
     </tr>`;
     }).join('');
-  }).join('') : `<tr><td colspan="13" style="padding:28px;text-align:center;color:var(--text-3);">${
+  }).join('') : `<tr><td colspan="14" style="padding:28px;text-align:center;color:var(--text-3);">${
     allSets.length ? 'ไม่มีรายการในที่เลือกไว้ — กดหัวข้อขนาดซ้ำอีกครั้งเพื่อดูทุกขนาด'
       : 'ยังไม่มีรายการ Roll SQ — กด "+ เพิ่มชุด" เพื่อเริ่มลงทะเบียน (1 ชุดลง Roll ' + SQ_PIECES_PER_SET + ' ชิ้นพร้อมกัน)'}</td></tr>`;
 
@@ -17145,6 +17249,7 @@ function addSqPieceToSet(key) {
   document.getElementById('f-sq-odstd').value = base.odStd || '';
   document.getElementById('f-sq-odcur').value = '';
   document.getElementById('f-sq-odmin').value = base.odMin || '';   // เกณฑ์หมดอายุเป็นค่าของขนาด ลอกจากพี่น้องได้
+  document.getElementById('f-sq-grind').value = base.grindTime || '';  // เวลาแต่งของสองชิ้นในชุดมักเท่ากัน ลอกมาก่อนได้
   document.getElementById('modal-overlay').classList.add('open');
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const sizeSq = sqFormVal('f-sq-size');
@@ -17157,6 +17262,7 @@ function addSqPieceToSet(key) {
       filmFace: sqFormVal('f-sq-film'), thickness: sqFormVal('f-sq-thick'),
       piece: Number(sqFormVal('f-sq-piece')) || piece, code: sqFormVal('f-sq-code'),
       odStd: sqFormVal('f-sq-odstd'), odCur: sqFormVal('f-sq-odcur'), odMin: sqFormVal('f-sq-odmin'),
+      grindTime: sqFormVal('f-sq-grind'),
     });
     applySqColorGroupSpec(sizeSq, sqFormVal('f-sq-kind') || SQ_KINDS[0],
       sqFormVal('f-sq-color') || SQ_COLORS[0].key, sqFormVal('f-sq-film'), sqFormVal('f-sq-thick'));
@@ -17869,11 +17975,35 @@ function parseMeasuredOd(raw) {
   return null; // กู้ไม่ได้ — ไม่แตะทะเบียน (ค่าที่กรอกยังอยู่ในประวัติให้ตรวจย้อนหลังได้)
 }
 
+// ชิ้นในทะเบียน Roll SQ ใช้ชื่อช่อง OD คนละชุดกับทะเบียน Roll (odStd/odCur ไม่ใช่ diameterStd/diameter)
+// ถ้าเขียนด้วยชื่อช่องของ Roll จะได้ช่องขยะเพิ่มมา และ OD ปัจจุบันของ SQ ไม่ขยับตามที่วัดจริง
+function isSqPieceRecord(r) {
+  return !!r && (Object.prototype.hasOwnProperty.call(r, 'odStd')
+              || Object.prototype.hasOwnProperty.call(r, 'sizeSq'));
+}
+// OD ปัจจุบัน / OD มาตรฐาน ของชิ้นหนึ่ง — อ่านได้ทั้งชิ้น Roll และชิ้น Roll SQ
+function pieceCurrentOdOf(r) {
+  if (!r) return '';
+  return String((isSqPieceRecord(r) ? r.odCur : r.diameter) || '').trim();
+}
+function pieceStdOdOf(r) {
+  if (!r) return '';
+  if (isSqPieceRecord(r)) return String(r.odStd || '').trim();
+  return String(r.diameterStd || '').trim() || String(r.diameter || '').trim();
+}
+
 function applyMeasuredSizeToRegistry(roll, size, dateIso, bumpRegrind) {
   if (!roll) return false;
   const od = parseMeasuredOd(size);
   if (od == null) return false;
   const clean = String(od);
+  // ชิ้น Roll SQ — OD Standard เป็นค่าตั้งต้นที่กรอกไว้ในทะเบียน ไม่ถูกเขียนทับเหมือนฝั่ง Roll
+  // (ฝั่ง Roll ต้องเก็บ Ø มาตรฐานไว้ครั้งแรกที่แต่ง เพราะเดิมมีช่องเดียว)
+  if (isSqPieceRecord(roll)) {
+    roll.odCur = clean;
+    roll.lastService = dateIso || dailyViewDate;
+    return true;
+  }
   // เก็บ Ø มาตรฐานไว้ครั้งแรกที่แต่ง — หลังจากนี้ Ø ปัจจุบันเปลี่ยนได้ แต่ตัวมาตรฐานไม่ถูกเขียนทับอีก
   if (!String(roll.diameterStd || '').trim() && String(roll.diameter || '').trim()) {
     roll.diameterStd = String(roll.diameter).trim();
@@ -17899,7 +18029,8 @@ async function finishDailyPiece(taskId, rollIdx, workerId) {
   const needsMeasuredSize = task.workType !== 'polish';
   let size = null;
   if (needsMeasuredSize) {
-    const label = roll ? roll.name + (roll.diameter ? ` (เดิม ${roll.diameter})` : '') : 'ชิ้นนี้';
+    const curOd = pieceCurrentOdOf(roll);
+    const label = roll ? roll.name + (curOd ? ` (เดิม ${curOd})` : '') : 'ชิ้นนี้';
     size = await voicePrompt(`บันทึกขนาดที่วัดได้จริงหลังแต่ง Roll ของ "${label}":`, 'พิมพ์ หรือกด 🎤 แล้วพูด');
     if (size === null) return; // กดยกเลิก — ไม่จบงานและไม่บันทึกอะไร
     // เว้นว่างแล้วจบงานผ่านได้เลย คือสาเหตุที่ทะเบียนไม่มีขนาด OD หลังแต่งเป็นส่วนใหญ่
@@ -17927,15 +18058,15 @@ async function finishDailyPiece(taskId, rollIdx, workerId) {
       + (cur.status === 'paused' ? pauseGapMinutes(cur.pausedAt, endAt) : 0);
     // ชิ้นที่ถูกตัดข้ามกะ = งานชิ้นเดียว กดจบที่แถวไหนก็จบทุกส่วน
     setPieceStatusForChain(taskId, rollIdx, needsMeasuredSize
-      ? { status: 'done', endTime: endAt, pausedAt: null, pausedMin, measuredSize: size, registryDiameter: roll2 ? roll2.diameter : null,
-          odStandard: roll2 ? (String(roll2.diameterStd || '').trim() || String(roll2.diameter || '').trim() || null) : null }
+      ? { status: 'done', endTime: endAt, pausedAt: null, pausedMin, measuredSize: size,
+          registryDiameter: pieceCurrentOdOf(roll2) || null, odStandard: pieceStdOdOf(roll2) || null }
       : { status: 'done', endTime: endAt, pausedAt: null, pausedMin });
     if (needsMeasuredSize) {
       rollSizeLogSeq++;
       rollSizeLog.push({
         id: 'RSL-' + String(rollSizeLogSeq).padStart(4, '0'),
         taskId, rollIdx, rollId: roll2 ? roll2.id : null, rollName: roll2 ? roll2.name : '—',
-        date: dailyViewDate, measuredSize: size, registryDiameter: roll2 ? roll2.diameter : null,
+        date: dailyViewDate, measuredSize: size, registryDiameter: pieceCurrentOdOf(roll2) || null,
       });
       // อัปเดตทะเบียนหลัง push ล็อกแล้ว เพื่อให้ registryDiameter ในล็อกยังเป็น "ค่าก่อนแต่ง"
       applyMeasuredSizeToRegistry(roll2, size, dailyViewDate, true);
@@ -18233,7 +18364,7 @@ function renderDailyTasks() {
     .filter(t => shiftMatchesFilter(t.shift, currentDailyShiftFilter))
     .map(t => ({
       key: t.id,
-      section: t.workType === 'polish' ? 'polish' : 'cnc',
+      section: planTaskSectionKey(t),
       date: t.date,
       partLabel: t.__partCount > 1 ? `ส่วนที่ ${t.__partIndex + 1}/${t.__partCount}` : '',
       startTime: t.startTime || '—',
@@ -18324,7 +18455,7 @@ function renderDailyTasks() {
       <!-- กัน event เฉพาะตอนที่ช่องนี้มีปุ่มจริง — ถ้าว่าง (งานหลายชิ้น/งานที่เสร็จแล้ว) ต้องปล่อยให้คลิกทะลุไปกางรายละเอียดได้
            ไม่งั้นช่องว่างที่อยู่ติดลูกศร ▸ จะกลืนคลิกไปเฉยๆ กดกางไม่ได้ -->
       <td${actions ? ' onclick="event.stopPropagation();"' : ''}>${actions}</td>
-      <td>${escapeHtmlAttr(item.rollSet)}</td>
+      <td>${escapeHtmlAttr(planSetLabel(item.rollSet))}</td>
       <td>${escapeHtmlAttr(item.rollColor)}</td>
       <td class="muted">${escapeHtmlAttr(item.rollId)}</td>
       <td><strong>${taskLabel}</strong></td>
@@ -18372,9 +18503,12 @@ function renderDailyTasks() {
     { key: 'checklist-cnc',    icon: '＋', label: 'งานแทรก — แต่ง Roll (CNC)', color: 'var(--accent)', bg: 'var(--bg-panel)', empty: 'ยังไม่มีงานแทรกของงานแต่ง Roll ในวันนี้', always: true, addType: 'cnc' },
     { key: 'polish',    icon: '✦', label: 'ขัด Roll',        color: 'var(--purple)', bg: 'var(--purple-dim)',  empty: 'ไม่มีงานขัด Roll ในวันนี้',  always: true },
     { key: 'checklist-polish', icon: '＋', label: 'งานแทรก — ขัด Roll',        color: 'var(--purple)', bg: 'var(--bg-panel)', empty: 'ยังไม่มีงานแทรกของงานขัด Roll ในวันนี้',  always: true, addType: 'polish' },
+    // แต่ง Roll SQ — ช่าง/เครื่องคนละชุดกับงานแต่ง Roll (CNC) จึงเป็นหัวข้อของตัวเอง
+    // ยังไม่มีหัวข้อ "งานแทรก" ของ SQ เพราะงานแทรกยังรองรับแค่ CNC/ขัด Roll
+    { key: 'sq',        icon: '◆', label: 'แต่ง Roll SQ',     color: 'var(--amber)',  bg: 'var(--amber-dim)',   empty: 'ไม่มีงานแต่ง Roll SQ ในวันนี้', always: true },
   ];
   tbody.innerHTML = DAILY_SECTIONS.filter(s => {
-    if (forcedType && (s.key === 'cnc' || s.key === 'polish')) return s.key === forcedType;
+    if (forcedType && (s.key === 'cnc' || s.key === 'polish' || s.key === 'sq')) return s.key === forcedType;
     // ช่างเห็นงานแทรกของประเภทตัวเองอย่างเดียว (เกณฑ์เดียวกับงานตามแผน)
     if (forcedType && s.addType) return s.addType === forcedType;
     return s.always || allItems.some(it => it.section === s.key);
