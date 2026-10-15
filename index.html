@@ -1811,7 +1811,10 @@ canvas{display:block;}
       <div class="reg-tab-bar" id="plan-worktype-tabs" style="margin-bottom:12px;"></div>
       <div class="mobile-wrap" id="plan-shift-row" style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
         <button class="btn btn-ghost btn-sm plan-edit-only" onclick="openCompanyHolidaysModal()">📅 เพิ่มวันหยุดในปฏิทิน</button>
-        <button class="btn btn-ghost btn-sm plan-edit-only" style="color:var(--red);border-color:var(--red);" onclick="togglePlanDeleteMode()">🗑 ลบแผนงาน</button>
+        <!-- เอาปุ่ม "🗑 ลบแผนงาน" (โหมดเลือกลบหลายงาน) ออกแล้ว
+             ลบงานทีละงานยังทำได้เหมือนเดิม: ปุ่ม ✕ ท้ายแถวในมุมมองรายวัน
+             และปุ่มลบในฟอร์มแก้ไขงาน (ดู deletePlanTask)
+             ตัวโหมดเลือกลบยังอยู่ในโค้ด แต่ไม่มีทางเข้าถึงแล้ว -->
       </div>
 
       <!-- คำอธิบายสีของงานในปฏิทิน — สีบอก "ความคืบหน้า" ไม่ใช่กะ (กะดูได้จากทูลทิปของงาน) -->
@@ -2240,7 +2243,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-15.1';
+const APP_BUILD = '2026-10-15.2';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
