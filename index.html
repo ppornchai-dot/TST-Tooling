@@ -2246,7 +2246,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-15.8';
+const APP_BUILD = '2026-10-17.1';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -3247,9 +3247,26 @@ function inUseCalRangeData(dayList) {
         // จึงได้เครื่องกลับมาทั้งสองตัว แล้วแถวในปฏิทินกลายเป็น "P2/P3" แทนที่จะอยู่แถวเครื่องของตัวเอง
         // ถ้าชุดสีนั้นผูกเครื่องไว้ชัดเจนแล้ว ให้ยึดเครื่องนั้นเป็นหลัก
         let mcList = info.machines;
-        const ownMc = rollColorStatusFor(x.set, x.colorKey) === 'inuse'
-          ? rollColorActiveMachineFor(x.set, x.colorKey) : null;
-        if (ownMc && mcList.length > 1 && mcList.includes(ownMc)) mcList = [ownMc];
+        if (mcList.length > 1) {
+          // 1) บันทึกชุดสีแยกรายเครื่องของวันนั้น (rollRunColorMc) — คนกดระบุไว้เอง แม่นที่สุด
+          const hit = mcList.filter(m => explicitRunColorOnMachine(iso, x.set, m) === x.colorKey);
+          if (hit.length) mcList = hit;
+          else {
+            // 2) ไม่มีบันทึกของสีนี้ แต่เครื่องอื่นถูกระบุเป็นสีอื่นไว้แล้ว — ตัดเครื่องนั้นออกได้
+            // (ขนาดเดียวกันเดินสองเครื่องคนละสี พอรู้ของอีกเครื่องก็เหลือเครื่องเดียวให้สีนี้)
+            const left = mcList.filter(m => {
+              const rec = explicitRunColorOnMachine(iso, x.set, m);
+              return !rec || rec === x.colorKey;
+            });
+            if (left.length && left.length < mcList.length) mcList = left;
+          }
+        }
+        // 3) ยังเหลือหลายเครื่อง — ใช้เครื่องที่ทะเบียนผูกไว้กับชุดสีนี้เป็นตัวตัดสิน
+        if (mcList.length > 1) {
+          const ownMc = rollColorStatusFor(x.set, x.colorKey) === 'inuse'
+            ? rollColorActiveMachineFor(x.set, x.colorKey) : null;
+          if (ownMc && mcList.includes(ownMc)) mcList = [ownMc];
+        }
         const mc = mcList.length ? mcList.slice().sort().join('/') : 'ไม่ทราบเครื่อง';
         if (!machines.includes(mc)) machines.push(mc);
         const cat = x.cat || '—';
