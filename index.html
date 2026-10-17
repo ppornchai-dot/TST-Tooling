@@ -2246,7 +2246,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-17.1';
+const APP_BUILD = '2026-10-17.2';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -3293,20 +3293,41 @@ function inUseCalRangeData(dayList) {
     ROLL_MACHINES.forEach(m => {
       ['Forming', 'Sizing', 'TH'].forEach(cat => {
         if (((cells[m] || {})[cat] || {})[iso]) return;      // มีช่องอยู่แล้ว
-        const set = inUseSetOnMachineForCategory(m, cat);
+        // 1) ชุดที่ทะเบียนบอกว่าใส่อยู่ที่เครื่องนี้
+        let set = inUseSetOnMachineForCategory(m, cat);
+        let fromRun = false;
+        // 2) ทะเบียนไม่ได้ผูกชุดหมวดนี้ไว้กับเครื่องนี้ แต่ยอดผลิตบอกว่าเครื่องนี้เดินชุดนั้นอยู่
+        //    เจอกับขนาดที่ "ยืม Forming ของอีกขนาดมาเดิน" (เช่น GI 1-1/2" ใช้ Forming ของ GI 2"x1")
+        //    ทะเบียนผูก Forming ชุดนั้นไว้กับอีกเครื่อง แถว Forming ของเครื่องนี้จึงว่างทั้งที่เดินอยู่จริง
+        if (!set || !((running.get(set) || {}).machines || []).includes(m)) {
+          let found = null;
+          running.forEach((info, sname) => {
+            if (found) return;
+            if (parseSizeRollName(sname).category !== cat) return;
+            if (!((info.machines) || []).includes(m)) return;
+            found = sname;
+          });
+          if (found) { set = found; fromRun = true; }
+        }
         if (!set) return;
         const hit = running.get(set);
         if (!hit || !(hit.machines || []).includes(m)) return; // ยอดผลิตไม่ได้ยืนยันว่าเครื่องนี้เดิน
         // ที่ระบุไว้เจาะจงเครื่องนี้ของวันนั้นมาก่อน — ไม่ใช่ค่าอนุมาน ไม่ต้องติดดอกจัน
         const pinned = explicitRunColorOnMachine(iso, set, m);
-        const colorKey = pinned || inUseColorOnMachine(set, m);
+        // ชุดที่รู้จากยอดผลิต (ไม่ได้ผูกเครื่องไว้ในทะเบียน) ไม่มีสี "ของเครื่องนี้" ให้อ่าน
+        // จึงถอยไปใช้ชุดสีที่ระบุไว้ของทั้งวัน เป็นค่าอนุมานที่ติดดอกจันตามปกติ
+        const colorKey = pinned || inUseColorOnMachine(set, m)
+          || (fromRun ? runColorFor(iso, set) : null);
         if (!colorKey) return;
         if (!machines.includes(m)) machines.push(m);
         if (!cells[m]) cells[m] = {};
         if (!cells[m][cat]) cells[m][cat] = {};
         cells[m][cat][iso] = { set, colorKey, sizeLabel: rollSetSizeGroupLabel(set),
           inferred: !pinned, sure: true,
-          note: pinned ? '' : 'อ้างจากชุดที่ตั้งว่ากำลังใช้งานที่เครื่องนี้ (บันทึกชุดสีของวันนั้นมีช่องเดียวต่อ Size Roll)',
+          note: pinned ? ''
+            : (fromRun
+              ? 'ยอดผลิตบอกว่าเครื่องนี้เดินชุดนี้อยู่ แต่ทะเบียนไม่ได้ผูกชุดหมวดนี้ไว้กับเครื่องนี้ (ขนาดที่ยืม Forming ของอีกขนาดมาเดิน) — ชุดสีอ้างจากบันทึกของทั้งวัน'
+              : 'อ้างจากชุดที่ตั้งว่ากำลังใช้งานที่เครื่องนี้ (บันทึกชุดสีของวันนั้นมีช่องเดียวต่อ Size Roll)'),
           kg: 0, col: idx + 1 };
       });
     });
