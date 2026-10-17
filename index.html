@@ -2246,7 +2246,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-17.2';
+const APP_BUILD = '2026-10-17.3';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6423,7 +6423,12 @@ function nightSessionStillRunning(d) {
     if ((t.endDate || t.date) !== todayCal) return false; // ต้องเป็นงานที่ลากมาจบในวันปฏิทินวันนี้
     const m = /^(\d{1,2}):(\d{2})$/.exec(t.endTime || '');
     if (!m) return false;
-    return Number(m[1]) * 60 + Number(m[2]) > nowMin;      // ยังไม่ถึงเวลาจบตามแผน
+    const endMin = Number(m[1]) * 60 + Number(m[2]);
+    // งานที่ลากยาวเลยเพดานไปแล้ว ไม่ใช่ "กะดึกที่กำลังจะจบ" แต่เป็นงานที่กินเข้าไปในกะเช้า
+    // (เจอจริง 17 ต.ค.: ใบที่ถูกตรึงเวลาใหม่ตามงานจริงเป็น 04:27–14:02 ถูกนับเป็นกะดึก
+    //  วันทำงานจึงค้างอยู่ที่เมื่อวานทั้งเช้า ทั้งที่กะดึกจบไปตั้งแต่ 08:00)
+    if (endMin > NIGHT_OT_LATEST_MIN) return false;
+    return endMin > nowMin;                                // ยังไม่ถึงเวลาจบตามแผน
   });
 }
 // สถานะเช็คลิสต์แยกตามวันที่ที่ดู — { 'YYYY-MM-DD': { [taskKey]: 'done'|'in_progress'|'pending'|'overdue' } } ค่าที่ไม่มีถือว่า 'pending'
