@@ -2246,7 +2246,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-17.3';
+const APP_BUILD = '2026-10-19.1';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -4984,8 +4984,13 @@ function goToPlanTask(taskId, dateIso, workType) {
   if (!t) { alert('งานตามแผนนี้ถูกลบหรือย้ายไปแล้ว'); renderDashboardWorkingRoll(); return; }
   const day = dateIso || taskDisplayDate(t);
   showPage('plan');
-  // ไม่ต้องสลับประเภทงานอีกแล้ว — ทุกมุมมองแสดงทั้ง CNC และขัด Roll พร้อมกัน
-  // แต่ยังตั้งประเภทของฟอร์มให้ตรงไว้ เผื่อผู้ใช้กดเพิ่มงานต่อจากตรงนี้
+  // หน้าวางแผนแยกประเภทงานเป็นแท็บแล้ว (แต่ง Roll / ขัด Roll / แต่ง Roll SQ / ลับคมใบเลื่อย)
+  // ต้องสลับแท็บให้ตรงกับงานที่กดมาด้วย ไม่งั้นกดงานขัด Roll จากหน้า Dashboard
+  // แล้วมาค้างอยู่แท็บแต่ง Roll ซึ่งไม่มีงานนั้น — เหมือนกดแล้วไม่เกิดอะไรขึ้น
+  // บทบาทที่ถูกล็อกประเภทงานไว้ไม่ต้องสลับ (ล็อกอยู่แล้ว และสลับไปก็ไม่มีผล)
+  const tab = planTaskSectionKey(t);
+  if (!forcedWorkTypeForRole()) currentWorkTypeTab = tab;
+  // ตั้งประเภทของฟอร์มให้ตรงไว้ด้วย เผื่อผู้ใช้กดเพิ่มงานต่อจากตรงนี้
   if (currentPlanWorkType !== (workType || t.workType)) switchPlanWorkType(workType || t.workType);
   // ไม่มีตัวกรองกะแล้ว แต่ล้างค่าที่อาจค้างจาก state เก่าไว้ กันงานที่กดมาถูกซ่อน
   currentPlanShiftFilter = null;
