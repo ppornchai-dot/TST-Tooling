@@ -2246,7 +2246,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-19.1';
+const APP_BUILD = '2026-10-19.2';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -4957,6 +4957,10 @@ function goToDailyTask(taskId, dateIso, workType) {
     return;
   }
   dailyViewDate = day;
+  // หน้างานประจำวันแยกประเภทงานเป็นแท็บแล้ว — ต้องสลับแท็บให้ตรงกับงานที่กดมา
+  // ไม่งั้นกดงานขัด Roll จากหน้า Dashboard แล้วมาค้างอยู่แท็บแต่ง Roll ซึ่งไม่มีงานนั้น
+  // (บทบาทที่ถูกล็อกประเภทงานไว้ไม่ต้องสลับ ล็อกอยู่แล้ว)
+  if (!forcedWorkTypeForRole()) currentWorkTypeTab = planTaskSectionKey(t);
   // กางรายละเอียดรายชิ้นของงานนั้นไว้เลย จะเห็นปุ่มเริ่ม/พัก/จบของแต่ละชิ้นทันทีไม่ต้องกดอีกที
   expandedDailyTaskId = taskId;
   renderDailyTasks();
@@ -4975,6 +4979,9 @@ function goToDailyInsert(taskId, dateIso) {
     return;
   }
   dailyViewDate = day;
+  // งานแทรกอยู่ใต้หัวข้อของประเภทงานตัวเอง — สลับแท็บให้ตรงด้วยเหตุผลเดียวกับ goToDailyTask
+  const ins = (dailyChecklistTasks || []).find(x => x.id === taskId);
+  if (ins && !forcedWorkTypeForRole()) currentWorkTypeTab = insertTaskWorkType(ins);
   renderDailyTasks();
   highlightPlanTask(taskId);   // ตัวไฮไลต์ตัวเดียวกัน — หาแถวจาก [data-taskid]
 }
