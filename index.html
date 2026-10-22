@@ -2246,7 +2246,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-19.2';
+const APP_BUILD = '2026-10-22.2';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -16745,8 +16745,11 @@ function newSqSetId() {
 
 // Size SQ ที่มีอยู่แล้วในทะเบียน — ใช้เป็นตัวช่วยเติมในฟอร์ม ไม่ต้องพิมพ์ซ้ำและไม่พิมพ์เพี้ยน
 function sqSizeList() {
+  // เรียงลำดับเดียวกับที่แสดงในคอลัมน์ซ้าย (ยึดลำดับ Size Roll — ดู sqSizeRankMap)
+  const rank = sqSizeRankMap();
+  const at = v => { const i = rank.get(v); return i == null ? Number.MAX_SAFE_INTEGER : i; };
   return [...new Set(toolingData.sq.map(r => String(r.sizeSq || '').trim()).filter(Boolean))]
-    .sort((a, b) => a.localeCompare(b, 'th', { numeric: true }));
+    .sort((a, b) => at(a) - at(b) || a.localeCompare(b, 'th', { numeric: true }));
 }
 
 // เรียง Size SQ → ประเภท (GS ก่อน GI ตาม SQ_KINDS) → ชุดสี (ตามลำดับจานสี) → ชิ้นที่
@@ -16759,11 +16762,31 @@ function sqYmSortKey(ym) {
   const yearAd = p.year >= 2400 ? p.year - YM_BE_OFFSET : p.year;
   return yearAd * 100 + p.monthIdx;
 }
+// ลำดับของ Size SQ — ยึดลำดับเดียวกับ Size Roll ที่จัดไว้ในหน้าทะเบียน Roll (rollSetOrder)
+// เดิมเรียงตามตัวอักษร GI จึงไปกองก่อน GS ทั้งหมด ไม่ตรงกับลำดับที่ใช้จริงหน้างาน
+// (ฝั่ง Roll เรียงเล็กไปใหญ่ตามขนาดจริง สลับ GS/GI กันไปตามขนาด)
+// ขนาดที่ยังไม่มีในฝั่ง Roll ต่อท้าย แล้วเรียงกันเองตามตัวอักษรเหมือนเดิม
+function sqSizeRankMap() {
+  const map = new Map();
+  let i = 0;
+  getRollSets().forEach(set => {
+    const g = rollSetSizeGroupLabel(set);
+    if (g && !map.has(g)) map.set(g, i++);
+  });
+  return map;
+}
+
 function sqSortedRows() {
   const kindIdx = k => { const i = SQ_KINDS.indexOf(k); return i < 0 ? SQ_KINDS.length : i; };
   const colorIdx = c => { const i = SQ_COLORS.findIndex(x => x.key === c); return i < 0 ? SQ_COLORS.length : i; };
+  const rank = sqSizeRankMap();
+  const sizeRank = v => {
+    const i = rank.get(String(v || '').trim());
+    return i == null ? Number.MAX_SAFE_INTEGER : i;
+  };
   return toolingData.sq.slice().sort((a, b) =>
-    String(a.sizeSq || '').localeCompare(String(b.sizeSq || ''), 'th', { numeric: true })
+    sizeRank(a.sizeSq) - sizeRank(b.sizeSq)
+    || String(a.sizeSq || '').localeCompare(String(b.sizeSq || ''), 'th', { numeric: true })
     || kindIdx(a.kind) - kindIdx(b.kind)
     || colorIdx(a.color) - colorIdx(b.color)
     || sqYmSortKey(a.madeYm) - sqYmSortKey(b.madeYm)
@@ -17370,7 +17393,9 @@ function sqSizeGroups() {
     if (!map.has(size)) map.set(size, []);
     map.get(size).push(set);
   });
-  return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], 'th', { numeric: true }));
+  // ลำดับยึดตาม sqSets() (ซึ่งยึดลำดับ Size Roll อีกที — ดู sqSizeRankMap) Map จำลำดับที่ใส่เข้ามาอยู่แล้ว
+  // เดิมเรียงตามตัวอักษรซ้ำตรงนี้ ลำดับที่จัดไว้จึงถูกทับ GI มากองก่อน GS ทั้งหมด
+  return [...map.entries()];
 }
 
 // ขนาด/ชุดที่เลือกไว้อาจถูกลบไปแล้ว — ล้างทิ้งก่อนวาด ไม่งั้นตารางจะว่างเปล่าโดยไม่มีเหตุผลให้เห็น
