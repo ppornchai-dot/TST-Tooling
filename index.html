@@ -1027,6 +1027,13 @@ canvas{display:block;}
         สำรองข้อมูล
         <span class="nav-badge" id="backup-badge" style="display:none;background:var(--red);">!</span>
       </button>
+      <!-- สั่งให้ทุกเครื่องที่เปิดแอปอยู่โหลดไฟล์ใหม่ — เครื่องที่เปิดค้างไว้นานจะยังใช้เวอร์ชันเก่า
+           แล้วเขียนชนกับเครื่องอื่นจนบันทึกไม่ผ่าน (ดูข้อความเตือนตอนเขียนชน)
+           เฉพาะคนที่แก้ข้อมูลได้ เพราะมีผลกับทุกเครื่องพร้อมกัน -->
+      <button class="nav-item" data-roles="admin,lead" onclick="requestReloadAllDevices()">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        รีเฟรชทุกเครื่อง
+      </button>
     </div>
   </div>
 
@@ -2246,7 +2253,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-22.2';
+const APP_BUILD = '2026-10-22.3';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -12572,6 +12579,51 @@ let rollDressResetLog = [];
 // ประกาศไว้ก่อน buildStateSnapshot() ด้วยเหตุผลเดียวกับ rollRunColor ข้างบน (TDZ)
 let rollCarryTon = {};
 
+// ─── สั่งให้ทุกเครื่องโหลดไฟล์ใหม่ ────────────────────────────────────────────
+// เบราว์เซอร์แคชไฟล์ index.html ไว้ เครื่องที่เปิดแอปค้างไว้นานจึงยังรันเวอร์ชันเก่า
+// แล้วเขียนทับกันไปมากับเครื่องที่รันเวอร์ชันใหม่ (เคยเจอจริง บันทึกไม่ผ่านทั้งวัน)
+// เก็บเป็นเวลาที่สั่งล่าสุด ทุกเครื่องที่เห็นค่าใหม่กว่าที่ตัวเองเคยเห็น จะโหลดใหม่ให้เอง
+let forceReloadAt = 0;
+// ค่าที่แท็บนี้ "รับรู้แล้ว" — ตั้งตอนบูตครั้งแรกโดยไม่โหลดซ้ำ กันวนโหลดไม่จบ
+let seenForceReloadAt = null;
+
+function handleForceReloadSignal() {
+  const at = Number(forceReloadAt) || 0;
+  if (seenForceReloadAt === null) { seenForceReloadAt = at; return; }  // บูตครั้งแรก
+  if (!(at > seenForceReloadAt)) return;
+  seenForceReloadAt = at;
+  // กำลังกรอกฟอร์ม/เลือกค่าในกล่องอยู่ อย่าเพิ่งโหลด ไม่งั้นที่พิมพ์ค้างไว้หาย — รอจนปิดก่อน
+  const go = () => {
+    if (document.querySelector('.modal-overlay.open')) { setTimeout(go, 1500); return; }
+    hardReloadApp();
+  };
+  go();
+}
+
+// กดจากเมนู — เขียนเวลาที่สั่งขึ้น cloud แล้วรอให้เขียนเสร็จก่อนค่อยโหลดเครื่องตัวเอง
+// (ถ้าโหลดตัวเองทันที คำสั่งที่ยังค้างอยู่ในคิวจะหายไป เครื่องอื่นก็ไม่ได้รับ)
+function requestReloadAllDevices() {
+  if (!canEditPlan()) return;
+  if (!confirm([
+    'สั่งให้ทุกเครื่องที่เปิดแอปอยู่โหลดใหม่?',
+    '',
+    'ใช้เมื่อแก้โปรแกรมแล้วบางเครื่องยังเห็นของเก่า หรือบันทึกไม่ผ่านเพราะเขียนชนกัน',
+    'เครื่องที่กำลังกรอกฟอร์มค้างไว้จะรอจนปิดฟอร์มก่อนจึงโหลด',
+  ].join('\n'))) return;
+  withCloudRetry(() => {
+    forceReloadAt = Date.now();
+    seenForceReloadAt = forceReloadAt;   // เครื่องนี้สั่งเอง ไม่ต้องรอสัญญาณกลับมา
+    persistState();
+  });
+  const waitThenReload = tries => {
+    const busy = (typeof cloudWritePending !== 'undefined' && cloudWritePending)
+      || (typeof cloudWriteInFlight !== 'undefined' && cloudWriteInFlight);
+    if (tries <= 0 || !busy) { hardReloadApp(); return; }
+    setTimeout(() => waitThenReload(tries - 1), 400);
+  };
+  waitThenReload(15);   // รอสูงสุด ~6 วินาที
+}
+
 function buildStateSnapshot() {
   return {
     toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollSetNote, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec, sqSetStatus, sqSetMachine, sqSizeMachines,
@@ -12580,7 +12632,7 @@ function buildStateSnapshot() {
     dailyPieceStatus, rollSizeLog, rollSizeLogSeq, dailyPauseLog, dailyPauseLogSeq,
     prodBlockProducts, prodBlockSeq, prodBlockCells, prodBlockPM, prodBlockSummary,
     prodBlockEntries, prodBlockEntrySeq, prodBlockActiveMachine, prodBlockViewMonth, rollRunColor, rollRunColorMc, rollRunMachine, rollSizeChangeQueue,
-    rollDressReset, rollDressResetLog, rollCarryTon
+    rollDressReset, rollDressResetLog, rollCarryTon, forceReloadAt
   };
 }
 
@@ -12893,6 +12945,9 @@ function applyState(saved) {
   if (typeof saved.prodBlockEntrySeq === 'number') prodBlockEntrySeq = saved.prodBlockEntrySeq;
   if (typeof saved.prodBlockActiveMachine === 'string') prodBlockActiveMachine = saved.prodBlockActiveMachine;
   if (typeof saved.prodBlockViewMonth === 'string') prodBlockViewMonth = saved.prodBlockViewMonth;
+  if (typeof saved.forceReloadAt === 'number') forceReloadAt = saved.forceReloadAt;
+  // ตรวจทุกครั้งที่ข้อมูลเข้ามา — ทั้งตอนบูต ตอน realtime และตอนดึงใหม่หลังกลับมาใช้งาน
+  handleForceReloadSignal();
 }
 
 function restoreState() {
