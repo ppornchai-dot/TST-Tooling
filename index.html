@@ -2253,7 +2253,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-26.2';
+const APP_BUILD = '2026-10-26.3';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -16234,10 +16234,8 @@ function renderRollTable(page) {
       <td class="muted">${r.polishTime||'—'}</td>
       <td class="muted">${escapeHtmlAttr(fmtIsoDateThai(r.lastService))}</td>
       <td>${statusChip(r.status)}</td>
-      <td style="display:flex;gap:4px;">
-        <button class="btn btn-ghost btn-sm" onclick="editRoll(${realIdx})">แก้ไข</button>
-        <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteRoll(${realIdx})">ลบ</button>
-      </td>
+      ${regRowActionsHtml('editRoll(' + realIdx + ')', 'deleteRoll(' + realIdx + ')',
+        'แก้ไข Roll ลูกนี้', 'ลบ Roll ลูกนี้')}
     </tr>`;
   }).join('') || `<tr><td colspan="13" class="empty" style="padding:32px;text-align:center;color:var(--text-3);">ไม่พบ Roll ตามเงื่อนไขที่เลือก</td></tr>`;
 
@@ -17392,10 +17390,8 @@ function renderSqTable(page) {
       <td>${sqOdCurHtml(r)}</td>
       <td>${sqNum(r.odMin) != null ? escapeHtmlAttr(sqNum(r.odMin).toLocaleString(undefined, { maximumFractionDigits: 2 })) : '<span style="color:var(--text-3);">—</span>'}</td>
       <td class="muted">${sqGrindTimeCellHtml(r)}</td>
-      <td style="white-space:nowrap;">
-        <button class="btn btn-ghost btn-sm" style="padding:4px 6px;" onclick="${jsCallAttr('editSq', r.id)}" title="แก้ไขชิ้นนี้">✏️</button>
-        ${first ? `<button class="btn btn-ghost btn-sm" style="padding:4px 6px;color:var(--red);" onclick="${jsCallAttr('deleteSqSet', r.id)}" title="ลบทั้งชุด (${set.length} ชิ้น)">✕</button>` : ''}
-      </td>
+      ${regRowActionsHtml(jsCallAttr('editSq', r.id), first ? jsCallAttr('deleteSqSet', r.id) : null,
+        'แก้ไขชิ้นนี้', 'ลบทั้งชุด (' + set.length + ' ชิ้น)')}
     </tr>`;
     }).join('');
   }).join('') : `<tr><td colspan="14" style="padding:28px;text-align:center;color:var(--text-3);">${
@@ -17681,6 +17677,18 @@ function deleteSaw(idx) {
   });
 }
 
+// ─── ปุ่มแก้ไข/ลบ ท้ายแถวของทะเบียน ──────────────────────────────────────────
+// ใช้รูปแบบเดียวกันทุกหมวด (Roll · Roll SQ · ใบเลื่อย · มีดสลิตเตอร์)
+// เป็นไอคอนล้วนเพราะบางตารางกว้างมาก (Roll SQ มี 14 คอลัมน์) ปุ่มข้อความกินที่เกินไป
+// ความหมายอยู่ในทูลทิป — ส่งข้อความที่บอกได้ว่าลบอะไร ไม่ใช่แค่คำว่า "ลบ"
+function regRowActionsHtml(editCall, deleteCall, editTitle, deleteTitle) {
+  const btn = (call, title, red) => `<button class="btn btn-ghost btn-sm"
+    style="padding:4px 6px;${red ? 'color:var(--red);' : ''}" onclick="${call}"
+    title="${escapeHtmlAttr(title)}">${red ? '✕' : '✏️'}</button>`;
+  return `<td style="white-space:nowrap;">${btn(editCall, editTitle || 'แก้ไข', false)}${
+    deleteCall ? btn(deleteCall, deleteTitle || 'ลบ', true) : ''}</td>`;
+}
+
 function renderSawTable(page) {
   const data = toolingData.saw;
   const rows = data.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
@@ -17697,10 +17705,8 @@ function renderSawTable(page) {
       <td class="muted">${r.regrind}</td>
       <td>${sawGrindTimeCellHtml(r)}</td>
       <td>${statusChip(r.status)}</td>
-      <td style="display:flex;gap:4px;">
-        <button class="btn btn-ghost btn-sm" onclick="${jsCallAttr('editSaw', data.indexOf(r))}">แก้ไข</button>
-        <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="${jsCallAttr('deleteSaw', data.indexOf(r))}">ลบ</button>
-      </td>
+      ${regRowActionsHtml(jsCallAttr('editSaw', data.indexOf(r)), jsCallAttr('deleteSaw', data.indexOf(r)),
+        'แก้ไขใบเลื่อยนี้', 'ลบใบเลื่อยนี้')}
     </tr>`).join('');
   const tp = Math.max(1, Math.ceil(data.length/PAGE_SIZE));
   renderFooter('saw', data.length, rows.length, page, tp);
@@ -17780,10 +17786,8 @@ function renderSlitterTable(page) {
       <td class="muted">${r.usage}</td>
       <td class="muted">${r.regrind}</td>
       <td>${statusChip(r.status)}</td>
-      <td style="display:flex;gap:4px;">
-        <button class="btn btn-ghost btn-sm" onclick="${jsCallAttr('editSlitter', data.indexOf(r))}">แก้ไข</button>
-        <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="${jsCallAttr('deleteSlitter', data.indexOf(r))}">ลบ</button>
-      </td>
+      ${regRowActionsHtml(jsCallAttr('editSlitter', data.indexOf(r)), jsCallAttr('deleteSlitter', data.indexOf(r)),
+        'แก้ไขมีดสลิตเตอร์นี้', 'ลบมีดสลิตเตอร์นี้')}
     </tr>`).join('');
   const tp = Math.max(1, Math.ceil(data.length/PAGE_SIZE));
   renderFooter('slitter', data.length, rows.length, page, tp);
