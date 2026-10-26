@@ -1479,7 +1479,7 @@ canvas{display:block;}
           <div class="table-wrap">
             <table>
               <thead><tr>
-                <th>รหัส</th><th>ชื่อ / ยี่ห้อ</th><th>เส้นผ่าศูนย์กลาง</th><th>จำนวนฟัน</th><th title="ความสูงของฟันที่วัดได้ (mm)">ความสูงฟัน</th><th>ความหนา kerf</th><th>วัสดุ</th><th>เครื่องที่ใช้</th><th>ตัดสะสม (ตัน)</th><th>Regrind ครั้งที่</th><th title="วันที่ลับคมครั้งล่าสุด">ลับล่าสุด</th><th title="เวลาที่ใช้ลับคมใบนี้ — ใช้คิดเวลาเริ่ม-จบของงานลับคมใบเลื่อยในหน้าวางแผน">เวลาลับคม (นาที)</th><th>สถานะ</th><th></th>
+                <th>รหัส</th><th>เส้นผ่าศูนย์กลาง</th><th>จำนวนฟัน</th><th title="ความสูงของฟันที่วัดได้ (mm)">ความสูงฟัน</th><th>ความหนา kerf</th><th>เครื่องที่ใช้</th><th>ตัดสะสม (ตัน)</th><th>Regrind ครั้งที่</th><th title="วันที่ลับคมครั้งล่าสุด">ลับล่าสุด</th><th title="เวลาที่ใช้ลับคมใบนี้ — ใช้คิดเวลาเริ่ม-จบของงานลับคมใบเลื่อยในหน้าวางแผน">เวลาลับคม (นาที)</th><th>สถานะ</th><th></th>
               </tr></thead>
               <tbody>
               <tbody id="tbody-saw"></tbody>
@@ -2253,7 +2253,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-26.4';
+const APP_BUILD = '2026-10-26.5';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6034,19 +6034,15 @@ const MODAL_FORMS = {
   saw: {
     title: 'เพิ่มใบเลื่อยใหม่',
     fields: `
-      <div class="modal-row">
-        <div class="form-group"><label class="form-label">รหัส</label><input class="form-input" placeholder="SW-0000"></div>
-        <div class="form-group"><label class="form-label">ชื่อ / ยี่ห้อ</label><input class="form-input" placeholder="เช่น Circular Saw Ø710 (Kinkelder)"></div>
-      </div>
       <div class="modal-row three">
+        <div class="form-group"><label class="form-label">รหัส</label><input class="form-input" placeholder="เช่น 193"></div>
         <div class="form-group"><label class="form-label">เส้นผ่าศูนย์กลาง</label><input class="form-input" placeholder="เช่น Ø710 mm"></div>
         <div class="form-group"><label class="form-label">จำนวนฟัน</label><input class="form-input" placeholder="เช่น 96 ฟัน"></div>
-        <div class="form-group"><label class="form-label">ความสูงฟัน (mm)</label><input class="form-input" placeholder="เช่น 5.5"></div>
       </div>
       <div class="modal-row three">
+        <div class="form-group"><label class="form-label">ความสูงฟัน (mm)</label><input class="form-input" placeholder="เช่น 5.5"></div>
         <div class="form-group"><label class="form-label">ความหนา kerf</label><input class="form-input" placeholder="เช่น 5.0 mm"></div>
-        <div class="form-group"><label class="form-label">วัสดุ / Grade</label><input class="form-input" placeholder="เช่น HSS-E"></div>
-        <div class="form-group"><label class="form-label">เครื่องที่ใช้</label><input class="form-input" placeholder="เช่น Cold Saw-01"></div>
+        <div class="form-group"><label class="form-label">เครื่องที่ใช้</label><input class="form-input" placeholder="เช่น C5"></div>
       </div>
       <div class="modal-row three">
         <div class="form-group"><label class="form-label">ตัดสะสม (ตัน)</label><input class="form-input" type="number" placeholder="0"></div>
@@ -6234,7 +6230,6 @@ function saveModal() {
       if (f === 'usage') rec.usage = (v || '—') + ' ตัน';
       else if (f === 'lastService') rec.lastService = v;
       else if (f === 'id') rec.id = v || 'SW-NEW';
-      else if (f === 'name') rec.name = v || '—';
       else rec[f] = v || '—';
     });
     toolingData.saw.push(rec);
@@ -9205,7 +9200,11 @@ function workTypeMeasuresOd(workType) { return workType === 'cnc' || workType ==
 
 function getMatchingRollsForPlan(setName, colorKey) {
   if (!setName) return [];
-  if (isSawPlanSet(setName)) return (toolingData.saw || []);
+  if (isSawPlanSet(setName)) {
+    // หน้างานเรียกใบเลื่อยด้วย "รหัส" — ช่องชื่อ/ยี่ห้อ ถูกเอาออกจากทะเบียนแล้ว
+    // คืนเป็นสำเนา ไม่ให้แก้ทะเบียนผ่านทางนี้โดยไม่ตั้งใจ (งานลับคมไม่ได้บันทึกค่ากลับทะเบียนอยู่แล้ว)
+    return (toolingData.saw || []).map(r => ({ ...r, name: (r.name && r.name !== '—') ? r.name : (r.id || '') }));
+  }
   // ชุด Roll SQ — ชิ้นในชุด (R แล้ว L) ทำหน้าที่เป็น "ชิ้น Roll" ของงานตามแผน
   if (isSqPlanSet(setName)) {
     const k = sqPlanSetKeyOf(setName);
@@ -17623,7 +17622,7 @@ function setSawGrindTime(idx, value) {
 // ฟอร์มของใบเลื่อยไม่ได้ใส่ id ไว้ทีละช่อง (ตอนเพิ่มอ่านค่าตามลำดับช่อง)
 // ตรงนี้จึงอ่าน/เขียนตามลำดับเดียวกัน — ลำดับต้องตรงกับ MODAL_FORMS.saw.fields เสมอ
 // ช่อง "เวลาลับคม" มี id ของตัวเอง (f-saw-grind) เพราะถูกเพิ่มทีหลังและอยู่ท้ายฟอร์ม
-const SAW_FORM_FIELDS = ['id', 'name', 'diameter', 'teeth', 'toothHeight', 'kerf', 'material', 'machine', 'usage', 'regrind', 'status', 'lastService'];
+const SAW_FORM_FIELDS = ['id', 'diameter', 'teeth', 'toothHeight', 'kerf', 'machine', 'usage', 'regrind', 'status', 'lastService'];
 
 function sawFormInputs() {
   return Array.from(document.querySelectorAll('#modal-body input, #modal-body select'))
@@ -17670,8 +17669,7 @@ function editSaw(idx) {
 function deleteSaw(idx) {
   const r = toolingData.saw[idx];
   if (!r) return;
-  if (!confirm(['ลบใบเลื่อยนี้?', '',
-    (r.id || '') + (r.name && r.name !== '—' ? ' · ' + r.name : '')].join('\n'))) return;
+  if (!confirm(['ลบใบเลื่อยนี้?', '', 'รหัส ' + (r.id || '—')].join('\n'))) return;
   withCloudRetry(() => {
     const at = toolingData.saw.indexOf(r);
     if (at < 0) return;                       // ถูกลบไปแล้วจากเครื่องอื่น — ทำซ้ำแล้วไม่ลบตัวอื่นต่อ
@@ -17700,13 +17698,11 @@ function renderSawTable(page) {
   const rows = data.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
   document.getElementById('tbody-saw').innerHTML = rows.map(r=>`
     <tr>
-      <td class="muted">${r.id}</td>
-      <td><strong>${r.name}</strong></td>
+      <td class="muted"><strong>${r.id}</strong></td>
       <td>${r.diameter}</td>
       <td>${r.teeth}</td>
       <td>${r.toothHeight || '—'}</td>
       <td>${r.kerf}</td>
-      <td>${r.material}</td>
       <td>${r.machine}</td>
       <td class="muted">${r.usage}</td>
       <td class="muted">${r.regrind}</td>
