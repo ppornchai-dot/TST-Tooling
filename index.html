@@ -1479,7 +1479,7 @@ canvas{display:block;}
           <div class="table-wrap">
             <table>
               <thead><tr>
-                <th>รหัส</th><th>เส้นผ่าศูนย์กลาง</th><th>จำนวนฟัน</th><th title="ความสูงของฟันที่วัดได้ (mm)">ความสูงฟัน</th><th title="ความหนาของใบเลื่อย (mm)">ความหนาใบเลื่อย</th><th>เครื่องที่ใช้</th><th>ตัดสะสม (ตัน)</th><th>Regrind ครั้งที่</th><th title="วันที่ลับคมครั้งล่าสุด">ลับล่าสุด</th><th title="เวลาที่ใช้ลับคมใบนี้ — ใช้คิดเวลาเริ่ม-จบของงานลับคมใบเลื่อยในหน้าวางแผน">เวลาลับคม (นาที)</th><th>สถานะ</th><th></th>
+                <th>รหัส</th><th>เส้นผ่าศูนย์กลาง</th><th>จำนวนฟัน</th><th title="ความสูงของฟันที่วัดได้ (mm)">ความสูงฟัน</th><th title="ความหนาของใบเลื่อย (mm)">ความหนาใบเลื่อย</th><th>เครื่องที่ใช้</th><th>ตัดสะสม (ตัน)</th><th>Regrind ครั้งที่</th><th title="วันที่ลับคมครั้งล่าสุด">ลับคมล่าสุด</th><th title="เวลาที่ใช้ลับคมใบนี้ — ใช้คิดเวลาเริ่ม-จบของงานลับคมใบเลื่อยในหน้าวางแผน">เวลาลับคม (นาที)</th><th>สถานะ</th><th></th>
               </tr></thead>
               <tbody>
               <tbody id="tbody-saw"></tbody>
@@ -2253,7 +2253,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-26.7';
+const APP_BUILD = '2026-10-26.8';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6058,7 +6058,7 @@ const MODAL_FORMS = {
       <!-- อยู่ท้ายสุดเพราะฟอร์มนี้อ่านค่าตามลำดับช่อง ถ้าแทรกไว้กลางฟอร์มค่าอื่นจะเลื่อนหมด
            (ตัวนี้อ่านด้วย id ไม่ได้อ่านตามลำดับ) -->
       <div class="modal-row">
-        <div class="form-group"><label class="form-label">ลับล่าสุด</label>
+        <div class="form-group"><label class="form-label">ลับคมล่าสุด</label>
           <input class="form-input" type="date"></div>
         <div class="form-group"><label class="form-label">เวลาลับคม (นาที)</label>
           <input class="form-input" id="f-saw-grind" type="number" step="1" placeholder="เช่น 45"></div>
