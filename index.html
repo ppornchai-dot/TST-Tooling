@@ -2253,7 +2253,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-22.3';
+const APP_BUILD = '2026-10-26.1';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -17617,6 +17617,70 @@ function setSawGrindTime(idx, value) {
   });
 }
 
+// ─── แก้ไข/ลบ ใบเลื่อย ───────────────────────────────────────────────────────
+// ฟอร์มของใบเลื่อยไม่ได้ใส่ id ไว้ทีละช่อง (ตอนเพิ่มอ่านค่าตามลำดับช่อง)
+// ตรงนี้จึงอ่าน/เขียนตามลำดับเดียวกัน — ลำดับต้องตรงกับ MODAL_FORMS.saw.fields เสมอ
+// ช่อง "เวลาลับคม" มี id ของตัวเอง (f-saw-grind) เพราะถูกเพิ่มทีหลังและอยู่ท้ายฟอร์ม
+const SAW_FORM_FIELDS = ['id', 'name', 'diameter', 'teeth', 'kerf', 'material', 'machine', 'usage', 'regrind', 'status'];
+
+function sawFormInputs() {
+  return Array.from(document.querySelectorAll('#modal-body input, #modal-body select'))
+    .filter(el => el.id !== 'f-saw-grind');
+}
+
+function editSaw(idx) {
+  const r = toolingData.saw[idx];
+  if (!r) return;
+  document.getElementById('modal-title').textContent = 'แก้ไขใบเลื่อย — ' + (r.id || '');
+  document.getElementById('modal-body').innerHTML = MODAL_FORMS.saw.fields;
+  const els = sawFormInputs();
+  SAW_FORM_FIELDS.forEach((f, i) => {
+    const el = els[i];
+    if (!el) return;
+    let v = r[f];
+    v = (v == null || v === '—') ? '' : String(v);
+    // "ตัดสะสม" เก็บพร้อมหน่วย ("120 ตัน") แต่ช่องกรอกเป็นตัวเลขล้วน
+    if (f === 'usage') v = v.replace(/[^0-9.]/g, '');
+    el.value = v;
+  });
+  const g = document.getElementById('f-saw-grind');
+  if (g) g.value = r.grindTime == null ? '' : String(r.grindTime);
+  document.getElementById('modal-overlay').classList.add('open');
+  document.querySelector('.modal-footer .btn-primary').onclick = function() {
+    withCloudRetry(() => {
+      const cur = toolingData.saw[idx];
+      if (!cur) return;
+      const vals = sawFormInputs().map(el => el.value.trim());
+      SAW_FORM_FIELDS.forEach((f, i) => {
+        const v = vals[i] || '';
+        // เว้นว่าง = ยังไม่รู้ยอด ไม่ใช่ศูนย์ — คงขีดไว้ ไม่เขียนเป็น 0 ให้เอง
+        if (f === 'usage') cur.usage = (v || '—') + ' ตัน';
+        else cur[f] = v || '—';
+      });
+      cur.grindTime = ((document.getElementById('f-saw-grind') || {}).value || '').trim();
+      persistState();
+      renderSawTable(pageState.saw || 1);
+    });
+    closeModal();
+  };
+}
+
+function deleteSaw(idx) {
+  const r = toolingData.saw[idx];
+  if (!r) return;
+  if (!confirm(['ลบใบเลื่อยนี้?', '',
+    (r.id || '') + (r.name && r.name !== '—' ? ' · ' + r.name : '')].join('\n'))) return;
+  withCloudRetry(() => {
+    const at = toolingData.saw.indexOf(r);
+    if (at < 0) return;                       // ถูกลบไปแล้วจากเครื่องอื่น — ทำซ้ำแล้วไม่ลบตัวอื่นต่อ
+    toolingData.saw.splice(at, 1);
+    const tp = Math.max(1, Math.ceil(toolingData.saw.length / PAGE_SIZE));
+    pageState.saw = Math.min(pageState.saw || 1, tp);   // ลบรายการสุดท้ายของหน้า อย่าค้างหน้าว่าง
+    persistState();
+    renderSawTable(pageState.saw);
+  });
+}
+
 function renderSawTable(page) {
   const data = toolingData.saw;
   const rows = data.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
@@ -17633,7 +17697,10 @@ function renderSawTable(page) {
       <td class="muted">${r.regrind}</td>
       <td>${sawGrindTimeCellHtml(r)}</td>
       <td>${statusChip(r.status)}</td>
-      <td><button class="btn btn-ghost btn-sm">ดู</button></td>
+      <td style="display:flex;gap:4px;">
+        <button class="btn btn-ghost btn-sm" onclick="${jsCallAttr('editSaw', data.indexOf(r))}">แก้ไข</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="${jsCallAttr('deleteSaw', data.indexOf(r))}">ลบ</button>
+      </td>
     </tr>`).join('');
   const tp = Math.max(1, Math.ceil(data.length/PAGE_SIZE));
   renderFooter('saw', data.length, rows.length, page, tp);
