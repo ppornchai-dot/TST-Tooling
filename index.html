@@ -2253,7 +2253,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-26.1';
+const APP_BUILD = '2026-10-26.2';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -17707,6 +17707,64 @@ function renderSawTable(page) {
   document.getElementById('cnt-saw').textContent = data.length;
 }
 
+// ─── แก้ไข/ลบ มีดสลิตเตอร์ ───────────────────────────────────────────────────
+// เกณฑ์เดียวกับใบเลื่อย (ดู editSaw/deleteSaw) — ฟอร์มไม่ได้ใส่ id ทีละช่อง
+// จึงอ่าน/เขียนตามลำดับช่อง ลำดับต้องตรงกับ MODAL_FORMS.slitter.fields เสมอ
+const SLITTER_FORM_FIELDS = ['id', 'name', 'diameter', 'thickness', 'bore', 'material', 'machine', 'usage', 'regrind', 'status'];
+
+function slitterFormInputs() {
+  return Array.from(document.querySelectorAll('#modal-body input, #modal-body select'));
+}
+
+function editSlitter(idx) {
+  const r = toolingData.slitter[idx];
+  if (!r) return;
+  document.getElementById('modal-title').textContent = 'แก้ไขมีดสลิตเตอร์ — ' + (r.id || '');
+  document.getElementById('modal-body').innerHTML = MODAL_FORMS.slitter.fields;
+  const els = slitterFormInputs();
+  SLITTER_FORM_FIELDS.forEach((f, i) => {
+    const el = els[i];
+    if (!el) return;
+    let v = r[f];
+    v = (v == null || v === '—') ? '' : String(v);
+    if (f === 'usage') v = v.replace(/[^0-9.]/g, '');   // เก็บพร้อมหน่วย แต่ช่องกรอกเป็นตัวเลขล้วน
+    el.value = v;
+  });
+  document.getElementById('modal-overlay').classList.add('open');
+  document.querySelector('.modal-footer .btn-primary').onclick = function() {
+    withCloudRetry(() => {
+      const cur = toolingData.slitter[idx];
+      if (!cur) return;
+      const vals = slitterFormInputs().map(el => el.value.trim());
+      SLITTER_FORM_FIELDS.forEach((f, i) => {
+        const v = vals[i] || '';
+        // เว้นว่าง = ยังไม่รู้ยอด ไม่ใช่ศูนย์ — คงขีดไว้ ไม่เขียนเป็น 0 ให้เอง
+        if (f === 'usage') cur.usage = (v || '—') + ' ตัน';
+        else cur[f] = v || '—';
+      });
+      persistState();
+      renderSlitterTable(pageState.slitter || 1);
+    });
+    closeModal();
+  };
+}
+
+function deleteSlitter(idx) {
+  const r = toolingData.slitter[idx];
+  if (!r) return;
+  if (!confirm(['ลบมีดสลิตเตอร์นี้?', '',
+    (r.id || '') + (r.name && r.name !== '—' ? ' · ' + r.name : '')].join('\n'))) return;
+  withCloudRetry(() => {
+    const at = toolingData.slitter.indexOf(r);
+    if (at < 0) return;                      // ถูกลบไปแล้วจากเครื่องอื่น — ทำซ้ำแล้วไม่ลบตัวอื่นต่อ
+    toolingData.slitter.splice(at, 1);
+    const tp = Math.max(1, Math.ceil(toolingData.slitter.length / PAGE_SIZE));
+    pageState.slitter = Math.min(pageState.slitter || 1, tp);
+    persistState();
+    renderSlitterTable(pageState.slitter);
+  });
+}
+
 function renderSlitterTable(page) {
   const data = toolingData.slitter;
   const rows = data.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
@@ -17722,7 +17780,10 @@ function renderSlitterTable(page) {
       <td class="muted">${r.usage}</td>
       <td class="muted">${r.regrind}</td>
       <td>${statusChip(r.status)}</td>
-      <td><button class="btn btn-ghost btn-sm">ดู</button></td>
+      <td style="display:flex;gap:4px;">
+        <button class="btn btn-ghost btn-sm" onclick="${jsCallAttr('editSlitter', data.indexOf(r))}">แก้ไข</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="${jsCallAttr('deleteSlitter', data.indexOf(r))}">ลบ</button>
+      </td>
     </tr>`).join('');
   const tp = Math.max(1, Math.ceil(data.length/PAGE_SIZE));
   renderFooter('slitter', data.length, rows.length, page, tp);
