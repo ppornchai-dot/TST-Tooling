@@ -1505,7 +1505,7 @@ canvas{display:block;}
           <div class="table-wrap">
             <table>
               <thead><tr>
-                <th>รหัส</th><th>ชื่อ / ยี่ห้อ</th><th>เส้นผ่าศูนย์กลาง</th><th>ความหนา</th><th>รูเพลา (Bore)</th><th>วัสดุ / Grade</th><th>เครื่องที่ใช้</th><th>ตัดสะสม (ตัน)</th><th>Regrind ครั้งที่</th><th>สถานะ</th><th></th>
+                <th>รหัส</th><th>เส้นผ่าศูนย์กลาง</th><th>ความหนา</th><th>รูเพลา (Bore)</th><th>เครื่องที่ใช้</th><th>ตัดสะสม (ตัน)</th><th>Regrind ครั้งที่</th><th>สถานะ</th><th></th>
               </tr></thead>
               <tbody>
               <tbody id="tbody-slitter"></tbody>
@@ -2253,7 +2253,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-26.5';
+const APP_BUILD = '2026-10-26.6';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6067,17 +6067,13 @@ const MODAL_FORMS = {
   slitter: {
     title: 'เพิ่มมีดสลิตเตอร์ใหม่',
     fields: `
-      <div class="modal-row">
-        <div class="form-group"><label class="form-label">รหัส</label><input class="form-input" placeholder="SL-0000"></div>
-        <div class="form-group"><label class="form-label">ชื่อ / ยี่ห้อ</label><input class="form-input" placeholder="เช่น Slitter Knife Ø250 (Kinkelder)"></div>
-      </div>
       <div class="modal-row three">
+        <div class="form-group"><label class="form-label">รหัส</label><input class="form-input" placeholder="SL-0000"></div>
         <div class="form-group"><label class="form-label">เส้นผ่าศูนย์กลาง</label><input class="form-input" placeholder="เช่น Ø250 mm"></div>
         <div class="form-group"><label class="form-label">ความหนา</label><input class="form-input" placeholder="เช่น 16 mm"></div>
-        <div class="form-group"><label class="form-label">รูเพลา (Bore)</label><input class="form-input" placeholder="เช่น Ø76.2 mm"></div>
       </div>
       <div class="modal-row">
-        <div class="form-group"><label class="form-label">วัสดุ / Grade</label><input class="form-input" placeholder="เช่น HSS M2"></div>
+        <div class="form-group"><label class="form-label">รูเพลา (Bore)</label><input class="form-input" placeholder="เช่น Ø76.2 mm"></div>
         <div class="form-group"><label class="form-label">เครื่องที่ใช้</label><input class="form-input" placeholder="เช่น Slitter-01"></div>
       </div>
       <div class="modal-row three">
@@ -6237,13 +6233,16 @@ function saveModal() {
     pageState.saw = lastPage;
     renderSawTable(lastPage);
   } else if (currentRegTab === 'slitter') {
-    toolingData.slitter.push({
-      id: vals[0]||'SL-NEW', name: vals[1]||'(ไม่มีชื่อ)',
-      diameter: vals[2]||'—', thickness: vals[3]||'—', bore: vals[4]||'—',
-      material: vals[5]||'—', machine: vals[6]||'—',
-      usage: (vals[7]||'0')+' ตัน', regrind: vals[8]||'—',
-      status: vals[9]||'พร้อมใช้'
+    // อ่านตามลำดับช่องของฟอร์ม (SLITTER_FORM_FIELDS) — เพิ่ม/ย้ายช่องแล้วไม่ต้องไล่แก้เลขตำแหน่ง
+    const slVals = slitterFormInputs().map(el => el.value.trim());
+    const slRec = {};
+    SLITTER_FORM_FIELDS.forEach((f, i) => {
+      const v = slVals[i] || '';
+      if (f === 'usage') slRec.usage = (v || '—') + ' ตัน';
+      else if (f === 'id') slRec.id = v || 'SL-NEW';
+      else slRec[f] = v || '—';
     });
+    toolingData.slitter.push(slRec);
     const lastPage = Math.ceil(toolingData.slitter.length / PAGE_SIZE);
     pageState.slitter = lastPage;
     renderSlitterTable(lastPage);
@@ -17720,7 +17719,7 @@ function renderSawTable(page) {
 // ─── แก้ไข/ลบ มีดสลิตเตอร์ ───────────────────────────────────────────────────
 // เกณฑ์เดียวกับใบเลื่อย (ดู editSaw/deleteSaw) — ฟอร์มไม่ได้ใส่ id ทีละช่อง
 // จึงอ่าน/เขียนตามลำดับช่อง ลำดับต้องตรงกับ MODAL_FORMS.slitter.fields เสมอ
-const SLITTER_FORM_FIELDS = ['id', 'name', 'diameter', 'thickness', 'bore', 'material', 'machine', 'usage', 'regrind', 'status'];
+const SLITTER_FORM_FIELDS = ['id', 'diameter', 'thickness', 'bore', 'machine', 'usage', 'regrind', 'status'];
 
 function slitterFormInputs() {
   return Array.from(document.querySelectorAll('#modal-body input, #modal-body select'));
@@ -17762,8 +17761,7 @@ function editSlitter(idx) {
 function deleteSlitter(idx) {
   const r = toolingData.slitter[idx];
   if (!r) return;
-  if (!confirm(['ลบมีดสลิตเตอร์นี้?', '',
-    (r.id || '') + (r.name && r.name !== '—' ? ' · ' + r.name : '')].join('\n'))) return;
+  if (!confirm(['ลบมีดสลิตเตอร์นี้?', '', 'รหัส ' + (r.id || '—')].join('\n'))) return;
   withCloudRetry(() => {
     const at = toolingData.slitter.indexOf(r);
     if (at < 0) return;                      // ถูกลบไปแล้วจากเครื่องอื่น — ทำซ้ำแล้วไม่ลบตัวอื่นต่อ
@@ -17780,12 +17778,10 @@ function renderSlitterTable(page) {
   const rows = data.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
   document.getElementById('tbody-slitter').innerHTML = rows.map(r=>`
     <tr>
-      <td class="muted">${r.id}</td>
-      <td><strong>${r.name}</strong></td>
+      <td class="muted"><strong>${r.id}</strong></td>
       <td>${r.diameter}</td>
       <td>${r.thickness}</td>
       <td>${r.bore}</td>
-      <td>${r.material}</td>
       <td>${r.machine}</td>
       <td class="muted">${r.usage}</td>
       <td class="muted">${r.regrind}</td>
