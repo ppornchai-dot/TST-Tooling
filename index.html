@@ -1479,7 +1479,7 @@ canvas{display:block;}
           <div class="table-wrap">
             <table>
               <thead><tr>
-                <th>รหัส</th><th>ชื่อ / ยี่ห้อ</th><th>เส้นผ่าศูนย์กลาง</th><th>จำนวนฟัน</th><th>ความหนา kerf</th><th>วัสดุ</th><th>เครื่องที่ใช้</th><th>ตัดสะสม (ตัน)</th><th>Regrind ครั้งที่</th><th title="เวลาที่ใช้ลับคมใบนี้ — ใช้คิดเวลาเริ่ม-จบของงานลับคมใบเลื่อยในหน้าวางแผน">เวลาลับคม (นาที)</th><th>สถานะ</th><th></th>
+                <th>รหัส</th><th>ชื่อ / ยี่ห้อ</th><th>เส้นผ่าศูนย์กลาง</th><th>จำนวนฟัน</th><th title="ความสูงของฟันที่วัดได้ (mm)">ความสูงฟัน</th><th>ความหนา kerf</th><th>วัสดุ</th><th>เครื่องที่ใช้</th><th>ตัดสะสม (ตัน)</th><th>Regrind ครั้งที่</th><th title="วันที่ลับคมครั้งล่าสุด">ลับล่าสุด</th><th title="เวลาที่ใช้ลับคมใบนี้ — ใช้คิดเวลาเริ่ม-จบของงานลับคมใบเลื่อยในหน้าวางแผน">เวลาลับคม (นาที)</th><th>สถานะ</th><th></th>
               </tr></thead>
               <tbody>
               <tbody id="tbody-saw"></tbody>
@@ -2253,7 +2253,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-26.3';
+const APP_BUILD = '2026-10-26.4';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6041,9 +6041,10 @@ const MODAL_FORMS = {
       <div class="modal-row three">
         <div class="form-group"><label class="form-label">เส้นผ่าศูนย์กลาง</label><input class="form-input" placeholder="เช่น Ø710 mm"></div>
         <div class="form-group"><label class="form-label">จำนวนฟัน</label><input class="form-input" placeholder="เช่น 96 ฟัน"></div>
-        <div class="form-group"><label class="form-label">ความหนา kerf</label><input class="form-input" placeholder="เช่น 5.0 mm"></div>
+        <div class="form-group"><label class="form-label">ความสูงฟัน (mm)</label><input class="form-input" placeholder="เช่น 5.5"></div>
       </div>
-      <div class="modal-row">
+      <div class="modal-row three">
+        <div class="form-group"><label class="form-label">ความหนา kerf</label><input class="form-input" placeholder="เช่น 5.0 mm"></div>
         <div class="form-group"><label class="form-label">วัสดุ / Grade</label><input class="form-input" placeholder="เช่น HSS-E"></div>
         <div class="form-group"><label class="form-label">เครื่องที่ใช้</label><input class="form-input" placeholder="เช่น Cold Saw-01"></div>
       </div>
@@ -6061,9 +6062,10 @@ const MODAL_FORMS = {
       <!-- อยู่ท้ายสุดเพราะฟอร์มนี้อ่านค่าตามลำดับช่อง ถ้าแทรกไว้กลางฟอร์มค่าอื่นจะเลื่อนหมด
            (ตัวนี้อ่านด้วย id ไม่ได้อ่านตามลำดับ) -->
       <div class="modal-row">
+        <div class="form-group"><label class="form-label">ลับล่าสุด</label>
+          <input class="form-input" type="date"></div>
         <div class="form-group"><label class="form-label">เวลาลับคม (นาที)</label>
           <input class="form-input" id="f-saw-grind" type="number" step="1" placeholder="เช่น 45"></div>
-        <div class="form-group"></div>
       </div>`
   },
   slitter: {
@@ -6224,14 +6226,18 @@ function saveModal() {
     pageState.sq = pos >= 0 ? Math.floor(pos / PAGE_SIZE) + 1 : 1;
     renderSqRegistry(pageState.sq);
   } else if (currentRegTab === 'saw') {
-    toolingData.saw.push({
-      id: vals[0]||'SW-NEW', name: vals[1]||'(ไม่มีชื่อ)',
-      diameter: vals[2]||'—', teeth: vals[3]||'—', kerf: vals[4]||'—',
-      material: vals[5]||'—', machine: vals[6]||'—',
-      usage: (vals[7]||'0')+' ตัน', regrind: vals[8]||'—',
-      status: vals[9]||'พร้อมใช้',
-      grindTime: ((document.getElementById('f-saw-grind') || {}).value || '').trim(),
+    // อ่านตามลำดับช่องของฟอร์ม (SAW_FORM_FIELDS) — เพิ่ม/ย้ายช่องแล้วไม่ต้องไล่แก้เลขตำแหน่งอีก
+    const sawVals = sawFormInputs().map(el => el.value.trim());
+    const rec = { grindTime: ((document.getElementById('f-saw-grind') || {}).value || '').trim() };
+    SAW_FORM_FIELDS.forEach((f, i) => {
+      const v = sawVals[i] || '';
+      if (f === 'usage') rec.usage = (v || '—') + ' ตัน';
+      else if (f === 'lastService') rec.lastService = v;
+      else if (f === 'id') rec.id = v || 'SW-NEW';
+      else if (f === 'name') rec.name = v || '—';
+      else rec[f] = v || '—';
     });
+    toolingData.saw.push(rec);
     const lastPage = Math.ceil(toolingData.saw.length / PAGE_SIZE);
     pageState.saw = lastPage;
     renderSawTable(lastPage);
@@ -17617,7 +17623,7 @@ function setSawGrindTime(idx, value) {
 // ฟอร์มของใบเลื่อยไม่ได้ใส่ id ไว้ทีละช่อง (ตอนเพิ่มอ่านค่าตามลำดับช่อง)
 // ตรงนี้จึงอ่าน/เขียนตามลำดับเดียวกัน — ลำดับต้องตรงกับ MODAL_FORMS.saw.fields เสมอ
 // ช่อง "เวลาลับคม" มี id ของตัวเอง (f-saw-grind) เพราะถูกเพิ่มทีหลังและอยู่ท้ายฟอร์ม
-const SAW_FORM_FIELDS = ['id', 'name', 'diameter', 'teeth', 'kerf', 'material', 'machine', 'usage', 'regrind', 'status'];
+const SAW_FORM_FIELDS = ['id', 'name', 'diameter', 'teeth', 'toothHeight', 'kerf', 'material', 'machine', 'usage', 'regrind', 'status', 'lastService'];
 
 function sawFormInputs() {
   return Array.from(document.querySelectorAll('#modal-body input, #modal-body select'))
@@ -17698,11 +17704,13 @@ function renderSawTable(page) {
       <td><strong>${r.name}</strong></td>
       <td>${r.diameter}</td>
       <td>${r.teeth}</td>
+      <td>${r.toothHeight || '—'}</td>
       <td>${r.kerf}</td>
       <td>${r.material}</td>
       <td>${r.machine}</td>
       <td class="muted">${r.usage}</td>
       <td class="muted">${r.regrind}</td>
+      <td class="muted">${r.lastService ? escapeHtmlAttr(fmtIsoDateThai(r.lastService)) : '—'}</td>
       <td>${sawGrindTimeCellHtml(r)}</td>
       <td>${statusChip(r.status)}</td>
       ${regRowActionsHtml(jsCallAttr('editSaw', data.indexOf(r)), jsCallAttr('deleteSaw', data.indexOf(r)),
