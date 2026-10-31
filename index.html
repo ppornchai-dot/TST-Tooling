@@ -2253,7 +2253,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-26.9';
+const APP_BUILD = '2026-10-31.1';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -11962,7 +11962,8 @@ function carryOverOneLeftover(taskId) {
 function renderDashboardLeftoverAlert() {
   const el = document.getElementById('dash-leftover-alert');
   if (!el) return;
-  const list = canEditPlan() ? leftoverWorkTasks() : [];
+  // ด้วยเหตุผลเดียวกับ maybeOpenLeftoverPrompt — ยังไม่ได้ข้อมูลจริงจากคลาวด์ อย่าเพิ่งขึ้นแถบเตือน
+  const list = (canEditPlan() && cloudSyncReady) ? leftoverWorkTasks() : [];
   if (!list.length) { el.innerHTML = ''; el.style.display = 'none'; return; }
   el.style.display = '';
   const pieces = list.reduce((s, x) => s + x.remaining.length, 0);
@@ -12053,6 +12054,11 @@ function renderLeftoverPrompt() {
 // เด้งครั้งเดียวต่อวันต่อเครื่อง — แถบบน Dashboard ยังอยู่ตลอดจนกว่าจะเคลียร์หมด
 function maybeOpenLeftoverPrompt() {
   if (!canEditPlan()) return;
+  // ยังไม่ได้ข้อมูลจริงจากคลาวด์ อย่าเพิ่งเตือน — ตอนบูตแอปจะกู้ข้อมูลจาก localStorage ของเครื่องนั้นก่อน
+  // เครื่องที่ไม่ได้เปิดมานาน ข้อมูลในเครื่องจะเก่ามาก (งานที่ทำจบไปนานแล้วยังค้างอยู่ในสำเนานั้น)
+  // ถ้าเตือนตรงนี้จะเด้งรายการเก่าเป็นสิบๆ ใบ แล้วถ้ากด "ยกทั้งหมดไปวันถัดไป" จะสร้างงานซ้ำขึ้นมาจริงๆ
+  // (เจอจริง 31 ต.ค.: เด้ง 65 รายการของเดือน ส.ค. ทั้งที่ข้อมูลจริงบนคลาวด์ไม่มีงานค้างเลย)
+  if (!cloudSyncReady) return;
   const today = dailyTodayIso();
   if (leftoverPromptShownFor === today) return;
   try {
@@ -20936,6 +20942,9 @@ async function initCloudSync() {
       cloudUpdatedAt = (ins.data && ins.data.length) ? ins.data[0].updated_at : stamp;
     }
     cloudSyncReady = true; updateBackupBadge(); // เปิดให้ persistState() ส่งขึ้น cloud ได้ตั้งแต่ตอนนี้ — ก่อนหน้านี้ยังไม่รู้ว่าข้อมูลจริงบน cloud คืออะไร จึงห้ามส่งทับ
+    // ตัวเตือนงานค้างรอจนได้ข้อมูลจริงก่อนถึงจะทำงาน (ดู maybeOpenLeftoverPrompt)
+    // refreshAfterCloudUpdate() ข้างบนรันก่อนบรรทัดนี้ จึงยังถูกกันไว้ — ต้องเรียกอีกทีตรงนี้
+    refreshLeftoverWatch();
     supabaseClient
       .channel('app_state_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state', filter: 'id=eq.main' }, payload => {
