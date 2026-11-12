@@ -2260,7 +2260,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.8';
+const APP_BUILD = '2026-11-12.9';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -9521,7 +9521,7 @@ function planTaskFormFields() {
     </div>
     <div class="modal-row" id="pf-row-rollids">
       <div class="form-group"><label class="form-label">จำนวน Roll ที่เลือก</label><input class="form-input" id="pf-rollid" disabled></div>
-      <div class="form-group"><label class="form-label">รายชื่อ Roll — เลือกเฉพาะรายการที่ต้องการได้</label>
+      <div class="form-group"><label class="form-label" id="pf-rollids-title">รายชื่อ Roll — เลือกเฉพาะรายการที่ต้องการได้</label>
         <div class="roll-ms" style="position:relative;">
           <input type="hidden" id="pf-rollids" value="">
           <div class="form-select" id="pf-rollids-toggle" onclick="toggleRollDropdown(event)" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;gap:8px;">
@@ -9753,6 +9753,16 @@ function renderRollOptionsPanel(rolls, selectedIndexes) {
     return;
   }
   const selectedSet = new Set(selectedIndexes.map(Number));
+  // ใบเลื่อย: ต่อท้ายรหัสด้วยขนาด/เครื่อง และป้ายรอลับคม (จากระบบผลิต) ช่วยให้เลือกใบที่ต้องลับได้ถูก
+  const isSaw = planFormWorkType() === 'saw';
+  const sawExtra = r => {
+    if (!isSaw) return '';
+    const reg = ((toolingData || {}).saw || []).find(x => x.id === r.id);
+    const info = reg ? [reg.diameter, reg.machine].filter(x => x && x !== '—').join(' · ') : '';
+    const wait = reg && typeof sawUsageInfo === 'function' && sawUsageInfo(reg).waiting;
+    return (info ? ` <span style="font-size:11px;color:var(--text-3);">${escapeHtmlAttr(info)}</span>` : '')
+      + (wait ? ' <span class="chip chip-red" style="font-size:10px;margin-left:auto;">รอลับคม</span>' : '');
+  };
   // หัวรายการติดขอบบน (sticky) — เลื่อนดู Roll ตัวล่างๆ แล้วปุ่ม "ตกลง" ยังกดได้อยู่
   // top:-4px หัก padding ของ panel ออก ไม่ให้เห็นรายการโผล่ใต้หัวรายการ
   panel.innerHTML =
@@ -9764,7 +9774,7 @@ function renderRollOptionsPanel(rolls, selectedIndexes) {
       <button type="button" class="btn btn-primary btn-sm" onclick="closeRollDropdown(event)" style="flex-shrink:0;font-weight:800;">ตกลง</button>
     </div>` +
     rolls.map((r, idx) => `<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:5px;cursor:pointer;font-size:13px;">
-      <input type="checkbox" value="${idx}"${selectedSet.has(idx) ? ' checked' : ''} onchange="toggleRollOption(this)" style="width:14px;height:14px;cursor:pointer;">${escapeHtmlAttr(r.name)}
+      <input type="checkbox" value="${idx}"${selectedSet.has(idx) ? ' checked' : ''} onchange="toggleRollOption(this)" style="width:14px;height:14px;cursor:pointer;">${isSaw ? '<b>' + escapeHtmlAttr(r.id || r.name) + '</b>' : escapeHtmlAttr(r.name)}${sawExtra(r)}
     </label>`).join('');
   syncRollSelectAllState();
 }
@@ -9859,6 +9869,12 @@ function updateRollSelectionLabel() {
   const labelEl = document.getElementById('pf-rollids-label');
   if (!labelEl) return;
   const rolls = getSelectedRollsForPlan();
+  if (planFormWorkType() === 'saw') {
+    // ใบเลื่อยเรียกกันด้วยรหัส — โชว์รหัสที่เลือกไว้เลย (ปกติเลือกทีละไม่กี่ใบ)
+    const ids = rolls.map(r => r.id).filter(Boolean);
+    labelEl.textContent = ids.length ? ids.join(', ') + ' (' + ids.length + ' ใบ)' : '— ยังไม่ได้เลือกใบเลื่อย —';
+    return;
+  }
   labelEl.textContent = rolls.length ? `เลือกไว้ ${rolls.length} รายการ` : '— ไม่ได้เลือก Roll —';
 }
 
@@ -9900,7 +9916,35 @@ function planFormSelectedPieces() {
 
 // คำเรียกงานหลักของประเภทที่กำลังวางแผนอยู่ — ใช้ในป้ายปุ่ม/ข้อความเตือน ให้เอ่ยถึงเฉพาะงานนั้น
 function planFormMainWorkLabel() {
-  return planFormWorkType() === 'polish' ? 'ขัด Roll' : 'แต่ง Roll';
+  const wt = planFormWorkType();
+  return wt === 'polish' ? 'ขัด Roll' : wt === 'saw' ? 'ลับคมใบเลื่อย' : wt === 'sq' ? 'แต่ง Roll SQ' : 'แต่ง Roll';
+}
+
+// ฟอร์มงานลับคมใบเลื่อย — ใส่แค่ "รหัสใบเลื่อย" อย่างเดียว
+// ช่อง Size Roll / ชุดสี / จำนวน Roll ไม่มีความหมายกับใบเลื่อย (ใบเลื่อยไม่ได้จัดกลุ่ม ดู SAW_PLAN_SET)
+// จึงซ่อนไว้ แต่ยังอยู่ในฟอร์ม — ค่า Size Roll ถูกตั้งเป็น SAW_PLAN_SET ให้เองตามเดิม ตัวบันทึกจึงไม่ต้องแก้
+function applySawPlanFormLayout() {
+  const saw = planFormWorkType() === 'saw';
+  const rowSet = document.getElementById('pf-row-rollset');
+  if (rowSet && saw) rowSet.style.display = 'none';
+  const countGroup = (document.getElementById('pf-rollid') || {}).parentElement;
+  if (countGroup) countGroup.style.display = saw ? 'none' : '';
+  const rowIds = document.getElementById('pf-row-rollids');
+  if (rowIds) rowIds.classList.toggle('full', saw);
+  const lbl = document.getElementById('pf-rollids-title');
+  if (lbl) lbl.textContent = saw ? 'รหัสใบเลื่อย — เลือกใบที่จะลับคม' : 'รายชื่อ Roll — เลือกเฉพาะรายการที่ต้องการได้';
+  // ตอนเปิดฟอร์มเพิ่มงานใหม่ รายการถูกวาดก่อนตั้ง Size Roll เป็นใบเลื่อย จึงอาจว่าง ("ไม่พบ Roll")
+  // วาดรายการรหัสใบเลื่อยให้ใหม่ โดยคงใบที่ติ๊กไว้แล้ว (ไม่เลือกให้เองทั้งหมด — ปกติลับทีละไม่กี่ใบ)
+  if (saw && !planFormOtherWork) {
+    const sel = document.getElementById('pf-rollset');
+    if (sel && sel.value !== SAW_PLAN_SET) sel.value = SAW_PLAN_SET;
+    const panel = document.getElementById('pf-rollids-panel');
+    if (panel && !panel.querySelector('input[type=checkbox]:not(#pf-rollids-all)')) {
+      const picked = ((document.getElementById('pf-rollids') || {}).value || '').split(',').filter(Boolean).map(Number);
+      renderRollOptionsPanel(getMatchingRollsForPlan(SAW_PLAN_SET, null), picked);
+    }
+  }
+  updateRollSelectionLabel();
 }
 
 // ─── งานอื่นๆ ที่ไม่ใช่งานแต่ง/ขัด Roll ─────────────────────────────────────────
@@ -9930,6 +9974,7 @@ function setPlanOtherWork(on) {
   planFormOtherWork = !!on;
   const show = el => { const e = document.getElementById(el); if (e) e.style.display = planFormOtherWork ? 'none' : ''; };
   ['pf-row-rollset', 'pf-row-rollids', 'pf-row-plantime'].forEach(show);
+  applySawPlanFormLayout();   // งานลับคมใบเลื่อยไม่แสดงแถว Size Roll แม้กลับจากโหมดงานอื่นๆ
   // สลับโหมดแล้วล้างกรอบแดงที่อาจค้างจากการเตือนครั้งก่อน
   clearPlanFieldWarn('pf-rollset'); clearPlanFieldWarn('pf-rollcolor');
   const otherRow = document.getElementById('pf-other-row');
@@ -10053,6 +10098,9 @@ function fillPlanRollReadonly(setName, colorKey, presetSelectedIndexes, excludeT
   let selectedIndexes;
   if (presetSelectedIndexes && presetSelectedIndexes.length) {
     selectedIndexes = presetSelectedIndexes.filter(idx => idx >= 0 && idx < rolls.length);
+  } else if (isSawPlanSet(setName)) {
+    // ใบเลื่อยทั้งทะเบียน 52 ใบ — ไม่ติ๊กให้ทั้งหมดเหมือนชุด Roll ให้เลือกรหัสใบที่จะลับเอง
+    selectedIndexes = [];
   } else {
     const planned = getPlannedRollIndexSet(setName, colorKey, currentPlanWorkType, excludeTaskId);
     const unplanned = allIndexes.filter(idx => !planned.has(idx));
