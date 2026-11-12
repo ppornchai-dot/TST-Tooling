@@ -221,7 +221,14 @@ body{
 .plan-date-popup-day{position:relative;text-align:center;font-size:12px;padding:5px 0;border-radius:5px;cursor:pointer;color:var(--text-1);}
 .plan-date-popup-day:hover{background:var(--bg-hover);}
 .plan-date-popup-day.other-month{color:var(--text-3);opacity:.4;cursor:default;}
-.plan-date-popup-day.today{outline:1px solid var(--accent);outline-offset:-1px;}
+.plan-date-popup-day.today{outline:2px solid var(--accent);outline-offset:-2px;font-weight:800;color:var(--accent);}
+/* วันปัจจุบันในปฏิทินทุกหน้า — กรอบหนาสีหลัก + ป้าย "วันนี้" ให้เห็นทันทีว่าวันไหนคือวันนี้
+   ใช้ outline ไม่ใช่ border/box-shadow เพราะช่องในบางปฏิทินใช้สองตัวนั้นบอกสถานะอื่นอยู่แล้ว (เช่นวันที่เลือก) */
+.today-ring{outline:3px solid var(--accent) !important;outline-offset:-3px;}
+.today-badge{display:inline-block;font-size:10px;font-weight:800;line-height:1.4;color:#fff;background:var(--accent);
+  padding:1px 7px;border-radius:99px;white-space:nowrap;flex-shrink:0;}
+th.today-head{background:var(--accent) !important;color:#fff !important;}
+th.today-head .muted{color:#fff !important;opacity:.9;}
 .plan-date-popup-day.selected{background:var(--accent);color:#fff;font-weight:700;}
 .plan-date-popup-day.has-plan::after{
   content:'';position:absolute;bottom:2px;left:50%;transform:translateX(-50%);
@@ -710,7 +717,7 @@ canvas{display:block;}
   position:relative;
 }
 .cal-cell:hover{background:var(--bg-hover);}
-.cal-cell.today{background:var(--accent-glow);}
+.cal-cell.today{background:var(--accent-glow);outline:3px solid var(--accent);outline-offset:-3px;}
 .cal-cell.today .cal-day-num{
   background:var(--accent);color:#fff;
   border-radius:50%;width:22px;height:22px;
@@ -2253,7 +2260,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.7';
+const APP_BUILD = '2026-11-12.8';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -3638,11 +3645,12 @@ function renderInUseCalendar() {
         <span style="display:inline-flex;gap:2px;${tonText ? '' : 'margin-left:auto;'}flex-shrink:0;">${catTags}</span>
       </div>`;
     }).join('');
-    cells += `<div style="min-height:78px;min-width:0;overflow:hidden;padding:6px 7px;border:1px solid var(--border-light);border-radius:6px;
-        ${isOff ? 'background:#FDF3D8;' : ''}${isToday ? 'outline:2px solid var(--accent);outline-offset:-2px;' : ''}"
-        title="${escapeHtmlAttr(holidayName ? 'วันหยุด: ' + holidayName : '')}">
+    cells += `<div class="${isToday ? 'today-ring' : ''}" style="min-height:78px;min-width:0;overflow:hidden;padding:6px 7px;border:1px solid var(--border-light);border-radius:6px;
+        ${isOff ? 'background:#FDF3D8;' : (isToday ? 'background:var(--accent-glow);' : '')}"
+        title="${escapeHtmlAttr((isToday ? 'วันนี้' : '') + (holidayName ? (isToday ? ' · ' : '') + 'วันหยุด: ' + holidayName : ''))}">
       <div style="display:flex;align-items:center;gap:5px;">
         <strong style="font-size:12px;${isToday ? 'color:var(--accent);' : ''}">${d}</strong>
+        ${isToday ? '<span class="today-badge">วันนี้</span>' : ''}
         ${groups.length ? `<span style="font-size:10px;color:var(--text-3);">${groups.length} ขนาด</span>` : ''}
       </div>
       ${rows || `<div style="font-size:10.5px;color:var(--text-3);margin-top:3px;">${isOff ? 'วันหยุด' : '—'}</div>`}
@@ -9072,9 +9080,11 @@ function renderPlanWeek() {
   document.getElementById('plan-daterange-label').textContent = `${fmtDateThaiShort(monday)} – ${fmtDateThai(sunday)}`;
   document.getElementById('plan-week-title').textContent = `แผนงาน — สัปดาห์ ${fmtDateThaiShort(monday)} – ${fmtDateThai(sunday)}`;
 
-  document.getElementById('plan-week-thead-row').innerHTML = days.map(d =>
-    `<th>${THAI_WEEKDAYS_MON_FIRST[(d.getDay()+6)%7]}<br><span class="muted" style="font-weight:400;">${fmtDateThaiShort(d)}</span></th>`
-  ).join('');
+  const todayIso = dailyTodayIso();
+  document.getElementById('plan-week-thead-row').innerHTML = days.map(d => {
+    const isToday = toISODate(d) === todayIso;
+    return `<th class="${isToday ? 'today-head' : ''}">${THAI_WEEKDAYS_MON_FIRST[(d.getDay()+6)%7]}${isToday ? ' · วันนี้' : ''}<br><span class="muted" style="font-weight:400;">${fmtDateThaiShort(d)}</span></th>`;
+  }).join('');
 
   const partsByDate = planDayPartsByDate(); // เกณฑ์เดียวกับมุมมองรายวัน/รายเดือน
   const editable = canEditPlan();
@@ -9090,7 +9100,7 @@ function renderPlanWeek() {
           .map(g => planCalendarChipForGroup(g, iso, editable, true)).join('');
         // งานแทรกของวันนั้น (หมวดเดียวกัน) — ต่อท้ายชิปงานตามแผน
         const inserts = planInsertTasksFor(iso, s.key, null).map(t => planInsertChipHtml(iso, t)).join('');
-        return `<td onclick="planOpenDayFromCell(event, '${iso}')" style="min-width:110px;cursor:pointer;"
+        return `<td onclick="planOpenDayFromCell(event, '${iso}')" class="${iso === todayIso ? 'today-ring' : ''}" style="min-width:110px;cursor:pointer;"
           title="${escapeHtmlAttr('กดที่ช่องนี้เพื่อเปิดแผนของวัน ' + fmtDateThaiShort(d))}">
           <div class="plan-drop-zone" data-day="${iso}" style="display:flex;flex-direction:column;gap:4px;min-height:30px;">
             ${items || (inserts ? '' : '<span class="muted">—</span>')}${inserts}
@@ -9117,6 +9127,7 @@ function renderPlanMonth() {
   const editable = canEditPlan();
   const partsByDate = planDayPartsByDate(); // เกณฑ์เดียวกับมุมมองรายวัน/รายสัปดาห์
   const monthIsos = Array.from({length: daysInMonth}, (_, i) => toISODate(new Date(year, month, i + 1)));
+  const todayIso = dailyTodayIso();
 
   // ปฏิทินหนึ่งชุดต่อประเภทงาน วางซ้อนกันในกริดเดิม (หัวข้อกินเต็มแถวด้วย grid-column:1/-1)
   // ใช้กริด 7 คอลัมน์ชุดเดียวกับแถวชื่อวันด้านบน ทั้งสองชุดจึงเรียงคอลัมน์ตรงกันเสมอ
@@ -9150,11 +9161,13 @@ function renderPlanMonth() {
       const chips = planChipGroups(tasks)
           .map(g => planCalendarChipForGroup(g, iso, editable, false)).join('')
         + planInsertTasksFor(iso, s.key, null).map(t => planInsertChipHtml(iso, t)).join('');
-      html += `<div onclick="planOpenDayFromCell(event, '${iso}')"
-        style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;cursor:pointer;${dayOffBg}${offLabel ? 'display:flex;flex-direction:column;' : ''}"
-        title="${escapeHtmlAttr((offLabel ? 'วันหยุด: ' + offLabel + ' · ' : '') + 'กดที่ช่องนี้เพื่อเปิดแผนของวันนี้')}">
+      const isToday = iso === todayIso;
+      html += `<div onclick="planOpenDayFromCell(event, '${iso}')" class="${isToday ? 'today-ring' : ''}"
+        style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;cursor:pointer;${dayOffBg || (isToday ? 'background:var(--accent-glow);' : '')}${offLabel ? 'display:flex;flex-direction:column;' : ''}"
+        title="${escapeHtmlAttr((isToday ? 'วันนี้ · ' : '') + (offLabel ? 'วันหยุด: ' + offLabel + ' · ' : '') + 'กดที่ช่องนี้เพื่อเปิดแผนของวันนี้')}">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">
-          <strong style="font-size:12px;flex-shrink:0;">${day}</strong>
+          <strong style="font-size:12px;flex-shrink:0;${isToday ? 'color:var(--accent);' : ''}">${day}</strong>
+          ${isToday ? '<span class="today-badge">วันนี้</span>' : ''}
           <span style="display:inline-flex;align-items:center;gap:4px;flex-shrink:0;margin-left:auto;">
             ${planDayCellSettingsHtml(iso, s.key, s.color, s.bg, true)}
             <!-- ปุ่ม + ใช้หน้าตาเดียวกับปุ่ม ⏱/👤 (ดู chip() ใน planDayCellSettingsHtml)
@@ -19941,16 +19954,16 @@ function renderHistoryCalendar(records, fromIso, toIso) {
       </div>`;
     }).join('');
 
-    cells += `<div onclick="historyCalPickDay('${iso}')"
-        title="${escapeHtmlAttr((holidayName ? 'วันหยุด: ' + holidayName + ' — ' : '')
+    cells += `<div onclick="historyCalPickDay('${iso}')" class="${isToday ? 'today-ring' : ''}"
+        title="${escapeHtmlAttr((isToday ? 'วันนี้ — ' : '') + (holidayName ? 'วันหยุด: ' + holidayName + ' — ' : '')
           + (list.length ? list.length + ' ชิ้น' : 'ไม่มีประวัติ') + ' — กดเพื่อดูเฉพาะวันนี้ในตารางด้านล่าง')}"
         style="min-height:74px;min-width:0;overflow:hidden;padding:6px 7px;border-radius:6px;cursor:pointer;
                border:1px solid ${picked ? 'var(--accent)' : 'var(--border-light)'};
-               ${isOff ? 'background:#FDF3D8;' : (picked ? 'background:var(--accent-glow);' : '')}
-               ${picked ? 'box-shadow:inset 0 0 0 2px var(--accent);' : (inRange ? 'box-shadow:inset 0 -3px 0 var(--accent-glow);' : '')}
-               ${isToday ? 'outline:2px dashed var(--accent);outline-offset:-2px;' : ''}">
+               ${isOff ? 'background:#FDF3D8;' : (picked || isToday ? 'background:var(--accent-glow);' : '')}
+               ${picked ? 'box-shadow:inset 0 0 0 2px var(--accent);' : (inRange ? 'box-shadow:inset 0 -3px 0 var(--accent-glow);' : '')}">
       <div style="display:flex;align-items:center;gap:5px;">
         <strong style="font-size:12px;${isToday ? 'color:var(--accent);' : ''}">${d}</strong>
+        ${isToday ? '<span class="today-badge">วันนี้</span>' : ''}
         ${list.length ? `<span style="font-size:10px;color:var(--text-3);margin-left:auto;">${list.length} ชิ้น</span>` : ''}
       </div>
       ${rows || `<div style="font-size:10.5px;color:var(--text-3);margin-top:3px;">${isOff ? 'วันหยุด' : '—'}</div>`}
