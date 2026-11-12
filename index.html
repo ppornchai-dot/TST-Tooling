@@ -2264,7 +2264,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.15';
+const APP_BUILD = '2026-11-12.16';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -2379,11 +2379,16 @@ function initDashboard() {
 // เดิมเลขทั้ง 4 ใบฝังไว้ในหน้าเป็นตัวอย่าง (107/84/16/7) ไม่เคยอัปเดตตามข้อมูลจริง
 // นับเป็น "รายการงานตามแผน" (1 รายการมีได้หลายชิ้น Roll) แบบเดียวกับที่หน้าวางแผนแสดง
 // สถานะของแต่ละรายการใช้ planTaskProgressState() ตัวเดียวกับสีในปฏิทินแผนงาน ตัวเลขสองที่จึงตรงกันเสมอ
-function dashboardKpiCounts(ym) {
+// sections = ประเภทงานที่นับ (คีย์ของ planTaskSectionKey) — แท็บ Roll นับ CNC + ขัด Roll, แท็บใบเลื่อยนับงานลับคม
+// เดิมนับทุกงานในแผน พอมีงานลับคม/แต่ง Roll SQ ด้วย ตัวเลขของแท็บ Roll จึงต้องกรองประเภทให้ตรง
+const DASH_ROLL_SECTIONS = ['cnc', 'polish'];
+function dashboardKpiCounts(ym, sections) {
+  const keys = sections || DASH_ROLL_SECTIONS;
   const byState = { done: 0, late: 0, doing: 0, wait: 0 };
   let total = 0, pieces = 0;
   planTasks.forEach(t => {
     if (taskDisplayDate(t).slice(0, 7) !== ym) return;
+    if (!keys.includes(planTaskSectionKey(t))) return;
     total++;
     pieces += Math.max(1, (t.rollIds || []).length);
     const st = planTaskProgressState(t);
@@ -2432,8 +2437,12 @@ function renderDashboardKpi() {
   set('dash-kpi-open-sub', 'เลยวันแล้ว ' + cur.late.toLocaleString()
     + ' · กำลังทำ ' + cur.doing.toLocaleString() + ' · รอทำ ' + cur.wait.toLocaleString());
 
+  // แท็บอื่น (ใบเลื่อย) ใช้การ์ดชุดเดียวกันแต่นับคนละประเภทงาน — วาดใหม่ไปพร้อมกัน
+  if (dashTab === 'saw' && typeof renderDashboardSimpleToolingPanel === 'function') renderDashboardSimpleToolingPanel('saw', 'ใบเลื่อย');
+
   // 4) งานตกแผน — เลยเวลาจบตามแผนแล้วยังไม่เสร็จ (เกณฑ์เดียวกับหน้างานค้าง) เฉพาะของเดือนนี้
-  const overdue = collectOverdueRecords().filter(r => String(r.dateIso || '').slice(0, 7) === thisYm);
+  const overdue = collectOverdueRecords().filter(r => String(r.dateIso || '').slice(0, 7) === thisYm
+    && DASH_ROLL_SECTIONS.includes(r.section));
   const worst = overdue.reduce((m, r) => (r.overdueMin || 0) > (m.overdueMin || 0) ? r : m, { overdueMin: 0, overdueLabel: '' });
   set('dash-kpi-overdue', overdue.length.toLocaleString(),
     'เลยเวลาจบตามแผนแล้วยังไม่เสร็จ — เกณฑ์เดียวกับหน้างานค้าง');
@@ -2443,6 +2452,46 @@ function renderDashboardKpi() {
   const odSub = el('dash-kpi-overdue-sub');
   if (odSub) odSub.style.color = overdue.length ? 'var(--red)' : 'var(--green)';
 
+}
+
+// การ์ด KPI งานตามแผน 4 ใบ แบบเดียวกับแท็บ Roll — ใช้กับแท็บอื่นที่มีงานตามแผนของตัวเอง (ใบเลื่อย)
+// เกณฑ์นับเหมือน renderDashboardKpi ทุกข้อ ต่างกันแค่ประเภทงานที่นับ
+function dashWorkKpiGridHtml(sections, unit, typeLabel) {
+  const now = new Date();
+  const thisYm = toISODate(now).slice(0, 7);
+  const prevYm = toISODate(new Date(now.getFullYear(), now.getMonth() - 1, 1)).slice(0, 7);
+  const cur = dashboardKpiCounts(thisYm, sections), last = dashboardKpiCounts(prevYm, sections);
+  const diff = cur.total - last.total;
+  const arrow = diff > 0 ? '▲ ' : diff < 0 ? '▼ ' : '± ';
+  const totalSub = (last.total === 0 ? 'เดือนที่แล้วไม่มีแผนงาน'
+      : arrow + Math.abs(diff).toLocaleString() + ' จากเดือนที่แล้ว (' + last.total.toLocaleString() + ')')
+    + ' · ' + cur.pieces.toLocaleString() + ' ' + unit;
+  const pct = cur.total ? Math.round(cur.done / cur.total * 1000) / 10 : null;
+  const overdue = collectOverdueRecords().filter(r => String(r.dateIso || '').slice(0, 7) === thisYm && sections.includes(r.section));
+  const worst = overdue.reduce((m, r) => (r.overdueMin || 0) > (m.overdueMin || 0) ? r : m, { overdueMin: 0, overdueLabel: '' });
+  const card = (cls, icon, label, value, sub, subStyle, title) => `<div class="kpi-card ${cls}" title="${escapeHtmlAttr(title || '')}">
+      <div class="kpi-icon ${cls}">${icon}</div>
+      <div class="kpi-label">${escapeHtmlAttr(label)}</div>
+      <div class="kpi-value">${escapeHtmlAttr(value)}</div>
+      <div class="kpi-change" style="${subStyle}">${escapeHtmlAttr(sub)}</div>
+    </div>`;
+  return `<div class="kpi-grid">
+    ${card('blue', '<svg width="18" height="18" fill="none" stroke="var(--accent)" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>',
+      'งานทั้งหมดเดือนนี้', cur.total.toLocaleString(), totalSub, diff < 0 ? 'color:var(--amber);' : 'color:var(--green);',
+      'รายการ' + typeLabel + 'ตามแผนที่วันของงานอยู่ในเดือนนี้')}
+    ${card('green', '<svg width="18" height="18" fill="none" stroke="var(--green)" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>',
+      'งานสำเร็จ', cur.done.toLocaleString(), pct == null ? 'ยังไม่มีแผนงานเดือนนี้' : pct + '% ของแผน', 'color:var(--green);',
+      'รายการที่ทำครบทุก' + unit + 'แล้วในเดือนนี้')}
+    ${card('amber', '<svg width="18" height="18" fill="none" stroke="var(--amber)" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg>',
+      'งานค้าง', cur.open.toLocaleString(),
+      'เลยวันแล้ว ' + cur.late.toLocaleString() + ' · กำลังทำ ' + cur.doing.toLocaleString() + ' · รอทำ ' + cur.wait.toLocaleString(), 'color:var(--amber);',
+      'รายการของเดือนนี้ที่ยังทำไม่ครบ')}
+    ${card('red', '<svg width="18" height="18" fill="none" stroke="var(--red)" stroke-width="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/></svg>',
+      'งานตกแผน', overdue.length.toLocaleString(),
+      overdue.length ? 'เกินกำหนด — ช้าสุด ' + (worst.overdueLabel || '—') : 'ไม่มีงานเกินกำหนด',
+      overdue.length ? 'color:var(--red);' : 'color:var(--green);',
+      'เลยเวลาจบตามแผนแล้วยังไม่เสร็จ — เกณฑ์เดียวกับหน้างานค้าง')}
+  </div>`;
 }
 
 // ─── DASHBOARD: ชุด Roll กำลังใช้งาน ──────────────────────────────────────────
@@ -6176,12 +6225,12 @@ function renderDashboardSimpleToolingPanel(key, name) {
     byStatus.get(s).push(it);
   });
   el.innerHTML = `
-    <div class="kpi-grid">
+    ${key === 'saw' ? dashWorkKpiGridHtml(['saw'], 'ใบ', 'งานลับคมใบเลื่อย') : `<div class="kpi-grid">
       ${dashMiniKpi(name + 'ทั้งหมด', total.toLocaleString(), 'var(--accent)', '')}
       ${dashMiniKpi('พร้อมใช้งาน', ready.toLocaleString(), 'var(--green)', total ? Math.round(ready / total * 100) + '% ของทั้งหมด' : '')}
       ${dashMiniKpi('ซ่อมบำรุง / รอใช้งาน', repair.toLocaleString(), 'var(--amber)', '')}
       ${dashMiniKpi('หมดอายุ / มีปัญหา', expired.toLocaleString(), 'var(--red)', '')}
-    </div>
+    </div>`}
     ${key === 'saw' ? sawWorkingCardHtml() + prodSawInUseCardHtml() + prodSawWaitingCardHtml() : ''}
     <div class="card">
       <div class="card-header">
@@ -20332,6 +20381,7 @@ function collectOverdueRecords() {
     else reason = 'เลยกำหนดที่วางแผนไว้ — ยังไม่เริ่มงาน';
     records.push({
       wo: t.id, typeLabel: t.workType === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)',
+      section: planTaskSectionKey(t),   // ใช้แยกการ์ด KPI ตามแท็บบน Dashboard
       dateIso, // ใช้กรองเฉพาะเดือนนี้ในการ์ด KPI หน้า Dashboard
       tooling: `${t.rollSet || '—'}${t.rollColor ? ' — ' + planRollColorLabel(t) : ''}`,
       reason, who: workerName(t.workerId),
