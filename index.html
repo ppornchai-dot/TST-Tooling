@@ -1688,6 +1688,39 @@ canvas{display:block;}
     </div>
 
     <div class="page" id="page-rollLife">
+      <!-- แท็บหมวด Tooling แบบเดียวกับหน้าทะเบียน (ดู switchRollLifeTab) -->
+      <div class="reg-tab-bar" id="rl-tab-bar" style="margin-top:6px;">
+        <button class="reg-tab active" onclick="switchRollLifeTab('roll')">
+          <span class="reg-tab-icon" style="background:rgba(74,142,194,.18);color:var(--accent);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="10" ry="4"/><path d="M2 12c0 4 4.5 8 10 8s10-4 10-8"/><path d="M2 12c0-4 4.5-8 10-8s10 4 10 8"/></svg>
+          </span>
+          Roll
+          <span class="reg-tab-count" id="rl-cnt-roll">—</span>
+        </button>
+        <button class="reg-tab" onclick="switchRollLifeTab('sq')">
+          <span class="reg-tab-icon" style="background:rgba(139,104,212,.18);color:var(--purple);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+          </span>
+          Roll SQ
+          <span class="reg-tab-count" id="rl-cnt-sq">—</span>
+        </button>
+        <button class="reg-tab" onclick="switchRollLifeTab('saw')">
+          <span class="reg-tab-icon" style="background:rgba(232,151,30,.18);color:var(--amber);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M16.9 16.9l1.4 1.4M5.6 18.4l1.4-1.4M16.9 7.1l1.4-1.4"/></svg>
+          </span>
+          ใบเลื่อย
+          <span class="reg-tab-count" id="rl-cnt-saw">—</span>
+        </button>
+        <button class="reg-tab" onclick="switchRollLifeTab('slitter')">
+          <span class="reg-tab-icon" style="background:rgba(217,91,91,.18);color:var(--red);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="4" y1="12" x2="20" y2="12"/><circle cx="8" cy="12" r="3"/><circle cx="16" cy="12" r="3"/></svg>
+          </span>
+          มีดสลิตเตอร์
+          <span class="reg-tab-count" id="rl-cnt-slitter">—</span>
+        </button>
+      </div>
+      <!-- แท็บ Roll (ของเดิมทั้งหมด) -->
+      <div id="rl-panel-roll">
 
       <!-- 5 การ์ดแล้ว ถ้าบังคับ 5 คอลัมน์ตายตัว จอที่ไม่กว้างพอจะบีบชื่อชุดในการ์ดเหลือไม่กี่ตัวอักษร
            auto-fit จึงเรียง 5 ใบเรียงเดียวเมื่อจอกว้างพอ และตัดลงบรรทัดใหม่เองเมื่อไม่พอ -->
@@ -1765,6 +1798,9 @@ canvas{display:block;}
           <span style="font-size:12px;color:var(--text-3);" id="rolllife-count-label">แสดง 0 จาก 0 รายการ</span>
         </div>
       </div>
+      </div><!-- /rl-panel-roll -->
+      <!-- แท็บ Roll SQ / ใบเลื่อย / มีดสลิตเตอร์ (ดู renderToolingLife) -->
+      <div id="rl-panel-tooling" style="display:none;margin-top:14px;"></div>
     </div>
 
 
@@ -2300,7 +2336,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.22';
+const APP_BUILD = '2026-11-12.23';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5744,6 +5780,8 @@ function rerenderProdSawViews() {
   if (typeof refreshSawPlanOptions === 'function') refreshSawPlanOptions();
   // ตารางสถานะ Tooling บน Dashboard (แท็บ Roll) นับใบเลื่อยตามสถานะที่แสดงด้วย
   if (typeof renderToolingStatusTable === 'function') renderToolingStatusTable();
+  // หน้าอายุ Tooling แท็บใบเลื่อย
+  if (typeof currentPage !== 'undefined' && currentPage === 'rollLife' && rollLifeTab === 'saw') renderToolingLife();
 }
 
 // งานลับคมใบเลื่อยในแผนงาน — อ้างใบด้วย "ลำดับในทะเบียน" (rollIds = index ของ toolingData.saw
@@ -6229,6 +6267,180 @@ async function renderProdWeightTooling(force) {
         <tbody>${tableRows || `<tr><td colspan="7">${msg('ไม่มีรอบการใช้' + (kind === 'sq' ? 'ชุด Roll SQ' : 'ใบเลื่อย') + 'ในช่วงวันที่นี้')}</td></tr>`}</tbody>
       </table>
     </div>`;
+}
+
+// ─── หน้าอายุ Tooling: แท็บ Roll / Roll SQ / ใบเลื่อย / มีดสลิตเตอร์ ─────────────────
+// Roll = ตารางอายุ Roll เดิม (renderRollLife)
+// Roll SQ = อายุตาม OD ในทะเบียน (ถึง OD หมดอายุ / ยังไม่วัด) + ยอดผลิตรายชุดจากระบบผลิต (1 ปีล่าสุด)
+// ใบเลื่อย = ตัดสะสม / ตัดหลังลับคม (ตัน · เส้น) จากระบบผลิต + สถานะเดียวกับทะเบียน
+// มีดสลิตเตอร์ = ระบบผลิตยังไม่มีข้อมูล
+var rollLifeTab = 'roll';
+function switchRollLifeTab(key) {
+  rollLifeTab = key;
+  document.querySelectorAll('#rl-tab-bar .reg-tab').forEach(t =>
+    t.classList.toggle('active', (t.getAttribute('onclick') || '').includes("'" + key + "'")));
+  const pRoll = document.getElementById('rl-panel-roll');
+  const pTool = document.getElementById('rl-panel-tooling');
+  if (pRoll) pRoll.style.display = key === 'roll' ? '' : 'none';
+  if (pTool) pTool.style.display = key === 'roll' ? 'none' : '';
+  if (key === 'saw') loadProdSawUsage(false);
+  renderRollLife();
+}
+function renderRollLifeTabCounts() {
+  ['roll', 'sq', 'saw', 'slitter'].forEach(k => {
+    const el = document.getElementById('rl-cnt-' + k);
+    if (el && typeof dashToolingCount === 'function') el.textContent = dashToolingCount(k).toLocaleString();
+  });
+}
+
+var toolingLifeSqUsage = null;   // { at, byKey: setKey → { kg, pcs, rounds, open } } — ยอดผลิตรายชุด SQ (1 ปีล่าสุด)
+var toolingLifeSqLoading = false;
+function loadToolingLifeSqUsage(force) {
+  if (!PROD_SQ_PROXY_URL || toolingLifeSqLoading) return;
+  if (!force && toolingLifeSqUsage && Date.now() - toolingLifeSqUsage.at < PROD_SQ_MIN_AGE_MS) return;
+  toolingLifeSqLoading = true;
+  const today = toISODate(new Date());
+  fetchProdToolingRounds('sq', addDaysIso(today, -364), today, !!force).then(({ rows }) => {
+    const heads = sqSets().map(s => s[0]).filter(Boolean);
+    const byKey = {};
+    let unmatched = 0;
+    rows.forEach(r => {
+      const m = prodSqSetOfRound(r, heads);
+      if (!m.head) { unmatched++; return; }
+      const k = sqSetKey(m.head);
+      const g = byKey[k] || (byKey[k] = { kg: 0, pcs: 0, rounds: 0, open: null });
+      g.kg += Number(r.kg) || 0; g.pcs += Number(r.pcs) || 0; g.rounds++;
+      if (r.is_open) g.open = { machine: String(r.machine_id || ''), startedAt: r.started_at };
+    });
+    toolingLifeSqUsage = { at: Date.now(), byKey, unmatched, error: null };
+  }).catch(e => {
+    toolingLifeSqUsage = { at: Date.now(), byKey: (toolingLifeSqUsage || {}).byKey || {}, unmatched: 0, error: String((e && e.message) || e) };
+  }).finally(() => {
+    toolingLifeSqLoading = false;
+    if (currentPage === 'rollLife' && rollLifeTab === 'sq') renderToolingLife();
+  });
+}
+
+function renderToolingLife() {
+  const el = document.getElementById('rl-panel-tooling');
+  if (!el) return;
+  const kind = rollLifeTab;
+  const msg = (t, color) => `<div style="text-align:center;color:${color || 'var(--text-3)'};font-size:13px;padding:24px 0;">${t}</div>`;
+  if (kind === 'slitter') {
+    el.innerHTML = `<div class="card">${msg('ระบบผลิตยังไม่มีข้อมูลการใช้มีดสลิตเตอร์ และทะเบียนยังไม่มีรายการ — ยังคิดอายุของหมวดนี้ไม่ได้')}</div>`;
+    return;
+  }
+  const num = v => { const n = parseFloat(String(v == null ? '' : v).replace(/,/g, '')); return Number.isFinite(n) ? n : null; };
+  const th = (t, right, title) => `<th style="${right ? 'text-align:right;' : ''}"${title ? ` title="${escapeHtmlAttr(title)}"` : ''}>${t}</th>`;
+
+  if (kind === 'sq') {
+    loadToolingLifeSqUsage(false);
+    const use = (toolingLifeSqUsage || {}).byKey || {};
+    const loading = !toolingLifeSqUsage && toolingLifeSqLoading;
+    const rows = sqSets().map(set => {
+      const head = set[0] || {};
+      const key = sqSetKey(head);
+      const measured = set.filter(r => num(r.odCur) != null);
+      const expired = set.filter(sqOdExpired).length;
+      const margins = set.map(r => (num(r.odCur) != null && num(r.odMin) != null) ? num(r.odCur) - num(r.odMin) : null).filter(x => x != null);
+      const minMargin = margins.length ? Math.min(...margins) : null;
+      const odCurs = measured.map(r => num(r.odCur));
+      const odMins = set.map(r => num(r.odMin)).filter(x => x != null);
+      const state = expired ? 'expired' : measured.length < set.length ? 'unmeasured' : !odMins.length ? 'nospec' : 'ok';
+      return { set, head, key, expired, minMargin, state, use: use[key] || null,
+        odCurMin: odCurs.length ? Math.min(...odCurs) : null, odMin: odMins.length ? Math.max(...odMins) : null,
+        unmeasured: set.length - measured.length };
+    });
+    const STATE = {
+      expired:    { label: 'ถึง OD หมดอายุ', color: 'var(--red)',    order: 0 },
+      unmeasured: { label: 'ยังวัด OD ไม่ครบ', color: 'var(--amber)', order: 1 },
+      nospec:     { label: 'ยังไม่กรอก OD หมดอายุ', color: 'var(--accent)', order: 2 },
+      ok:         { label: 'ปกติ',          color: 'var(--green)',  order: 3 },
+    };
+    rows.sort((a, b) => STATE[a.state].order - STATE[b.state].order
+      || (a.minMargin == null) - (b.minMargin == null) || (a.minMargin || 0) - (b.minMargin || 0)
+      || String(a.head.sizeSq).localeCompare(String(b.head.sizeSq), 'th'));
+    const cnt = s => rows.filter(r => r.state === s).length;
+    const inUse = rows.filter(r => r.use && r.use.open).length;
+    const fmt1 = v => v == null ? '—' : (Math.round(v * 100) / 100).toLocaleString();
+    el.innerHTML = `
+      <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));">
+        ${dashMiniKpi('ถึง OD หมดอายุ', cnt('expired').toLocaleString(), 'var(--red)', 'ชุดที่มีลูกถึง OD หมดอายุแล้ว')}
+        ${dashMiniKpi('ยังวัด OD ไม่ครบ', cnt('unmeasured').toLocaleString(), 'var(--amber)', 'ชุดที่ยังมีลูกไม่ได้วัด OD ปัจจุบัน')}
+        ${dashMiniKpi('ปกติ', cnt('ok').toLocaleString(), 'var(--green)', 'วัดครบ และยังไม่ถึง OD หมดอายุ')}
+        ${dashMiniKpi('กำลังใช้งาน', loading ? '…' : inUse.toLocaleString(), 'var(--inuse)', 'ตามระบบผลิต')}
+      </div>
+      <div class="card table-wrap">
+        <table>
+          <thead><tr>${th('Size SQ')}${th('ชุด')}${th('เครื่อง (ตอนนี้)', false, 'ตามระบบผลิต — รอบที่ยังไม่ถอด')}${th('จำนวน (ลูก)', true)}
+            ${th('OD ปัจจุบัน (ต่ำสุด)', true, 'OD ปัจจุบันที่วัดได้ต่ำสุดในชุด')}${th('OD หมดอายุ', true)}
+            ${th('เหลือก่อนหมดอายุ (mm)', true, 'OD ปัจจุบัน − OD หมดอายุ ของลูกที่เหลือน้อยสุดในชุด')}
+            ${th('ผลิตจากระบบผลิต', true, 'ยอดผลิตรวมของชุดนี้ 1 ปีล่าสุด — ระบบผลิตเริ่มบันทึกประมาณ 9 พ.ย. 69')}${th('อายุ')}</tr></thead>
+          <tbody>${rows.map(x => {
+            const cm = sqColorMeta(x.head.color);
+            const st = STATE[x.state];
+            return `<tr style="cursor:pointer;" onclick="${jsCallAttr('goToSqSet', x.key)}" title="กดเพื่อเปิดชุดนี้ในทะเบียน Roll SQ">
+              <td><b>${escapeHtmlAttr(x.head.sizeSq || '—')}</b></td>
+              <td>${rollColorPillHtml(cm.dot, cm.label)} <span class="muted">${escapeHtmlAttr(sqSetOrdinalLabel(x.head))}</span></td>
+              <td>${x.use && x.use.open ? `<span class="chip chip-yellow">${escapeHtmlAttr(x.use.open.machine)}</span>` : '<span class="muted">—</span>'}</td>
+              <td style="text-align:right;">${x.set.length}</td>
+              <td style="text-align:right;">${escapeHtmlAttr(fmt1(x.odCurMin))}${x.unmeasured ? ` <span class="muted" style="font-size:11px;">(ยังไม่วัด ${x.unmeasured})</span>` : ''}</td>
+              <td style="text-align:right;">${escapeHtmlAttr(fmt1(x.odMin))}</td>
+              <td style="text-align:right;font-weight:700;color:${x.minMargin != null && x.minMargin <= 0 ? 'var(--red)' : 'var(--text-1)'};">${escapeHtmlAttr(fmt1(x.minMargin))}</td>
+              <td style="text-align:right;white-space:nowrap;">${x.use ? `<b>${escapeHtmlAttr(fmtTons2(x.use.kg / 1000))}</b> ตัน · ${escapeHtmlAttr(x.use.pcs.toLocaleString())} เส้น
+                <div class="muted" style="font-size:11px;">${x.use.rounds} รอบ</div>` : `<span class="muted">${loading ? 'กำลังดึง…' : '—'}</span>`}</td>
+              <td><span style="font-size:12px;font-weight:800;color:${st.color};">${escapeHtmlAttr(st.label)}</span>${
+                x.expired ? ` <span class="chip chip-red">${x.expired} ลูก</span>` : ''}</td>
+            </tr>`;
+          }).join('') || `<tr><td colspan="9">${msg('ยังไม่มีชุด Roll SQ ในทะเบียน')}</td></tr>`}</tbody>
+        </table>
+      </div>
+      <div style="font-size:11.5px;color:var(--text-3);margin:8px 2px;">
+        อายุของ Roll SQ คิดจาก OD ในทะเบียน (OD ปัจจุบันเทียบ OD หมดอายุ) · ยอดผลิตมาจากระบบผลิต 1 ปีล่าสุด
+        (ขนาดจาก product_code + สี + ชุดที่)${toolingLifeSqUsage && toolingLifeSqUsage.unmatched ? ' · มี ' + toolingLifeSqUsage.unmatched + ' รอบที่จับคู่กับทะเบียนไม่ได้' : ''}${
+        toolingLifeSqUsage && toolingLifeSqUsage.error ? ' · <span style="color:var(--red);">ดึงยอดผลิตไม่สำเร็จ</span>' : ''}</div>`;
+    return;
+  }
+
+  // ใบเลื่อย
+  const reg = (toolingData || {}).saw || [];
+  const loaded = !!(prodSawLive && prodSawLive.at);
+  const list = reg.map(r => ({ r, u: sawUsageInfo(r), st: sawEffectiveStatus(r) }));
+  list.sort((a, b) => (b.u.sinceGrind || 0) - (a.u.sinceGrind || 0) || b.u.total - a.u.total
+    || String(a.r.id).localeCompare(String(b.r.id)));
+  const n = s => list.filter(x => x.st.status === s).length;
+  el.innerHTML = `
+    <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));">
+      ${dashMiniKpi('กำลังใช้งาน', n('กำลังใช้งาน').toLocaleString(), 'var(--inuse)', 'ใบที่อยู่บนเครื่องตอนนี้')}
+      ${dashMiniKpi('รอลับคม', n('รอลับคม').toLocaleString(), 'var(--red)', 'ถอดแล้ว ยังไม่ได้วางแผนลับ')}
+      ${dashMiniKpi('กำลังลับคม', n('กำลังลับคม').toLocaleString(), 'var(--amber)', 'วางแผน/กำลังลับอยู่')}
+      ${dashMiniKpi('มีปัญหา / หมดอายุ', (n('มีปัญหา') + n('หมดอายุ')).toLocaleString(), 'var(--text-2)', 'ตั้งไว้ในทะเบียน')}
+    </div>
+    <div class="card table-wrap">
+      <table>
+        <thead><tr>${th('รหัส')}${th('OD')}${th('เครื่องผลิต')}${th('สถานะ')}
+          ${th('ตัดหลังลับคม', true, 'นับจากวันลับคมล่าสุด (ทะเบียน หรือวันที่กดจบงานลับคมในแผน)')}
+          ${th('ตัดสะสม', true, 'ยอดตั้งต้นในทะเบียน + ยอดจากระบบผลิตตั้งแต่ 9 พ.ย. 69')}
+          ${th('Regrind')}${th('ลับคมล่าสุด')}</tr></thead>
+        <tbody>${list.map(({ r, u, st }) => `<tr style="cursor:pointer;" onclick="showPage('registry');switchRegTab('saw');" title="กดเพื่อไปทะเบียนใบเลื่อย">
+          <td><b>${escapeHtmlAttr(r.id || '—')}</b></td>
+          <td>${escapeHtmlAttr(sawOdLabel(r) || '—')}</td>
+          <td>${escapeHtmlAttr(r.machine || '—')}${u.open ? ` <span class="chip chip-yellow" style="font-size:10.5px;">บน ${escapeHtmlAttr(u.open.machine)}</span>` : ''}</td>
+          <td>${statusChip(st.status)}</td>
+          <td style="text-align:right;white-space:nowrap;">${u.sinceGrind != null
+            ? `<b>${escapeHtmlAttr(fmtTons2(u.sinceGrind))}</b> ตัน · ${escapeHtmlAttr(u.sinceGrindPcs.toLocaleString())} เส้น`
+            : '<span class="muted" title="ยังไม่มีวันลับคมล่าสุดที่ใช้ได้ หรือยังไม่มีข้อมูลจากระบบผลิต">—</span>'}</td>
+          <td style="text-align:right;white-space:nowrap;">${u.p
+            ? `${escapeHtmlAttr(fmtTons2(u.total))} ตัน · ${escapeHtmlAttr(u.p.pcs.toLocaleString())} เส้น`
+            : `<span class="muted">${escapeHtmlAttr(r.usage || '—')}</span>`}</td>
+          <td class="muted">${escapeHtmlAttr(r.regrind || '—')}</td>
+          <td class="muted">${u.lastGrind ? escapeHtmlAttr(fmtIsoDateThai(u.lastGrind)) : '—'}</td>
+        </tr>`).join('') || `<tr><td colspan="8">${msg('ยังไม่มีใบเลื่อยในทะเบียน')}</td></tr>`}</tbody>
+      </table>
+    </div>
+    <div style="font-size:11.5px;color:var(--text-3);margin:8px 2px;">
+      ${loaded ? '' : 'กำลังดึงยอดจากระบบผลิต… · '}เรียงตามยอดตัดหลังลับคมมากสุดก่อน — ใบที่ตัดไปมากควรได้ลับก่อน ·
+      ยังไม่มีเกณฑ์ "ตัดได้กี่ตันต่อการลับ 1 ครั้ง" จึงยังคิดเป็น % ไม่ได้</div>`;
 }
 
 function prodSqUnmatchedHtml() {
@@ -16255,6 +16467,9 @@ function clearDressReset() {
 function renderRollLife() {
   const tbody = document.getElementById('rolllife-tbody');
   if (!tbody) return;
+  if (typeof renderRollLifeTabCounts === 'function') renderRollLifeTabCounts();
+  // แท็บอื่นที่ไม่ใช่ Roll วาดตารางของตัวเอง (ดู renderToolingLife)
+  if (typeof rollLifeTab !== 'undefined' && rollLifeTab !== 'roll') return renderToolingLife();
   ensureRollLifeFg();
   const sets = getRollSets();
 
