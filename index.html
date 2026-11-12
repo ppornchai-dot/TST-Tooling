@@ -2406,7 +2406,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.33';
+const APP_BUILD = '2026-11-12.34';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -13480,7 +13480,7 @@ function sizeGroupMachineButtonsHtml(sets, opts) {
       : (all || some ? `<span style="${style}" title="${escapeHtmlAttr(tip)}">${m}</span>` : '');
   }).join('');
   return btns ? `<span style="display:inline-flex;align-items:center;gap:${compact ? 3 : 4}px;margin-left:${compact ? 4 : 10}px;vertical-align:middle;">
-    ${compact ? '' : '<span style="font-size:11px;font-weight:700;color:var(--text-3);">เครื่อง</span>'}${btns}</span>` : '';
+    <span style="font-size:${compact ? '10.5px' : '11px'};font-weight:700;color:var(--text-3);">เครื่อง</span>${btns}</span>` : '';
 }
 function toggleSizeGroupMachine(namesJson, machine) {
   if (typeof canEditPlan === 'function' && !canEditPlan()) return;
@@ -18380,7 +18380,7 @@ function sqSizeMachineButtonsHtml(size, opts) {
       : (on ? `<span style="${style}">${m}</span>` : '');
   }).join('');
   return btns ? `<span style="display:inline-flex;align-items:center;gap:${compact ? 3 : 4}px;margin-left:${compact ? 4 : 10}px;vertical-align:middle;">
-    ${compact ? '' : '<span style="font-size:11px;font-weight:700;color:var(--text-3);">เครื่อง</span>'}${btns}</span>` : '';
+    <span style="font-size:${compact ? '10.5px' : '11px'};font-weight:700;color:var(--text-3);">เครื่อง</span>${btns}</span>` : '';
 }
 // กดจากหัวข้อขนาด (ไม่ได้เปิดกล่องเลือกเครื่อง) — ไม่ต้องวาดกล่องนั้นต่อ
 function toggleSqSizeMachineInline(size, machine) {
