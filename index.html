@@ -2253,7 +2253,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.6';
+const APP_BUILD = '2026-11-12.7';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6164,7 +6164,7 @@ function renderDashboardSimpleToolingPanel(key, name) {
       ${dashMiniKpi('ซ่อมบำรุง / รอใช้งาน', repair.toLocaleString(), 'var(--amber)', '')}
       ${dashMiniKpi('หมดอายุ / มีปัญหา', expired.toLocaleString(), 'var(--red)', '')}
     </div>
-    ${key === 'saw' ? prodSawInUseCardHtml() + sawWorkingCardHtml() + prodSawWaitingCardHtml() : ''}
+    ${key === 'saw' ? sawWorkingCardHtml() + prodSawInUseCardHtml() + prodSawWaitingCardHtml() : ''}
     <div class="card">
       <div class="card-header">
         <span class="card-title" style="font-size:16px;">รายการ${escapeHtmlAttr(name)}ตามสถานะ</span>
