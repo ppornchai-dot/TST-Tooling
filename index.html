@@ -1477,6 +1477,7 @@ canvas{display:block;}
           <div class="reg-kpi"><span class="reg-kpi-val" id="kpi-saw-total">0</span><span class="reg-kpi-lbl">รายการทั้งหมด</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--green);" id="kpi-saw-ready">0</span><span class="reg-kpi-lbl">พร้อมใช้</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--inuse);" id="kpi-saw-inuse">0</span><span class="reg-kpi-lbl">กำลังใช้งาน</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--amber);" id="kpi-saw-grinding">0</span><span class="reg-kpi-lbl">กำลังลับคม</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-saw-wait">0</span><span class="reg-kpi-lbl">รอลับคม</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--amber);" id="kpi-saw-problem">0</span><span class="reg-kpi-lbl">มีปัญหา</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--text-3);" id="kpi-saw-expired">0</span><span class="reg-kpi-lbl">หมดอายุ</span></div>
@@ -2263,7 +2264,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.11';
+const APP_BUILD = '2026-11-12.12';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5086,7 +5087,7 @@ const TOOLING_STATUS_CATEGORIES = [
 ];
 function toolingStatusCounts(items) {
   const ready = items.filter(r => r.status === 'พร้อมใช้' || r.status === 'ใช้งานอยู่' || r.status === 'พร้อมใช้งาน' || r.status === 'กำลังใช้งาน').length;
-  const repair = items.filter(r => ['ซ่อมบำรุง', 'Regrind', 'แต่ง Roll', 'ขัด Roll', 'รอใช้งาน', 'รอแต่ง', 'รอขัด', 'รอลับคม'].includes(r.status)).length;
+  const repair = items.filter(r => ['ซ่อมบำรุง', 'Regrind', 'แต่ง Roll', 'ขัด Roll', 'รอใช้งาน', 'รอแต่ง', 'รอขัด', 'รอลับคม', 'กำลังลับคม'].includes(r.status)).length;
   const expired = items.filter(r => r.status === 'หมดอายุ' || r.status === 'มีปัญหา' || r.status === 'อายุ').length;
   return { ready, repair, expired, total: items.length };
 }
@@ -5099,7 +5100,8 @@ function renderToolingStatusTable() {
   const tbody = document.getElementById('tbl-tooling-status');
   if (!tbody) return;
   tbody.innerHTML = TOOLING_STATUS_CATEGORIES.map(cat => {
-    const items = toolingData[cat.key];
+    const items = cat.key === 'saw' && typeof sawItemsWithEffectiveStatus === 'function'
+      ? sawItemsWithEffectiveStatus() : toolingData[cat.key];
     const { ready, repair, expired, total } = toolingStatusCounts(items);
     const pct = total ? Math.round(ready / total * 100) : 0;
     const pctCol = pct >= 85 ? C_GREEN : pct >= 60 ? C_AMBER : C_RED;
@@ -5650,6 +5652,8 @@ function rerenderProdSawViews() {
   if (dashTab === 'saw') renderDashboardSimpleToolingPanel('saw', 'ใบเลื่อย');
   // ฟอร์มวางแผนลับคมที่เปิดอยู่ — รายการให้เลือกขึ้นกับสถานะรอลับคม
   if (typeof refreshSawPlanOptions === 'function') refreshSawPlanOptions();
+  // ตารางสถานะ Tooling บน Dashboard (แท็บ Roll) นับใบเลื่อยตามสถานะที่แสดงด้วย
+  if (typeof renderToolingStatusTable === 'function') renderToolingStatusTable();
 }
 
 // งานลับคมใบเลื่อยในแผนงาน — อ้างใบด้วย "ลำดับในทะเบียน" (rollIds = index ของ toolingData.saw
@@ -6157,7 +6161,8 @@ function renderDashboardSqPanel() {
 function renderDashboardSimpleToolingPanel(key, name) {
   const el = document.getElementById('dashpanel-' + key);
   if (!el) return;
-  const items = (toolingData || {})[key] || [];
+  // ใบเลื่อยใช้สถานะที่แสดง (อิงระบบผลิต/งานลับคม) ให้ตรงกับคอลัมน์สถานะในทะเบียน
+  const items = key === 'saw' ? sawItemsWithEffectiveStatus() : ((toolingData || {})[key] || []);
   if (!items.length) { el.innerHTML = dashEmptyToolingHtml(key, name); return; }
   if (key === 'saw' && prodSawLive && prodSawLive.status === 'idle') {
     loadProdSawUsage(false);
@@ -12726,7 +12731,7 @@ function statusChip(s) {
   const map = {'พร้อมใช้':'chip-green','ใช้งานอยู่':'chip-blue','ซ่อมบำรุง':'chip-amber','Regrind':'chip-amber','ใกล้หมดอายุ':'chip-amber','มีปัญหา':'chip-amber','หมดอายุ':'chip-red',
     'กำลังใช้งาน':'chip-yellow','พร้อมใช้งาน':'chip-green','แต่ง Roll':'chip-amber','ขัด Roll':'chip-purple','อายุ':'chip-red',
     'รอใช้งาน':'chip-cyan','รอแต่ง':'chip-brown','รอขัด':'chip-pink','ไม่มีลูกรีด':'chip-gray','ยกเลิกใช้งาน':'chip-slate',
-    'รอลับคม':'chip-red'};
+    'รอลับคม':'chip-red','กำลังลับคม':'chip-amber'};
   return `<span class="chip ${map[s]||'chip-blue'}">${s}</span>`;
 }
 
@@ -18232,6 +18237,18 @@ function editSaw(idx) {
   });
   const g = document.getElementById('f-saw-grind');
   if (g) g.value = r.grindTime == null ? '' : String(r.grindTime);
+  // สถานะในตารางอิงระบบผลิต/งานลับคม — บอกไว้ใต้ช่อง กันงงว่าทำไมในตารางไม่ตรงกับที่ตั้ง
+  const stSel = document.querySelector('#modal-body select.form-select');
+  const eff = sawEffectiveStatus(r);
+  if (stSel && stSel.parentElement) {
+    const hint = document.createElement('div');
+    hint.style.cssText = 'font-size:11px;color:var(--text-3);margin-top:4px;line-height:1.5;';
+    hint.textContent = (eff.src !== 'manual'
+        ? 'ตอนนี้แสดงเป็น "' + eff.status + '" ตาม' + (eff.src === 'plan' ? 'งานลับคมในหน้างานประจำวัน' : 'ระบบผลิต') + ' · '
+        : '')
+      + 'ตั้ง "มีปัญหา" หรือ "หมดอายุ" ได้เสมอ สถานะอื่นระบบจะตามระบบผลิตให้เอง';
+    stSel.parentElement.appendChild(hint);
+  }
   document.getElementById('modal-overlay').classList.add('open');
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     withCloudRetry(() => {
@@ -18298,7 +18315,7 @@ function renderSawTable(page) {
       <td class="muted">${r.regrind}</td>
       <td class="muted">${r.lastService ? escapeHtmlAttr(fmtIsoDateThai(r.lastService)) : '—'}</td>
       <td>${sawGrindTimeCellHtml(r)}</td>
-      <td>${statusChip(r.status)}</td>
+      ${sawStatusCellHtml(r)}
       ${regRowActionsHtml(jsCallAttr('editSaw', data.indexOf(r)), jsCallAttr('deleteSaw', data.indexOf(r)),
         'แก้ไขใบเลื่อยนี้', 'ลบใบเลื่อยนี้')}
     </tr>`).join('');
@@ -18308,16 +18325,56 @@ function renderSawTable(page) {
   renderSawKpis();
 }
 
-// การ์ดตัวเลขบนทะเบียนใบเลื่อย — นับตามสถานะที่ตั้งไว้ในทะเบียน (สถานะชุดเก่านับตามค่าที่แปลงแล้ว)
+// ─── สถานะใบเลื่อยที่แสดง — อิงตามหน้า Dashboard ──────────────────────────────
+// ลำดับความสำคัญ:
+//   1) "มีปัญหา" / "หมดอายุ" ที่ตั้งเองในทะเบียน — ชนะเสมอ (ใบเสีย/หมดอายุ ระบบผลิตไม่รู้)
+//   2) กำลังลับคม — กดเริ่มงานลับคมในหน้างานประจำวันแล้ว ยังไม่กดจบ (การ์ดกำลังลับคม)
+//   3) กำลังใช้งาน — ระบบผลิตบอกว่าอยู่บนเครื่อง (การ์ดกำลังใช้งาน)
+//   4) รอลับคม — ระบบผลิตบอกว่าถอดแล้ว ยังไม่ได้ลับ (การ์ดรอลับคม)
+//   5) พร้อมใช้ — ระบบผลิตมีประวัติใบนี้ และลับแล้วหลังถอดล่าสุด
+//   6) ไม่มีข้อมูลจากระบบผลิต (ไม่เคยใช้ตั้งแต่ 9 พ.ย. 69 / ยังดึงไม่ได้) → ค่าที่ตั้งเองในทะเบียน
+// คิดสดตอนแสดงผล ไม่เขียนกลับลงทะเบียน (ไม่งั้นทุกเครื่องที่เปิดหน้านี้จะแย่งกันเขียน)
+function sawManualStatus(r) {
+  const legacy = (typeof SAW_LEGACY_STATUS !== 'undefined' && SAW_LEGACY_STATUS) || {};
+  return legacy[(r || {}).status] || (r || {}).status || 'พร้อมใช้';
+}
+function sawEffectiveStatus(r) {
+  const manual = sawManualStatus(r);
+  if (manual === 'มีปัญหา' || manual === 'หมดอายุ') return { status: manual, src: 'manual' };
+  const idx = ((toolingData || {}).saw || []).indexOf(r);
+  const plan = typeof sawGrindPlanInfo === 'function' ? sawGrindPlanInfo() : null;
+  if (plan && idx >= 0 && plan.working.has(idx)) return { status: 'กำลังลับคม', src: 'plan' };
+  if (typeof prodSawLive !== 'undefined' && prodSawLive && prodSawLive.at) {
+    const u = sawUsageInfo(r);
+    if (u.open) return { status: 'กำลังใช้งาน', src: 'prod', note: 'บนเครื่อง ' + u.open.machine + ' ตั้งแต่ ' + prodSqFmtTime(u.open.startedAt) };
+    if (u.waiting) return { status: 'รอลับคม', src: 'prod', note: 'ถอดจาก ' + u.last.machine + ' เมื่อ ' + prodSqFmtTime(u.removedAt) };
+    if (u.p) return { status: 'พร้อมใช้', src: 'prod', note: 'ลับคมแล้วหลังถอดจากเครื่องครั้งล่าสุด' };
+  }
+  return { status: manual, src: 'manual' };
+}
+function sawStatusCellHtml(r) {
+  const e = sawEffectiveStatus(r);
+  const manual = sawManualStatus(r);
+  const tip = e.src === 'prod' ? 'ตามระบบผลิต' + (e.note ? ' — ' + e.note : '')
+    : e.src === 'plan' ? 'ตามงานลับคมในหน้างานประจำวัน (กดเริ่มแล้ว ยังไม่กดจบ)'
+    : 'ตั้งเองในทะเบียน';
+  return `<td title="${escapeHtmlAttr(tip + (e.src !== 'manual' && manual !== e.status ? ' · ในทะเบียนตั้งไว้ว่า ' + manual : ''))}">${statusChip(e.status)}</td>`;
+}
+// รายการใบเลื่อยพร้อมสถานะที่แสดง — ใช้กับ Dashboard ให้นับ/จัดกลุ่มตรงกับทะเบียน
+function sawItemsWithEffectiveStatus() {
+  return ((toolingData || {}).saw || []).map(r => ({ ...r, status: sawEffectiveStatus(r).status }));
+}
+
+// การ์ดตัวเลขบนทะเบียนใบเลื่อย — นับตามสถานะที่แสดง (เดียวกับคอลัมน์สถานะ)
 function renderSawKpis() {
   const data = (toolingData || {}).saw || [];
-  const legacy = SAW_LEGACY_STATUS || {};
-  const st = r => legacy[r.status] || r.status || 'พร้อมใช้';
-  const n = s => data.filter(r => st(r) === s).length;
+  const sts = data.map(r => sawEffectiveStatus(r).status);
+  const n = s => sts.filter(x => x === s).length;
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v.toLocaleString(); };
   set('kpi-saw-total', data.length);
   set('kpi-saw-ready', n('พร้อมใช้'));
   set('kpi-saw-inuse', n('กำลังใช้งาน'));
+  set('kpi-saw-grinding', n('กำลังลับคม'));
   set('kpi-saw-wait', n('รอลับคม'));
   set('kpi-saw-problem', n('มีปัญหา'));
   set('kpi-saw-expired', n('หมดอายุ'));
