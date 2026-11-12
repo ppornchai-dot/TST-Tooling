@@ -2253,7 +2253,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.4';
+const APP_BUILD = '2026-11-12.5';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5688,15 +5688,21 @@ function sawUsageInfo(r) {
   const p = prodSawFor(r);
   const prodT = p ? p.kg / 1000 : 0;
   const ls = sawLastGrindIso(r);
-  const sinceGrind = (p && ls)
-    ? p.rounds.filter(x => toISODate(new Date(x.startedAt)) >= ls).reduce((n, x) => n + x.kg, 0) / 1000 : null;
+  const afterGrind = (p && ls) ? p.rounds.filter(x => toISODate(new Date(x.startedAt)) >= ls) : null;
+  const sinceGrind = afterGrind ? afterGrind.reduce((n, x) => n + x.kg, 0) / 1000 : null;
+  const sinceGrindPcs = afterGrind ? afterGrind.reduce((n, x) => n + x.pcs, 0) : null;
   const open = p ? p.rounds.find(x => x.isOpen) || null : null;
   // รอลับคม = ระบบผลิตบอกว่าถอดออกจากเครื่องแล้ว (รอบล่าสุดปิดแล้ว ไม่มีรอบที่ยังเปิด)
   // และยังไม่มีการลับคมตั้งแต่วันที่ถอด (ลับวันเดียวกับที่ถอดถือว่าลับแล้ว)
   const last = p && p.rounds[0];   // rounds เรียงใหม่สุดก่อน
   const removedAt = (!open && last && last.endedAt) ? last.endedAt : null;
   const waiting = !!removedAt && !(ls && ls >= toISODate(new Date(removedAt)));
-  return { base, prodT, total: base + prodT, p, sinceGrind, open, last, removedAt, waiting, lastGrind: ls };
+  return { base, prodT, total: base + prodT, p, sinceGrind, sinceGrindPcs, open, last, removedAt, waiting, lastGrind: ls };
+}
+// "8.91 ตัน · 372 เส้น" — ตันเป็นตัวหลัก เส้นต่อท้าย (จำนวนเส้นมีเฉพาะยอดจากระบบผลิต ยอดตั้งต้นในทะเบียนมีแต่ตัน)
+function sawTonsPcsHtml(label, tons, pcs) {
+  return `<span style="font-size:12px;color:var(--text-2);white-space:nowrap;">${escapeHtmlAttr(label)} <b>${
+    escapeHtmlAttr(fmtTons2(tons))}</b> ตัน${pcs != null ? ` · <b>${escapeHtmlAttr((Number(pcs) || 0).toLocaleString())}</b> เส้น` : ''}</span>`;
 }
 
 // ใบเลื่อยที่รอลับคม — เรียงตามเวลาที่ถอด (ถอดก่อนขึ้นก่อน)
@@ -5723,10 +5729,11 @@ function prodSawWaitingCardHtml() {
       <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr([r.diameter, r.machine].filter(x => x && x !== '—').join(' · '))}</span>
       <span style="font-size:12px;color:var(--text-2);">ถอดจาก ${escapeHtmlAttr(u.last.machine)} · ${escapeHtmlAttr(prodSqFmtTime(u.removedAt))}</span>
       ${plannedAt ? `<span class="chip chip-amber" title="มีงานลับคมใบนี้ในแผนงานแล้ว">แผนลับคม ${escapeHtmlAttr(fmtIsoDateThai(plannedAt))}</span>` : ''}
-      <span style="margin-left:auto;font-size:12px;color:var(--text-2);">${u.sinceGrind != null
-        ? 'หลังลับคม <b>' + escapeHtmlAttr(fmtTons2(u.sinceGrind)) + '</b> ตัน'
-        : 'รอบสุดท้าย <b>' + escapeHtmlAttr(fmtTons2(u.last.kg / 1000)) + '</b> ตัน'}</span>
-      <span style="font-size:12px;color:var(--text-2);">สะสม <b>${escapeHtmlAttr(fmtTons2(u.total))}</b> ตัน</span>
+      <span style="margin-left:auto;"></span>
+      ${u.sinceGrind != null ? sawTonsPcsHtml('หลังลับคม', u.sinceGrind, u.sinceGrindPcs)
+        : sawTonsPcsHtml('รอบสุดท้าย', u.last.kg / 1000, u.last.pcs)}
+      <span style="color:var(--border);">|</span>
+      ${sawTonsPcsHtml('สะสม', u.total, u.p.pcs)}
     </div>`).join('');
   return `<div class="card" style="margin-bottom:18px;">
     <div class="card-header">
@@ -5766,7 +5773,8 @@ function sawUsageCellHtml(r) {
     <b style="color:var(--text-1);">${escapeHtmlAttr(fmtTons2(u.total))} ตัน</b>
     ${u.open ? `<span class="chip chip-yellow" style="margin-left:4px;font-size:10.5px;">บน ${escapeHtmlAttr(u.open.machine)}</span>` : ''}
     ${u.waiting ? `<span class="chip chip-red" style="margin-left:4px;font-size:10.5px;">รอลับคม</span>` : ''}
-    ${u.sinceGrind != null ? `<div style="font-size:10.5px;color:var(--text-3);">หลังลับคม ${escapeHtmlAttr(fmtTons2(u.sinceGrind))} ตัน</div>` : ''}
+    <div style="font-size:10.5px;color:var(--text-3);">${escapeHtmlAttr(u.p.pcs.toLocaleString())} เส้น${u.sinceGrind != null
+      ? ' · หลังลับคม ' + escapeHtmlAttr(fmtTons2(u.sinceGrind)) + ' ตัน · ' + escapeHtmlAttr(u.sinceGrindPcs.toLocaleString()) + ' เส้น' : ''}</div>
   </td>`;
 }
 
@@ -5797,8 +5805,9 @@ function prodSawInUseCardHtml() {
       ${r ? `<span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr([r.diameter, r.teeth].filter(Boolean).join(' · '))}</span>`
         : '<span class="chip chip-amber">ไม่พบในทะเบียน</span>'}
       <span style="font-size:12px;color:var(--text-2);">ใส่ ${escapeHtmlAttr(prodSqFmtTime(o.startedAt))}</span>
-      <span style="margin-left:auto;font-size:12px;color:var(--text-2);">รอบนี้ <b>${escapeHtmlAttr(fmtTons2(o.kg / 1000))}</b> ตัน</span>
-      ${u ? `<span style="font-size:12px;color:var(--text-2);">สะสม <b>${escapeHtmlAttr(fmtTons2(u.total))}</b> ตัน</span>` : ''}
+      <span style="margin-left:auto;"></span>
+      ${sawTonsPcsHtml('รอบนี้', o.kg / 1000, o.pcs)}
+      ${u ? `<span style="color:var(--border);">|</span>${sawTonsPcsHtml('สะสม', u.total, u.p ? u.p.pcs : null)}` : ''}
     </div>`;
   }).join('');
   const orphan = prodSawLive.orphan || [];
