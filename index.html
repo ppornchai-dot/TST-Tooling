@@ -2264,7 +2264,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.14';
+const APP_BUILD = '2026-11-12.15';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -9770,20 +9770,35 @@ function renderRollOptionsPanel(rolls, selectedIndexes) {
   const sawHasData = isSaw && sawSt !== 'noproxy' && !!(prodSawLive && prodSawLive.at) && sawSt !== 'loading';
   const sawWait = new Map();
   if (sawHasData) prodSawWaitingList().forEach(x => sawWait.set(x.idx, x));
+  // ใบที่อยู่ในแผนลับคมงานอื่นแล้ว (ยังไม่กดจบ) ไม่ให้เลือกซ้ำ — งานที่กำลังแก้อยู่ไม่นับ
+  // นับทุกวันรวมงานค้างจากวันก่อนด้วย (งานค้างถูกยกไปทำต่ออยู่แล้ว)
+  const sawPlanned = new Set();
+  if (isSaw) {
+    (planTasks || []).forEach(t => {
+      if (!t || t.workType !== 'saw' || t.id === currentEditingPlanTaskId || t.otherWork) return;
+      const d = taskDisplayDate(t);
+      if ((dailyStatusByDate[d] || {})[t.id] === 'done') return;
+      (t.rollIds || []).forEach(i => { if (pieceEntryFor(d, t.id, i).status !== 'done') sawPlanned.add(Number(i)); });
+    });
+  }
   const visible = rolls.map((r, idx) => ({ r, idx }))
-    .filter(x => !isSaw || !sawHasData || sawWait.has(x.idx) || selectedSet.has(x.idx));
+    .filter(x => !isSaw || selectedSet.has(x.idx)
+      || (!sawPlanned.has(x.idx) && (!sawHasData || sawWait.has(x.idx))));
+  const hiddenPlanned = isSaw && sawHasData
+    ? [...sawWait.keys()].filter(i => sawPlanned.has(i) && !selectedSet.has(i)).length : 0;
   const sawNote = !isSaw ? ''
     : sawSt === 'loading' || sawSt === 'idle' ? 'กำลังดึงสถานะรอลับคมจากระบบผลิต…'
-    : !sawHasData ? 'ดึงสถานะจากระบบผลิตไม่ได้ — แสดงใบเลื่อยทุกใบ'
-    : !sawWait.size ? 'ตอนนี้ไม่มีใบเลื่อยที่รอลับคม' : '';
+    : !sawHasData ? 'ดึงสถานะจากระบบผลิตไม่ได้ — แสดงใบเลื่อยทุกใบที่ยังไม่ได้วางแผน'
+    : !sawWait.size ? 'ตอนนี้ไม่มีใบเลื่อยที่รอลับคม'
+    : hiddenPlanned && visible.length === 0 ? 'ใบที่รอลับคมวางแผนไปแล้วทั้งหมด (' + hiddenPlanned + ' ใบ)'
+    : hiddenPlanned ? 'ไม่แสดง ' + hiddenPlanned + ' ใบที่วางแผนลับคมไปแล้ว' : '';
   const sawExtra = r => {
     if (!isSaw) return '';
     const reg = ((toolingData || {}).saw || []).find(x => x.id === r.id);
     const info = reg ? [reg.diameter, reg.machine].filter(x => x && x !== '—').join(' · ') : '';
     const w = reg ? sawWait.get(((toolingData || {}).saw || []).indexOf(reg)) : null;
     return (info ? ` <span style="font-size:11px;color:var(--text-3);">${escapeHtmlAttr(info)}</span>` : '')
-      + (w ? ` <span style="font-size:11px;color:var(--text-2);margin-left:auto;">ถอดจาก ${escapeHtmlAttr(w.u.last.machine)} · ${escapeHtmlAttr(prodSqFmtTime(w.u.removedAt))}</span>` : '')
-      + (w && w.plannedAt ? ` <span class="chip chip-amber" style="font-size:10px;" title="มีงานลับคมใบนี้ในแผนแล้ว">แผน ${escapeHtmlAttr(fmtIsoDateThai(w.plannedAt))}</span>` : '');
+      + (w ? ` <span style="font-size:11px;color:var(--text-2);margin-left:auto;">ถอดจาก ${escapeHtmlAttr(w.u.last.machine)} · ${escapeHtmlAttr(prodSqFmtTime(w.u.removedAt))}</span>` : '');
   };
   if (isSaw && !visible.length) {
     panel.innerHTML = `<div style="padding:10px 12px;font-size:12.5px;color:var(--text-3);">${escapeHtmlAttr(sawNote || 'ตอนนี้ไม่มีใบเลื่อยที่รอลับคม')}</div>`;
