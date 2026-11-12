@@ -2253,7 +2253,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-10-31.1';
+const APP_BUILD = '2026-11-12.1';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5221,6 +5221,8 @@ function switchDashTab(key) {
     const p = document.getElementById('dashpanel-' + k);
     if (p) p.classList.toggle('active', k === key);
   });
+  // เปิดแท็บ Roll SQ = ดึงชุดที่ใช้งานจากระบบผลิต (ข้ามถ้าเพิ่งดึงไป ดู PROD_SQ_MIN_AGE_MS)
+  if (key === 'sq') loadProdSqInUse(false);
   renderDashboardToolingPanels();
 }
 
@@ -5268,7 +5270,9 @@ function goToRegistryTab(key) {
 function dashSqSetRowHtml(set, badgeColor, rowBg, hideSize) {
   const head = set[0] || {};
   const cm = sqColorMeta(head.color);
-  const mc = sqSetMachineFor(sqSetKey(head));
+  // ระบบผลิตบอกว่าชุดนี้อยู่บนเครื่องไหน → เชื่อตัวนั้นก่อนค่าที่ตั้งเองในทะเบียน
+  const live = prodSqLiveFor(sqSetKey(head));
+  const mc = live ? live.machine : sqSetMachineFor(sqSetKey(head));
   const expired = set.filter(sqOdExpired).length;
   const unmeasured = set.filter(r => !sqHasCurrentOd(r)).length;
   // ความหนาของวัสดุที่ชุดนี้เดิน — เป็นค่าของชุดสี ดูได้จากหน้างานโดยไม่ต้องเปิดทะเบียน
@@ -5301,6 +5305,7 @@ function dashSqSetRowHtml(set, badgeColor, rowBg, hideSize) {
     ${hideSize ? '' : `<span style="font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(head.sizeSq || '—')}</span>`}
     ${rollColorPillHtml(cm.dot, cm.label)}
     ${thickTag}
+    ${live ? prodSqLiveTagHtml(live) : ''}
     ${tag}
   </div>`;
 }
@@ -5334,6 +5339,8 @@ function dashSqSetSortCmp(a, b) {
 const SQ_NO_MACHINE_COL = 'ยังไม่ระบุเครื่อง';
 function dashSqColumnsFor(set) {
   const head = set[0] || {};
+  const live = prodSqLiveFor(sqSetKey(head));
+  if (live) return [live.machine];
   const mounted = sqSetMachineFor(sqSetKey(head));
   if (mounted) return [mounted];
   const bound = sqSizeMachinesFor(String(head.sizeSq || '').trim());
@@ -5377,11 +5384,11 @@ function dashSqSizeGroupsHtml(list, badgeColor, rowBg) {
 // การ์ดที่มีสถานะเดียว (กำลังใช้งาน/พร้อมใช้งาน) แสดงเป็นตารางคอลัมน์ GS/GI ตรงๆ
 // การ์ดที่มีหลายสถานะ (กำลังแต่ง/รอแต่ง) คั่นด้วยแถบสีของแต่ละสถานะก่อน แล้วค่อยแบ่งคอลัมน์ข้างใน
 // (เกณฑ์เดียวกับการ์ด "ชุด Roll กำลังแต่ง" ที่คั่นเป็น งานค้าง/กำลังทำ/รอทำ)
-function dashSqStatusCardHtml(sets, { title, color, groups, emptyText, maxHeight, action }) {
-  const byGroup = groups.map(g => ({ ...g, list: sets.filter(s => sqSetStatusFor(sqSetKey(s[0])) === g.key) }));
+function dashSqStatusCardHtml(sets, { title, color, groups, emptyText, maxHeight, action, extra }) {
+  const byGroup = groups.map(g => ({ ...g, list: sets.filter(s => dashSqEffectiveStatus(sqSetKey(s[0])) === g.key) }));
   const total = byGroup.reduce((n, g) => n + g.list.length, 0);
   const sub = groups.length > 1 ? byGroup.map(g => g.label + ' ' + g.list.length).join(' · ') : '';
-  const body = !total
+  const body = (extra || '') + (!total
     ? `<div style="padding:22px 14px;text-align:center;color:var(--text-3);font-size:13px;">
          ${escapeHtmlAttr(emptyText)}<br>
          <span style="font-size:11.5px;">ตั้งสถานะของชุดได้ที่คอลัมน์ "สถานะชุด" ในหน้าทะเบียน Roll SQ</span>
@@ -5398,7 +5405,7 @@ function dashSqStatusCardHtml(sets, { title, color, groups, emptyText, maxHeight
           // ไม่งั้นการ์ดเดียวยาวจนดันการ์ดอื่นหลุดจอ
           maxHeight ? `max-height:${maxHeight}px;overflow-y:auto;` : ''}">
           ${dashSqMachineGridHtml(g.list, g.color, g.bg)}
-        </div>`).join('');
+        </div>`).join(''));
   return `<div class="card" style="margin-bottom:18px;">
     <div class="card-header">
       <span class="card-title" style="font-size:17px;color:${color};display:inline-flex;align-items:center;gap:8px;">
@@ -5428,10 +5435,145 @@ function dashSqInUseCardHtml(sets) {
     emptyText: 'ยังไม่มีชุด Roll SQ ที่กำลังใช้งาน',
     groups: [{ key: 'inuse', label: 'กำลังใช้งาน', color: 'var(--inuse)', bg: 'var(--inuse-dim)' }],
     // ปุ่มเดียวกับ "เลือกชุดที่ใช้งาน" ของการ์ดชุด Roll — เลือกทีละเครื่องจากที่เดียวจบ
-    action: canEditPlan() ? `<button class="btn" style="font-size:13px;font-weight:800;padding:6px 14px;border-radius:8px;
+    action: (canEditPlan() ? `<button class="btn" style="font-size:13px;font-weight:800;padding:6px 14px;border-radius:8px;
         background:var(--inuse);color:#fff;border:1px solid var(--inuse);box-shadow:0 1px 3px rgba(79,122,0,.3);"
-        onclick="openSqInUsePicker()" title="เลือกว่าแต่ละเครื่องกำลังใช้ชุด Roll SQ ชุดไหน">✎ เลือกชุดที่ใช้งาน</button>` : '',
+        onclick="openSqInUsePicker()" title="เลือกว่าแต่ละเครื่องกำลังใช้ชุด Roll SQ ชุดไหน">✎ เลือกชุดที่ใช้งาน</button>` : '')
+      + prodSqStatusHtml(),
+    extra: prodSqUnmatchedHtml(),
   });
+}
+
+// ─── ชุด Roll SQ กำลังใช้งาน — ดึงจากระบบผลิต ─────────────────────────────────
+// ระบบผลิตบันทึก "รอบการใช้ชุด SQ" ของแต่ละเครื่อง (เริ่มใส่ → ถอด) พร้อมยอดผลิตของรอบนั้น
+// รอบที่ยังไม่ปิด (is_open) = ชุดที่อยู่บนเครื่องตอนนี้ → ขึ้นในการ์ด "กำลังใช้งาน" ให้เอง
+// รหัสของระบบผลิต: code = "ชุดที่ N" ของทะเบียนเรา · color = ชุดสี — แต่ไม่ได้บอกขนาด
+// ขนาด (Size SQ) จึงหาจาก "ขนาดที่เครื่องนั้นผลิตอยู่ในช่วงเวลาของรอบ" ตามที่หน้างานกำหนด:
+//   ยอดผลิต FG ของเครื่องนั้นตั้งแต่เริ่มใส่ชุด → ขนาดที่ผลิตหนักที่สุด
+// แล้วจับคู่ ขนาด + สี + ชุดที่ N กับทะเบียน ได้ชุดเดียวพอดีจึงนับ (ไม่ตรง/ได้หลายชุด = ไม่เดา บอกไว้ใต้หัวการ์ด)
+//
+// API ของระบบผลิตต้องใช้คีย์ และห้ามเรียกตรงจากหน้าเว็บ — จึงเรียกผ่านตัวกลาง api/sq-usage.js บน Vercel
+// ซึ่งเก็บคีย์ไว้ฝั่ง server (หน้าเว็บนี้ไม่มีคีย์ และห้ามใส่คีย์ลงไฟล์นี้ — repo เป็นสาธารณะ)
+// ดึงเฉพาะตอนเปิดแท็บ Roll SQ / กด ↻ ตามที่ฝ่ายผลิตขอ ไม่ตั้งเวลาดึงซ้ำอัตโนมัติ
+// แสดงผลอย่างเดียว ไม่เขียนลงข้อมูลกลาง (ไม่งั้นทุกเครื่องที่เปิดหน้านี้จะแย่งกันเขียน)
+// ใช้ var ไม่ใช่ const/let — การ์ดบน Dashboard อาจถูกวาดตั้งแต่ตอนบูตก่อนบรรทัดนี้จะรัน
+// ถ้าเป็น let/const จะชน TDZ แล้วสคริปต์ตายกลางทาง (var ได้ undefined แทน ซึ่งเช็กไว้แล้ว)
+var PROD_SQ_PROXY_URL = '';              // URL ของ api/sq-usage บน Vercel — ว่าง = ยังไม่ได้เชื่อม
+var PROD_SQ_MIN_AGE_MS = 5 * 60 * 1000;  // เปิดแท็บซ้ำภายใน 5 นาทีใช้ผลเดิม (ตัวกลางก็แคช 5 นาทีเหมือนกัน)
+var PROD_SQ_FG_MAX_DAYS = 31;            // ยอดผลิตย้อนหลังที่ใช้หาขนาด — รอบที่ใส่มานานกว่านี้ดูแค่ช่วงล่าสุดก็พอ
+var prodSqLive = { status: 'idle', at: 0, rounds: [], byKey: {}, error: null };
+var prodSqLoading = false;
+
+function prodSqLiveFor(setKeyStr) {
+  return (prodSqLive && prodSqLive.byKey[setKeyStr]) || null;
+}
+// สถานะที่การ์ดบน Dashboard ใช้ — ระบบผลิตบอกว่าอยู่บนเครื่อง = กำลังใช้งาน ไม่ว่าทะเบียนจะตั้งไว้อะไร
+function dashSqEffectiveStatus(setKeyStr) {
+  return prodSqLiveFor(setKeyStr) ? 'inuse' : sqSetStatusFor(setKeyStr);
+}
+
+function loadProdSqInUse(force) {
+  if (!PROD_SQ_PROXY_URL) { prodSqLive.status = 'noproxy'; return; }
+  if (prodSqLoading) return;
+  if (!force && prodSqLive.at && Date.now() - prodSqLive.at < PROD_SQ_MIN_AGE_MS) return;
+  prodSqLoading = true;
+  prodSqLive.status = 'loading';
+  if (dashTab === 'sq') renderDashboardSqPanel();
+  (async () => {
+    try {
+      const today = toISODate(new Date());
+      // ระบบผลิตรับช่วงได้ไม่เกิน 1 ปี — รอบที่ยังเปิดอยู่ไม่น่าเก่ากว่านั้น
+      const res = await fetch(PROD_SQ_PROXY_URL + '?kind=sq&from=' + addDaysIso(today, -364) + '&to=' + today);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const json = await res.json();
+      const open = (json.rows || []).filter(r => r && r.is_open && r.machine_id);
+      let fgRows = [];
+      if (open.length) {
+        const earliest = open.map(r => toISODate(new Date(r.started_at))).sort()[0];
+        const floor = addDaysIso(today, -PROD_SQ_FG_MAX_DAYS);
+        fgRows = await fgFetchRowsRange(earliest > floor ? earliest : floor, today);
+      }
+      const heads = sqSets().map(s => s[0]).filter(Boolean);
+      const rounds = open.map(r => {
+        const t0 = Date.parse(r.started_at);
+        const t1 = r.ended_at ? Date.parse(r.ended_at) : Date.now();
+        const kgBy = {};
+        fgRows.forEach(f => {
+          if (String(f.machine_id || '') !== String(r.machine_id)) return;
+          const t = Date.parse(f.keyed_at || '');
+          if (!(t >= t0 && t <= t1)) return;
+          const k = fgProductCodeToKey(f.product_code);
+          if (k) kgBy[k] = (kgBy[k] || 0) + (Number(f.weight_kg) || 0);
+        });
+        const sizeKey = Object.keys(kgBy).sort((a, b) => kgBy[b] - kgBy[a])[0] || null;
+        const cands = !sizeKey ? [] : heads.filter(h => rollSetFgKey(h.sizeSq) === sizeKey
+          && h.color === r.color && sqSetOrdinalInfo(h).no === Number(r.code));
+        return {
+          machine: String(r.machine_id), code: String(r.code || ''), color: String(r.color || ''),
+          startedAt: r.started_at, kg: Number(r.kg) || 0, pcs: Number(r.pcs) || 0,
+          sizeKey, candCount: cands.length, setKey: cands.length === 1 ? sqSetKey(cands[0]) : null,
+        };
+      });
+      const byKey = {};
+      rounds.forEach(x => { if (x.setKey) byKey[x.setKey] = x; });
+      prodSqLive = { status: 'ok', at: Date.now(), rounds, byKey, error: null };
+    } catch (e) {
+      // ดึงไม่ได้ก็ยังโชว์ผลรอบก่อน (ถ้ามี) — แค่บอกว่ารอบล่าสุดล้มเหลว
+      prodSqLive = { ...prodSqLive, status: 'error', at: Date.now(), error: String((e && e.message) || e) };
+    } finally {
+      prodSqLoading = false;
+      if (dashTab === 'sq') renderDashboardSqPanel();
+    }
+  })();
+}
+
+function prodSqFmtTime(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return '—';
+  return d.toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+function prodSqTons(kg) {
+  return (Math.round((Number(kg) || 0) / 10) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// ป้ายท้ายแถวของชุดที่ระบบผลิตบอกว่าอยู่บนเครื่อง — ยอดผลิตของรอบนี้ (ตั้งแต่ใส่ชุด)
+function prodSqLiveTagHtml(live) {
+  return `<span style="flex-shrink:0;font-size:11.5px;font-weight:800;padding:1px 8px;border-radius:99px;
+      background:var(--bg-panel);color:var(--inuse);box-shadow:inset 0 0 0 1px var(--inuse);"
+    title="${escapeHtmlAttr('จากระบบผลิต · ใส่เครื่อง ' + live.machine + ' เมื่อ ' + prodSqFmtTime(live.startedAt)
+      + ' · ผลิตไปแล้ว ' + prodSqTons(live.kg) + ' ตัน (' + live.pcs.toLocaleString() + ' เส้น)')}">${
+    escapeHtmlAttr(prodSqTons(live.kg))} ตัน</span>`;
+}
+
+// สถานะการดึงบนหัวการ์ด + ปุ่ม ↻ ดึงใหม่
+function prodSqStatusHtml() {
+  const s = prodSqLive.status;
+  if (s === 'noproxy' || s === 'idle') return '';
+  const btn = `<button class="btn btn-ghost btn-sm" style="font-size:12px;font-weight:700;padding:3px 9px;"
+      onclick="loadProdSqInUse(true)" ${s === 'loading' ? 'disabled' : ''} title="ดึงชุดที่ใช้งานจากระบบผลิตใหม่">↻</button>`;
+  const txt = s === 'loading' ? 'กำลังดึงจากระบบผลิต…'
+    : s === 'error' ? 'ดึงจากระบบผลิตไม่สำเร็จ' + (prodSqLive.rounds.length ? ' (แสดงผลรอบก่อน)' : '')
+    : 'ระบบผลิต · อัปเดต ' + new Date(prodSqLive.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+  return `<span style="display:inline-flex;align-items:center;gap:6px;margin-left:10px;font-size:12px;
+      color:${s === 'error' ? 'var(--red)' : 'var(--text-3)'};"
+    title="${escapeHtmlAttr(s === 'error' ? prodSqLive.error || '' : 'ชุดที่ระบบผลิตบันทึกว่ายังใส่อยู่บนเครื่อง')}">${escapeHtmlAttr(txt)}${btn}</span>`;
+}
+
+// รอบที่ยังเปิดอยู่แต่จับคู่กับทะเบียนไม่ได้ — บอกไว้ ไม่เดาให้
+function prodSqUnmatchedHtml() {
+  const miss = prodSqLive.rounds.filter(r => !r.setKey);
+  if (!miss.length) return '';
+  return `<div style="margin:2px 14px 8px;padding:8px 12px;border-radius:8px;background:var(--amber-dim);
+      border-left:3px solid var(--amber);font-size:12.5px;color:var(--text-2);line-height:1.7;">
+    <b style="color:var(--amber);">ระบบผลิตมีชุดที่ใช้อยู่ แต่ระบุชุดในทะเบียนไม่ได้ ${miss.length} รอบ</b>
+    ${miss.map(r => {
+      const why = !r.sizeKey ? 'ยังไม่มียอดผลิตตั้งแต่ใส่ชุด จึงยังไม่รู้ขนาด'
+        : r.candCount ? 'พบในทะเบียน ' + r.candCount + ' ชุดที่ตรงกัน'
+        : 'ไม่พบชุด ' + r.sizeKey.replace('|', ' ') + ' ' + sqColorMeta(r.color).label + ' ชุดที่ ' + r.code + ' ในทะเบียน';
+      return `<div>• เครื่อง ${escapeHtmlAttr(r.machine)} · ${escapeHtmlAttr(sqColorMeta(r.color).label)} ชุดที่ ${escapeHtmlAttr(r.code)}
+        · ใส่เมื่อ ${escapeHtmlAttr(prodSqFmtTime(r.startedAt))} · ${escapeHtmlAttr(prodSqTons(r.kg))} ตัน
+        — <span style="color:var(--text-3);">${escapeHtmlAttr(why)}</span></div>`;
+    }).join('')}
+  </div>`;
 }
 
 // ─── เลือกชุด Roll SQ ที่กำลังใช้งาน (ทีละเครื่อง) ─────────────────────────────
@@ -5582,6 +5724,12 @@ function renderDashboardSqPanel() {
   const sets = sqSets();
   const pieces = sets.flat();
   if (!pieces.length) { el.innerHTML = dashEmptyToolingHtml('sq', 'Roll SQ'); return; }
+  // เปิดแอปมาที่แท็บนี้เลย (ไม่ได้ผ่าน switchDashTab) ก็ต้องดึงครั้งแรกด้วย
+  // (กำลังดึง = loadProdSqInUse วาดหน้านี้ไปแล้วรอบหนึ่ง ไม่ต้องวาดซ้ำ · ยังไม่ได้เชื่อม = วาดต่อตามปกติ)
+  if (prodSqLive && prodSqLive.status === 'idle') {
+    loadProdSqInUse(false);
+    if (prodSqLive.status === 'loading') return;
+  }
   const expired = pieces.filter(sqOdExpired);
   const unmeasured = pieces.filter(r => !sqHasCurrentOd(r));
   const expiredSets = sets.filter(s => s.some(sqOdExpired));
