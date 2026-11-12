@@ -2406,7 +2406,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.36';
+const APP_BUILD = '2026-11-12.37';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6751,7 +6751,6 @@ function renderDashboardSqPanel() {
     </div>
 
     ${dashSqWorkingCardHtml(sets)}
-    ${dashSqWaitDressCardHtml(sets)}
     ${dashSqInUseCardHtml(sets)}
     ${dashSqReadyCardHtml(sets)}
 
@@ -6786,6 +6785,9 @@ function renderDashboardSqPanel() {
              ยังไม่มีชิ้นไหนถึง OD หมดอายุ${unmeasured.length ? ` (แต่ยังไม่ได้วัด OD อยู่ ${unmeasured.length.toLocaleString()} ชิ้น)` : ''}</div>`}
       </div>
     </div>
+
+    <!-- รอแต่ง อยู่ต่อจากการ์ดถึง OD หมดอายุ — ชุดที่ถึงอายุคือชุดที่ต้องส่งแต่ง สองการ์ดนี้ดูคู่กัน -->
+    ${dashSqWaitDressCardHtml(sets)}
 
     <div class="card">
       <div class="card-header"><span class="card-title" style="font-size:16px;">สรุปตามขนาด Size SQ</span></div>
