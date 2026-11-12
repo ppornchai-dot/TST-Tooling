@@ -2406,7 +2406,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.39';
+const APP_BUILD = '2026-11-12.40';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -3900,10 +3900,132 @@ function renderInUseTabCounts() {
     if (el && typeof dashToolingCount === 'function') el.textContent = dashToolingCount(k).toLocaleString();
   });
 }
+// ─── ปฏิทินชุด Roll SQ ที่ใช้งาน (รายเดือน แยกรายเครื่อง) ───────────────────────
+// แบบเดียวกับ "ปฏิทินชุด Roll ที่ใช้งาน" แต่ข้อมูลมาจากรอบการใช้ชุด SQ ของระบบผลิต
+// แท่งหนึ่งแท่ง = ใส่ชุดหนึ่งเข้าเครื่องหนึ่งครั้ง (ตั้งแต่ใส่ จนถอด หรือถึงวันนี้ถ้ายังใส่อยู่)
+// ดึงช่วง 1 ปีที่จบที่ปลายเดือนที่ดู — รอบที่ใส่มาก่อนต้นเดือนแล้วยังอยู่จะได้ไม่หลุด (แคช 5 นาทีตามตัวกลาง)
+var sqCalMonth = null;
+var sqCalState = { key: '', rows: null, loading: false, error: null };
+function sqCalMonthDate() {
+  if (!sqCalMonth) { const t = parseISODate(dailyTodayIso()); sqCalMonth = new Date(t.getFullYear(), t.getMonth(), 1); }
+  return sqCalMonth;
+}
+function sqCalNav(dir) { const m = sqCalMonthDate(); sqCalMonth = new Date(m.getFullYear(), m.getMonth() + dir, 1); renderInUseToolingTab(); }
+function sqCalThisMonth() { sqCalMonth = null; renderInUseToolingTab(); }
+function loadSqCalRounds(fromIso, toIso) {
+  const key = fromIso + '|' + toIso;
+  if (sqCalState.key === key && (sqCalState.rows || sqCalState.loading)) return;
+  sqCalState = { key, rows: null, loading: true, error: null };
+  fetchProdToolingRounds('sq', fromIso, toIso, false)
+    .then(({ rows }) => { if (sqCalState.key === key) sqCalState = { key, rows, loading: false, error: null }; })
+    .catch(e => { if (sqCalState.key === key) sqCalState = { key, rows: [], loading: false, error: String((e && e.message) || e) }; })
+    .finally(() => { if (currentPage === 'inuse' && inUseTab === 'sq') renderInUseToolingTab(); });
+}
+function sqCalendarCardHtml() {
+  const m = sqCalMonthDate();
+  const monthStart = toISODate(m);
+  const monthEnd = toISODate(new Date(m.getFullYear(), m.getMonth() + 1, 0));
+  const today = toISODate(new Date());
+  const fetchTo = monthEnd < today ? monthEnd : today;
+  if (PROD_SQ_PROXY_URL && monthStart <= today) loadSqCalRounds(addDaysIso(fetchTo, -364), fetchTo);
+  const days = [];
+  for (let d = monthStart; d <= monthEnd; d = addDaysIso(d, 1)) days.push(d);
+  const n = days.length, cellW = 30;
+  const cols = `grid-template-columns:96px repeat(${n}, minmax(${cellW}px, 1fr));`;
+  const dayCols = `grid-template-columns:repeat(${n}, minmax(${cellW}px, 1fr));`;
+  const dayNames = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+  let head = `<div style="display:grid;${cols}gap:2px;position:sticky;top:0;z-index:2;background:var(--bg-card);padding-bottom:2px;">
+    <div style="font-size:11px;font-weight:800;color:var(--text-3);align-self:end;">เครื่อง</div>`;
+  days.forEach(iso => {
+    const dt = parseISODate(iso);
+    const holiday = companyHolidays.find(x => x.date === iso);
+    const off = dt.getDay() === 0 || holiday;
+    head += `<div title="${escapeHtmlAttr(fmtDateThai(dt) + (holiday ? ' · วันหยุด: ' + holiday.name : ''))}"
+      style="text-align:center;font-size:10px;line-height:1.2;padding:2px 0;border-radius:4px;
+             ${off ? 'background:#FDF3D8;' : ''}${iso === today ? 'outline:2px solid var(--accent);outline-offset:-2px;' : ''}">
+      <div style="color:var(--text-3);">${dayNames[dt.getDay()]}</div>
+      <div style="font-weight:800;${iso === today ? 'color:var(--accent);' : ''}">${dt.getDate()}</div>
+    </div>`;
+  });
+  head += '</div>';
+
+  const st = sqCalState;
+  const rows = (st.rows || []);
+  const heads = sqSets().map(s => s[0]).filter(Boolean);
+  const byMc = {};
+  rows.forEach(r => {
+    const s = toISODate(new Date(r.started_at));
+    const e = r.ended_at ? toISODate(new Date(r.ended_at)) : today;
+    if (e < monthStart || s > monthEnd) return;
+    const from = s < monthStart ? monthStart : s, to = e > monthEnd ? monthEnd : e;
+    const mc = String(r.machine_id || 'ไม่ทราบเครื่อง');
+    (byMc[mc] = byMc[mc] || []).push({ r, s, e, fromCol: days.indexOf(from) + 1, toCol: days.indexOf(to) + 1 });
+  });
+  const machines = ROLL_MACHINES.concat(Object.keys(byMc).filter(x => !ROLL_MACHINES.includes(x)));
+  const body = machines.map(mc => {
+    const list = (byMc[mc] || []).sort((a, b) => a.s.localeCompare(b.s));
+    const bars = list.map(({ r, s, e, fromCol, toCol }) => {
+      const match = prodSqSetOfRound(r, heads);
+      const cm = sqColorMeta(r.color);
+      const dot = cm.dot || '#9CA3AF';
+      const txt = typeof rollColorTextOn === 'function' ? rollColorTextOn(dot) : '#fff';
+      const size = match.head ? String(match.head.sizeSq || '').trim()
+        : (match.sizeKey ? match.sizeKey.replace('|', ' ') : 'ไม่ทราบขนาด');
+      const span = toCol - fromCol + 1;
+      const totalDays = Math.round((parseISODate(e) - parseISODate(s)) / 86400000) + 1;
+      const stillOn = !!r.is_open;
+      const ton = (Number(r.kg) || 0) > 0 ? fmtTons2((Number(r.kg) || 0) / 1000) + ' ต.' : '';
+      const w = span * cellW;
+      const name = size.replace(/\s*\(.*\)\s*$/, '') + ' · ' + cm.label + ' ชุดที่ ' + r.code;
+      const meta = totalDays + ' วัน' + (ton ? ' · ' + ton : '') + (stillOn && w >= 260 ? ' · ยังใส่อยู่' : '');
+      const tips = [size + ' · ' + cm.label + ' ชุดที่ ' + r.code + (match.head ? '' : ' (จับคู่กับทะเบียนไม่ได้)'),
+        'ใส่ ' + prodSqFmtTime(r.started_at) + (stillOn ? ' — ยังใส่อยู่' : ' · ถอด ' + prodSqFmtTime(r.ended_at)),
+        totalDays + ' วัน' + (ton ? ' · ผลิต ' + ton : '') + ' · ' + (Number(r.pcs) || 0).toLocaleString() + ' เส้น'];
+      return `<div title="${escapeHtmlAttr(tips.join(' · '))}"${match.head ? ` onclick="${jsCallAttr('goToSqSet', sqSetKey(match.head))}"` : ''}
+        style="grid-column:${fromCol} / span ${span};display:flex;align-items:center;gap:4px;overflow:hidden;
+               background:${dot};color:${txt};border-radius:5px;padding:2px 5px;font-size:10px;font-weight:800;
+               ${match.head ? 'cursor:pointer;' : ''}box-shadow:inset 0 0 0 1px rgba(0,0,0,.22);${stillOn ? 'border-right:3px solid var(--accent);' : ''}">
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtmlAttr(w >= 120 ? name : size.replace(/\s*\(.*\)\s*$/, ''))}</span>
+        ${w >= 170 ? `<span style="flex:0 0 auto;opacity:.9;">${escapeHtmlAttr(meta)}</span>` : ''}
+      </div>`;
+    }).join('');
+    return `<div style="display:grid;${cols}gap:2px;align-items:center;margin-bottom:6px;">
+      <div><span style="font-size:12px;font-weight:800;padding:2px 10px;border-radius:6px;background:var(--accent);color:#fff;">${escapeHtmlAttr(mc === 'ไม่ทราบเครื่อง' ? mc : 'เครื่อง ' + mc)}</span></div>
+      <div style="grid-column:2 / -1;display:grid;${dayCols}gap:2px;min-height:22px;">
+        ${bars || `<div style="grid-column:1 / -1;font-size:10px;color:var(--text-3);">—</div>`}
+      </div>
+    </div>`;
+  }).join('');
+  const note = !PROD_SQ_PROXY_URL ? 'ยังไม่ได้เชื่อมระบบผลิต'
+    : monthStart > today ? 'ยังไม่ถึงเดือนนี้'
+    : st.loading ? 'กำลังดึงรอบการใช้ชุด SQ จากระบบผลิต…'
+    : st.error ? 'ดึงจากระบบผลิตไม่สำเร็จ (' + st.error + ')' : '';
+  return `<div class="card" style="margin-top:18px;">
+    <div class="card-header" style="flex-wrap:wrap;row-gap:8px;">
+      <span class="card-title" style="font-size:17px;white-space:nowrap;">ปฏิทินชุด Roll SQ ที่ใช้งาน</span>
+      <span style="margin-left:auto;display:inline-flex;align-items:center;gap:8px;">
+        <button class="btn btn-ghost btn-sm" onclick="sqCalNav(-1)" title="เดือนก่อนหน้า">‹</button>
+        <span style="font-size:14px;font-weight:800;min-width:120px;text-align:center;">${THAI_MONTHS_FULL[m.getMonth()]} ${m.getFullYear() + 543}</span>
+        <button class="btn btn-ghost btn-sm" onclick="sqCalNav(1)" title="เดือนถัดไป">›</button>
+        <button class="btn btn-ghost btn-sm" onclick="sqCalThisMonth()">เดือนนี้</button>
+      </span>
+    </div>
+    <div style="padding:12px 14px;">
+      <div style="font-size:11px;color:var(--text-3);line-height:1.6;margin:0 0 10px;">
+        แท่งหนึ่งแท่ง = ชุด Roll SQ หนึ่งชุดที่ใส่อยู่บนเครื่องนั้นต่อเนื่อง (ตามระบบผลิต) — ยาวเท่าไรคือใส่กี่วัน ·
+        สีของแท่ง = สีชุด · <b>ขอบขวาน้ำเงิน</b> = ยังใส่อยู่ · ชี้ค้างที่แท่งเพื่อดูวัน-เวลาใส่/ถอดและยอดผลิต ·
+        <b style="color:var(--accent);">กดที่แท่ง</b> = เปิดชุดนั้นในทะเบียน Roll SQ · ระบบผลิตเริ่มบันทึกประมาณ 9 พ.ย. 69
+      </div>
+      ${note ? `<div style="font-size:12px;color:${st.error ? 'var(--red)' : 'var(--text-3)'};margin-bottom:8px;">${escapeHtmlAttr(note)}</div>` : ''}
+      <div style="overflow-x:auto;"><div style="min-width:${96 + n * (cellW + 2)}px;">${head}${body}</div></div>
+    </div>
+  </div>`;
+}
+
 function renderInUseToolingTab() {
   const el = document.getElementById('iu-panel-tooling');
   if (!el || inUseTab === 'roll') return;
-  if (inUseTab === 'sq') el.innerHTML = dashSqInUseCardHtml(sqSets());
+  if (inUseTab === 'sq') el.innerHTML = dashSqInUseCardHtml(sqSets()) + sqCalendarCardHtml();
   else if (inUseTab === 'saw') el.innerHTML = prodSawInUseCardHtml()
     || '<div class="card"><div style="text-align:center;color:var(--text-3);font-size:13px;padding:24px 0;">ยังไม่ได้เชื่อมระบบผลิต</div></div>';
   else el.innerHTML = `<div class="card"><div style="text-align:center;color:var(--text-3);font-size:13px;padding:24px 0;">
