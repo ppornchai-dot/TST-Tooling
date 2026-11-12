@@ -2260,7 +2260,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.9';
+const APP_BUILD = '2026-11-12.10';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5645,6 +5645,8 @@ function loadProdSawUsage(force) {
 function rerenderProdSawViews() {
   if (document.getElementById('tbody-saw')) renderSawTable(pageState.saw || 1);
   if (dashTab === 'saw') renderDashboardSimpleToolingPanel('saw', 'ใบเลื่อย');
+  // ฟอร์มวางแผนลับคมที่เปิดอยู่ — รายการให้เลือกขึ้นกับสถานะรอลับคม
+  if (typeof refreshSawPlanOptions === 'function') refreshSawPlanOptions();
 }
 
 // งานลับคมใบเลื่อยในแผนงาน — อ้างใบด้วย "ลำดับในทะเบียน" (rollIds = index ของ toolingData.saw
@@ -9753,27 +9755,45 @@ function renderRollOptionsPanel(rolls, selectedIndexes) {
     return;
   }
   const selectedSet = new Set(selectedIndexes.map(Number));
-  // ใบเลื่อย: ต่อท้ายรหัสด้วยขนาด/เครื่อง และป้ายรอลับคม (จากระบบผลิต) ช่วยให้เลือกใบที่ต้องลับได้ถูก
+  // ใบเลื่อย: ให้เลือกได้เฉพาะใบที่ "รอลับคม" (ระบบผลิตบอกว่าถอดแล้ว ยังไม่ได้ลับ — ดู prodSawWaitingList)
+  // ใบที่ติ๊กไว้แล้ว (แก้งานเดิม) ยังโชว์อยู่เสมอ ไม่งั้นจะเอาออกจากงานไม่ได้
+  // value ของ checkbox ยังเป็นลำดับในทะเบียนเดิม จึงกรองการแสดงผลได้โดยไม่กระทบค่าที่บันทึก
   const isSaw = planFormWorkType() === 'saw';
+  const sawSt = isSaw && typeof prodSawLive !== 'undefined' && prodSawLive ? prodSawLive.status : null;
+  const sawHasData = isSaw && sawSt !== 'noproxy' && !!(prodSawLive && prodSawLive.at) && sawSt !== 'loading';
+  const sawWait = new Map();
+  if (sawHasData) prodSawWaitingList().forEach(x => sawWait.set(x.idx, x));
+  const visible = rolls.map((r, idx) => ({ r, idx }))
+    .filter(x => !isSaw || !sawHasData || sawWait.has(x.idx) || selectedSet.has(x.idx));
+  const sawNote = !isSaw ? ''
+    : sawSt === 'loading' || sawSt === 'idle' ? 'กำลังดึงสถานะรอลับคมจากระบบผลิต…'
+    : !sawHasData ? 'ดึงสถานะจากระบบผลิตไม่ได้ — แสดงใบเลื่อยทุกใบ'
+    : !sawWait.size ? 'ตอนนี้ไม่มีใบเลื่อยที่รอลับคม' : '';
   const sawExtra = r => {
     if (!isSaw) return '';
     const reg = ((toolingData || {}).saw || []).find(x => x.id === r.id);
     const info = reg ? [reg.diameter, reg.machine].filter(x => x && x !== '—').join(' · ') : '';
-    const wait = reg && typeof sawUsageInfo === 'function' && sawUsageInfo(reg).waiting;
+    const w = reg ? sawWait.get(((toolingData || {}).saw || []).indexOf(reg)) : null;
     return (info ? ` <span style="font-size:11px;color:var(--text-3);">${escapeHtmlAttr(info)}</span>` : '')
-      + (wait ? ' <span class="chip chip-red" style="font-size:10px;margin-left:auto;">รอลับคม</span>' : '');
+      + (w ? ` <span style="font-size:11px;color:var(--text-2);margin-left:auto;">ถอดจาก ${escapeHtmlAttr(w.u.last.machine)} · ${escapeHtmlAttr(prodSqFmtTime(w.u.removedAt))}</span>` : '')
+      + (w && w.plannedAt ? ` <span class="chip chip-amber" style="font-size:10px;" title="มีงานลับคมใบนี้ในแผนแล้ว">แผน ${escapeHtmlAttr(fmtIsoDateThai(w.plannedAt))}</span>` : '');
   };
+  if (isSaw && !visible.length) {
+    panel.innerHTML = `<div style="padding:10px 12px;font-size:12.5px;color:var(--text-3);">${escapeHtmlAttr(sawNote || 'ตอนนี้ไม่มีใบเลื่อยที่รอลับคม')}</div>`;
+    return;
+  }
   // หัวรายการติดขอบบน (sticky) — เลื่อนดู Roll ตัวล่างๆ แล้วปุ่ม "ตกลง" ยังกดได้อยู่
   // top:-4px หัก padding ของ panel ออก ไม่ให้เห็นรายการโผล่ใต้หัวรายการ
   panel.innerHTML =
     `<div style="display:flex;align-items:center;gap:8px;padding:2px 4px 6px;border-bottom:1px solid var(--border-light);margin-bottom:2px;
                 position:sticky;top:-4px;background:var(--bg-surface);z-index:1;">
       <label style="display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:700;flex:1;min-width:0;">
-        <input type="checkbox" id="pf-rollids-all" onchange="toggleAllRollOptions(this)" style="width:14px;height:14px;cursor:pointer;">เลือกทั้งหมด (${rolls.length})
+        <input type="checkbox" id="pf-rollids-all" onchange="toggleAllRollOptions(this)" style="width:14px;height:14px;cursor:pointer;">${
+          isSaw && sawHasData ? 'เลือกทุกใบที่รอลับคม' : 'เลือกทั้งหมด'} (${visible.length})
       </label>
       <button type="button" class="btn btn-primary btn-sm" onclick="closeRollDropdown(event)" style="flex-shrink:0;font-weight:800;">ตกลง</button>
-    </div>` +
-    rolls.map((r, idx) => `<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:5px;cursor:pointer;font-size:13px;">
+    </div>` + (sawNote ? `<div style="padding:4px 10px 6px;font-size:11.5px;color:var(--text-3);">${escapeHtmlAttr(sawNote)}</div>` : '') +
+    visible.map(({ r, idx }) => `<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:5px;cursor:pointer;font-size:13px;">
       <input type="checkbox" value="${idx}"${selectedSet.has(idx) ? ' checked' : ''} onchange="toggleRollOption(this)" style="width:14px;height:14px;cursor:pointer;">${isSaw ? '<b>' + escapeHtmlAttr(r.id || r.name) + '</b>' : escapeHtmlAttr(r.name)}${sawExtra(r)}
     </label>`).join('');
   syncRollSelectAllState();
@@ -9938,13 +9958,20 @@ function applySawPlanFormLayout() {
   if (saw && !planFormOtherWork) {
     const sel = document.getElementById('pf-rollset');
     if (sel && sel.value !== SAW_PLAN_SET) sel.value = SAW_PLAN_SET;
-    const panel = document.getElementById('pf-rollids-panel');
-    if (panel && !panel.querySelector('input[type=checkbox]:not(#pf-rollids-all)')) {
-      const picked = ((document.getElementById('pf-rollids') || {}).value || '').split(',').filter(Boolean).map(Number);
-      renderRollOptionsPanel(getMatchingRollsForPlan(SAW_PLAN_SET, null), picked);
-    }
+    refreshSawPlanOptions();
+    // รายการให้เลือกเฉพาะใบที่รอลับคม — ต้องรู้สถานะจากระบบผลิตก่อน (ดึงแล้วจะวาดรายการนี้ใหม่ให้เอง)
+    if (typeof loadProdSawUsage === 'function') loadProdSawUsage(false);
   }
   updateRollSelectionLabel();
+}
+// วาดรายการรหัสใบเลื่อยในฟอร์มใหม่ คงใบที่ติ๊กไว้ — เรียกตอนเปิดฟอร์ม และตอนได้สถานะจากระบบผลิต
+function refreshSawPlanOptions() {
+  const panel = document.getElementById('pf-rollids-panel');
+  if (!panel) return;   // ฟอร์มวางแผนไม่ได้เปิดอยู่
+  if (planFormWorkType() !== 'saw' || planFormOtherWork) return;
+  if ((document.getElementById('pf-rollset') || {}).value !== SAW_PLAN_SET) return;
+  const picked = ((document.getElementById('pf-rollids') || {}).value || '').split(',').filter(Boolean).map(Number);
+  renderRollOptionsPanel(getMatchingRollsForPlan(SAW_PLAN_SET, null), picked);
 }
 
 // ─── งานอื่นๆ ที่ไม่ใช่งานแต่ง/ขัด Roll ─────────────────────────────────────────
