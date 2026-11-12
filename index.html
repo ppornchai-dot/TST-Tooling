@@ -995,7 +995,7 @@ canvas{display:block;}
       </button>
       <button class="nav-item" data-roles="admin,lead" onclick="showPage('inuse')">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="9"/></svg>
-        ชุด Roll กำลังใช้งาน
+        Tooling กำลังใช้งาน
       </button>
     </div>
     <div class="nav-section">
@@ -2322,7 +2322,7 @@ const PAGE_META = {
   standard:   { title: 'Production Block' },
   prodWeight: { title: 'น้ำหนักผลิต' },
   rollLife:   { title: 'อายุ Tooling' },
-  inuse:      { title: 'ชุด Roll กำลังใช้งาน' },
+  inuse:      { title: 'Tooling กำลังใช้งาน' },
   daily:      { title: 'งานประจำวัน' },
   plan:       { title: 'วางแผน' },
   history:    { title: 'ประวัติการทำงาน' },
@@ -2336,7 +2336,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.23';
+const APP_BUILD = '2026-11-12.24';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
