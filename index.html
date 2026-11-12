@@ -2406,7 +2406,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.32';
+const APP_BUILD = '2026-11-12.33';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -13459,7 +13459,8 @@ const MAX_ROLL_MACHINES = 2;
 // กดปุ่มเครื่องที่หัวข้อ = ตั้งเครื่องให้ทุก Size Roll ของขนาดนั้นพร้อมกัน — ข้อมูลเดียวกับช่อง
 // "เครื่อง" ในฟอร์ม Size Roll ของทะเบียน (rollSetMachines) เลือกได้ไม่เกิน MAX_ROLL_MACHINES เครื่อง
 // แสดงเป็น "เลือกแล้ว" เมื่อทุกชุดของขนาดนั้นผูกเครื่องนั้นไว้ (บางชุดผูก บางชุดไม่ = ขอบประ)
-function sizeGroupMachineButtonsHtml(sets) {
+function sizeGroupMachineButtonsHtml(sets, opts) {
+  const compact = !!(opts && opts.compact);   // แบบเล็ก: ไม่มีคำว่า "เครื่อง" ปุ่มเล็กลง ใช้ในที่แคบ (รายการซ้ายของทะเบียน SQ)
   const names = (sets || []).filter(Boolean);
   if (!names.length) return '';
   const editable = typeof canEditPlan === 'function' && canEditPlan();
@@ -13467,7 +13468,7 @@ function sizeGroupMachineButtonsHtml(sets) {
   const btns = ROLL_MACHINES.map(m => {
     const n = has(m);
     const all = n === names.length, some = n > 0 && !all;
-    const style = `font-size:11.5px;font-weight:800;padding:2px 10px;border-radius:99px;line-height:1.5;
+    const style = `font-size:${compact ? '10.5px' : '11.5px'};font-weight:800;padding:${compact ? '1px 6px' : '2px 10px'};border-radius:99px;line-height:1.5;
       border:1px ${some ? 'dashed' : 'solid'} ${all || some ? 'var(--accent)' : 'var(--border)'};
       background:${all ? 'var(--accent)' : 'var(--bg-surface)'};color:${all ? '#fff' : some ? 'var(--accent)' : 'var(--text-3)'};`;
     const tip = all ? 'ขนาดนี้เดินที่เครื่อง ' + m + (editable ? ' — กดเพื่อเอาออก' : '')
@@ -13478,8 +13479,8 @@ function sizeGroupMachineButtonsHtml(sets) {
           onclick="event.stopPropagation();${jsCallAttr('toggleSizeGroupMachine', JSON.stringify(names), m)}">${m}</button>`
       : (all || some ? `<span style="${style}" title="${escapeHtmlAttr(tip)}">${m}</span>` : '');
   }).join('');
-  return btns ? `<span style="display:inline-flex;align-items:center;gap:4px;margin-left:10px;vertical-align:middle;">
-    <span style="font-size:11px;font-weight:700;color:var(--text-3);">เครื่อง</span>${btns}</span>` : '';
+  return btns ? `<span style="display:inline-flex;align-items:center;gap:${compact ? 3 : 4}px;margin-left:${compact ? 4 : 10}px;vertical-align:middle;">
+    ${compact ? '' : '<span style="font-size:11px;font-weight:700;color:var(--text-3);">เครื่อง</span>'}${btns}</span>` : '';
 }
 function toggleSizeGroupMachine(namesJson, machine) {
   if (typeof canEditPlan === 'function' && !canEditPlan()) return;
@@ -17383,11 +17384,11 @@ function rollSetSectionHeaderHtml(label, count, color, opts) {
   const o = opts || {};
   const c = color || 'var(--text-3)';
   if (o.big) {
-    return `<div style="font-size:16px;font-weight:800;color:${c};${o.keepCase ? '' : 'text-transform:uppercase;'}
+    return `<div style="font-size:${o.tight ? 15 : 16}px;font-weight:800;color:${c};${o.keepCase ? '' : 'text-transform:uppercase;'}
       padding:14px 4px 8px;margin-top:4px;border-bottom:2px solid ${c};margin-bottom:8px;
       display:flex;align-items:center;justify-content:space-between;">
-      <span style="display:flex;align-items:center;gap:8px;"><span style="width:10px;height:10px;border-radius:50%;background:${c};flex-shrink:0;"></span>${label}</span>
-      <span style="font-weight:700;font-size:14px;">${count}</span>
+      <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;"><span style="width:10px;height:10px;border-radius:50%;background:${c};flex-shrink:0;"></span>${label}</span>
+      <span style="font-weight:700;font-size:${o.tight ? 11.5 : 14}px;flex-shrink:0;white-space:nowrap;">${count}</span>
     </div>`;
   }
   const band = shadeHex(c, -0.22) === c ? C_SLATE : shadeHex(c, -0.22);
@@ -18363,22 +18364,23 @@ function clearSqSizeMachines(size) {
 }
 // ปุ่มเครื่อง P1–P4 ที่หัวข้อขนาดของหน้าฝั่ง Roll SQ — หน้าตา/ข้อมูลเดียวกับหัวข้อขนาดของ Roll
 // มี Size Roll ตรงกันใช้ปุ่มตัวเดียวกับฝั่ง Roll (sizeGroupMachineButtonsHtml) ไม่มีก็ใช้ข้อมูลฝั่ง SQ เอง
-function sqSizeMachineButtonsHtml(size) {
+function sqSizeMachineButtonsHtml(size, opts) {
+  const compact = !!(opts && opts.compact);
   const rolls = rollSetsForSqSize(size);
-  if (rolls.length) return sizeGroupMachineButtonsHtml(rolls);
+  if (rolls.length) return sizeGroupMachineButtonsHtml(rolls, opts);
   const editable = typeof canEditPlan === 'function' && canEditPlan();
   const cur = sqSizeMachinesFor(size);
   const btns = ROLL_MACHINES.map(m => {
     const on = cur.includes(m);
-    const style = `font-size:11.5px;font-weight:800;padding:2px 10px;border-radius:99px;line-height:1.5;
+    const style = `font-size:${compact ? '10.5px' : '11.5px'};font-weight:800;padding:${compact ? '1px 6px' : '2px 10px'};border-radius:99px;line-height:1.5;
       border:1px solid ${on ? 'var(--accent)' : 'var(--border)'};background:${on ? 'var(--accent)' : 'var(--bg-surface)'};color:${on ? '#fff' : 'var(--text-3)'};`;
     return editable
       ? `<button type="button" style="${style}cursor:pointer;" onclick="event.stopPropagation();${jsCallAttr('toggleSqSizeMachineInline', size, m)}"
           title="${escapeHtmlAttr(on ? 'ขนาดนี้เดินที่เครื่อง ' + m + ' — กดเพื่อเอาออก' : 'กดเพื่อตั้งว่าขนาดนี้เดินที่เครื่อง ' + m)}">${m}</button>`
       : (on ? `<span style="${style}">${m}</span>` : '');
   }).join('');
-  return btns ? `<span style="display:inline-flex;align-items:center;gap:4px;margin-left:10px;vertical-align:middle;">
-    <span style="font-size:11px;font-weight:700;color:var(--text-3);">เครื่อง</span>${btns}</span>` : '';
+  return btns ? `<span style="display:inline-flex;align-items:center;gap:${compact ? 3 : 4}px;margin-left:${compact ? 4 : 10}px;vertical-align:middle;">
+    ${compact ? '' : '<span style="font-size:11px;font-weight:700;color:var(--text-3);">เครื่อง</span>'}${btns}</span>` : '';
 }
 // กดจากหัวข้อขนาด (ไม่ได้เปิดกล่องเลือกเครื่อง) — ไม่ต้องวาดกล่องนั้นต่อ
 function toggleSqSizeMachineInline(size, machine) {
@@ -18899,12 +18901,12 @@ function renderSqSetList() {
     // ไม่งั้นกดปุ่มแล้วจะไปโดน onclick ของหัวข้อที่สลับการกรองขนาดด้วย
     // แถวปุ่มเครื่อง P1–P4 ใต้หัวข้อขนาด — ตัวเดียวกับหัวข้อขนาดของหน้าอื่น (อิงเครื่องของขนาดเดียวกันฝั่ง Roll)
     // เห็นทุกคน แก้ได้เฉพาะ Admin/หัวหน้า · ปุ่มกันคลิกทะลุไปที่หัวข้อ (ที่สลับการกรองขนาด) ไว้แล้ว
-    const mcRow = sqSizeMachineButtonsHtml(size);
+    // ต่อท้ายชื่อขนาดในหัวข้อเลย (ไม่แยกบรรทัด) — font ของปุ่มกำหนดเอง ไม่ตามหัวข้อตัวใหญ่
+    const mcRow = sqSizeMachineButtonsHtml(size, { compact: true });
     const header = `<div onclick="${jsCallAttr('selectSqSize', size)}" style="cursor:pointer;"
-        title="${escapeHtmlAttr('ดู Roll SQ ทุกชุดของขนาด ' + size + ' (กดซ้ำเพื่อดูทุกขนาด)')}">${
-        rollSetSectionHeaderHtml(escapeHtmlAttr(size), sets.length + ' ชุด · ' + pieces + ' ชิ้น',
-          sizeActive ? 'var(--accent)' : 'var(--text-1)', { keepCase: true, big: true })}</div>
-      ${mcRow ? `<div style="margin:-2px 0 8px -10px;">${mcRow}</div>` : ''}`;
+        title="${escapeHtmlAttr(size + ' — ' + sets.length + ' ชุด · ' + pieces + ' ชิ้น · ดู Roll SQ ทุกชุดของขนาดนี้ (กดซ้ำเพื่อดูทุกขนาด)')}">${
+        rollSetSectionHeaderHtml(escapeHtmlAttr(size) + mcRow, sets.length + ' ชุด',
+          sizeActive ? 'var(--accent)' : 'var(--text-1)', { keepCase: true, big: true, tight: true })}</div>`;
     return header + sets.map(set => {
       const r = set[0];
       const key = sqSetKey(r);
