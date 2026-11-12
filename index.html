@@ -2264,7 +2264,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.17';
+const APP_BUILD = '2026-11-12.18';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5748,7 +5748,20 @@ function sawGrindPlanInfo() {
       if (!prev || d < prev) planned.set(k, d);
     });
   });
-  sawGrindPlanMemo = { at: Date.now(), done, planned, working };
+  // queued = อยู่ในงานลับคมตามแผนที่ยังไม่เสร็จ (ทุกวัน รวมงานค้าง / ยังไม่กดเริ่มก็นับ) — index → วันแรกสุด
+  // ใช้ตัดสินว่าใบนี้ "กำลังลับคม" ตามที่หน้างานกำหนด: วางแผนลับแล้วถือว่าเข้าคิวลับคม ไม่ใช่รอลับคมอีก
+  const queued = new Map();
+  sawTasks.forEach(t => {
+    if (t.otherWork) return;
+    const d = taskDisplayDate(t);
+    if ((dailyStatusByDate[d] || {})[t.id] === 'done') return;
+    (t.rollIds || []).forEach(i => {
+      if (pieceEntryFor(d, t.id, i).status === 'done') return;
+      const k = Number(i), prev = queued.get(k);
+      if (!prev || d < prev) queued.set(k, d);
+    });
+  });
+  sawGrindPlanMemo = { at: Date.now(), done, planned, working, queued };
   return sawGrindPlanMemo;
 }
 // วันลับคมล่าสุดของใบหนึ่ง = ค่าที่ใหม่กว่าระหว่าง "ลับคมล่าสุด" ในทะเบียน กับวันที่กดจบงานลับคมในแผนงาน
@@ -5790,8 +5803,8 @@ function prodSawWaitingList() {
   const reg = (toolingData || {}).saw || [];
   const info = sawGrindPlanInfo();
   return reg.map((r, idx) => ({ r, idx, u: sawUsageInfo(r), plannedAt: info.planned.get(idx) || null }))
-    // ใบที่กำลังลับคมอยู่ย้ายไปการ์ด "กำลังลับคม" แทน ไม่ขึ้นซ้ำสองที่
-    .filter(x => x.u.waiting && !info.working.has(x.idx))
+    // ใบที่กดเริ่มลับแล้ว หรือวางแผนลับไว้แล้ว ย้ายไปการ์ด "กำลังลับคม" แทน ไม่ขึ้นซ้ำสองที่
+    .filter(x => x.u.waiting && !info.working.has(x.idx) && !info.queued.has(x.idx))
     .sort((a, b) => String(a.u.removedAt).localeCompare(String(b.u.removedAt)));
 }
 
@@ -9886,8 +9899,8 @@ function renderRollOptionsPanel(rolls, selectedIndexes) {
   const visible = rolls.map((r, idx) => ({ r, idx }))
     .filter(x => !isSaw || selectedSet.has(x.idx)
       || (!sawPlanned.has(x.idx) && (!sawHasData || sawWait.has(x.idx))));
-  const hiddenPlanned = isSaw && sawHasData
-    ? [...sawWait.keys()].filter(i => sawPlanned.has(i) && !selectedSet.has(i)).length : 0;
+  // รายการรอลับคมตัดใบที่วางแผนแล้วออกให้ตั้งแต่ต้น (ดู prodSawWaitingList) — นับจากชุดที่วางแผนแล้วตรงๆ
+  const hiddenPlanned = isSaw && sawHasData ? [...sawPlanned].filter(i => !selectedSet.has(i)).length : 0;
   const sawNote = !isSaw ? ''
     : sawSt === 'loading' || sawSt === 'idle' ? 'กำลังดึงสถานะรอลับคมจากระบบผลิต…'
     : !sawHasData ? 'ดึงสถานะจากระบบผลิตไม่ได้ — แสดงใบเลื่อยทุกใบที่ยังไม่ได้วางแผน'
@@ -18464,9 +18477,14 @@ function sawEffectiveStatus(r) {
   const idx = ((toolingData || {}).saw || []).indexOf(r);
   const plan = typeof sawGrindPlanInfo === 'function' ? sawGrindPlanInfo() : null;
   if (plan && idx >= 0 && plan.working.has(idx)) return { status: 'กำลังลับคม', src: 'plan' };
-  if (typeof prodSawLive !== 'undefined' && prodSawLive && prodSawLive.at) {
-    const u = sawUsageInfo(r);
-    if (u.open) return { status: 'กำลังใช้งาน', src: 'prod', note: 'บนเครื่อง ' + u.open.machine + ' ตั้งแต่ ' + prodSqFmtTime(u.open.startedAt) };
+  const live = typeof prodSawLive !== 'undefined' && prodSawLive && prodSawLive.at;
+  const u = live ? sawUsageInfo(r) : null;
+  if (u && u.open) return { status: 'กำลังใช้งาน', src: 'prod', note: 'บนเครื่อง ' + u.open.machine + ' ตั้งแต่ ' + prodSqFmtTime(u.open.startedAt) };
+  // วางแผนลับไว้แล้ว (ยังไม่กดเริ่มก็นับ) = เข้าคิวลับคมแล้ว — ยกเว้นใบที่ยังอยู่บนเครื่อง (เช็กไว้ข้างบนแล้ว)
+  if (plan && idx >= 0 && plan.queued && plan.queued.has(idx)) {
+    return { status: 'กำลังลับคม', src: 'plan', note: 'วางแผนลับคมไว้วันที่ ' + fmtIsoDateThai(plan.queued.get(idx)) };
+  }
+  if (u) {
     if (u.waiting) return { status: 'รอลับคม', src: 'prod', note: 'ถอดจาก ' + u.last.machine + ' เมื่อ ' + prodSqFmtTime(u.removedAt) };
     if (u.p) return { status: 'พร้อมใช้', src: 'prod', note: 'ลับคมแล้วหลังถอดจากเครื่องครั้งล่าสุด' };
   }
@@ -18476,7 +18494,7 @@ function sawStatusCellHtml(r) {
   const e = sawEffectiveStatus(r);
   const manual = sawManualStatus(r);
   const tip = e.src === 'prod' ? 'ตามระบบผลิต' + (e.note ? ' — ' + e.note : '')
-    : e.src === 'plan' ? 'ตามงานลับคมในหน้างานประจำวัน (กดเริ่มแล้ว ยังไม่กดจบ)'
+    : e.src === 'plan' ? (e.note ? 'ตามแผนงานลับคม — ' + e.note : 'ตามงานลับคมในหน้างานประจำวัน (กดเริ่มแล้ว ยังไม่กดจบ)')
     : 'ตั้งเองในทะเบียน';
   return `<td title="${escapeHtmlAttr(tip + (e.src !== 'manual' && manual !== e.status ? ' · ในทะเบียนตั้งไว้ว่า ' + manual : ''))}">${statusChip(e.status)}</td>`;
 }
