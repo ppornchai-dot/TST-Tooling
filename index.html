@@ -2406,7 +2406,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.37';
+const APP_BUILD = '2026-11-12.38';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6821,7 +6821,10 @@ function renderDashboardSimpleToolingPanel(key, name) {
   }
   const { ready, repair, expired, total } = toolingStatusCounts(items);
   const byStatus = new Map();
-  items.forEach(it => {
+  // ใบเลื่อย: สถานะอื่น (กำลังใช้งาน / กำลังลับคม / รอลับคม) มีการ์ดของตัวเองด้านบนแล้ว
+  // รายการนี้จึงแสดงเฉพาะใบที่พร้อมใช้งาน ไม่ซ้ำกับการ์ดอื่น
+  const listItems = key === 'saw' ? items.filter(it => it.status === 'พร้อมใช้') : items;
+  listItems.forEach(it => {
     const s = it.status || 'ไม่ระบุสถานะ';
     if (!byStatus.has(s)) byStatus.set(s, []);
     byStatus.get(s).push(it);
@@ -6836,8 +6839,8 @@ function renderDashboardSimpleToolingPanel(key, name) {
     ${key === 'saw' ? sawWorkingCardHtml() + prodSawInUseCardHtml() + prodSawWaitingCardHtml() : ''}
     <div class="card">
       <div class="card-header">
-        <span class="card-title" style="font-size:16px;">รายการ${escapeHtmlAttr(name)}ตามสถานะ</span>
-        <span style="margin-left:auto;font-size:12px;color:var(--text-3);">${total.toLocaleString()} รายการ</span>
+        <span class="card-title" style="font-size:16px;${key === 'saw' ? 'color:var(--green);' : ''}">${key === 'saw' ? 'ใบเลื่อยพร้อมใช้งาน' : 'รายการ' + escapeHtmlAttr(name) + 'ตามสถานะ'}</span>
+        <span style="margin-left:auto;font-size:12px;color:var(--text-3);">${listItems.length.toLocaleString()} ${key === 'saw' ? 'ใบ' : 'รายการ'}</span>
       </div>
       <div style="padding:12px 14px;display:flex;flex-direction:column;gap:14px;">
         ${[...byStatus.entries()].map(([status, list]) => `<div>
@@ -6847,7 +6850,9 @@ function renderDashboardSimpleToolingPanel(key, name) {
           <div style="display:flex;flex-direction:column;gap:5px;max-height:240px;overflow-y:auto;">
             ${list.map(it => `<div style="display:flex;align-items:center;gap:12px;padding:6px 10px;background:var(--bg-surface);border-radius:6px;">
               <span style="font-size:12px;color:var(--text-3);min-width:70px;">${escapeHtmlAttr(it.id || '')}</span>
-              <span style="font-size:13px;color:var(--text-1);flex:1;">${escapeHtmlAttr(it.name || '')}</span>
+              <span style="font-size:13px;color:var(--text-1);flex:1;">${escapeHtmlAttr(key === 'saw'
+                ? [sawOdLabel(it), it.machine].filter(x => x && x !== '—').join(' · ') || '—'
+                : (it.name || ''))}</span>
             </div>`).join('')}
           </div>
         </div>`).join('')}
