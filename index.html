@@ -2253,7 +2253,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.1';
+const APP_BUILD = '2026-11-12.2';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5457,7 +5457,7 @@ function dashSqInUseCardHtml(sets) {
 // แสดงผลอย่างเดียว ไม่เขียนลงข้อมูลกลาง (ไม่งั้นทุกเครื่องที่เปิดหน้านี้จะแย่งกันเขียน)
 // ใช้ var ไม่ใช่ const/let — การ์ดบน Dashboard อาจถูกวาดตั้งแต่ตอนบูตก่อนบรรทัดนี้จะรัน
 // ถ้าเป็น let/const จะชน TDZ แล้วสคริปต์ตายกลางทาง (var ได้ undefined แทน ซึ่งเช็กไว้แล้ว)
-var PROD_SQ_PROXY_URL = '';              // URL ของ api/sq-usage บน Vercel — ว่าง = ยังไม่ได้เชื่อม
+var PROD_SQ_PROXY_URL = 'https://tst-tooling-api.vercel.app/api/sq-usage'; // ตัวกลางบน Vercel (โปรเจกต์ tst-tooling-api) — ว่าง = ปิดการเชื่อม
 var PROD_SQ_MIN_AGE_MS = 5 * 60 * 1000;  // เปิดแท็บซ้ำภายใน 5 นาทีใช้ผลเดิม (ตัวกลางก็แคช 5 นาทีเหมือนกัน)
 var PROD_SQ_FG_MAX_DAYS = 31;            // ยอดผลิตย้อนหลังที่ใช้หาขนาด — รอบที่ใส่มานานกว่านี้ดูแค่ช่วงล่าสุดก็พอ
 var prodSqLive = { status: 'idle', at: 0, rounds: [], byKey: {}, error: null };
@@ -5486,9 +5486,13 @@ function loadProdSqInUse(force) {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const json = await res.json();
       const open = (json.rows || []).filter(r => r && r.is_open && r.machine_id);
+      // ระบบผลิตส่ง product_code มากับแต่ละรอบแล้ว (สินค้าที่ผลิตมากที่สุดในรอบ · รอบที่ยังไม่มียอดใช้สินค้าของ MO)
+      // ใช้ตัวนั้นก่อน — ยอด FG เป็นแค่ทางสำรองของรอบที่ไม่มี product_code (ไม่ต้องดึง FG ถ้าทุกรอบมีแล้ว)
+      const apiSizeKey = r => fgProductCodeToKey(String(r.product_code || ''));
+      const needFg = open.filter(r => !apiSizeKey(r));
       let fgRows = [];
-      if (open.length) {
-        const earliest = open.map(r => toISODate(new Date(r.started_at))).sort()[0];
+      if (needFg.length) {
+        const earliest = needFg.map(r => toISODate(new Date(r.started_at))).sort()[0];
         const floor = addDaysIso(today, -PROD_SQ_FG_MAX_DAYS);
         fgRows = await fgFetchRowsRange(earliest > floor ? earliest : floor, today);
       }
@@ -5504,12 +5508,13 @@ function loadProdSqInUse(force) {
           const k = fgProductCodeToKey(f.product_code);
           if (k) kgBy[k] = (kgBy[k] || 0) + (Number(f.weight_kg) || 0);
         });
-        const sizeKey = Object.keys(kgBy).sort((a, b) => kgBy[b] - kgBy[a])[0] || null;
+        const sizeKey = apiSizeKey(r) || Object.keys(kgBy).sort((a, b) => kgBy[b] - kgBy[a])[0] || null;
         const cands = !sizeKey ? [] : heads.filter(h => rollSetFgKey(h.sizeSq) === sizeKey
           && h.color === r.color && sqSetOrdinalInfo(h).no === Number(r.code));
         return {
           machine: String(r.machine_id), code: String(r.code || ''), color: String(r.color || ''),
           startedAt: r.started_at, kg: Number(r.kg) || 0, pcs: Number(r.pcs) || 0,
+          productName: String(r.product_name || ''), productSource: String(r.product_source || (apiSizeKey(r) ? '' : 'fg')),
           sizeKey, candCount: cands.length, setKey: cands.length === 1 ? sqSetKey(cands[0]) : null,
         };
       });
@@ -5540,7 +5545,10 @@ function prodSqLiveTagHtml(live) {
   return `<span style="flex-shrink:0;font-size:11.5px;font-weight:800;padding:1px 8px;border-radius:99px;
       background:var(--bg-panel);color:var(--inuse);box-shadow:inset 0 0 0 1px var(--inuse);"
     title="${escapeHtmlAttr('จากระบบผลิต · ใส่เครื่อง ' + live.machine + ' เมื่อ ' + prodSqFmtTime(live.startedAt)
-      + ' · ผลิตไปแล้ว ' + prodSqTons(live.kg) + ' ตัน (' + live.pcs.toLocaleString() + ' เส้น)')}">${
+      + ' · ผลิตไปแล้ว ' + prodSqTons(live.kg) + ' ตัน (' + live.pcs.toLocaleString() + ' เส้น)'
+      + (live.productName ? ' · สินค้า ' + live.productName : '')
+      + (live.productSource === 'mo' ? ' (ยังไม่มียอดผลิต — ขนาดตาม MO ที่ผูกไว้ตอนเปลี่ยนชุด)'
+        : live.productSource === 'fg' ? ' (ขนาดหาจากยอดผลิต FG)' : ''))}">${
     escapeHtmlAttr(prodSqTons(live.kg))} ตัน</span>`;
 }
 
