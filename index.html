@@ -2264,7 +2264,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.12';
+const APP_BUILD = '2026-11-12.13';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -11549,13 +11549,16 @@ function openPlanTaskModal(mode, taskId, presetDate, presetShift) {
           + '\nถ้างานนี้ไม่ใช่งาน' + planFormMainWorkLabel() + ' ให้กดปุ่ม "🛠 งานอื่นๆ" ด้านบน แล้วกรอกชื่องานกับเวลาเอง');
         return;
       }
-      if (!colorKey) {
+      // ใบเลื่อยไม่มีชุดสี (ทั้งทะเบียนเป็นกลุ่มเดียว ดู SAW_PLAN_SET) — ไม่ต้องตรวจช่องนี้
+      if (!colorKey && !isSawPlanSet(setName)) {
         focusField('pf-rollcolor');
         alert('ยังไม่ได้เลือกชุดสี Roll ของ ' + setName + ' — เลือกชุดสีก่อนบันทึก');
         return;
       }
       if (!rolls.length) {
-        alert('ยังไม่ได้เลือกรายการ Roll — เลือก Roll อย่างน้อย 1 รายการก่อนบันทึก');
+        alert(isSawPlanSet(setName)
+          ? 'ยังไม่ได้เลือกรหัสใบเลื่อย — เลือกใบที่จะลับคมอย่างน้อย 1 ใบก่อนบันทึก'
+          : 'ยังไม่ได้เลือกรายการ Roll — เลือก Roll อย่างน้อย 1 รายการก่อนบันทึก');
         return;
       }
     }
