@@ -1472,11 +1472,14 @@ canvas{display:block;}
 
       <!-- ── TAB: ใบเลื่อย ── -->
       <div class="reg-panel" id="regpanel-saw">
-        <div class="reg-kpi-row">
-          <div class="reg-kpi"><span class="reg-kpi-val">35</span><span class="reg-kpi-lbl">รายการทั้งหมด</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--green);">22</span><span class="reg-kpi-lbl">พร้อมใช้</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--amber);">10</span><span class="reg-kpi-lbl">Regrind / รอ</span></div>
-          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);">3</span><span class="reg-kpi-lbl">หมดอายุ</span></div>
+        <!-- ตัวเลขนับจากทะเบียนจริงทุกครั้งที่วาดตาราง (ดู renderSawKpis) -->
+        <div class="reg-kpi-row" id="saw-kpi-row">
+          <div class="reg-kpi"><span class="reg-kpi-val" id="kpi-saw-total">0</span><span class="reg-kpi-lbl">รายการทั้งหมด</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--green);" id="kpi-saw-ready">0</span><span class="reg-kpi-lbl">พร้อมใช้</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--inuse);" id="kpi-saw-inuse">0</span><span class="reg-kpi-lbl">กำลังใช้งาน</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-saw-wait">0</span><span class="reg-kpi-lbl">รอลับคม</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--amber);" id="kpi-saw-problem">0</span><span class="reg-kpi-lbl">มีปัญหา</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--text-3);" id="kpi-saw-expired">0</span><span class="reg-kpi-lbl">หมดอายุ</span></div>
         </div>
         <div class="card">
           <div class="card-header">
@@ -2260,7 +2263,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.10';
+const APP_BUILD = '2026-11-12.11';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5083,7 +5086,7 @@ const TOOLING_STATUS_CATEGORIES = [
 ];
 function toolingStatusCounts(items) {
   const ready = items.filter(r => r.status === 'พร้อมใช้' || r.status === 'ใช้งานอยู่' || r.status === 'พร้อมใช้งาน' || r.status === 'กำลังใช้งาน').length;
-  const repair = items.filter(r => ['ซ่อมบำรุง', 'Regrind', 'แต่ง Roll', 'ขัด Roll', 'รอใช้งาน', 'รอแต่ง', 'รอขัด'].includes(r.status)).length;
+  const repair = items.filter(r => ['ซ่อมบำรุง', 'Regrind', 'แต่ง Roll', 'ขัด Roll', 'รอใช้งาน', 'รอแต่ง', 'รอขัด', 'รอลับคม'].includes(r.status)).length;
   const expired = items.filter(r => r.status === 'หมดอายุ' || r.status === 'มีปัญหา' || r.status === 'อายุ').length;
   return { ready, repair, expired, total: items.length };
 }
@@ -6542,8 +6545,7 @@ const MODAL_FORMS = {
         <div class="form-group"><label class="form-label">Regrind ครั้งที่ / สูงสุด</label><input class="form-input" placeholder="เช่น 1/6"></div>
         <div class="form-group"><label class="form-label">สถานะ</label>
           <select class="form-select">
-            <option>พร้อมใช้</option><option>ใช้งานอยู่</option>
-            <option>Regrind</option><option>ใกล้หมดอายุ</option>
+            <option>พร้อมใช้</option><option>กำลังใช้งาน</option><option>รอลับคม</option>
             <option>มีปัญหา</option><option>หมดอายุ</option>
           </select>
         </div>
@@ -12723,7 +12725,8 @@ const pageState = { roll: 1, sq: 1, saw: 1, slitter: 1 };
 function statusChip(s) {
   const map = {'พร้อมใช้':'chip-green','ใช้งานอยู่':'chip-blue','ซ่อมบำรุง':'chip-amber','Regrind':'chip-amber','ใกล้หมดอายุ':'chip-amber','มีปัญหา':'chip-amber','หมดอายุ':'chip-red',
     'กำลังใช้งาน':'chip-yellow','พร้อมใช้งาน':'chip-green','แต่ง Roll':'chip-amber','ขัด Roll':'chip-purple','อายุ':'chip-red',
-    'รอใช้งาน':'chip-cyan','รอแต่ง':'chip-brown','รอขัด':'chip-pink','ไม่มีลูกรีด':'chip-gray','ยกเลิกใช้งาน':'chip-slate'};
+    'รอใช้งาน':'chip-cyan','รอแต่ง':'chip-brown','รอขัด':'chip-pink','ไม่มีลูกรีด':'chip-gray','ยกเลิกใช้งาน':'chip-slate',
+    'รอลับคม':'chip-red'};
   return `<span class="chip ${map[s]||'chip-blue'}">${s}</span>`;
 }
 
@@ -18205,6 +18208,11 @@ function sawFormInputs() {
     .filter(el => el.id !== 'f-saw-grind');
 }
 
+// สถานะใบเลื่อยชุดใหม่: พร้อมใช้ · กำลังใช้งาน · รอลับคม · มีปัญหา · หมดอายุ (ดูตัวเลือกใน MODAL_FORMS.saw)
+// ค่าชุดเก่าที่อาจค้างอยู่ในข้อมูล แปลงตอนเปิดแก้ไข
+// var ไม่ใช่ const — renderSawKpis อาจถูกเรียกตอนบูตก่อนบรรทัดนี้ (const จะชน TDZ)
+var SAW_LEGACY_STATUS = { 'ใช้งานอยู่': 'กำลังใช้งาน', 'Regrind': 'รอลับคม', 'ใกล้หมดอายุ': 'พร้อมใช้' };
+
 function editSaw(idx) {
   const r = toolingData.saw[idx];
   if (!r) return;
@@ -18218,6 +18226,8 @@ function editSaw(idx) {
     v = (v == null || v === '—') ? '' : String(v);
     // "ตัดสะสม" เก็บพร้อมหน่วย ("120 ตัน") แต่ช่องกรอกเป็นตัวเลขล้วน
     if (f === 'usage') v = v.replace(/[^0-9.]/g, '');
+    // สถานะชุดเก่าที่ไม่มีในตัวเลือกแล้ว — แปลงเป็นตัวที่ใกล้เคียง ไม่งั้นดรอปดาวน์ขึ้นว่างแล้วบันทึกทับเป็นค่าว่าง
+    if (f === 'status') v = (SAW_LEGACY_STATUS || {})[v] || v || 'พร้อมใช้';
     el.value = v;
   });
   const g = document.getElementById('f-saw-grind');
@@ -18295,6 +18305,22 @@ function renderSawTable(page) {
   const tp = Math.max(1, Math.ceil(data.length/PAGE_SIZE));
   renderFooter('saw', data.length, rows.length, page, tp);
   document.getElementById('cnt-saw').textContent = data.length;
+  renderSawKpis();
+}
+
+// การ์ดตัวเลขบนทะเบียนใบเลื่อย — นับตามสถานะที่ตั้งไว้ในทะเบียน (สถานะชุดเก่านับตามค่าที่แปลงแล้ว)
+function renderSawKpis() {
+  const data = (toolingData || {}).saw || [];
+  const legacy = SAW_LEGACY_STATUS || {};
+  const st = r => legacy[r.status] || r.status || 'พร้อมใช้';
+  const n = s => data.filter(r => st(r) === s).length;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v.toLocaleString(); };
+  set('kpi-saw-total', data.length);
+  set('kpi-saw-ready', n('พร้อมใช้'));
+  set('kpi-saw-inuse', n('กำลังใช้งาน'));
+  set('kpi-saw-wait', n('รอลับคม'));
+  set('kpi-saw-problem', n('มีปัญหา'));
+  set('kpi-saw-expired', n('หมดอายุ'));
 }
 
 // ─── แก้ไข/ลบ มีดสลิตเตอร์ ───────────────────────────────────────────────────
