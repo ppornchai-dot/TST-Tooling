@@ -2300,7 +2300,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.20';
+const APP_BUILD = '2026-11-12.21';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5913,7 +5913,7 @@ function sawWorkingCardHtml() {
       onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
       title="${escapeHtmlAttr('ไปที่งานประจำวัน วันที่ ' + fmtDateThai(parseISODate(e.date))
         + (paused && e.entry.pauseReason ? ' · พักงาน: ' + e.entry.pauseReason : ''))}">
-      <span style="font-size:13px;font-weight:800;color:#fff;background:${e.cat === 'late' ? 'var(--red)' : accent};padding:2px 10px;border-radius:6px;flex-shrink:0;">ใบ ${escapeHtmlAttr(e.r.id)}</span>
+      <span style="font-size:13px;font-weight:800;color:#fff;background:${e.cat === 'late' ? 'var(--red)' : accent};padding:2px 10px;border-radius:6px;flex-shrink:0;">รหัส ${escapeHtmlAttr(e.r.id)}</span>
       <span style="flex:1;min-width:0;font-size:12px;color:var(--text-2);">${escapeHtmlAttr(detail)}</span>
       ${u && u.p ? sawTonsPcsHtml(u.sinceGrind != null ? 'หลังลับคม' : 'สะสม', u.sinceGrind != null ? u.sinceGrind : u.total,
         u.sinceGrind != null ? u.sinceGrindPcs : u.p.pcs) : ''}
@@ -5958,7 +5958,7 @@ function prodSawWaitingCardHtml() {
       title="${escapeHtmlAttr('ถอดจากเครื่อง ' + u.last.machine + ' เมื่อ ' + prodSqFmtTime(u.removedAt)
         + ' · รอบสุดท้าย ' + fmtTons2(u.last.kg / 1000) + ' ตัน (' + u.last.pcs.toLocaleString() + ' เส้น)'
         + (u.lastGrind ? ' · ลับคมล่าสุด ' + fmtIsoDateThai(u.lastGrind) : ' · ยังไม่มีวันลับคมล่าสุดที่ใช้ได้ในทะเบียน'))}">
-      <span style="font-size:14px;font-weight:800;color:#fff;background:var(--red);padding:3px 11px;border-radius:6px;">ใบ ${escapeHtmlAttr(r.id)}</span>
+      <span style="font-size:14px;font-weight:800;color:#fff;background:var(--red);padding:3px 11px;border-radius:6px;">รหัส ${escapeHtmlAttr(r.id)}</span>
       <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr([sawOdLabel(r), r.machine].filter(x => x && x !== '—').join(' · '))}</span>
       <span style="font-size:12px;color:var(--text-2);">ถอดจาก ${escapeHtmlAttr(u.last.machine)} · ${escapeHtmlAttr(prodSqFmtTime(u.removedAt))}</span>
       ${plannedAt ? `<span class="chip chip-amber" title="มีงานลับคมใบนี้ในแผนงานแล้ว">แผนลับคม ${escapeHtmlAttr(fmtIsoDateThai(plannedAt))}</span>` : ''}
@@ -6034,7 +6034,7 @@ function prodSawInUseCardHtml() {
       title="${escapeHtmlAttr('ใส่เมื่อ ' + prodSqFmtTime(o.startedAt) + (o.productName ? ' · ' + o.productName : '')
         + ' · รอบนี้ ' + fmtTons2(o.kg / 1000) + ' ตัน (' + o.pcs.toLocaleString() + ' เส้น)')}">
       <span style="font-size:14px;font-weight:800;color:#fff;background:var(--inuse);padding:3px 11px;border-radius:6px;">${escapeHtmlAttr(o.machine)}</span>
-      <b style="font-size:13.5px;color:var(--text-1);">ใบ ${escapeHtmlAttr(o.code)}</b>
+      <b style="font-size:13.5px;color:var(--text-1);">รหัส ${escapeHtmlAttr(o.code)}</b>
       ${r ? `<span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr([sawOdLabel(r), r.machine].filter(x => x && x !== '—').join(' · '))}</span>`
         : '<span class="chip chip-amber">ไม่พบในทะเบียน</span>'}
       <span style="font-size:12px;color:var(--text-2);">ใส่ ${escapeHtmlAttr(prodSqFmtTime(o.startedAt))}</span>
@@ -6168,7 +6168,7 @@ async function renderProdWeightTooling(force) {
     } else {
       const reg = sawReg.find(x => sawCodeKey(x.id) === sawCodeKey(r.code));
       key = sawCodeKey(r.code);
-      title = 'ใบ ' + String(r.code).trim();
+      title = 'รหัส ' + String(r.code).trim();
       sub = reg ? [sawOdLabel(reg), reg.machine].filter(x => x && x !== '—').join(' · ') : 'ไม่พบใบนี้ในทะเบียนใบเลื่อย';
       sortKey = (reg ? '0|' : '1|') + String(r.code).trim().padStart(6, '0');
     }
