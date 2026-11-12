@@ -1613,6 +1613,39 @@ canvas{display:block;}
          เนื้อหาเดียวกับการ์ดบน Dashboard — ใช้ renderDashboardRollStatusCard ตัวเดียวกัน ส่ง id ของหน้านี้เข้าไป
     ══════════════════════════════════════════ -->
     <div class="page" id="page-inuse">
+      <!-- แท็บหมวด Tooling แบบเดียวกับหน้าทะเบียน (ดู switchInUseTab) -->
+      <div class="reg-tab-bar" id="iu-tab-bar" style="margin-top:6px;margin-bottom:14px;">
+        <button class="reg-tab active" onclick="switchInUseTab('roll')">
+          <span class="reg-tab-icon" style="background:rgba(74,142,194,.18);color:var(--accent);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="10" ry="4"/><path d="M2 12c0 4 4.5 8 10 8s10-4 10-8"/><path d="M2 12c0-4 4.5-8 10-8s10 4 10 8"/></svg>
+          </span>
+          Roll
+          <span class="reg-tab-count" id="iu-cnt-roll">—</span>
+        </button>
+        <button class="reg-tab" onclick="switchInUseTab('sq')">
+          <span class="reg-tab-icon" style="background:rgba(139,104,212,.18);color:var(--purple);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+          </span>
+          Roll SQ
+          <span class="reg-tab-count" id="iu-cnt-sq">—</span>
+        </button>
+        <button class="reg-tab" onclick="switchInUseTab('saw')">
+          <span class="reg-tab-icon" style="background:rgba(232,151,30,.18);color:var(--amber);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M16.9 16.9l1.4 1.4M5.6 18.4l1.4-1.4M16.9 7.1l1.4-1.4"/></svg>
+          </span>
+          ใบเลื่อย
+          <span class="reg-tab-count" id="iu-cnt-saw">—</span>
+        </button>
+        <button class="reg-tab" onclick="switchInUseTab('slitter')">
+          <span class="reg-tab-icon" style="background:rgba(217,91,91,.18);color:var(--red);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="4" y1="12" x2="20" y2="12"/><circle cx="8" cy="12" r="3"/><circle cx="16" cy="12" r="3"/></svg>
+          </span>
+          มีดสลิตเตอร์
+          <span class="reg-tab-count" id="iu-cnt-slitter">—</span>
+        </button>
+      </div>
+      <!-- แท็บ Roll (ของเดิมทั้งหมด) -->
+      <div id="iu-panel-roll">
       <div class="card">
         <div class="card-header">
           <span style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-width:0;">
@@ -1685,6 +1718,9 @@ canvas{display:block;}
           <div id="inuse-cal-body"></div>
         </div>
       </div>
+      </div><!-- /iu-panel-roll -->
+      <!-- แท็บ Roll SQ / ใบเลื่อย / มีดสลิตเตอร์ (ดู renderInUseToolingTab) -->
+      <div id="iu-panel-tooling" style="display:none;"></div>
     </div>
 
     <div class="page" id="page-rollLife">
@@ -2336,7 +2372,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.24';
+const APP_BUILD = '2026-11-12.25';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -3798,11 +3834,46 @@ function renderInUseCalendar() {
 
 // หน้า "ชุด Roll กำลังใช้งาน" — เนื้อหาเดียวกับการ์ดบน Dashboard
 function renderInUsePage() {
+  renderInUseTabCounts();
   const btn = document.getElementById('inuse-page-edit-btn');
   if (btn) btn.style.display = canEditPlan() ? '' : 'none';
   renderDashboardRollStatusCard('inuse-page-list', 'inuse-page-count', 'inuse',
     'ไม่มีชุด Roll ที่กำลังใช้งานอยู่ตอนนี้', 'var(--inuse)', 'var(--inuse-dim)');
   renderInUseCalendar();
+  if (inUseTab && inUseTab !== 'roll') renderInUseToolingTab();
+}
+
+// ─── หน้า Tooling กำลังใช้งาน: แท็บ Roll / Roll SQ / ใบเลื่อย / มีดสลิตเตอร์ ──────────
+// Roll = การ์ดและปฏิทินเดิม · Roll SQ / ใบเลื่อย = การ์ดกำลังใช้งานตัวเดียวกับ Dashboard
+// (ดึงจากระบบผลิต — ดึงเฉพาะตอนเปิดแท็บ/กด ↻ ตามเดิม) · มีดสลิตเตอร์ = ยังไม่มีข้อมูล
+// var ไม่ใช่ let — renderInUsePage ถูกเรียกตอนบูตก่อนบรรทัดนี้จะรัน (let จะชน TDZ)
+var inUseTab = 'roll';
+function switchInUseTab(key) {
+  inUseTab = key;
+  document.querySelectorAll('#iu-tab-bar .reg-tab').forEach(t =>
+    t.classList.toggle('active', (t.getAttribute('onclick') || '').includes("'" + key + "'")));
+  const pRoll = document.getElementById('iu-panel-roll');
+  const pTool = document.getElementById('iu-panel-tooling');
+  if (pRoll) pRoll.style.display = key === 'roll' ? '' : 'none';
+  if (pTool) pTool.style.display = key === 'roll' ? 'none' : '';
+  if (key === 'sq') loadProdSqInUse(false);
+  if (key === 'saw') loadProdSawUsage(false);
+  renderInUseToolingTab();
+}
+function renderInUseTabCounts() {
+  ['roll', 'sq', 'saw', 'slitter'].forEach(k => {
+    const el = document.getElementById('iu-cnt-' + k);
+    if (el && typeof dashToolingCount === 'function') el.textContent = dashToolingCount(k).toLocaleString();
+  });
+}
+function renderInUseToolingTab() {
+  const el = document.getElementById('iu-panel-tooling');
+  if (!el || inUseTab === 'roll') return;
+  if (inUseTab === 'sq') el.innerHTML = dashSqInUseCardHtml(sqSets());
+  else if (inUseTab === 'saw') el.innerHTML = prodSawInUseCardHtml()
+    || '<div class="card"><div style="text-align:center;color:var(--text-3);font-size:13px;padding:24px 0;">ยังไม่ได้เชื่อมระบบผลิต</div></div>';
+  else el.innerHTML = `<div class="card"><div style="text-align:center;color:var(--text-3);font-size:13px;padding:24px 0;">
+    ระบบผลิตยังไม่มีข้อมูลการใช้มีดสลิตเตอร์ และทะเบียนยังไม่มีรายการ</div></div>`;
 }
 
 function renderDashboardInUseRoll() {
@@ -5614,7 +5685,7 @@ function loadProdSqInUse(force) {
   if (!force && prodSqLive.at && Date.now() - prodSqLive.at < PROD_SQ_MIN_AGE_MS) return;
   prodSqLoading = true;
   prodSqLive.status = 'loading';
-  if (dashTab === 'sq') renderDashboardSqPanel();
+  renderDashboardToolingPanels();
   (async () => {
     try {
       const today = toISODate(new Date());
@@ -5663,7 +5734,7 @@ function loadProdSqInUse(force) {
       prodSqLive = { ...prodSqLive, status: 'error', at: Date.now(), error: String((e && e.message) || e) };
     } finally {
       prodSqLoading = false;
-      if (dashTab === 'sq') renderDashboardSqPanel();
+      renderDashboardToolingPanels();   // แท็บ Roll SQ บน Dashboard + หน้า Tooling กำลังใช้งาน
     }
   })();
 }
@@ -5776,6 +5847,7 @@ function loadProdSawUsage(force) {
 function rerenderProdSawViews() {
   if (document.getElementById('tbody-saw')) renderSawTable(pageState.saw || 1);
   if (dashTab === 'saw') renderDashboardSimpleToolingPanel('saw', 'ใบเลื่อย');
+  if (typeof inUseTab !== 'undefined' && inUseTab === 'saw' && currentPage === 'inuse') renderInUseToolingTab();
   // ฟอร์มวางแผนลับคมที่เปิดอยู่ — รายการให้เลือกขึ้นกับสถานะรอลับคม
   if (typeof refreshSawPlanOptions === 'function') refreshSawPlanOptions();
   // ตารางสถานะ Tooling บน Dashboard (แท็บ Roll) นับใบเลื่อยตามสถานะที่แสดงด้วย
@@ -6747,6 +6819,9 @@ function renderDashboardToolingPanels() {
   if (dashTab === 'sq') renderDashboardSqPanel();
   else if (dashTab === 'saw') renderDashboardSimpleToolingPanel('saw', 'ใบเลื่อย');
   else if (dashTab === 'slitter') renderDashboardSimpleToolingPanel('slitter', 'มีดสลิตเตอร์');
+  // หน้า Tooling กำลังใช้งาน ใช้การ์ดตัวเดียวกัน — อัปเดตไปพร้อมกัน (ทั้งตอนได้ข้อมูลระบบผลิตและตอนแก้ทะเบียน)
+  if (typeof inUseTab !== 'undefined' && inUseTab && inUseTab !== 'roll' && typeof currentPage !== 'undefined'
+      && currentPage === 'inuse') renderInUseToolingTab();
 }
 
 function switchTeamTab(role) {
