@@ -2406,7 +2406,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.35';
+const APP_BUILD = '2026-11-12.36';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5660,14 +5660,19 @@ function dashSqStatusCardHtml(sets, { title, color, groups, emptyText, maxHeight
   </div>`;
 }
 
+// แยก "กำลังแต่ง" กับ "รอแต่ง" เป็นคนละการ์ด — เดิมรวมอยู่การ์ดเดียว ชุดที่รอคิวแต่งจึงจมอยู่ใต้ชุดที่กำลังแต่ง
 function dashSqWorkingCardHtml(sets) {
   return dashSqStatusCardHtml(sets, {
     title: 'ชุด Roll SQ กำลังแต่ง', color: 'var(--amber)',
-    emptyText: 'ยังไม่มีชุด Roll SQ ที่กำลังแต่งหรือรอแต่ง',
-    groups: [
-      { key: 'dressing',  label: 'กำลังแต่ง', color: 'var(--amber)', bg: 'var(--amber-dim)' },
-      { key: 'waitdress', label: 'รอแต่ง',    color: 'var(--red)',   bg: 'var(--red-dim)' },
-    ],
+    emptyText: 'ยังไม่มีชุด Roll SQ ที่กำลังแต่ง',
+    groups: [{ key: 'dressing', label: 'กำลังแต่ง', color: 'var(--amber)', bg: 'var(--amber-dim)' }],
+  });
+}
+function dashSqWaitDressCardHtml(sets) {
+  return dashSqStatusCardHtml(sets, {
+    title: 'ชุด Roll SQ รอแต่ง', color: 'var(--red)',
+    emptyText: 'ยังไม่มีชุด Roll SQ ที่รอแต่ง',
+    groups: [{ key: 'waitdress', label: 'รอแต่ง', color: 'var(--red)', bg: 'var(--red-dim)' }],
   });
 }
 
@@ -6746,6 +6751,7 @@ function renderDashboardSqPanel() {
     </div>
 
     ${dashSqWorkingCardHtml(sets)}
+    ${dashSqWaitDressCardHtml(sets)}
     ${dashSqInUseCardHtml(sets)}
     ${dashSqReadyCardHtml(sets)}
 
