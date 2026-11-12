@@ -2406,7 +2406,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.29';
+const APP_BUILD = '2026-11-12.30';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -13453,6 +13453,65 @@ let rollSetMachines = {};
 const ROLL_MACHINES = ['P1', 'P2', 'P3', 'P4'];
 const MAX_ROLL_MACHINES = 2;
 
+// ─── ปุ่มเลือกเครื่องที่หัวข้อขนาด (หน้าน้ำหนักผลิต / อายุ Tooling) ──────────────────
+// หัวข้อขนาดหนึ่ง (เช่น GS 1"x1" (23x23)) ครอบ Size Roll หลายชุด (Forming / Sizing / TH)
+// กดปุ่มเครื่องที่หัวข้อ = ตั้งเครื่องให้ทุก Size Roll ของขนาดนั้นพร้อมกัน — ข้อมูลเดียวกับช่อง
+// "เครื่อง" ในฟอร์ม Size Roll ของทะเบียน (rollSetMachines) เลือกได้ไม่เกิน MAX_ROLL_MACHINES เครื่อง
+// แสดงเป็น "เลือกแล้ว" เมื่อทุกชุดของขนาดนั้นผูกเครื่องนั้นไว้ (บางชุดผูก บางชุดไม่ = ขอบประ)
+function sizeGroupMachineButtonsHtml(sets) {
+  const names = (sets || []).filter(Boolean);
+  if (!names.length) return '';
+  const editable = typeof canEditPlan === 'function' && canEditPlan();
+  const has = m => names.filter(n => (rollSetMachines[n] || []).includes(m)).length;
+  const btns = ROLL_MACHINES.map(m => {
+    const n = has(m);
+    const all = n === names.length, some = n > 0 && !all;
+    const style = `font-size:11.5px;font-weight:800;padding:2px 10px;border-radius:99px;line-height:1.5;
+      border:1px ${some ? 'dashed' : 'solid'} ${all || some ? 'var(--accent)' : 'var(--border)'};
+      background:${all ? 'var(--accent)' : 'var(--bg-surface)'};color:${all ? '#fff' : some ? 'var(--accent)' : 'var(--text-3)'};`;
+    const tip = all ? 'ขนาดนี้เดินที่เครื่อง ' + m + (editable ? ' — กดเพื่อเอาออก' : '')
+      : some ? 'บาง Size Roll ของขนาดนี้ผูกเครื่อง ' + m + ' ไว้' + (editable ? ' — กดเพื่อผูกให้ครบทุกชุด' : '')
+      : (editable ? 'กดเพื่อตั้งว่าขนาดนี้เดินที่เครื่อง ' + m + ' (เลือกได้ไม่เกิน ' + MAX_ROLL_MACHINES + ' เครื่อง)' : 'ยังไม่ได้ผูกเครื่อง ' + m);
+    return editable
+      ? `<button type="button" style="${style}cursor:pointer;" title="${escapeHtmlAttr(tip)}"
+          onclick="${jsCallAttr('toggleSizeGroupMachine', JSON.stringify(names), m)}">${m}</button>`
+      : (all || some ? `<span style="${style}" title="${escapeHtmlAttr(tip)}">${m}</span>` : '');
+  }).join('');
+  return btns ? `<span style="display:inline-flex;align-items:center;gap:4px;margin-left:10px;vertical-align:middle;">
+    <span style="font-size:11px;font-weight:700;color:var(--text-3);">เครื่อง</span>${btns}</span>` : '';
+}
+function toggleSizeGroupMachine(namesJson, machine) {
+  if (typeof canEditPlan === 'function' && !canEditPlan()) return;
+  let names = [];
+  try { names = JSON.parse(namesJson) || []; } catch (e) { return; }
+  if (!names.length || !ROLL_MACHINES.includes(machine)) return;
+  const allHave = names.every(n => (rollSetMachines[n] || []).includes(machine));
+  if (!allHave) {
+    // เพิ่มเครื่อง — ชุดไหนจะเกินจำนวนสูงสุดถ้าเพิ่ม บอกก่อน ไม่ตัดเครื่องเดิมทิ้งให้เอง
+    const over = names.filter(n => {
+      const cur = rollSetMachines[n] || [];
+      return !cur.includes(machine) && cur.length >= MAX_ROLL_MACHINES;
+    });
+    if (over.length) {
+      alert('เลือกได้ไม่เกิน ' + MAX_ROLL_MACHINES + ' เครื่องต่อ Size Roll\n\n'
+        + over.map(n => '• ' + n + ' — ผูกไว้แล้ว ' + (rollSetMachines[n] || []).join(', ')).join('\n')
+        + '\n\nกดเอาเครื่องเดิมออกก่อน แล้วค่อยเลือกเครื่อง ' + machine);
+      return;
+    }
+  }
+  withCloudRetry(() => {
+    names.forEach(n => {
+      const cur = (rollSetMachines[n] || []).filter(x => x !== machine);
+      if (!allHave) cur.push(machine);
+      const sorted = ROLL_MACHINES.filter(x => cur.includes(x));
+      if (sorted.length) rollSetMachines[n] = sorted; else delete rollSetMachines[n];
+    });
+    persistState();
+    if (currentPage === 'prodWeight') renderProdWeight();
+    if (currentPage === 'rollLife') renderRollLife();
+  });
+}
+
 // สถานะความพร้อมใช้งานของแต่ละ Size Roll — ไม่มี key = ค่าเริ่มต้น 'ready'
 let rollSetStatus = {};
 const ROLL_SET_STATUS_META = {
@@ -16035,7 +16094,7 @@ async function renderProdWeight(force) {
     });
     return `<tr><td colspan="${days.length + 4}" style="background:var(--bg-panel);padding:11px 12px;border-top:2px solid var(--text-1);">
       <span class="pw-group-label" style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);background:var(--bg-panel);padding-right:8px;">
-        <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(g.label)}
+        <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(g.label)}${sizeGroupMachineButtonsHtml(g.sets)}
       </span>
       <span style="float:right;font-size:12px;font-weight:700;color:var(--text-3);">${colorSets} ชุด · ${pieces} ลูก · ผลิตรวม ${ton(groupKg).toLocaleString(undefined, { maximumFractionDigits: 2 })} ตัน${
         groupCarryMax ? ` <span style="color:var(--accent);" title="ยอดยกมาที่กรอกเองเป็นของ Roll แต่ละชุดแยกกัน (Forming/Sizing/TH เป็นชุดคนละชุด) จึงบอกค่าที่มากสุดต่อชุด ไม่ใช่ผลบวก">·
@@ -16795,7 +16854,7 @@ function renderRollLife() {
     const pieces = sets.reduce((s, x) => s + x.rows.reduce((n, g) => n + g.count, 0), 0);
     return `<tr><td colspan="10" style="background:var(--bg-panel);padding:11px 12px;border-top:2px solid var(--text-1);">
       <span class="pw-group-label" style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);background:var(--bg-panel);padding-right:8px;">
-        <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(label)}
+        <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(label)}${sizeGroupMachineButtonsHtml(sets.map(x => x.setName))}
       </span>
       <span style="float:right;font-size:12px;font-weight:700;color:var(--text-3);">${setCount.toLocaleString()} ชุด · ${pieces.toLocaleString()} ลูก</span>
     </td></tr>`;
