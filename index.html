@@ -2253,7 +2253,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.2';
+const APP_BUILD = '2026-11-12.3';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5204,6 +5204,8 @@ function switchRegTab(key) {
   });
   const panel = document.getElementById('regpanel-' + key);
   if (panel) panel.classList.add('active');
+  // เปิดทะเบียนใบเลื่อย = ดึงยอดตัดจากระบบผลิต (ข้ามถ้าเพิ่งดึงไป)
+  if (key === 'saw') loadProdSawUsage(false);
 }
 
 // ─── DASHBOARD: แท็บหมวด Tooling (Roll / Roll SQ / ใบเลื่อย / มีดสลิตเตอร์) ────
@@ -5221,8 +5223,9 @@ function switchDashTab(key) {
     const p = document.getElementById('dashpanel-' + k);
     if (p) p.classList.toggle('active', k === key);
   });
-  // เปิดแท็บ Roll SQ = ดึงชุดที่ใช้งานจากระบบผลิต (ข้ามถ้าเพิ่งดึงไป ดู PROD_SQ_MIN_AGE_MS)
+  // เปิดแท็บ Roll SQ / ใบเลื่อย = ดึงจากระบบผลิต (ข้ามถ้าเพิ่งดึงไป ดู PROD_SQ_MIN_AGE_MS)
   if (key === 'sq') loadProdSqInUse(false);
+  if (key === 'saw') loadProdSawUsage(false);
   renderDashboardToolingPanels();
 }
 
@@ -5566,6 +5569,162 @@ function prodSqStatusHtml() {
     title="${escapeHtmlAttr(s === 'error' ? prodSqLive.error || '' : 'ชุดที่ระบบผลิตบันทึกว่ายังใส่อยู่บนเครื่อง')}">${escapeHtmlAttr(txt)}${btn}</span>`;
 }
 
+// ─── ใบเลื่อย — ยอดตัดจากระบบผลิต ────────────────────────────────────────────
+// ระบบผลิตบันทึกทุกครั้งที่ใส่ใบเลื่อยเข้าเครื่อง (code = รหัสใบในทะเบียนเรา) พร้อมยอดผลิตของรอบนั้น
+// เริ่มบันทึก 9 พ.ย. 69 ก่อนหน้านั้นไม่มีข้อมูล — ฝ่ายผลิตแนะนำให้คิดแบบนี้:
+//   ตัดสะสม = ยอดตั้งต้นในทะเบียน (ช่อง "ตัดสะสม" ที่กรอกเอง) + ยอดจากระบบผลิตตั้งแต่ 9 พ.ย. 69
+// ระบบผลิตไม่มีข้อมูลการส่งลับคม/รับกลับ — "ลับคมล่าสุด" ยังกรอกเองในทะเบียนเหมือนเดิม
+// แต่เอามาใช้นับ "ตัดหลังลับคมล่าสุด" ได้ (รอบที่เริ่มตั้งแต่วันนั้น)
+// หน่วยเป็นตัน (kg / 1000) ไม่ใช่ pcs ซึ่งเป็นจำนวนเส้น · แสดงผลอย่างเดียว ไม่เขียนลงข้อมูลกลาง
+var PROD_SAW_FROM = '2026-11-09';
+var prodSawLive = { status: 'idle', at: 0, byCode: {}, open: [], orphan: [], error: null };
+var prodSawLoading = false;
+
+// รหัสใบเลื่อย — ทะเบียนเขียน "080" ระบบผลิตอาจส่ง "80" มา ตัด 0 นำหน้าก่อนเทียบ
+function sawCodeKey(v) {
+  return String(v == null ? '' : v).trim().replace(/^0+(?=\d)/, '');
+}
+function prodSawFor(r) {
+  return (prodSawLive && prodSawLive.byCode[sawCodeKey((r || {}).id)]) || null;
+}
+// ยอดตั้งต้นที่กรอกไว้ในทะเบียน ("— ตัน" = 0)
+function sawBaselineTons(r) {
+  const n = parseFloat(String((r || {}).usage || '').replace(/[^0-9.]/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+
+function loadProdSawUsage(force) {
+  if (!PROD_SQ_PROXY_URL) { prodSawLive.status = 'noproxy'; return; }
+  if (prodSawLoading) return;
+  if (!force && prodSawLive.at && Date.now() - prodSawLive.at < PROD_SQ_MIN_AGE_MS) return;
+  prodSawLoading = true;
+  prodSawLive.status = 'loading';
+  rerenderProdSawViews();
+  (async () => {
+    try {
+      const today = toISODate(new Date());
+      const res = await fetch(PROD_SQ_PROXY_URL + '?kind=saw&from=' + PROD_SAW_FROM + '&to=' + today);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const json = await res.json();
+      const byCode = {};
+      const open = [];
+      (json.rows || []).forEach(r => {
+        if (!r || r.code == null || String(r.code).trim() === '') return;
+        const k = sawCodeKey(r.code);
+        const g = byCode[k] || (byCode[k] = { kg: 0, pcs: 0, rounds: [] });
+        g.kg += Number(r.kg) || 0;
+        g.pcs += Number(r.pcs) || 0;
+        const round = {
+          code: String(r.code).trim(), machine: String(r.machine_id || ''), startedAt: r.started_at,
+          endedAt: r.ended_at || null, isOpen: !!r.is_open, kg: Number(r.kg) || 0, pcs: Number(r.pcs) || 0,
+          productName: String(r.product_name || ''),
+        };
+        g.rounds.push(round);
+        if (round.isOpen) open.push(round);
+      });
+      Object.values(byCode).forEach(g => g.rounds.sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt))));
+      const known = new Set(((toolingData || {}).saw || []).map(x => sawCodeKey(x.id)));
+      const orphan = Object.keys(byCode).filter(k => !known.has(k));
+      prodSawLive = { status: 'ok', at: Date.now(), byCode, open, orphan, error: null };
+    } catch (e) {
+      prodSawLive = { ...prodSawLive, status: 'error', at: Date.now(), error: String((e && e.message) || e) };
+    } finally {
+      prodSawLoading = false;
+      rerenderProdSawViews();
+    }
+  })();
+}
+function rerenderProdSawViews() {
+  if (document.getElementById('tbody-saw')) renderSawTable(pageState.saw || 1);
+  if (dashTab === 'saw') renderDashboardSimpleToolingPanel('saw', 'ใบเลื่อย');
+}
+
+// ยอดตัดของใบหนึ่ง: ตั้งต้น + ระบบผลิต · และส่วนที่ตัดหลังลับคมล่าสุด
+function sawUsageInfo(r) {
+  const base = sawBaselineTons(r);
+  const p = prodSawFor(r);
+  const prodT = p ? p.kg / 1000 : 0;
+  const ls = String((r || {}).lastService || '').slice(0, 10);
+  // วันที่ลับคมที่ผิดปกติ (อนาคต หรือเก่ากว่าปี 2000 — มีอยู่จากไฟล์ที่นำเข้า) ไม่เอามานับ จะได้ไม่ขึ้นเลขหลอก
+  const lsOk = /^\d{4}-\d{2}-\d{2}$/.test(ls) && ls >= '2000-01-01' && ls <= toISODate(new Date());
+  const sinceGrind = (p && lsOk)
+    ? p.rounds.filter(x => toISODate(new Date(x.startedAt)) >= ls).reduce((n, x) => n + x.kg, 0) / 1000 : null;
+  return { base, prodT, total: base + prodT, p, sinceGrind, open: p ? p.rounds.find(x => x.isOpen) || null : null };
+}
+function fmtTons2(t) {
+  return (Number(t) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// ช่อง "ตัดสะสม" ในทะเบียนใบเลื่อย
+function sawUsageCellHtml(r) {
+  const u = sawUsageInfo(r);
+  if (!u.p) {
+    // ยังไม่มีรอบในระบบผลิต — แสดงค่าที่กรอกไว้ตามเดิม
+    return `<td class="muted" title="${escapeHtmlAttr(prodSawLive && prodSawLive.status === 'ok'
+      ? 'ยังไม่มีบันทึกการใช้ใบนี้ในระบบผลิต (เริ่มบันทึก 9 พ.ย. 69) — แสดงยอดตั้งต้นที่กรอกไว้'
+      : 'ยอดตั้งต้นที่กรอกไว้ในทะเบียน')}">${escapeHtmlAttr(r.usage || '—')}</td>`;
+  }
+  const tip = 'ตัดสะสม ' + fmtTons2(u.total) + ' ตัน'
+    + '\n= ยอดตั้งต้นในทะเบียน ' + fmtTons2(u.base) + ' ตัน'
+    + '\n+ ระบบผลิตตั้งแต่ 9 พ.ย. 69 ' + fmtTons2(u.prodT) + ' ตัน (' + u.p.rounds.length + ' รอบ · ' + u.p.pcs.toLocaleString() + ' เส้น)'
+    + (u.sinceGrind != null ? '\nตัดหลังลับคมล่าสุด ' + fmtTons2(u.sinceGrind) + ' ตัน' : '')
+    + (u.open ? '\nตอนนี้อยู่บนเครื่อง ' + u.open.machine + ' ตั้งแต่ ' + prodSqFmtTime(u.open.startedAt) : '');
+  return `<td title="${escapeHtmlAttr(tip)}" style="white-space:nowrap;">
+    <b style="color:var(--text-1);">${escapeHtmlAttr(fmtTons2(u.total))} ตัน</b>
+    ${u.open ? `<span class="chip chip-yellow" style="margin-left:4px;font-size:10.5px;">บน ${escapeHtmlAttr(u.open.machine)}</span>` : ''}
+    ${u.sinceGrind != null ? `<div style="font-size:10.5px;color:var(--text-3);">หลังลับคม ${escapeHtmlAttr(fmtTons2(u.sinceGrind))} ตัน</div>` : ''}
+  </td>`;
+}
+
+// การ์ด "ใบเลื่อยที่กำลังใช้งาน" บน Dashboard — รอบที่ยังเปิดอยู่ในระบบผลิต
+function prodSawInUseCardHtml() {
+  const s = prodSawLive.status;
+  if (s === 'noproxy') return '';
+  const reg = (toolingData || {}).saw || [];
+  const byKey = new Map(reg.map(x => [sawCodeKey(x.id), x]));
+  const open = prodSawLive.open.slice().sort((a, b) => a.machine.localeCompare(b.machine) || a.code.localeCompare(b.code));
+  const head = `<span style="display:inline-flex;align-items:center;gap:6px;margin-left:auto;font-size:12px;
+      color:${s === 'error' ? 'var(--red)' : 'var(--text-3)'};" title="${escapeHtmlAttr(s === 'error' ? prodSawLive.error || '' : '')}">${
+    escapeHtmlAttr(s === 'loading' || s === 'idle' ? 'กำลังดึงจากระบบผลิต…'
+      : s === 'error' ? 'ดึงจากระบบผลิตไม่สำเร็จ'
+      : 'ระบบผลิต · อัปเดต ' + new Date(prodSawLive.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }))}
+    <button class="btn btn-ghost btn-sm" style="font-size:12px;font-weight:700;padding:3px 9px;"
+      onclick="loadProdSawUsage(true)" ${s === 'loading' ? 'disabled' : ''} title="ดึงยอดใบเลื่อยจากระบบผลิตใหม่">↻</button></span>`;
+  const rows = open.map(o => {
+    const r = byKey.get(sawCodeKey(o.code));
+    const u = r ? sawUsageInfo(r) : null;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;margin-bottom:6px;
+        background:var(--inuse-dim);border:1px solid var(--border-light);${r ? 'cursor:pointer;' : ''}"
+      ${r ? `onclick="showPage('registry');switchRegTab('saw');"` : ''}
+      title="${escapeHtmlAttr('ใส่เมื่อ ' + prodSqFmtTime(o.startedAt) + (o.productName ? ' · ' + o.productName : '')
+        + ' · รอบนี้ ' + fmtTons2(o.kg / 1000) + ' ตัน (' + o.pcs.toLocaleString() + ' เส้น)')}">
+      <span style="font-size:14px;font-weight:800;color:#fff;background:var(--inuse);padding:3px 11px;border-radius:6px;">${escapeHtmlAttr(o.machine)}</span>
+      <b style="font-size:13.5px;color:var(--text-1);">ใบ ${escapeHtmlAttr(o.code)}</b>
+      ${r ? `<span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr([r.diameter, r.teeth].filter(Boolean).join(' · '))}</span>`
+        : '<span class="chip chip-amber">ไม่พบในทะเบียน</span>'}
+      <span style="font-size:12px;color:var(--text-2);">ใส่ ${escapeHtmlAttr(prodSqFmtTime(o.startedAt))}</span>
+      <span style="margin-left:auto;font-size:12px;color:var(--text-2);">รอบนี้ <b>${escapeHtmlAttr(fmtTons2(o.kg / 1000))}</b> ตัน</span>
+      ${u ? `<span style="font-size:12px;color:var(--text-2);">สะสม <b>${escapeHtmlAttr(fmtTons2(u.total))}</b> ตัน</span>` : ''}
+    </div>`;
+  }).join('');
+  const orphan = prodSawLive.orphan || [];
+  return `<div class="card" style="margin-bottom:18px;">
+    <div class="card-header">
+      <span class="card-title" style="font-size:17px;color:var(--inuse);display:inline-flex;align-items:center;gap:8px;">
+        <span style="width:11px;height:11px;border-radius:50%;background:var(--inuse);"></span>ใบเลื่อยกำลังใช้งาน</span>
+      <span style="margin-left:10px;font-size:12px;color:var(--text-3);"><b style="color:var(--inuse);">${open.length}</b> ใบ</span>
+      ${head}
+    </div>
+    <div style="padding:10px 14px;">
+      ${rows || `<div style="padding:14px;text-align:center;color:var(--text-3);font-size:13px;">${
+        s === 'ok' ? 'ระบบผลิตไม่มีใบเลื่อยที่ใส่อยู่บนเครื่องตอนนี้' : 'ยังไม่มีข้อมูล'}</div>`}
+      ${orphan.length ? `<div style="font-size:11.5px;color:var(--text-3);margin-top:4px;">
+        รหัสที่ระบบผลิตมีแต่ไม่พบในทะเบียน: ${escapeHtmlAttr(orphan.join(', '))} — ยอดของใบเหล่านี้ยังไม่ถูกนับในทะเบียน</div>` : ''}
+      <div style="font-size:11px;color:var(--text-3);margin-top:6px;">ตัดสะสม = ยอดตั้งต้นในทะเบียน + ยอดจากระบบผลิตตั้งแต่ 9 พ.ย. 69 (ระบบผลิตเริ่มบันทึกวันนั้น)</div>
+    </div>
+  </div>`;
+}
+
 // รอบที่ยังเปิดอยู่แต่จับคู่กับทะเบียนไม่ได้ — บอกไว้ ไม่เดาให้
 function prodSqUnmatchedHtml() {
   const miss = prodSqLive.rounds.filter(r => !r.setKey);
@@ -5824,6 +5983,10 @@ function renderDashboardSimpleToolingPanel(key, name) {
   if (!el) return;
   const items = (toolingData || {})[key] || [];
   if (!items.length) { el.innerHTML = dashEmptyToolingHtml(key, name); return; }
+  if (key === 'saw' && prodSawLive && prodSawLive.status === 'idle') {
+    loadProdSawUsage(false);
+    if (prodSawLive.status === 'loading') return;   // loadProdSawUsage วาดแผงนี้ไปแล้ว
+  }
   const { ready, repair, expired, total } = toolingStatusCounts(items);
   const byStatus = new Map();
   items.forEach(it => {
@@ -5838,6 +6001,7 @@ function renderDashboardSimpleToolingPanel(key, name) {
       ${dashMiniKpi('ซ่อมบำรุง / รอใช้งาน', repair.toLocaleString(), 'var(--amber)', '')}
       ${dashMiniKpi('หมดอายุ / มีปัญหา', expired.toLocaleString(), 'var(--red)', '')}
     </div>
+    ${key === 'saw' ? prodSawInUseCardHtml() : ''}
     <div class="card">
       <div class="card-header">
         <span class="card-title" style="font-size:16px;">รายการ${escapeHtmlAttr(name)}ตามสถานะ</span>
@@ -6201,7 +6365,7 @@ const MODAL_FORMS = {
         <div class="form-group"><label class="form-label">เครื่องผลิต</label><input class="form-input" placeholder="เช่น C5"></div>
       </div>
       <div class="modal-row three">
-        <div class="form-group"><label class="form-label">ตัดสะสม (ตัน)</label><input class="form-input" type="number" placeholder="0"></div>
+        <div class="form-group"><label class="form-label" title="ยอดก่อน 9 พ.ย. 69 — ยอดหลังจากนั้นระบบดึงจากระบบผลิตมาบวกให้เอง อย่ากรอกซ้ำ">ตัดสะสม ยอดตั้งต้น (ตัน)</label><input class="form-input" type="number" placeholder="0" title="ยอดก่อน 9 พ.ย. 69 — ยอดหลังจากนั้นระบบดึงจากระบบผลิตมาบวกให้เอง อย่ากรอกซ้ำ"></div>
         <div class="form-group"><label class="form-label">Regrind ครั้งที่ / สูงสุด</label><input class="form-input" placeholder="เช่น 1/6"></div>
         <div class="form-group"><label class="form-label">สถานะ</label>
           <select class="form-select">
@@ -17855,6 +18019,10 @@ function regRowActionsHtml(editCall, deleteCall, editTitle, deleteTitle) {
 }
 
 function renderSawTable(page) {
+  // เปิดทะเบียนใบเลื่อยครั้งแรก = ดึงยอดจากระบบผลิต (loadProdSawUsage วาดตารางนี้ใหม่ให้เองตอนได้ผล)
+  // เฉพาะตอนตารางนี้อยู่บนจอจริง — ตารางถูกวาดตอนบูต/ซิงก์ด้วย ไม่งั้นจะดึงทุกครั้งที่เปิดแอป
+  const sawTb = document.getElementById('tbody-saw');
+  if (prodSawLive && prodSawLive.status === 'idle' && sawTb && sawTb.offsetParent !== null) loadProdSawUsage(false);
   const data = toolingData.saw;
   const rows = data.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
   document.getElementById('tbody-saw').innerHTML = rows.map(r=>`
@@ -17865,7 +18033,7 @@ function renderSawTable(page) {
       <td>${r.toothHeight || '—'}</td>
       <td>${r.kerf}</td>
       <td>${r.machine}</td>
-      <td class="muted">${r.usage}</td>
+      ${sawUsageCellHtml(r)}
       <td class="muted">${r.regrind}</td>
       <td class="muted">${r.lastService ? escapeHtmlAttr(fmtIsoDateThai(r.lastService)) : '—'}</td>
       <td>${sawGrindTimeCellHtml(r)}</td>
