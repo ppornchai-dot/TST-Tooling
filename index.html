@@ -2082,6 +2082,9 @@ canvas{display:block;}
         <button class="reg-tab history-type-btn" data-histtype="saw" aria-pressed="false" onclick="switchHistoryType('saw')">
           <span class="reg-tab-icon" style="background:var(--green-dim);color:var(--green);">✧</span>
           ลับคมใบเลื่อย <span class="reg-tab-count history-type-count" data-count-for="saw"></span></button>
+        <button class="reg-tab history-type-btn" data-histtype="slitter" aria-pressed="false" onclick="switchHistoryType('slitter')">
+          <span class="reg-tab-icon" style="background:var(--red-dim);color:var(--red);">⚯</span>
+          ลับคมมีดสลิตเตอร์ <span class="reg-tab-count history-type-count" data-count-for="slitter"></span></button>
       </div>
 
       <!-- ช่วงวันที่อยู่ซ้ายสุด ช่องค้นหายืดเต็มพื้นที่ที่เหลือ -->
@@ -2403,7 +2406,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.26';
+const APP_BUILD = '2026-11-12.27';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -7733,6 +7736,7 @@ const PLAN_WORKTYPE_META = {
   // ลับคมใบเลื่อย — ช่าง/เครื่องคนละชุดกับงานอื่น จึงมีคิวเวลาของตัวเองเช่นกัน
   // ไม่จัดกลุ่มใบเลื่อย หนึ่งใบงานเลือกใบไหนก็ได้ (ดู SAW_PLAN_SET)
   saw:    { label: 'แผนงานลับคมใบเลื่อย', field: 'grindTime', metricLabel: 'เวลาลับคม (นาที)', shifts: ['morning', 'night', 'both'], otMaxMin: 3 * 60, otNote: 'สูงสุด 3 ชม. — กะเช้า OT 17:00–20:00 / กะดึก 05:00–08:00 (หักพัก 20 นาที เหลือทำงาน 2 ชม. 40 นาที)' },
+  slitter: { label: 'แผนงานลับคมมีดสลิตเตอร์', field: 'grindTime', metricLabel: 'เวลาลับคม (นาที)', shifts: ['morning', 'night', 'both'], otMaxMin: 3 * 60, otNote: 'สูงสุด 3 ชม. — กะเช้า OT 17:00–20:00 / กะดึก 05:00–08:00 (หักพัก 20 นาที เหลือทำงาน 2 ชม. 40 นาที)' },
   sq:     { label: 'แผนงานแต่ง Roll SQ', field: 'grindTime', metricLabel: 'เวลาแต่ง Roll SQ (นาที)', shifts: ['morning', 'night', 'both'], otMaxMin: 3 * 60, fillSameSetOnly: true, otNote: 'สูงสุด 3 ชม. — กะเช้า OT 17:00–20:00 / กะดึก 05:00–08:00 (หักพัก 20 นาที เหลือทำงาน 2 ชม. 40 นาที)' },
 };
 // ชื่อประเภทงานแบบสั้น ใช้ในหัวข้อกล่องต่างๆ — เดิมเขียนเป็นเงื่อนไขสองทาง (ขัด/CNC) กระจายหลายที่
@@ -7741,6 +7745,7 @@ function planWorkTypeShortLabel(workType) {
   if (workType === 'polish') return 'ขัด Roll';
   if (workType === 'sq') return 'แต่ง Roll SQ';
   if (workType === 'saw') return 'ลับคมใบเลื่อย';
+  if (workType === 'slitter') return 'ลับคมมีดสลิตเตอร์';
   return 'แต่ง Roll (CNC)';
 }
 function planWorkTypeShifts(workType) {
@@ -8752,6 +8757,7 @@ const PLAN_DAY_SECTIONS = [
   { key: 'polish', icon: '✦', label: 'ขัด Roll',        color: 'var(--purple)', bg: 'var(--purple-dim)',  empty: 'ไม่มีงานขัด Roll ในวันนี้' },
   { key: 'sq',     icon: '◆', label: 'แต่ง Roll SQ',    color: 'var(--amber)',  bg: 'var(--amber-dim)',   empty: 'ไม่มีงานแต่ง Roll SQ ในวันนี้' },
   { key: 'saw',    icon: '✧', label: 'ลับคมใบเลื่อย',    color: 'var(--green)',  bg: 'var(--green-dim)',   empty: 'ไม่มีงานลับคมใบเลื่อยในวันนี้' },
+  { key: 'slitter', icon: '⚯', label: 'ลับคมมีดสลิตเตอร์', color: 'var(--red)', bg: 'var(--red-dim)',   empty: 'ไม่มีงานลับคมมีดสลิตเตอร์ในวันนี้' },
 ];
 // ─── แท็บประเภทงาน (ใช้ร่วมกันทั้งหน้าวางแผนและหน้างานประจำวัน) ────────────────
 // ดูทีละประเภทเหมือนแท็บของหน้าทะเบียน — เลือกไว้ที่หน้าไหน อีกหน้าก็ตามด้วย
@@ -8836,6 +8842,7 @@ function planTaskSectionKey(t) {
   if (t.workType === 'polish') return 'polish';
   if (t.workType === 'sq') return 'sq';
   if (t.workType === 'saw') return 'saw';
+  if (t.workType === 'slitter') return 'slitter';
   return 'cnc';
 }
 // ช่าง CNC / ช่างขัด Roll เห็นหัวข้อของตัวเองอย่างเดียว
@@ -10231,8 +10238,9 @@ function populatePlanRollSetSelect(selectedSet) {
   const sel = document.getElementById('pf-rollset');
   if (!sel) return;
   // งานลับคมใบเลื่อยไม่มีกลุ่มให้เลือก — มีตัวเลือกเดียวและเลือกให้เลย
-  if (planFormWorkType() === 'saw') {
-    sel.innerHTML = `<option value="${SAW_PLAN_SET}" selected>${escapeHtmlAttr(planSetLabel(SAW_PLAN_SET))}</option>`;
+  if (isCodeWorkType(planFormWorkType())) {
+    const codeSet = codePlanSetFor(planFormWorkType());
+    sel.innerHTML = `<option value="${codeSet}" selected>${escapeHtmlAttr(planSetLabel(codeSet))}</option>`;
     return;
   }
   // งานแต่ง Roll SQ เลือกจาก "ชุด Roll SQ" ในทะเบียน ไม่ใช่ Size Roll
@@ -10269,8 +10277,8 @@ function populatePlanRollColorSelect(setName, selectedColor) {
     sel.disabled = true;
     return null;
   }
-  if (isSawPlanSet(setName) || planFormWorkType() === 'saw') {
-    sel.innerHTML = '<option value="">— งานลับคมใบเลื่อยไม่มีชุดสี —</option>';
+  if (isCodePlanSet(setName) || isCodeWorkType(planFormWorkType())) {
+    sel.innerHTML = '<option value="">— งาน' + planWorkTypeShortLabel(planFormWorkType()) + 'ไม่มีชุดสี —</option>';
     sel.disabled = true;
     return null;
   }
@@ -10326,6 +10334,7 @@ function sqAttachPlanAliases(r) {
 // ชื่อชุดที่เอาไว้โชว์ — Roll ใช้ชื่อ Size Roll ตรงๆ ส่วน Roll SQ ต้องแปลงจากคีย์ก่อน
 function planSetLabel(setName) {
   if (isSawPlanSet(setName)) return 'ใบเลื่อย (ทั้งทะเบียน)';
+  if (isSlitterPlanSet(setName)) return 'มีดสลิตเตอร์ (ทั้งทะเบียน)';
   if (!isSqPlanSet(setName)) return setName || '—';
   const k = sqPlanSetKeyOf(setName);
   const head = (toolingData.sq || []).find(r => sqSetKey(r) === k);
@@ -10341,6 +10350,13 @@ function sqPlannableSets() {
 // ใบเลื่อยไม่ได้จัดกลุ่ม — หนึ่งใบงานเลือกใบไหนก็ได้จากทั้งทะเบียน จึงใช้คีย์เดียวตายตัว
 const SAW_PLAN_SET = 'SAW:all';
 function isSawPlanSet(setName) { return setName === SAW_PLAN_SET; }
+// มีดสลิตเตอร์ใช้แบบเดียวกับใบเลื่อย — ทั้งทะเบียนเป็นกลุ่มเดียว เลือกรหัสที่จะลับเอง ไม่มีชุดสี
+const SLITTER_PLAN_SET = 'SLT:all';
+function isSlitterPlanSet(setName) { return setName === SLITTER_PLAN_SET; }
+// งานที่เลือก "รหัส" จากทั้งทะเบียน (ใบเลื่อย / มีดสลิตเตอร์) — ไม่มีชุดสี ไม่ติ๊กให้ทั้งหมด
+function isCodePlanSet(setName) { return isSawPlanSet(setName) || isSlitterPlanSet(setName); }
+function isCodeWorkType(wt) { return wt === 'saw' || wt === 'slitter'; }
+function codePlanSetFor(wt) { return wt === 'slitter' ? SLITTER_PLAN_SET : SAW_PLAN_SET; }
 
 // ประเภทงานที่ต้องวัด OD ตอนจบงาน — งานขัด Roll กับงานลับคมใบเลื่อยไม่ได้วัด
 function workTypeMeasuresOd(workType) { return workType === 'cnc' || workType === 'sq'; }
@@ -10351,6 +10367,9 @@ function getMatchingRollsForPlan(setName, colorKey) {
     // หน้างานเรียกใบเลื่อยด้วย "รหัส" — ช่องชื่อ/ยี่ห้อ ถูกเอาออกจากทะเบียนแล้ว
     // คืนเป็นสำเนา ไม่ให้แก้ทะเบียนผ่านทางนี้โดยไม่ตั้งใจ (งานลับคมไม่ได้บันทึกค่ากลับทะเบียนอยู่แล้ว)
     return (toolingData.saw || []).map(r => ({ ...r, name: (r.name && r.name !== '—') ? r.name : (r.id || '') }));
+  }
+  if (isSlitterPlanSet(setName)) {
+    return (toolingData.slitter || []).map(r => ({ ...r, name: r.id || r.name || '' }));
   }
   // ชุด Roll SQ — ชิ้นในชุด (R แล้ว L) ทำหน้าที่เป็น "ชิ้น Roll" ของงานตามแผน
   if (isSqPlanSet(setName)) {
@@ -10409,6 +10428,7 @@ function renderRollOptionsPanel(rolls, selectedIndexes) {
   // ใบที่ติ๊กไว้แล้ว (แก้งานเดิม) ยังโชว์อยู่เสมอ ไม่งั้นจะเอาออกจากงานไม่ได้
   // value ของ checkbox ยังเป็นลำดับในทะเบียนเดิม จึงกรองการแสดงผลได้โดยไม่กระทบค่าที่บันทึก
   const isSaw = planFormWorkType() === 'saw';
+  const isCode = isCodeWorkType(planFormWorkType());
   const sawSt = isSaw && typeof prodSawLive !== 'undefined' && prodSawLive ? prodSawLive.status : null;
   const sawHasData = isSaw && sawSt !== 'noproxy' && !!(prodSawLive && prodSawLive.at) && sawSt !== 'loading';
   const sawWait = new Map();
@@ -10416,17 +10436,17 @@ function renderRollOptionsPanel(rolls, selectedIndexes) {
   // ใบที่อยู่ในแผนลับคมงานอื่นแล้ว (ยังไม่กดจบ) ไม่ให้เลือกซ้ำ — งานที่กำลังแก้อยู่ไม่นับ
   // นับทุกวันรวมงานค้างจากวันก่อนด้วย (งานค้างถูกยกไปทำต่ออยู่แล้ว)
   const sawPlanned = new Set();
-  if (isSaw) {
+  if (isCode) {
     (planTasks || []).forEach(t => {
-      if (!t || t.workType !== 'saw' || t.id === currentEditingPlanTaskId || t.otherWork) return;
+      if (!t || t.workType !== planFormWorkType() || t.id === currentEditingPlanTaskId || t.otherWork) return;
       const d = taskDisplayDate(t);
       if ((dailyStatusByDate[d] || {})[t.id] === 'done') return;
       (t.rollIds || []).forEach(i => { if (pieceEntryFor(d, t.id, i).status !== 'done') sawPlanned.add(Number(i)); });
     });
   }
   const visible = rolls.map((r, idx) => ({ r, idx }))
-    .filter(x => !isSaw || selectedSet.has(x.idx)
-      || (!sawPlanned.has(x.idx) && (!sawHasData || sawWait.has(x.idx))));
+    .filter(x => !isCode || selectedSet.has(x.idx)
+      || (!sawPlanned.has(x.idx) && (!isSaw || !sawHasData || sawWait.has(x.idx))));
   // รายการรอลับคมตัดใบที่วางแผนแล้วออกให้ตั้งแต่ต้น (ดู prodSawWaitingList) — นับจากชุดที่วางแผนแล้วตรงๆ
   const hiddenPlanned = isSaw && sawHasData ? [...sawPlanned].filter(i => !selectedSet.has(i)).length : 0;
   const sawNote = !isSaw ? ''
@@ -10459,7 +10479,7 @@ function renderRollOptionsPanel(rolls, selectedIndexes) {
       <button type="button" class="btn btn-primary btn-sm" onclick="closeRollDropdown(event)" style="flex-shrink:0;font-weight:800;">ตกลง</button>
     </div>` + (sawNote ? `<div style="padding:4px 10px 6px;font-size:11.5px;color:var(--text-3);">${escapeHtmlAttr(sawNote)}</div>` : '') +
     visible.map(({ r, idx }) => `<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:5px;cursor:pointer;font-size:13px;">
-      <input type="checkbox" value="${idx}"${selectedSet.has(idx) ? ' checked' : ''} onchange="toggleRollOption(this)" style="width:14px;height:14px;cursor:pointer;">${isSaw ? '<b>' + escapeHtmlAttr(r.id || r.name) + '</b>' : escapeHtmlAttr(r.name)}${sawExtra(r)}
+      <input type="checkbox" value="${idx}"${selectedSet.has(idx) ? ' checked' : ''} onchange="toggleRollOption(this)" style="width:14px;height:14px;cursor:pointer;">${isCode ? '<b>' + escapeHtmlAttr(r.id || r.name) + '</b>' : escapeHtmlAttr(r.name)}${sawExtra(r)}
     </label>`).join('');
   syncRollSelectAllState();
 }
@@ -10554,10 +10574,12 @@ function updateRollSelectionLabel() {
   const labelEl = document.getElementById('pf-rollids-label');
   if (!labelEl) return;
   const rolls = getSelectedRollsForPlan();
-  if (planFormWorkType() === 'saw') {
-    // ใบเลื่อยเรียกกันด้วยรหัส — โชว์รหัสที่เลือกไว้เลย (ปกติเลือกทีละไม่กี่ใบ)
+  if (isCodeWorkType(planFormWorkType())) {
+    // ใบเลื่อย / มีดสลิตเตอร์ เรียกกันด้วยรหัส — โชว์รหัสที่เลือกไว้เลย (ปกติเลือกทีละไม่กี่ใบ)
     const ids = rolls.map(r => r.id).filter(Boolean);
-    labelEl.textContent = ids.length ? ids.join(', ') + ' (' + ids.length + ' ใบ)' : '— ยังไม่ได้เลือกใบเลื่อย —';
+    const sl = planFormWorkType() === 'slitter';
+    labelEl.textContent = ids.length ? ids.join(', ') + ' (' + ids.length + (sl ? ' รายการ)' : ' ใบ)')
+      : (sl ? '— ยังไม่ได้เลือกมีดสลิตเตอร์ —' : '— ยังไม่ได้เลือกใบเลื่อย —');
     return;
   }
   labelEl.textContent = rolls.length ? `เลือกไว้ ${rolls.length} รายการ` : '— ไม่ได้เลือก Roll —';
@@ -10602,14 +10624,15 @@ function planFormSelectedPieces() {
 // คำเรียกงานหลักของประเภทที่กำลังวางแผนอยู่ — ใช้ในป้ายปุ่ม/ข้อความเตือน ให้เอ่ยถึงเฉพาะงานนั้น
 function planFormMainWorkLabel() {
   const wt = planFormWorkType();
-  return wt === 'polish' ? 'ขัด Roll' : wt === 'saw' ? 'ลับคมใบเลื่อย' : wt === 'sq' ? 'แต่ง Roll SQ' : 'แต่ง Roll';
+  return wt === 'polish' ? 'ขัด Roll' : wt === 'saw' ? 'ลับคมใบเลื่อย' : wt === 'slitter' ? 'ลับคมมีดสลิตเตอร์' : wt === 'sq' ? 'แต่ง Roll SQ' : 'แต่ง Roll';
 }
 
 // ฟอร์มงานลับคมใบเลื่อย — ใส่แค่ "รหัสใบเลื่อย" อย่างเดียว
 // ช่อง Size Roll / ชุดสี / จำนวน Roll ไม่มีความหมายกับใบเลื่อย (ใบเลื่อยไม่ได้จัดกลุ่ม ดู SAW_PLAN_SET)
 // จึงซ่อนไว้ แต่ยังอยู่ในฟอร์ม — ค่า Size Roll ถูกตั้งเป็น SAW_PLAN_SET ให้เองตามเดิม ตัวบันทึกจึงไม่ต้องแก้
 function applySawPlanFormLayout() {
-  const saw = planFormWorkType() === 'saw';
+  const wtNow = planFormWorkType();
+  const saw = isCodeWorkType(wtNow);   // ใบเลื่อย / มีดสลิตเตอร์ ใช้ฟอร์มแบบเดียวกัน
   const rowSet = document.getElementById('pf-row-rollset');
   if (rowSet && saw) rowSet.style.display = 'none';
   const countGroup = (document.getElementById('pf-rollid') || {}).parentElement;
@@ -10617,15 +10640,16 @@ function applySawPlanFormLayout() {
   const rowIds = document.getElementById('pf-row-rollids');
   if (rowIds) rowIds.classList.toggle('full', saw);
   const lbl = document.getElementById('pf-rollids-title');
-  if (lbl) lbl.textContent = saw ? 'รหัสใบเลื่อย — เลือกใบที่จะลับคม' : 'รายชื่อ Roll — เลือกเฉพาะรายการที่ต้องการได้';
+  if (lbl) lbl.textContent = wtNow === 'slitter' ? 'รหัสมีดสลิตเตอร์ — เลือกที่จะลับคม'
+    : saw ? 'รหัสใบเลื่อย — เลือกใบที่จะลับคม' : 'รายชื่อ Roll — เลือกเฉพาะรายการที่ต้องการได้';
   // ตอนเปิดฟอร์มเพิ่มงานใหม่ รายการถูกวาดก่อนตั้ง Size Roll เป็นใบเลื่อย จึงอาจว่าง ("ไม่พบ Roll")
   // วาดรายการรหัสใบเลื่อยให้ใหม่ โดยคงใบที่ติ๊กไว้แล้ว (ไม่เลือกให้เองทั้งหมด — ปกติลับทีละไม่กี่ใบ)
   if (saw && !planFormOtherWork) {
     const sel = document.getElementById('pf-rollset');
-    if (sel && sel.value !== SAW_PLAN_SET) sel.value = SAW_PLAN_SET;
+    if (sel && sel.value !== codePlanSetFor(wtNow)) sel.value = codePlanSetFor(wtNow);
     refreshSawPlanOptions();
     // รายการให้เลือกเฉพาะใบที่รอลับคม — ต้องรู้สถานะจากระบบผลิตก่อน (ดึงแล้วจะวาดรายการนี้ใหม่ให้เอง)
-    if (typeof loadProdSawUsage === 'function') loadProdSawUsage(false);
+    if (wtNow === 'saw' && typeof loadProdSawUsage === 'function') loadProdSawUsage(false);
   }
   updateRollSelectionLabel();
 }
@@ -10633,10 +10657,11 @@ function applySawPlanFormLayout() {
 function refreshSawPlanOptions() {
   const panel = document.getElementById('pf-rollids-panel');
   if (!panel) return;   // ฟอร์มวางแผนไม่ได้เปิดอยู่
-  if (planFormWorkType() !== 'saw' || planFormOtherWork) return;
-  if ((document.getElementById('pf-rollset') || {}).value !== SAW_PLAN_SET) return;
+  const wt = planFormWorkType();
+  if (!isCodeWorkType(wt) || planFormOtherWork) return;
+  if ((document.getElementById('pf-rollset') || {}).value !== codePlanSetFor(wt)) return;
   const picked = ((document.getElementById('pf-rollids') || {}).value || '').split(',').filter(Boolean).map(Number);
-  renderRollOptionsPanel(getMatchingRollsForPlan(SAW_PLAN_SET, null), picked);
+  renderRollOptionsPanel(getMatchingRollsForPlan(codePlanSetFor(wt), null), picked);
 }
 
 // ─── งานอื่นๆ ที่ไม่ใช่งานแต่ง/ขัด Roll ─────────────────────────────────────────
@@ -10790,7 +10815,7 @@ function fillPlanRollReadonly(setName, colorKey, presetSelectedIndexes, excludeT
   let selectedIndexes;
   if (presetSelectedIndexes && presetSelectedIndexes.length) {
     selectedIndexes = presetSelectedIndexes.filter(idx => idx >= 0 && idx < rolls.length);
-  } else if (isSawPlanSet(setName)) {
+  } else if (isCodePlanSet(setName)) {
     // ใบเลื่อยทั้งทะเบียน 52 ใบ — ไม่ติ๊กให้ทั้งหมดเหมือนชุด Roll ให้เลือกรหัสใบที่จะลับเอง
     selectedIndexes = [];
   } else {
@@ -11290,7 +11315,7 @@ function onPlanRollSetChange() {
   const setName = document.getElementById('pf-rollset').value;
   clearPlanFieldWarn('pf-rollset');
   // งานแต่ง Roll SQ / ลับคมใบเลื่อย ไม่มีขั้นเลือกชุดสี — ไปติ๊กรายชื่อต่อได้เลย
-  if (isSqPlanSet(setName) || isSawPlanSet(setName)) {
+  if (isSqPlanSet(setName) || isCodePlanSet(setName)) {
     populatePlanRollColorSelect(setName, null);
     fillPlanRollReadonly(setName, null, null, currentEditingPlanTaskId);
     if (setName) openRollDropdown();
@@ -12208,13 +12233,15 @@ function openPlanTaskModal(mode, taskId, presetDate, presetShift) {
         return;
       }
       // ใบเลื่อยไม่มีชุดสี (ทั้งทะเบียนเป็นกลุ่มเดียว ดู SAW_PLAN_SET) — ไม่ต้องตรวจช่องนี้
-      if (!colorKey && !isSawPlanSet(setName)) {
+      if (!colorKey && !isCodePlanSet(setName)) {
         focusField('pf-rollcolor');
         alert('ยังไม่ได้เลือกชุดสี Roll ของ ' + setName + ' — เลือกชุดสีก่อนบันทึก');
         return;
       }
       if (!rolls.length) {
-        alert(isSawPlanSet(setName)
+        alert(isSlitterPlanSet(setName)
+          ? 'ยังไม่ได้เลือกรหัสมีดสลิตเตอร์ — เลือกอย่างน้อย 1 รายการก่อนบันทึก'
+          : isSawPlanSet(setName)
           ? 'ยังไม่ได้เลือกรหัสใบเลื่อย — เลือกใบที่จะลับคมอย่างน้อย 1 ใบก่อนบันทึก'
           : 'ยังไม่ได้เลือกรายการ Roll — เลือก Roll อย่างน้อย 1 รายการก่อนบันทึก');
         return;
@@ -20230,7 +20257,7 @@ function renderDailyTasks() {
     // กางหมดแล้วจึงไม่มีอะไรให้พับ — ตัดลูกศร ▸ กับการกดแถวออกด้วย ไม่ให้กดแล้วเหมือนไม่มีอะไรเกิดขึ้น
     const techView = isDailyTechRole();
     // งานลับคมใบเลื่อยกางรายใบไว้เสมอ — ลับทีละไม่กี่ใบ ช่างต้องกดเริ่ม/จบรายใบอยู่แล้ว ไม่ต้องกดเข้าไปดู
-    const sawTask = !!(item.raw && item.raw.workType === 'saw');
+    const sawTask = !!(item.raw && isCodeWorkType(item.raw.workType));   // ใบเลื่อย / มีดสลิตเตอร์
     const expanded = item.expandable && (techView || sawTask || expandedDailyTaskId === item.key);
     const rowClickable = item.expandable && !techView && !sawTask;
     const rowOpacity = isMine ? '' : 'opacity:.55;';
@@ -20270,7 +20297,7 @@ function renderDailyTasks() {
       <td${actions ? ' onclick="event.stopPropagation();"' : ''}>${actions}</td>
       <td>${escapeHtmlAttr(planSetLabel(item.rollSet))}</td>
       <td>${escapeHtmlAttr(item.rollColor)}</td>
-      <td class="muted">${escapeHtmlAttr(sawTask ? String(item.rollId || '').replace(/\bRoll\b/, 'ใบ') : item.rollId)}</td>
+      <td class="muted">${escapeHtmlAttr(sawTask ? String(item.rollId || '').replace(/\bRoll\b/, item.raw.workType === 'slitter' ? 'รายการ' : 'ใบ') : item.rollId)}</td>
       <td><strong>${taskLabel}</strong></td>
       <td class="muted">${escapeHtmlAttr(item.who)}</td>
       <td class="muted" style="text-align:right;">${escapeHtmlAttr(item.duration)}</td>
@@ -20322,6 +20349,8 @@ function renderDailyTasks() {
     { key: 'checklist-sq',     icon: '＋', label: 'งานแทรก — แต่ง Roll SQ',  color: 'var(--amber)', bg: 'var(--bg-panel)', empty: 'ยังไม่มีงานแทรกของงานแต่ง Roll SQ ในวันนี้', always: true, addType: 'sq' },
     { key: 'saw',       icon: '✧', label: 'ลับคมใบเลื่อย',     color: 'var(--green)',  bg: 'var(--green-dim)',   empty: 'ไม่มีงานลับคมใบเลื่อยในวันนี้', always: true },
     { key: 'checklist-saw',    icon: '＋', label: 'งานแทรก — ลับคมใบเลื่อย', color: 'var(--green)', bg: 'var(--bg-panel)', empty: 'ยังไม่มีงานแทรกของงานลับคมใบเลื่อยในวันนี้', always: true, addType: 'saw' },
+    { key: 'slitter',   icon: '⚯', label: 'ลับคมมีดสลิตเตอร์', color: 'var(--red)',    bg: 'var(--red-dim)',     empty: 'ไม่มีงานลับคมมีดสลิตเตอร์ในวันนี้', always: true },
+    { key: 'checklist-slitter', icon: '＋', label: 'งานแทรก — ลับคมมีดสลิตเตอร์', color: 'var(--red)', bg: 'var(--bg-panel)', empty: 'ยังไม่มีงานแทรกของงานลับคมมีดสลิตเตอร์ในวันนี้', always: true, addType: 'slitter' },
   ];
   // แท็บประเภทงาน — แสดงเฉพาะหัวข้อของประเภทที่เลือก พร้อมหัวข้องานแทรกของประเภทเดียวกัน
   const tabType = activeWorkTypeTab();
@@ -20541,9 +20570,10 @@ const HISTORY_CAL_TYPE = {
   polish: { icon: '✦', label: 'ขัด Roll',        color: 'var(--purple)', bg: 'var(--purple-dim)' },
   sq:     { icon: '◆', label: 'แต่ง Roll SQ',    color: 'var(--amber)',  bg: 'var(--amber-dim)' },
   saw:    { icon: '✧', label: 'ลับคมใบเลื่อย',    color: 'var(--green)',  bg: 'var(--green-dim)' },
+  slitter: { icon: '⚯', label: 'ลับคมมีดสลิตเตอร์', color: 'var(--red)', bg: 'var(--red-dim)' },
 };
 // ลำดับที่ใช้เรียงบรรทัดในช่องวันของปฏิทิน — ไล่ตามลำดับงานจริง (แต่ง → ขัด → แต่ง SQ)
-const HISTORY_CAL_TYPE_ORDER = ['cnc', 'polish', 'sq', 'saw'];
+const HISTORY_CAL_TYPE_ORDER = ['cnc', 'polish', 'sq', 'saw', 'slitter'];
 let historyCalMonth = null;   // เดือนที่กำลังดู (วันที่ 1 ของเดือนนั้น)
 // เปิด/ปิดค้างไว้ตามเครื่อง — บางคนใช้หน้านี้ค้นรายการอย่างเดียว ไม่อยากให้ปฏิทินดันตารางลงไป
 // เก็บใน localStorage ไม่ใช่ข้อมูลกลาง เพราะเป็นความชอบของเครื่องที่ใช้ ไม่ใช่ข้อมูลงาน
@@ -20987,12 +21017,12 @@ function collectOverdueRecords() {
     const section = planTaskSectionKey(t);
     // ใบเลื่อยระบุด้วยรหัสใบ (ชุด "SAW:all" ไม่มีความหมายกับคนอ่าน) · Roll SQ ใช้ชื่อชุดที่อ่านได้
     const tooling = t.otherWork ? (t.rollSet || '—')
-      : section === 'saw'
-        ? 'ใบเลื่อย ' + ((t.rollIds || []).map(i => ((toolingData.saw || [])[i] || {}).id).filter(Boolean).join(', ') || '—')
+      : (section === 'saw' || section === 'slitter')
+        ? (section === 'saw' ? 'ใบเลื่อย ' : 'มีดสลิตเตอร์ ') + ((t.rollIds || []).map(i => ((toolingData[section] || [])[i] || {}).id).filter(Boolean).join(', ') || '—')
         : `${planSetLabel(t.rollSet) || '—'}${t.rollColor ? ' — ' + planRollColorLabel(t) : ''}`;
     records.push({
       wo: t.id,
-      typeLabel: section === 'polish' ? 'ขัด Roll' : section === 'saw' ? 'ลับคมใบเลื่อย' : section === 'sq' ? 'แต่ง Roll SQ' : 'แต่ง Roll (CNC)',
+      typeLabel: section === 'polish' ? 'ขัด Roll' : section === 'saw' ? 'ลับคมใบเลื่อย' : section === 'slitter' ? 'ลับคมมีดสลิตเตอร์' : section === 'sq' ? 'แต่ง Roll SQ' : 'แต่ง Roll (CNC)',
       section,   // ใช้แยกการ์ด KPI ตามแท็บบน Dashboard และแท็บของหน้างานค้าง
       dateIso, // ใช้กรองเฉพาะเดือนนี้ในการ์ด KPI หน้า Dashboard
       tooling,
@@ -21021,7 +21051,7 @@ function updatePendingBadge() {
 // แท็บหน้างานค้าง — แต่ละแท็บนับเฉพาะงานของหมวดนั้น (คีย์ของ planTaskSectionKey)
 // Roll = แต่ง Roll (CNC) + ขัด Roll · มีดสลิตเตอร์ยังไม่มีงานตามแผน
 var pendingTab = 'roll';
-var PENDING_TAB_SECTIONS = { roll: ['cnc', 'polish'], sq: ['sq'], saw: ['saw'], slitter: [] };
+var PENDING_TAB_SECTIONS = { roll: ['cnc', 'polish'], sq: ['sq'], saw: ['saw'], slitter: ['slitter'] };
 function switchPendingTab(key) {
   pendingTab = key;
   document.querySelectorAll('#pd-tab-bar .reg-tab').forEach(t =>
