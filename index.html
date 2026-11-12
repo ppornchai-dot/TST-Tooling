@@ -2264,7 +2264,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.16';
+const APP_BUILD = '2026-11-12.17';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5806,36 +5806,89 @@ function sawWorkingList() {
   return out.sort((a, b) => (a.dt + (a.entry.startTime || '')).localeCompare(b.dt + (b.entry.startTime || '')));
 }
 
+// งานลับคมตามแผนที่ยังไม่เสร็จ แยกรายใบ — แบ่ง 3 กลุ่มแบบการ์ด "ชุด Roll กำลังแต่ง" (ดู getWorkingRollEntries)
+//   late  = วันของงานผ่านไปแล้วยังไม่เสร็จ (งานค้าง)
+//   doing = กดเริ่มแล้ว (กำลังทำ/พักงาน)
+//   wait  = ยังไม่เริ่ม วันของงานคือวันนี้หรือวันข้างหน้า (รอทำ)
+// แยกรายใบ ไม่ยุบเป็นชุดเหมือน Roll — ใบเลื่อยไม่มีชุด และช่างเรียกกันด้วยรหัสใบ
+function sawWorkEntries() {
+  const today = dailyTodayIso();
+  const reg = (toolingData || {}).saw || [];
+  const out = [];
+  (planTasks || []).forEach(t => {
+    if (!t || t.workType !== 'saw' || t.otherWork) return;
+    const d = taskDisplayDate(t);
+    if ((dailyStatusByDate[d] || {})[t.id] === 'done') return;
+    const pieces = (dailyPieceStatus[d] || {})[t.id] || {};
+    const late = d < today && !taskRemainderScheduledAhead(t, i => (pieces[i] || {}).status === 'done');
+    const scoped = getMatchingRollsForPlan(t.rollSet, t.rollColor);
+    (t.rollIds || []).forEach(i => {
+      const entry = pieces[i] || {};
+      if (entry.status === 'done') return;
+      const started = entry.status === 'in_progress' || entry.status === 'paused';
+      out.push({ r: reg[i] || scoped[i] || { id: String(i) }, idx: i, task: t, date: d, entry,
+        minutes: pieceMinutesOfTask(t, i, scoped), cat: late ? 'late' : (started ? 'doing' : 'wait') });
+    });
+  });
+  return out.sort((a, b) => (a.date + (a.task.startTime || '')).localeCompare(b.date + (b.task.startTime || ''))
+    || String(a.r.id).localeCompare(String(b.r.id)));
+}
+
 function sawWorkingCardHtml() {
-  const list = sawWorkingList();
-  const rows = list.map(({ r, dt, task, entry, u }) => {
-    const paused = entry.status === 'paused';
-    const tip = 'เริ่มลับคม ' + fmtIsoDateThai(dt) + (entry.startTime ? ' ' + entry.startTime : '')
-      + (task && task.workerId ? ' · ' + workerName(task.workerId) : '')
-      + (paused ? ' · พักงาน' + (entry.pauseReason ? ' (' + entry.pauseReason + ')' : '') : '');
-    return `<div onclick="showPage('daily');switchWorkTypeTab('saw');"
-      style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;margin-bottom:6px;cursor:pointer;
-             background:var(--amber-dim);border:1px solid var(--border-light);" title="${escapeHtmlAttr(tip + ' — กดเพื่อไปหน้างานประจำวัน')}">
-      <span style="font-size:14px;font-weight:800;color:#fff;background:var(--amber);padding:3px 11px;border-radius:6px;">ใบ ${escapeHtmlAttr(r.id)}</span>
-      <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr([r.diameter, r.machine].filter(x => x && x !== '—').join(' · '))}</span>
-      <span style="font-size:12px;color:var(--text-2);">เริ่ม ${escapeHtmlAttr(fmtIsoDateThai(dt))}${entry.startTime ? ' ' + escapeHtmlAttr(entry.startTime) : ''}</span>
-      ${task && task.workerId ? `<span style="font-size:12px;color:var(--text-2);">· ${escapeHtmlAttr(workerName(task.workerId))}</span>` : ''}
-      ${paused ? '<span class="chip chip-amber">⏸ พักงาน</span>' : '<span class="chip chip-yellow">กำลังทำ</span>'}
-      <span style="margin-left:auto;"></span>
-      ${u.p && u.sinceGrind != null ? sawTonsPcsHtml('ก่อนลับรอบนี้ตัดไป', u.sinceGrind, u.sinceGrindPcs) + '<span style="color:var(--border);">|</span>' : ''}
-      ${u.p ? sawTonsPcsHtml('สะสม', u.total, u.p.pcs) : sawTonsPcsHtml('สะสม', u.total, null)}
+  const entries = sawWorkEntries();
+  const accent = 'var(--amber)', accentBg = 'var(--amber-dim)';
+  const groups = ROLL_WORK_CAT_META.map(m => ({ ...m, list: entries.filter(e => e.cat === m.cat) }));
+  const chip = e => {
+    const paused = e.entry.status === 'paused';
+    const style = {
+      late:  { border: '1px solid var(--red)',  bg: 'var(--red-dim)', badge: 'ค้าง',                          badgeColor: 'var(--red)' },
+      doing: { border: `1px solid ${accent}`,   bg: accentBg,         badge: paused ? '⏸ พักงาน' : 'กำลังลับ', badgeColor: accent },
+      wait:  { border: `1px dashed ${accent}`,  bg: 'transparent',    badge: 'รอทำ',                          badgeColor: 'var(--text-3)' },
+    }[e.cat];
+    const u = e.r && e.r.id && typeof sawUsageInfo === 'function' ? sawUsageInfo(e.r) : null;
+    const when = fmtDateThaiShort(parseISODate(e.date)) + (e.task.startTime ? ' ' + e.task.startTime : '');
+    const detail = [
+      [e.r.diameter, e.r.machine].filter(x => x && x !== '—').join(' · '),
+      (e.cat === 'doing' && e.entry.startTime ? 'เริ่ม ' + e.entry.startTime : 'แผน ' + when),
+      e.minutes ? e.minutes + ' นาที' : '',
+      e.task.workerId ? workerName(e.task.workerId) : '',
+    ].filter(Boolean).join(' · ');
+    return `<div onclick="${jsCallAttr('goToDailyTask', e.task.id, e.date, 'saw')}"
+      style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:8px;cursor:pointer;
+             border:${style.border};background:${style.bg};margin-bottom:6px;transition:filter .12s;"
+      onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
+      title="${escapeHtmlAttr('ไปที่งานประจำวัน วันที่ ' + fmtDateThai(parseISODate(e.date))
+        + (paused && e.entry.pauseReason ? ' · พักงาน: ' + e.entry.pauseReason : ''))}">
+      <span style="font-size:13px;font-weight:800;color:#fff;background:${e.cat === 'late' ? 'var(--red)' : accent};padding:2px 10px;border-radius:6px;flex-shrink:0;">ใบ ${escapeHtmlAttr(e.r.id)}</span>
+      <span style="flex:1;min-width:0;font-size:12px;color:var(--text-2);">${escapeHtmlAttr(detail)}</span>
+      ${u && u.p ? sawTonsPcsHtml(u.sinceGrind != null ? 'หลังลับคม' : 'สะสม', u.sinceGrind != null ? u.sinceGrind : u.total,
+        u.sinceGrind != null ? u.sinceGrindPcs : u.p.pcs) : ''}
+      <span style="font-size:${e.cat === 'doing' ? '12px' : '10px'};font-weight:800;color:${style.badgeColor};flex-shrink:0;white-space:nowrap;
+        ${e.cat === 'doing' ? '' : `border:1px solid ${e.cat === 'late' ? 'var(--red)' : 'var(--border)'};border-radius:99px;padding:1px 7px;`}">${style.badge}</span>
     </div>`;
-  }).join('');
+  };
+  const body = entries.length
+    ? groups.filter(g => g.list.length).map(g => {
+      const c = g.color || accent, b = g.bg || accentBg;
+      return `<div style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;letter-spacing:.01em;
+                  color:${c};background:${b};border-left:4px solid ${c};border-radius:0 6px 6px 0;padding:7px 11px;margin:10px 0 7px;">
+          <span style="width:9px;height:9px;border-radius:50%;background:${c};flex-shrink:0;"></span>${g.label}
+          <span style="margin-left:auto;font-size:12px;font-weight:800;color:${c};opacity:.85;">${g.list.length} ใบ</span>
+        </div>${g.list.map(chip).join('')}`;
+    }).join('')
+    : '<div style="padding:14px;text-align:center;color:var(--text-3);font-size:13px;">ยังไม่มีใบเลื่อยที่กำลังลับคมหรือวางแผนไว้</div>';
+  const note = entries.length
+    ? ' (' + groups.filter(g => g.list.length).map(g => g.label + ' ' + g.list.length).join(' · ') + ')' : '';
   return `<div class="card" style="margin-bottom:18px;">
     <div class="card-header">
-      <span class="card-title" style="font-size:17px;color:var(--amber);display:inline-flex;align-items:center;gap:8px;">
-        <span style="width:11px;height:11px;border-radius:50%;background:var(--amber);"></span>ใบเลื่อยกำลังลับคม</span>
-      <span style="margin-left:10px;font-size:12px;color:var(--text-3);"><b style="color:var(--amber);">${list.length}</b> ใบ</span>
+      <span class="card-title" style="font-size:17px;color:${accent};display:inline-flex;align-items:center;gap:8px;">
+        <span style="width:11px;height:11px;border-radius:50%;background:${accent};"></span>ใบเลื่อยกำลังลับคม</span>
+      <span style="margin-left:auto;font-size:12px;color:var(--text-3);"><b style="color:${accent};">${entries.length}</b> ใบ${escapeHtmlAttr(note)}</span>
     </div>
-    <div style="padding:10px 14px;">
-      ${rows || '<div style="padding:14px;text-align:center;color:var(--text-3);font-size:13px;">ยังไม่มีใบเลื่อยที่กำลังลับคม</div>'}
+    <div style="padding:4px 14px 10px;">
+      ${body}
       <div style="font-size:11px;color:var(--text-3);margin-top:6px;">
-        กำลังลับคม = กดเริ่มงานลับคมใบนั้นในหน้างานประจำวันแล้ว และยังไม่ได้กดจบ (ระบบผลิตไม่มีข้อมูลการลับคม) · กดจบแล้วจะหายไปเอง</div>
+        แสดงงานลับคมตามแผนที่ยังไม่เสร็จ (รวมของวันนี้และวันข้างหน้า) แยกรายใบ · กดที่ใบเพื่อไปกดเริ่ม/จบงานในหน้างานประจำวัน</div>
     </div>
   </div>`;
 }
