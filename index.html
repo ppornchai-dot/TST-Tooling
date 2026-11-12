@@ -2406,7 +2406,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.28';
+const APP_BUILD = '2026-11-12.29';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -9323,7 +9323,10 @@ function renderPlanDay() {
   const tasks = planDayPartsByDate().get(iso) || [];
   const rowHtmlFor = (t, i, section) => {
     const expandable = (t.rollIds || []).length > 1;
-    const expanded = expandable && expandedPlanDayTaskId === t.id;
+    // งานลับคมใบเลื่อย / มีดสลิตเตอร์ กางรายใบไว้เสมอ ไม่ต้องกดเปิดดู (ลับทีละไม่กี่ใบ เห็นเวลาของแต่ละใบทันที)
+    const codeTask = isCodeWorkType(t.workType);
+    const expanded = expandable && (codeTask || expandedPlanDayTaskId === t.id);
+    const rowClickable = expandable && !codeTask;
     // ลากสลับลำดับในวันนี้ได้ — เฉพาะงานที่ "เริ่มจริง" ในวันนี้ (ส่วนที่ล้นมาจากวันก่อนหน้าต้องไปสลับที่วันต้นทาง)
     // เกณฑ์เดียวกับชิปในปฏิทินรายสัปดาห์/รายเดือน (ดู planDragWrap)
     // งานที่ทำเสร็จครบทุกชิ้นแล้วลากไม่ได้ — เวลาที่ทำจริงบันทึกไว้แล้ว ย้ายวันแล้วประวัติจะเพี้ยน
@@ -9336,11 +9339,11 @@ function renderPlanDay() {
       ? `<span class="plan-drag-grip" onclick="event.stopPropagation();" title="ลากขึ้น–ลงเพื่อสลับลำดับก่อน–หลังของงานในวันนี้">⋮⋮</span>`
       : '';
     const row = `
-    <tr data-taskid="${escapeHtmlAttr(t.id)}"${dragAttrs}${expandable ? ` style="cursor:pointer;" onclick="togglePlanDayTaskDetail('${t.id}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : ''}>
-      <td class="muted" style="white-space:nowrap;">${grip}${expandable ? `<span aria-hidden="true" style="display:inline-block;width:12px;transition:transform .15s;transform:rotate(${expanded ? 90 : 0}deg);">▸</span>` : ''}${i + 1}</td>
+    <tr data-taskid="${escapeHtmlAttr(t.id)}"${dragAttrs}${rowClickable ? ` style="cursor:pointer;" onclick="togglePlanDayTaskDetail('${t.id}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : ''}>
+      <td class="muted" style="white-space:nowrap;">${grip}${rowClickable ? `<span aria-hidden="true" style="display:inline-block;width:12px;transition:transform .15s;transform:rotate(${expanded ? 90 : 0}deg);">▸</span>` : ''}${i + 1}</td>
       <td>${escapeHtmlAttr(planSetLabel(t.rollSet))}</td>
       <td>${escapeHtmlAttr(planRollColorLabel(t))}</td>
-      <td class="muted">${escapeHtmlAttr(t.rollId)}${(() => {
+      <td class="muted">${escapeHtmlAttr(codeTask ? String(t.rollId || '').replace(/\bRoll\b/, t.workType === 'slitter' ? 'รายการ' : 'ใบ') : t.rollId)}${(() => {
         // ความคืบหน้าของส่วนนี้ — เห็นได้ตั้งแต่ยังไม่กางแถว ไม่ต้องกดเข้าไปดูทีละชิ้น
         // ใช้ planTaskProgressState ตัวเดียวกับสีชิปในปฏิทินแผนงาน สองที่จึงบอกตรงกันเสมอ
         const st = planTaskProgressState(t);
