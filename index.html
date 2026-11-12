@@ -31,7 +31,7 @@
   --accent-glow:rgba(34,114,182,0.10);
   --amber:#B87200;
   /* สีประจำสถานะชุดสี Roll — ตั้งตามที่หน้างานกำหนด ใช้ร่วมกันทั้งดรอปดาวน์ในทะเบียน, KPI,
-     การ์ด Dashboard และหน้าอายุ Roll เพื่อให้สีของสถานะเดียวกันตรงกันทุกที่ */
+     การ์ด Dashboard และหน้าอายุ Tooling เพื่อให้สีของสถานะเดียวกันตรงกันทุกที่ */
   --inuse:#4F7A00;              /* ใช้งาน — เขียวอมเหลือง (คนละเฉดกับ --green ของ "พร้อมใช้งาน") */
   --inuse-dim:rgba(79,122,0,0.14);
   --st-waitpolish:#9A8500;      /* รอขัด — เหลือง */
@@ -991,7 +991,7 @@ canvas{display:block;}
       </button>
       <button class="nav-item" data-roles="admin,lead" onclick="showPage('rollLife')">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>
-        อายุ Roll
+        อายุ Tooling
       </button>
       <button class="nav-item" data-roles="admin,lead" onclick="showPage('inuse')">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="9"/></svg>
@@ -2285,7 +2285,7 @@ const PAGE_META = {
   registry:   { title: 'ทะเบียน Tooling' },
   standard:   { title: 'Production Block' },
   prodWeight: { title: 'น้ำหนักผลิต' },
-  rollLife:   { title: 'อายุ Roll' },
+  rollLife:   { title: 'อายุ Tooling' },
   inuse:      { title: 'ชุด Roll กำลังใช้งาน' },
   daily:      { title: 'งานประจำวัน' },
   plan:       { title: 'วางแผน' },
@@ -2300,7 +2300,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.21';
+const APP_BUILD = '2026-11-12.22';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -4774,7 +4774,7 @@ function afterInUseRollChange() {
 
 // ─── DASHBOARD: น้ำหนักใกล้หมด / หมดแล้ว ──────────────────────────────────────
 // รายการ "ชุด Roll" (Size Roll + ชุดสี) พร้อม % การใช้รอบการแต่ง
-// สูตรทั้งหมดใช้ตัวเดียวกับหน้าอายุ Roll (producedTonForRollSet + rollCarryTonFor + rollUsageBand)
+// สูตรทั้งหมดใช้ตัวเดียวกับหน้าอายุ Tooling (producedTonForRollSet + rollCarryTonFor + rollUsageBand)
 // จะได้ไม่มีทางที่ตัวเลขสองหน้าไม่ตรงกัน — ที่ต่างคือหน้านี้เอาแค่ชุดที่เข้าเกณฑ์เตือน
 // ตัวเลขการใช้รอบการแต่งของ "ชุด Roll หนึ่งชุด" — จุดเดียวที่คิดสูตรนี้
 // ใช้ร่วมกันทั้งการ์ด Dashboard, หน้าต่างถามสถานะชุดที่ถูกปลด และที่อื่นที่ต้องการเลขเดียวกัน
@@ -4784,7 +4784,7 @@ function rollUsageForSetColor(setName, colorKey) {
     if (roll.set !== setName || (roll.color || NO_COLOR_KEY) !== colorKey) return;
     count++;
     const life = rollLifeFor(roll);
-    // น้ำหนักต่อรอบการแต่งของชุด = ค่าที่มากสุดในชุด (เกณฑ์เดียวกับหน้าอายุ Roll)
+    // น้ำหนักต่อรอบการแต่งของชุด = ค่าที่มากสุดในชุด (เกณฑ์เดียวกับหน้าอายุ Tooling)
     if (life.usedTon != null) usedTon = usedTon == null ? life.usedTon : Math.max(usedTon, life.usedTon);
   });
   const dressReset = rollDressResetFor(setName, colorKey);
@@ -13498,7 +13498,7 @@ let rollRunMachine = {};
 // จุดเริ่มนับน้ำหนักผลิตใหม่ของแต่ละชุด Roll หลังแต่ง Roll เสร็จ
 // { 'GS 2"x1" (47x23) Forming|yellow': { from: 'YYYY-MM-DD', at: 'ISO', by: 'ชื่อคนกด' } }
 // from = นับน้ำหนักตั้งแต่วันนี้เป็นต้นไป (รวมวันนั้น) — วันก่อนหน้าถือเป็นรอบที่แต่งไปแล้ว
-// ใช้เฉพาะหน้าอายุ Roll เท่านั้น หน้าน้ำหนักผลิตยังรายงานยอดจริงตามช่วงวันที่เลือกเหมือนเดิม
+// ใช้เฉพาะหน้าอายุ Tooling เท่านั้น หน้าน้ำหนักผลิตยังรายงานยอดจริงตามช่วงวันที่เลือกเหมือนเดิม
 // ประกาศไว้ก่อน buildStateSnapshot() ด้วยเหตุผลเดียวกับ rollRunColor ข้างบน (TDZ)
 let rollDressReset = {};
 let rollDressResetLog = [];
@@ -13506,7 +13506,7 @@ let rollDressResetLog = [];
 // น้ำหนักผลิตที่ "ยกมา" ของแต่ละชุด Roll — กรอกเองที่หน้าน้ำหนักผลิต
 // { 'GS 2"x1" (47x23) Forming|yellow': 123.45 }  หน่วยเป็นตัน
 // ใช้กับรอบการแต่งที่เริ่มเดินมาก่อนช่วงที่ระบบมีข้อมูลจาก TST Production
-// (ข้อมูล FG ย้อนได้จำกัด) ถ้าไม่กรอก % การใช้รอบการแต่งในหน้าอายุ Roll จะต่ำกว่าความจริง
+// (ข้อมูล FG ย้อนได้จำกัด) ถ้าไม่กรอก % การใช้รอบการแต่งในหน้าอายุ Tooling จะต่ำกว่าความจริง
 // แต่ง Roll เสร็จแล้วกดรี = เริ่มรอบใหม่ ยอดยกมาของรอบเก่าจะถูกล้างไปด้วย
 // ประกาศไว้ก่อน buildStateSnapshot() ด้วยเหตุผลเดียวกับ rollRunColor ข้างบน (TDZ)
 let rollCarryTon = {};
@@ -15491,7 +15491,7 @@ async function renderProdWeight(force) {
     return;
   }
 
-  // จัดกลุ่มแบบเดียวกับหน้าอายุ Roll: กลุ่มขนาด → Forming/Sizing/TH → แยกรายชุดสี
+  // จัดกลุ่มแบบเดียวกับหน้าอายุ Tooling: กลุ่มขนาด → Forming/Sizing/TH → แยกรายชุดสี
   // แล้วแตกน้ำหนักผลิตเป็นคอลัมน์รายวัน
   const sizeGroups = new Map();
   sets.forEach(setName => {
@@ -15646,8 +15646,8 @@ async function renderProdWeight(force) {
             style="width:82px;padding:3px 7px;font-size:12px;text-align:right;${carryTon ? 'font-weight:700;color:var(--accent);' : ''}${carryReset ? 'opacity:.55;' : ''}"
             title="${carryReset
               ? escapeHtmlAttr('ชุดนี้กดรีน้ำหนักแล้ว (เริ่มนับ ' + dressResetDateLabel(carryReset.from) + ') — รอบใหม่เริ่มจากศูนย์ จึงไม่นับยอดยกมา'
-                + ' ถ้าต้องการใช้ยกมา ให้กด "ยกเลิกการรี" ที่หน้าอายุ Roll ก่อน')
-              : 'น้ำหนักที่ชุดนี้ผลิตไปแล้วก่อนช่วงข้อมูลที่ระบบมี — กรอกเอง ใช้บวกเข้า % การใช้รอบการแต่งในหน้าอายุ Roll'}"
+                + ' ถ้าต้องการใช้ยกมา ให้กด "ยกเลิกการรี" ที่หน้าอายุ Tooling ก่อน')
+              : 'น้ำหนักที่ชุดนี้ผลิตไปแล้วก่อนช่วงข้อมูลที่ระบบมี — กรอกเอง ใช้บวกเข้า % การใช้รอบการแต่งในหน้าอายุ Tooling'}"
             onchange="${jsCallAttrValue('setRollCarryTon', setName, c.key)}"></td>
         ${cells.map(x => {
           const tips = [];
@@ -15716,7 +15716,7 @@ async function renderProdWeight(force) {
 
   const colCount = days.length + 4;
   // วันที่ผลิตแล้วแต่ยังไม่ได้ระบุชุดสีที่เดิน — กดปุ่มวันนั้นเพื่อระบุย้อนหลังได้เลย
-  // ยอดของวันแบบนี้จะไม่ถูกนับใน % การใช้รอบการแต่ง (หน้าอายุ Roll นับเฉพาะวันที่ระบุไว้จริง)
+  // ยอดของวันแบบนี้จะไม่ถูกนับใน % การใช้รอบการแต่ง (หน้าอายุ Tooling นับเฉพาะวันที่ระบุไว้จริง)
   // จึงต้องดันให้เห็นชัด ไม่ใช่ซ่อนอยู่ในเครื่องหมาย * ในช่อง
   // ชุดที่มีสีเดียว: ระบุให้อัตโนมัติทุกวันที่มีการผลิตในช่วงที่ดึงมา (ไม่ใช่แค่คอลัมน์ที่แสดง)
   runColorAutoFilled = { count: 0, days: 0 };
@@ -15732,7 +15732,7 @@ async function renderProdWeight(force) {
   const missBanner = !missDays.length ? '' : `<div style="background:var(--amber-dim);border-left:4px solid var(--amber);
        border-radius:8px;padding:10px 13px;margin-bottom:10px;font-size:12px;line-height:1.7;color:var(--text-2);">
     <b style="color:var(--amber);font-size:13px;">ยังไม่ได้ระบุชุดสี Roll ที่เดิน ${missDays.length} วัน
-      (${fmt(ton(missKg))} ตัน)</b> — ยอดของวันเหล่านี้ยังไม่ถูกนับใน % การใช้รอบการแต่ง (หน้าอายุ Roll)<br>
+      (${fmt(ton(missKg))} ตัน)</b> — ยอดของวันเหล่านี้ยังไม่ถูกนับใน % การใช้รอบการแต่ง (หน้าอายุ Tooling)<br>
     <span style="color:var(--text-3);">เหลือแต่ชุด Roll ที่มีหลายชุดสี ระบบเลือกให้เองไม่ได้ —
       กดวันที่เพื่อระบุย้อนหลัง (ระบบเดาไว้ให้แล้ว กดยืนยันทีเดียวจบ)</span>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;">
@@ -15756,7 +15756,7 @@ async function renderProdWeight(force) {
   grid.innerHTML = errorBanner + fetchedNote + autoNote + missBanner + `<div class="card"><div class="table-wrap table-wrap-sticky"><table>
     <thead><tr>
       <th class="pw-fz1">SIZE ROLL</th><th class="pw-fz2">ชุดสี</th>
-      <th style="text-align:right;white-space:nowrap;" title="น้ำหนักที่ผลิตไปแล้วก่อนช่วงข้อมูลที่ระบบมี — กรอกเอง ไม่รวมในคอลัมน์รวมและแถวรวมท้ายตาราง แต่ไปบวกใน % การใช้รอบการแต่งหน้าอายุ Roll">
+      <th style="text-align:right;white-space:nowrap;" title="น้ำหนักที่ผลิตไปแล้วก่อนช่วงข้อมูลที่ระบบมี — กรอกเอง ไม่รวมในคอลัมน์รวมและแถวรวมท้ายตาราง แต่ไปบวกใน % การใช้รอบการแต่งหน้าอายุ Tooling">
         ยกมา (ตัน)<div style="font-size:10px;font-weight:400;color:var(--text-3);">กรอกเอง</div></th>
       ${days.map(d => {
         const overrides = Object.keys(rollRunColor[d] || {}).length;
@@ -15807,8 +15807,8 @@ async function renderProdWeight(force) {
     <b>ถูกบวกเข้าคอลัมน์รวมและแถวรวมท้ายตารางด้วย</b> (ช่องที่มียกมาจะเขียนกำกับ <b style="color:var(--accent);">+ยกมา</b> ไว้)
     ดังนั้นยอดรวมจะ<b>มากกว่า</b>ยอดจริงจาก TST Production อยู่เท่ากับยอดยกมา — ดูยอดผลิตล้วนๆ ได้ที่บรรทัดเล็กใต้ยอดรวม
     หรือรวมคอลัมน์รายวัน (คอลัมน์วันเป็นยอดผลิตจริงล้วน ไม่มียกมาปน)
-    ยอดเดียวกันนี้ไปบวกใน <b>น้ำหนักผลิต</b> และ <b>%</b> ของหน้าอายุ Roll ด้วย
-    เมื่อแต่ง Roll เสร็จแล้วกด <b>↺ รี</b> ที่หน้าอายุ Roll ยอดยกมาจะถูกล้างให้เอง<br>
+    ยอดเดียวกันนี้ไปบวกใน <b>น้ำหนักผลิต</b> และ <b>%</b> ของหน้าอายุ Tooling ด้วย
+    เมื่อแต่ง Roll เสร็จแล้วกด <b>↺ รี</b> ที่หน้าอายุ Tooling ยอดยกมาจะถูกล้างให้เอง<br>
     ${dayColsTrimmed
       ? `คอลัมน์วันแสดง<b>เฉพาะวันที่มีการผลิต</b> เพราะช่วงที่เลือกครอบหลายเดือนเกินไป (เกิน ${MAX_DAY_COLS} วัน)
          — เลือกช่วงให้แคบลงเหลือ 1–2 เดือน จะแสดงครบทุกวันของเดือนให้`
@@ -16045,7 +16045,7 @@ function kgOfColorByMachine(date, setName, colorKey, byMc) {
 
 // ─── รีน้ำหนักผลิตหลังแต่ง Roll เสร็จ ───────────────────────────────────────
 // แต่ง Roll เสร็จ = เริ่มรอบใหม่ ต้องนับน้ำหนักจากศูนย์ แต่ต้องไม่ลบประวัติการผลิตของจริง
-// จึงเก็บแค่ "วันเริ่มนับ" ไว้ต่อชุด แล้วให้หน้าอายุ Roll ตัดวันก่อนหน้าออกจากการคิด
+// จึงเก็บแค่ "วันเริ่มนับ" ไว้ต่อชุด แล้วให้หน้าอายุ Tooling ตัดวันก่อนหน้าออกจากการคิด
 // ยอดจริงทั้งหมดยังดูได้ที่หน้าน้ำหนักผลิต และย้อนการรีได้ตลอดเพราะไม่มีข้อมูลไหนถูกลบ
 function rollDressResetKey(setName, colorKey) { return setName + '|' + colorKey; }
 
@@ -16068,7 +16068,7 @@ function setRollCarryTon(setName, colorKey, raw) {
   const reset = rollDressResetFor(setName, colorKey);
   if (reset) {
     alert('ชุดนี้กดรีน้ำหนักแล้ว (เริ่มนับ ' + dressResetDateLabel(reset.from) + ')\n'
-      + 'รอบใหม่เริ่มจากศูนย์ จึงไม่นับยอดยกมา — ถ้าต้องการใช้ยกมา ให้กด "ยกเลิกการรี" ที่หน้าอายุ Roll ก่อน');
+      + 'รอบใหม่เริ่มจากศูนย์ จึงไม่นับยอดยกมา — ถ้าต้องการใช้ยกมา ให้กด "ยกเลิกการรี" ที่หน้าอายุ Tooling ก่อน');
     if (typeof renderProdWeight === 'function') renderProdWeight();   // วาดกลับเป็นค่าเดิม
     return;
   }
@@ -16079,7 +16079,7 @@ function setRollCarryTon(setName, colorKey, raw) {
   else rollCarryTon[key] = Math.round(n * 100) / 100;
   if (rollCarryTonFor(setName, colorKey) === before) return; // ไม่ได้เปลี่ยนค่า ไม่ต้องเขียนขึ้น cloud
   persistState();
-  // หน้าอายุ Roll คิด % จากค่านี้ ถ้าเปิดอยู่ต้องอัปเดตตาม ไม่ต้องรอสลับหน้า
+  // หน้าอายุ Tooling คิด % จากค่านี้ ถ้าเปิดอยู่ต้องอัปเดตตาม ไม่ต้องรอสลับหน้า
   if (typeof renderRollLife === 'function') renderRollLife();
 }
 function rollDressResetFor(setName, colorKey) {
@@ -16736,7 +16736,7 @@ function rollSetColorList(setName) {
   return list.length ? list : [null];
 }
 
-// 1 แถว = Size Roll + ชุดสี ให้หน่วยตรงกับหน้าอายุ Roll
+// 1 แถว = Size Roll + ชุดสี ให้หน่วยตรงกับหน้าอายุ Tooling
 // ปุ่ม ★ ✏️ ✕ เป็นการกระทำระดับ Size Roll ทั้งกลุ่ม (ลบ = ลบ Roll ทุกสีในกลุ่ม) จึงแสดงเฉพาะแถวแรก
 // ของแต่ละ Size Roll ไม่ซ้ำทุกสี กันกดลบทั้งกลุ่มจากแถวของสีอื่นโดยไม่ตั้งใจ
 function rollSetRowHtml(s, colorMeta, num, withActions) {
@@ -17020,7 +17020,7 @@ function renderRollSetList() {
       const ca = ROLL_SET_CATEGORY_ORDER[parseSizeRollName(a).category], cb = ROLL_SET_CATEGORY_ORDER[parseSizeRollName(b).category];
       return (ca === undefined ? 9 : ca) - (cb === undefined ? 9 : cb);
     });
-    // นับหน่วยเดียวกับหน้าอายุ Roll: ชุด = Size Roll x ชุดสี, ลูก = จำนวน Roll จริง
+    // นับหน่วยเดียวกับหน้าอายุ Tooling: ชุด = Size Roll x ชุดสี, ลูก = จำนวน Roll จริง
     const setColorCount = sorted.reduce((n, s) => {
       const rs = toolingData.roll.filter(r => r.set === s);
       return n + (rs.length ? new Set(rs.map(r => r.color || NO_COLOR_KEY)).size : 1);
@@ -19376,7 +19376,7 @@ function voicePrompt(title, placeholder) {
 // เมื่อจบครบทุกชิ้นของงานนั้นแล้ว จะทำเครื่องหมายงานหลักเป็น "สำเร็จ" ให้อัตโนมัติ (และอาจไปกระตุ้นการวางแผนวันถัดไปอัตโนมัติต่อ ถ้าทั้งวันเสร็จครบพอดี)
 // นำขนาดที่วัดได้หลังแต่ง Roll ไปอัปเดตทะเบียน Tooling ด้วย
 // เดิมบันทึกไว้แค่ในประวัติรายชิ้น (dailyPieceStatus/rollSizeLog) ทะเบียนจึงยังโชว์ OD เดิมอยู่
-// ทั้งที่แต่งไปแล้ว — และหน้าอายุ Roll คิด % จาก OD ในทะเบียน จึงคลาดเคลื่อนตามไปด้วย
+// ทั้งที่แต่งไปแล้ว — และหน้าอายุ Tooling คิด % จาก OD ในทะเบียน จึงคลาดเคลื่อนตามไปด้วย
 // getMatchingRollsForPlan() คืน object ตัวจริงจาก toolingData.roll (filter ไม่ได้ก็อป) แก้ที่นี่คือแก้ทะเบียน
 // bumpRegrind = true เฉพาะตอนจบงานครั้งแรก — แก้ค่าที่วัดผิดภายหลังไม่ต้องนับรอบการแต่งเพิ่ม
 // ─── Ø มาตรฐาน (ตอนใส่ครั้งแรก) แยกจาก Ø ปัจจุบัน (หลังแต่งล่าสุด) ─────────────
@@ -19419,7 +19419,7 @@ function rollMinDiameterInfo(roll) {
 function rollMinOdHtml(roll) {
   const info = rollMinDiameterInfo(roll);
   if (!info.text) {
-    return '<span class="muted" title="ยังไม่ได้กำหนดขนาดหมดอายุของลูกนี้ — กรอกได้ที่ปุ่มแก้ไข หรือกำหนดทั้งชุดที่หน้าอายุ Roll">—</span>';
+    return '<span class="muted" title="ยังไม่ได้กำหนดขนาดหมดอายุของลูกนี้ — กรอกได้ที่ปุ่มแก้ไข หรือกำหนดทั้งชุดที่หน้าอายุ Tooling">—</span>';
   }
   const head = info.fromSpec
     ? `<span class="muted" title="อ้างจาก OD เล็กสุด ของเกณฑ์อายุ Roll ชุดนี้ (ยังไม่ได้กรอกเฉพาะลูกนี้)">${escapeHtmlAttr(info.text)} <span style="font-size:10px;">ทั้งชุด</span></span>`
