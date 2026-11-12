@@ -2406,7 +2406,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.34';
+const APP_BUILD = '2026-11-12.35';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5557,7 +5557,6 @@ function dashSqSetRowHtml(set, badgeColor, rowBg, hideSize) {
 function dashSqSizeHeadHtml(size, count) {
   return `<div style="display:flex;align-items:center;gap:8px;margin:12px 2px 6px;">
     <b style="font-size:15px;font-weight:800;color:var(--text-1);white-space:nowrap;">${escapeHtmlAttr(size || 'ไม่ระบุขนาด')}</b>
-    ${size ? sqSizeMachineButtonsHtml(size) : ''}
     <span style="flex:1;height:1px;background:var(--border-light);"></span>
     <span style="font-size:12px;font-weight:700;color:var(--text-3);white-space:nowrap;">${count} ชุด</span>
   </div>`;
@@ -6334,7 +6333,7 @@ async function renderProdWeightTooling(force) {
       <td colspan="7" style="padding:9px 12px;">
         <span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;">
           ${g.color ? `<span style="width:10px;height:10px;border-radius:50%;background:${g.color};box-shadow:inset 0 0 0 1px rgba(0,0,0,.2);"></span>` : ''}
-          <b style="font-size:14px;color:var(--text-1);">${escapeHtmlAttr(g.title)}</b>${g.sqSize ? sqSizeMachineButtonsHtml(g.sqSize) : ''}
+          <b style="font-size:14px;color:var(--text-1);">${escapeHtmlAttr(g.title)}</b>
           <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr(g.sub)}</span>
         </span>
         <span style="float:right;font-size:12.5px;color:var(--text-2);">${g.rounds.length} รอบ ·
@@ -6487,7 +6486,7 @@ function renderToolingLife() {
             const cm = sqColorMeta(x.head.color);
             const st = STATE[x.state];
             return `<tr style="cursor:pointer;" onclick="${jsCallAttr('goToSqSet', x.key)}" title="กดเพื่อเปิดชุดนี้ในทะเบียน Roll SQ">
-              <td style="white-space:nowrap;"><b>${escapeHtmlAttr(x.head.sizeSq || '—')}</b>${x.head.sizeSq ? sqSizeMachineButtonsHtml(String(x.head.sizeSq).trim()) : ''}</td>
+              <td style="white-space:nowrap;"><b>${escapeHtmlAttr(x.head.sizeSq || '—')}</b></td>
               <td>${rollColorPillHtml(cm.dot, cm.label)} <span class="muted">${escapeHtmlAttr(sqSetOrdinalLabel(x.head))}</span></td>
               <td>${x.use && x.use.open ? `<span class="chip chip-yellow">${escapeHtmlAttr(x.use.open.machine)}</span>` : '<span class="muted">—</span>'}</td>
               <td style="text-align:right;">${x.set.length}</td>
@@ -16099,7 +16098,7 @@ async function renderProdWeight(force) {
     });
     return `<tr><td colspan="${days.length + 4}" style="background:var(--bg-panel);padding:11px 12px;border-top:2px solid var(--text-1);">
       <span class="pw-group-label" style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);background:var(--bg-panel);padding-right:8px;">
-        <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(g.label)}${sizeGroupMachineButtonsHtml(g.sets)}
+        <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(g.label)}
       </span>
       <span style="float:right;font-size:12px;font-weight:700;color:var(--text-3);">${colorSets} ชุด · ${pieces} ลูก · ผลิตรวม ${ton(groupKg).toLocaleString(undefined, { maximumFractionDigits: 2 })} ตัน${
         groupCarryMax ? ` <span style="color:var(--accent);" title="ยอดยกมาที่กรอกเองเป็นของ Roll แต่ละชุดแยกกัน (Forming/Sizing/TH เป็นชุดคนละชุด) จึงบอกค่าที่มากสุดต่อชุด ไม่ใช่ผลบวก">·
@@ -16859,7 +16858,7 @@ function renderRollLife() {
     const pieces = sets.reduce((s, x) => s + x.rows.reduce((n, g) => n + g.count, 0), 0);
     return `<tr><td colspan="10" style="background:var(--bg-panel);padding:11px 12px;border-top:2px solid var(--text-1);">
       <span class="pw-group-label" style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);background:var(--bg-panel);padding-right:8px;">
-        <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(label)}${sizeGroupMachineButtonsHtml(sets.map(x => x.setName))}
+        <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(label)}
       </span>
       <span style="float:right;font-size:12px;font-weight:700;color:var(--text-3);">${setCount.toLocaleString()} ชุด · ${pieces.toLocaleString()} ลูก</span>
     </td></tr>`;
