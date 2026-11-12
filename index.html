@@ -2406,7 +2406,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.38';
+const APP_BUILD = '2026-11-12.39';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6842,7 +6842,7 @@ function renderDashboardSimpleToolingPanel(key, name) {
         <span class="card-title" style="font-size:16px;${key === 'saw' ? 'color:var(--green);' : ''}">${key === 'saw' ? 'ใบเลื่อยพร้อมใช้งาน' : 'รายการ' + escapeHtmlAttr(name) + 'ตามสถานะ'}</span>
         <span style="margin-left:auto;font-size:12px;color:var(--text-3);">${listItems.length.toLocaleString()} ${key === 'saw' ? 'ใบ' : 'รายการ'}</span>
       </div>
-      <div style="padding:12px 14px;display:flex;flex-direction:column;gap:14px;">
+      ${key === 'saw' ? sawReadyListHtml(listItems) : `<div style="padding:12px 14px;display:flex;flex-direction:column;gap:14px;">
         ${[...byStatus.entries()].map(([status, list]) => `<div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
             ${statusChip(status)}<span style="font-size:12px;color:var(--text-3);">${list.length.toLocaleString()} รายการ</span>
@@ -6856,8 +6856,34 @@ function renderDashboardSimpleToolingPanel(key, name) {
             </div>`).join('')}
           </div>
         </div>`).join('')}
-      </div>
+      </div>`}
     </div>`;
+}
+
+// รายการใบเลื่อยพร้อมใช้งาน — แถบแบบเดียวกับการ์ดกำลังใช้งาน (ป้ายเครื่อง + รหัส + OD) ให้เห็นชัด
+// เรียงตามเครื่องผลิต แล้วตามรหัส · ท้ายแถวบอกยอดตัดหลังลับคม/สะสม (ถ้ามีข้อมูลจากระบบผลิต)
+function sawReadyListHtml(list) {
+  if (!list.length) return '<div style="padding:22px 14px;text-align:center;color:var(--text-3);font-size:13px;">ยังไม่มีใบเลื่อยที่พร้อมใช้งาน</div>';
+  const reg = (toolingData || {}).saw || [];
+  const rows = list.slice().sort((a, b) => String(a.machine || '~').localeCompare(String(b.machine || '~'))
+    || String(a.id).localeCompare(String(b.id), undefined, { numeric: true }));
+  return `<div style="padding:10px 14px;max-height:520px;overflow-y:auto;">${rows.map(it => {
+    const r = reg.find(x => x.id === it.id) || it;
+    const u = typeof sawUsageInfo === 'function' ? sawUsageInfo(r) : null;
+    const mc = it.machine && it.machine !== '—' ? it.machine : '—';
+    return `<div onclick="showPage('registry');switchRegTab('saw');"
+      style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;margin-bottom:6px;cursor:pointer;
+             background:var(--green-dim);border:1px solid var(--border-light);"
+      title="${escapeHtmlAttr('พร้อมใช้งาน — เครื่องผลิต ' + mc + (u && u.lastGrind ? ' · ลับคมล่าสุด ' + fmtIsoDateThai(u.lastGrind) : ''))}">
+      <span style="font-size:14px;font-weight:800;color:#fff;background:var(--green);padding:3px 11px;border-radius:6px;min-width:34px;text-align:center;">${escapeHtmlAttr(mc)}</span>
+      <b style="font-size:13.5px;color:var(--text-1);">รหัส ${escapeHtmlAttr(it.id || '—')}</b>
+      <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr([sawOdLabel(it), mc !== '—' ? mc : ''].filter(Boolean).join(' · '))}</span>
+      ${u && u.lastGrind ? `<span style="font-size:12px;color:var(--text-2);">ลับคมล่าสุด ${escapeHtmlAttr(fmtIsoDateThai(u.lastGrind))}</span>` : ''}
+      <span style="margin-left:auto;"></span>
+      ${u && u.p ? (u.sinceGrind != null ? sawTonsPcsHtml('หลังลับคม', u.sinceGrind, u.sinceGrindPcs) + '<span style="color:var(--border);">|</span>' : '')
+        + sawTonsPcsHtml('สะสม', u.total, u.p.pcs) : ''}
+    </div>`;
+  }).join('')}</div>`;
 }
 
 // วาดเฉพาะแผงที่กำลังเปิดอยู่ (แท็บ Roll ใช้ตัวเรนเดอร์เดิมของมันเอง ไม่ต้องทำอะไรที่นี่)
