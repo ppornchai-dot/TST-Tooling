@@ -2253,7 +2253,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.3';
+const APP_BUILD = '2026-11-12.4';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5639,17 +5639,109 @@ function rerenderProdSawViews() {
   if (dashTab === 'saw') renderDashboardSimpleToolingPanel('saw', 'ใบเลื่อย');
 }
 
+// งานลับคมใบเลื่อยในแผนงาน — อ้างใบด้วย "ลำดับในทะเบียน" (rollIds = index ของ toolingData.saw
+// ดู getMatchingRollsForPlan) · คืน { done: Map(index → วันล่าสุดที่กดจบ), planned: Map(index → วันแผนที่ใกล้สุด) }
+// คิดใหม่ไม่เกินทุก 2 วินาที — ฟังก์ชันนี้ถูกเรียกทีละแถวของตาราง
+var sawGrindPlanMemo = null;
+function sawGrindPlanInfo() {
+  if (sawGrindPlanMemo && Date.now() - sawGrindPlanMemo.at < 2000) return sawGrindPlanMemo;
+  const done = new Map(), planned = new Map();
+  const sawTasks = new Map((planTasks || []).filter(t => t && t.workType === 'saw').map(t => [t.id, t]));
+  Object.keys(dailyPieceStatus || {}).forEach(dt => {
+    Object.keys(dailyPieceStatus[dt] || {}).forEach(tid => {
+      if (!sawTasks.has(tid)) return;
+      const byIdx = dailyPieceStatus[dt][tid] || {};
+      Object.keys(byIdx).forEach(i => {
+        if ((byIdx[i] || {}).status !== 'done') return;
+        const k = Number(i), prev = done.get(k);
+        if (!prev || dt > prev) done.set(k, dt);
+      });
+    });
+  });
+  const today = toISODate(new Date());
+  sawTasks.forEach(t => {
+    const d = taskDisplayDate(t);
+    if (d < today || (dailyStatusByDate[d] || {})[t.id] === 'done') return;
+    (t.rollIds || []).forEach(i => {
+      if (pieceEntryFor(d, t.id, i).status === 'done') return;
+      const k = Number(i), prev = planned.get(k);
+      if (!prev || d < prev) planned.set(k, d);
+    });
+  });
+  sawGrindPlanMemo = { at: Date.now(), done, planned };
+  return sawGrindPlanMemo;
+}
+// วันลับคมล่าสุดของใบหนึ่ง = ค่าที่ใหม่กว่าระหว่าง "ลับคมล่าสุด" ในทะเบียน กับวันที่กดจบงานลับคมในแผนงาน
+// วันที่ในทะเบียนที่ผิดปกติ (อนาคต หรือก่อนปี 2000 — มีอยู่จากไฟล์ที่นำเข้า) ไม่นับ จะได้ไม่ขึ้นเลขหลอก
+function sawLastGrindIso(r) {
+  const today = toISODate(new Date());
+  const ls = String((r || {}).lastService || '').slice(0, 10);
+  const reg = /^\d{4}-\d{2}-\d{2}$/.test(ls) && ls >= '2000-01-01' && ls <= today ? ls : '';
+  const idx = ((toolingData || {}).saw || []).indexOf(r);
+  const task = idx >= 0 ? sawGrindPlanInfo().done.get(idx) || '' : '';
+  return task > reg ? task : reg;
+}
+
 // ยอดตัดของใบหนึ่ง: ตั้งต้น + ระบบผลิต · และส่วนที่ตัดหลังลับคมล่าสุด
 function sawUsageInfo(r) {
   const base = sawBaselineTons(r);
   const p = prodSawFor(r);
   const prodT = p ? p.kg / 1000 : 0;
-  const ls = String((r || {}).lastService || '').slice(0, 10);
-  // วันที่ลับคมที่ผิดปกติ (อนาคต หรือเก่ากว่าปี 2000 — มีอยู่จากไฟล์ที่นำเข้า) ไม่เอามานับ จะได้ไม่ขึ้นเลขหลอก
-  const lsOk = /^\d{4}-\d{2}-\d{2}$/.test(ls) && ls >= '2000-01-01' && ls <= toISODate(new Date());
-  const sinceGrind = (p && lsOk)
+  const ls = sawLastGrindIso(r);
+  const sinceGrind = (p && ls)
     ? p.rounds.filter(x => toISODate(new Date(x.startedAt)) >= ls).reduce((n, x) => n + x.kg, 0) / 1000 : null;
-  return { base, prodT, total: base + prodT, p, sinceGrind, open: p ? p.rounds.find(x => x.isOpen) || null : null };
+  const open = p ? p.rounds.find(x => x.isOpen) || null : null;
+  // รอลับคม = ระบบผลิตบอกว่าถอดออกจากเครื่องแล้ว (รอบล่าสุดปิดแล้ว ไม่มีรอบที่ยังเปิด)
+  // และยังไม่มีการลับคมตั้งแต่วันที่ถอด (ลับวันเดียวกับที่ถอดถือว่าลับแล้ว)
+  const last = p && p.rounds[0];   // rounds เรียงใหม่สุดก่อน
+  const removedAt = (!open && last && last.endedAt) ? last.endedAt : null;
+  const waiting = !!removedAt && !(ls && ls >= toISODate(new Date(removedAt)));
+  return { base, prodT, total: base + prodT, p, sinceGrind, open, last, removedAt, waiting, lastGrind: ls };
+}
+
+// ใบเลื่อยที่รอลับคม — เรียงตามเวลาที่ถอด (ถอดก่อนขึ้นก่อน)
+function prodSawWaitingList() {
+  const reg = (toolingData || {}).saw || [];
+  const plan = sawGrindPlanInfo().planned;
+  return reg.map((r, idx) => ({ r, idx, u: sawUsageInfo(r), plannedAt: plan.get(idx) || null }))
+    .filter(x => x.u.waiting)
+    .sort((a, b) => String(a.u.removedAt).localeCompare(String(b.u.removedAt)));
+}
+
+function prodSawWaitingCardHtml() {
+  const s = prodSawLive.status;
+  if (s === 'noproxy') return '';
+  const list = s === 'ok' || prodSawLive.at ? prodSawWaitingList() : [];
+  const rows = list.map(({ r, u, plannedAt }) => `
+    <div onclick="showPage('registry');switchRegTab('saw');"
+      style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;margin-bottom:6px;cursor:pointer;
+             background:var(--red-dim);border:1px solid var(--border-light);"
+      title="${escapeHtmlAttr('ถอดจากเครื่อง ' + u.last.machine + ' เมื่อ ' + prodSqFmtTime(u.removedAt)
+        + ' · รอบสุดท้าย ' + fmtTons2(u.last.kg / 1000) + ' ตัน (' + u.last.pcs.toLocaleString() + ' เส้น)'
+        + (u.lastGrind ? ' · ลับคมล่าสุด ' + fmtIsoDateThai(u.lastGrind) : ' · ยังไม่มีวันลับคมล่าสุดที่ใช้ได้ในทะเบียน'))}">
+      <span style="font-size:14px;font-weight:800;color:#fff;background:var(--red);padding:3px 11px;border-radius:6px;">ใบ ${escapeHtmlAttr(r.id)}</span>
+      <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr([r.diameter, r.machine].filter(x => x && x !== '—').join(' · '))}</span>
+      <span style="font-size:12px;color:var(--text-2);">ถอดจาก ${escapeHtmlAttr(u.last.machine)} · ${escapeHtmlAttr(prodSqFmtTime(u.removedAt))}</span>
+      ${plannedAt ? `<span class="chip chip-amber" title="มีงานลับคมใบนี้ในแผนงานแล้ว">แผนลับคม ${escapeHtmlAttr(fmtIsoDateThai(plannedAt))}</span>` : ''}
+      <span style="margin-left:auto;font-size:12px;color:var(--text-2);">${u.sinceGrind != null
+        ? 'หลังลับคม <b>' + escapeHtmlAttr(fmtTons2(u.sinceGrind)) + '</b> ตัน'
+        : 'รอบสุดท้าย <b>' + escapeHtmlAttr(fmtTons2(u.last.kg / 1000)) + '</b> ตัน'}</span>
+      <span style="font-size:12px;color:var(--text-2);">สะสม <b>${escapeHtmlAttr(fmtTons2(u.total))}</b> ตัน</span>
+    </div>`).join('');
+  return `<div class="card" style="margin-bottom:18px;">
+    <div class="card-header">
+      <span class="card-title" style="font-size:17px;color:var(--red);display:inline-flex;align-items:center;gap:8px;">
+        <span style="width:11px;height:11px;border-radius:50%;background:var(--red);"></span>ใบเลื่อยรอลับคม</span>
+      <span style="margin-left:10px;font-size:12px;color:var(--text-3);"><b style="color:var(--red);">${list.length}</b> ใบ</span>
+    </div>
+    <div style="padding:10px 14px;">
+      ${rows || `<div style="padding:14px;text-align:center;color:var(--text-3);font-size:13px;">${
+        s === 'ok' ? 'ไม่มีใบเลื่อยที่ถอดออกมาแล้วรอลับคม' : s === 'error' ? 'ดึงจากระบบผลิตไม่สำเร็จ' : 'กำลังดึงจากระบบผลิต…'}</div>`}
+      <div style="font-size:11px;color:var(--text-3);margin-top:6px;line-height:1.6;">
+        รอลับคม = ระบบผลิตบันทึกว่าถอดออกจากเครื่องแล้ว และยังไม่มีการลับคมตั้งแต่วันที่ถอด
+        (ดูจาก "ลับคมล่าสุด" ในทะเบียน หรือการกดจบงานลับคมในแผนงาน) · ใส่กลับเข้าเครื่องเมื่อไร รายการนี้จะหายเอง</div>
+    </div>
+  </div>`;
 }
 function fmtTons2(t) {
   return (Number(t) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -5668,10 +5760,12 @@ function sawUsageCellHtml(r) {
     + '\n= ยอดตั้งต้นในทะเบียน ' + fmtTons2(u.base) + ' ตัน'
     + '\n+ ระบบผลิตตั้งแต่ 9 พ.ย. 69 ' + fmtTons2(u.prodT) + ' ตัน (' + u.p.rounds.length + ' รอบ · ' + u.p.pcs.toLocaleString() + ' เส้น)'
     + (u.sinceGrind != null ? '\nตัดหลังลับคมล่าสุด ' + fmtTons2(u.sinceGrind) + ' ตัน' : '')
-    + (u.open ? '\nตอนนี้อยู่บนเครื่อง ' + u.open.machine + ' ตั้งแต่ ' + prodSqFmtTime(u.open.startedAt) : '');
+    + (u.open ? '\nตอนนี้อยู่บนเครื่อง ' + u.open.machine + ' ตั้งแต่ ' + prodSqFmtTime(u.open.startedAt) : '')
+    + (u.waiting ? '\nรอลับคม — ถอดจาก ' + u.last.machine + ' เมื่อ ' + prodSqFmtTime(u.removedAt) : '');
   return `<td title="${escapeHtmlAttr(tip)}" style="white-space:nowrap;">
     <b style="color:var(--text-1);">${escapeHtmlAttr(fmtTons2(u.total))} ตัน</b>
     ${u.open ? `<span class="chip chip-yellow" style="margin-left:4px;font-size:10.5px;">บน ${escapeHtmlAttr(u.open.machine)}</span>` : ''}
+    ${u.waiting ? `<span class="chip chip-red" style="margin-left:4px;font-size:10.5px;">รอลับคม</span>` : ''}
     ${u.sinceGrind != null ? `<div style="font-size:10.5px;color:var(--text-3);">หลังลับคม ${escapeHtmlAttr(fmtTons2(u.sinceGrind))} ตัน</div>` : ''}
   </td>`;
 }
@@ -6001,7 +6095,7 @@ function renderDashboardSimpleToolingPanel(key, name) {
       ${dashMiniKpi('ซ่อมบำรุง / รอใช้งาน', repair.toLocaleString(), 'var(--amber)', '')}
       ${dashMiniKpi('หมดอายุ / มีปัญหา', expired.toLocaleString(), 'var(--red)', '')}
     </div>
-    ${key === 'saw' ? prodSawInUseCardHtml() : ''}
+    ${key === 'saw' ? prodSawInUseCardHtml() + prodSawWaitingCardHtml() : ''}
     <div class="card">
       <div class="card-header">
         <span class="card-title" style="font-size:16px;">รายการ${escapeHtmlAttr(name)}ตามสถานะ</span>
