@@ -2264,7 +2264,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.13';
+const APP_BUILD = '2026-11-12.14';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -19560,8 +19560,10 @@ function renderDailyTasks() {
     // มุมมองช่าง: กางรายชิ้นทุกงานไว้เลย ไม่ต้องกดเข้าไปดูทีละงาน (งานเรียงต่อกันมาให้ทำตามลำดับ)
     // กางหมดแล้วจึงไม่มีอะไรให้พับ — ตัดลูกศร ▸ กับการกดแถวออกด้วย ไม่ให้กดแล้วเหมือนไม่มีอะไรเกิดขึ้น
     const techView = isDailyTechRole();
-    const expanded = item.expandable && (techView || expandedDailyTaskId === item.key);
-    const rowClickable = item.expandable && !techView;
+    // งานลับคมใบเลื่อยกางรายใบไว้เสมอ — ลับทีละไม่กี่ใบ ช่างต้องกดเริ่ม/จบรายใบอยู่แล้ว ไม่ต้องกดเข้าไปดู
+    const sawTask = !!(item.raw && item.raw.workType === 'saw');
+    const expanded = item.expandable && (techView || sawTask || expandedDailyTaskId === item.key);
+    const rowClickable = item.expandable && !techView && !sawTask;
     const rowOpacity = isMine ? '' : 'opacity:.55;';
     // งานหลายชิ้นไม่ดัมป์ชื่อ Roll ทั้งหมดลงแถวสรุป (21 ชื่อทำให้แถวเดียวสูงเต็มจอบนมือถือ) — โชว์ 2 ชื่อแรกแล้วบอกจำนวนที่เหลือ รายชิ้นครบดูได้จากการกดขยายแถว
     const rollNames = item.expandable ? String(item.task).split(',').map(s => s.trim()).filter(Boolean) : [];
@@ -19586,7 +19588,8 @@ function renderDailyTasks() {
         ส่วนของวันนี้ทำครบแล้ว — เหลืออีก ${left.length} ชิ้นในส่วนที่ ${other.map(p => (p.__partIndex + 1) + '/' + p.__partCount).join(', ') || 'อื่น'}${
         days.length ? ' (' + days.map(d => fmtDateThaiShort(parseISODate(d))).join(', ') + ')' : ''}</div>`;
     })();
-    const taskLabel = (rollNames.length > 2
+    // ใบเลื่อยโชว์รหัสครบทุกใบ (สั้น และงานหนึ่งมีไม่กี่ใบ)
+    const taskLabel = (rollNames.length > 2 && !sawTask
       ? escapeHtmlAttr(rollNames.slice(0, 2).join(', ')) + ` <span class="muted" style="font-weight:400;">…อีก ${rollNames.length - 2} ชิ้น</span>`
       : escapeHtmlAttr(item.task)) + partBadge + partDoneNote;
     const row = `<tr data-taskid="${escapeHtmlAttr(item.key)}"${rowClickable ? ` style="cursor:pointer;${rowOpacity}" onclick="toggleDailyTaskDetail('${item.key}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : (rowOpacity ? ` style="${rowOpacity}"` : '')}>
@@ -19598,7 +19601,7 @@ function renderDailyTasks() {
       <td${actions ? ' onclick="event.stopPropagation();"' : ''}>${actions}</td>
       <td>${escapeHtmlAttr(planSetLabel(item.rollSet))}</td>
       <td>${escapeHtmlAttr(item.rollColor)}</td>
-      <td class="muted">${escapeHtmlAttr(item.rollId)}</td>
+      <td class="muted">${escapeHtmlAttr(sawTask ? String(item.rollId || '').replace(/\bRoll\b/, 'ใบ') : item.rollId)}</td>
       <td><strong>${taskLabel}</strong></td>
       <td class="muted">${escapeHtmlAttr(item.who)}</td>
       <td class="muted" style="text-align:right;">${escapeHtmlAttr(item.duration)}</td>
