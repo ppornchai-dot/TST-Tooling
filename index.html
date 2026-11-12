@@ -2406,7 +2406,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.30';
+const APP_BUILD = '2026-11-12.31';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5557,6 +5557,7 @@ function dashSqSetRowHtml(set, badgeColor, rowBg, hideSize) {
 function dashSqSizeHeadHtml(size, count) {
   return `<div style="display:flex;align-items:center;gap:8px;margin:12px 2px 6px;">
     <b style="font-size:15px;font-weight:800;color:var(--text-1);white-space:nowrap;">${escapeHtmlAttr(size || 'ไม่ระบุขนาด')}</b>
+    ${size ? sqSizeMachineButtonsHtml(size) : ''}
     <span style="flex:1;height:1px;background:var(--border-light);"></span>
     <span style="font-size:12px;font-weight:700;color:var(--text-3);white-space:nowrap;">${count} ชุด</span>
   </div>`;
@@ -6316,7 +6317,7 @@ async function renderProdWeightTooling(force) {
       sub = reg ? [sawOdLabel(reg), reg.machine].filter(x => x && x !== '—').join(' · ') : 'ไม่พบใบนี้ในทะเบียนใบเลื่อย';
       sortKey = (reg ? '0|' : '1|') + String(r.code).trim().padStart(6, '0');
     }
-    if (!groups.has(key)) groups.set(key, { key, title, sub, color, sortKey, kg: 0, pcs: 0, rounds: [] });
+    if (!groups.has(key)) groups.set(key, { key, title, sub, color, sortKey, kg: 0, pcs: 0, rounds: [], sqSize: kind === 'sq' && key.indexOf('x|') !== 0 ? title : null });
     const g = groups.get(key);
     g.kg += Number(r.kg) || 0;
     g.pcs += Number(r.pcs) || 0;
@@ -6333,7 +6334,7 @@ async function renderProdWeightTooling(force) {
       <td colspan="7" style="padding:9px 12px;">
         <span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;">
           ${g.color ? `<span style="width:10px;height:10px;border-radius:50%;background:${g.color};box-shadow:inset 0 0 0 1px rgba(0,0,0,.2);"></span>` : ''}
-          <b style="font-size:14px;color:var(--text-1);">${escapeHtmlAttr(g.title)}</b>
+          <b style="font-size:14px;color:var(--text-1);">${escapeHtmlAttr(g.title)}</b>${g.sqSize ? sqSizeMachineButtonsHtml(g.sqSize) : ''}
           <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr(g.sub)}</span>
         </span>
         <span style="float:right;font-size:12.5px;color:var(--text-2);">${g.rounds.length} รอบ ·
@@ -6486,7 +6487,7 @@ function renderToolingLife() {
             const cm = sqColorMeta(x.head.color);
             const st = STATE[x.state];
             return `<tr style="cursor:pointer;" onclick="${jsCallAttr('goToSqSet', x.key)}" title="กดเพื่อเปิดชุดนี้ในทะเบียน Roll SQ">
-              <td><b>${escapeHtmlAttr(x.head.sizeSq || '—')}</b></td>
+              <td style="white-space:nowrap;"><b>${escapeHtmlAttr(x.head.sizeSq || '—')}</b>${x.head.sizeSq ? sqSizeMachineButtonsHtml(String(x.head.sizeSq).trim()) : ''}</td>
               <td>${rollColorPillHtml(cm.dot, cm.label)} <span class="muted">${escapeHtmlAttr(sqSetOrdinalLabel(x.head))}</span></td>
               <td>${x.use && x.use.open ? `<span class="chip chip-yellow">${escapeHtmlAttr(x.use.open.machine)}</span>` : '<span class="muted">—</span>'}</td>
               <td style="text-align:right;">${x.set.length}</td>
@@ -13474,7 +13475,7 @@ function sizeGroupMachineButtonsHtml(sets) {
       : (editable ? 'กดเพื่อตั้งว่าขนาดนี้เดินที่เครื่อง ' + m + ' (เลือกได้ไม่เกิน ' + MAX_ROLL_MACHINES + ' เครื่อง)' : 'ยังไม่ได้ผูกเครื่อง ' + m);
     return editable
       ? `<button type="button" style="${style}cursor:pointer;" title="${escapeHtmlAttr(tip)}"
-          onclick="${jsCallAttr('toggleSizeGroupMachine', JSON.stringify(names), m)}">${m}</button>`
+          onclick="event.stopPropagation();${jsCallAttr('toggleSizeGroupMachine', JSON.stringify(names), m)}">${m}</button>`
       : (all || some ? `<span style="${style}" title="${escapeHtmlAttr(tip)}">${m}</span>` : '');
   }).join('');
   return btns ? `<span style="display:inline-flex;align-items:center;gap:4px;margin-left:10px;vertical-align:middle;">
@@ -13509,6 +13510,9 @@ function toggleSizeGroupMachine(namesJson, machine) {
     persistState();
     if (currentPage === 'prodWeight') renderProdWeight();
     if (currentPage === 'rollLife') renderRollLife();
+    // ขนาด SQ อิงเครื่องจากขนาดเดียวกันฝั่ง Roll — หน้าฝั่ง SQ ต้องอัปเดตตามด้วย
+    if (typeof renderSqRegistry === 'function' && document.getElementById('sq-set-list')) renderSqRegistry(pageState.sq || 1);
+    if (typeof renderDashboardToolingPanels === 'function') renderDashboardToolingPanels();
   });
 }
 
@@ -18299,7 +18303,25 @@ function setSqSetMachine(setKeyStr, machine) {
 // ─── เครื่องที่ "ขนาด Size SQ" ใช้ได้ (เลือกได้หลายเครื่อง) ─────────────────────
 // เทียบเท่า rollSetMachines ของทะเบียน Roll — บอกว่าขนาดนี้ขึ้นเครื่องไหนได้บ้าง
 // ไม่ใช่ "ตอนนี้ชุดไหนอยู่เครื่องไหน" (อันนั้นคือ sqSetMachine รายชุด)
+// เครื่องของขนาด SQ อิงจาก "เครื่องของขนาดเดียวกันฝั่ง Roll" (rollSetMachines — ปุ่มเครื่องที่หัวข้อขนาด
+// ในหน้าน้ำหนักผลิต/อายุ Tooling และช่องเครื่องในฟอร์ม Size Roll) — ขนาดเดียวกันเดินเครื่องเดียวกัน
+// แก้ที่ไหนก็ตรงกันทุกที่ · ขนาด SQ ที่ไม่มี Size Roll ตรงกันจึงใช้ค่าที่ตั้งไว้ฝั่ง SQ (sqSizeMachines) ตามเดิม
+// จับคู่ด้วยชื่อขนาดตรงตัวก่อน (เช่น GS 1"x1" (23x23)) ไม่เจอค่อยเทียบด้วยเกรด+ขนาด (rollSetFgKey)
+function rollSetsForSqSize(size) {
+  const label = String(size || '').trim();
+  if (!label) return [];
+  const sets = getRollSets();
+  const exact = sets.filter(n => rollSetSizeGroupLabel(n) === label);
+  if (exact.length) return exact;
+  const fk = rollSetFgKey(label);
+  return fk ? sets.filter(n => rollSetFgKey(n) === fk) : [];
+}
 function sqSizeMachinesFor(size) {
+  const rolls = rollSetsForSqSize(size);
+  if (rolls.length) {
+    const list = new Set(rolls.flatMap(n => rollSetMachines[n] || []));
+    return ROLL_MACHINES.filter(m => list.has(m));
+  }
   const v = sqSizeMachines[size];
   const list = Array.isArray(v) ? v : (v ? [v] : []);
   return ROLL_MACHINES.filter(m => list.includes(m));   // เรียง P1→P4 เสมอ ป้ายจะได้ไม่สลับไปมา
@@ -18307,18 +18329,30 @@ function sqSizeMachinesFor(size) {
 function sqSizeMachineLabel(size) { return sqSizeMachinesFor(size).join('/'); }
 
 // ตั้งรายการเครื่องของขนาดให้เป็นค่านี้ (รายการว่าง = ไม่ผูกเครื่อง) — ทำซ้ำได้ผลเดิมเสมอ
+// มี Size Roll ตรงกัน → เขียนที่ rollSetMachines ของทุกชุด (ที่เดียวกับฝั่ง Roll) ไม่งั้นเขียนที่ sqSizeMachines
 function applySqSizeMachines(size, machines) {
   const want = ROLL_MACHINES.filter(m => (machines || []).includes(m));
+  const rolls = rollSetsForSqSize(size);
   withCloudRetry(() => {
-    if (want.length) sqSizeMachines[size] = want; else delete sqSizeMachines[size];
+    if (rolls.length) {
+      rolls.forEach(n => { if (want.length) rollSetMachines[n] = want.slice(); else delete rollSetMachines[n]; });
+      delete sqSizeMachines[size];   // ไม่เก็บซ้ำสองที่ — อ่านจากฝั่ง Roll อย่างเดียว
+    } else if (want.length) sqSizeMachines[size] = want; else delete sqSizeMachines[size];
     persistState();
     renderSqRegistry(pageState.sq || 1);
     renderDashboardToolingPanels();
+    if (currentPage === 'prodWeight') renderProdWeight();
+    if (currentPage === 'rollLife') renderRollLife();
   });
 }
 function toggleSqSizeMachine(size, machine) {
   if (!canEditPlan()) return;
   const cur = sqSizeMachinesFor(size);
+  if (!cur.includes(machine) && cur.length >= MAX_ROLL_MACHINES) {
+    alert('เลือกได้ไม่เกิน ' + MAX_ROLL_MACHINES + ' เครื่องต่อขนาด — ตอนนี้ผูกไว้ ' + cur.join(', ')
+      + '\nกดเอาเครื่องเดิมออกก่อน แล้วค่อยเลือกเครื่อง ' + machine);
+    return;
+  }
   applySqSizeMachines(size, cur.includes(machine) ? cur.filter(m => m !== machine) : cur.concat(machine));
   renderSqSizeMachinePicker(size);   // เปิดกล่องค้างไว้ ติ๊กหลายเครื่องรวดเดียวได้
 }
@@ -18326,6 +18360,36 @@ function clearSqSizeMachines(size) {
   if (!canEditPlan()) return;
   applySqSizeMachines(size, []);
   renderSqSizeMachinePicker(size);
+}
+// ปุ่มเครื่อง P1–P4 ที่หัวข้อขนาดของหน้าฝั่ง Roll SQ — หน้าตา/ข้อมูลเดียวกับหัวข้อขนาดของ Roll
+// มี Size Roll ตรงกันใช้ปุ่มตัวเดียวกับฝั่ง Roll (sizeGroupMachineButtonsHtml) ไม่มีก็ใช้ข้อมูลฝั่ง SQ เอง
+function sqSizeMachineButtonsHtml(size) {
+  const rolls = rollSetsForSqSize(size);
+  if (rolls.length) return sizeGroupMachineButtonsHtml(rolls);
+  const editable = typeof canEditPlan === 'function' && canEditPlan();
+  const cur = sqSizeMachinesFor(size);
+  const btns = ROLL_MACHINES.map(m => {
+    const on = cur.includes(m);
+    const style = `font-size:11.5px;font-weight:800;padding:2px 10px;border-radius:99px;line-height:1.5;
+      border:1px solid ${on ? 'var(--accent)' : 'var(--border)'};background:${on ? 'var(--accent)' : 'var(--bg-surface)'};color:${on ? '#fff' : 'var(--text-3)'};`;
+    return editable
+      ? `<button type="button" style="${style}cursor:pointer;" onclick="event.stopPropagation();${jsCallAttr('toggleSqSizeMachineInline', size, m)}"
+          title="${escapeHtmlAttr(on ? 'ขนาดนี้เดินที่เครื่อง ' + m + ' — กดเพื่อเอาออก' : 'กดเพื่อตั้งว่าขนาดนี้เดินที่เครื่อง ' + m)}">${m}</button>`
+      : (on ? `<span style="${style}">${m}</span>` : '');
+  }).join('');
+  return btns ? `<span style="display:inline-flex;align-items:center;gap:4px;margin-left:10px;vertical-align:middle;">
+    <span style="font-size:11px;font-weight:700;color:var(--text-3);">เครื่อง</span>${btns}</span>` : '';
+}
+// กดจากหัวข้อขนาด (ไม่ได้เปิดกล่องเลือกเครื่อง) — ไม่ต้องวาดกล่องนั้นต่อ
+function toggleSqSizeMachineInline(size, machine) {
+  if (!canEditPlan()) return;
+  const cur = sqSizeMachinesFor(size);
+  if (!cur.includes(machine) && cur.length >= MAX_ROLL_MACHINES) {
+    alert('เลือกได้ไม่เกิน ' + MAX_ROLL_MACHINES + ' เครื่องต่อขนาด — ตอนนี้ผูกไว้ ' + cur.join(', ')
+      + '\nกดเอาเครื่องเดิมออกก่อน แล้วค่อยเลือกเครื่อง ' + machine);
+    return;
+  }
+  applySqSizeMachines(size, cur.includes(machine) ? cur.filter(m => m !== machine) : cur.concat(machine));
 }
 
 // ปุ่ม/ป้ายเครื่องบนหัวข้อขนาดในรายการด้านซ้ายของทะเบียน Roll SQ
