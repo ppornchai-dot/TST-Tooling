@@ -2406,7 +2406,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.31';
+const APP_BUILD = '2026-11-12.32';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -18897,13 +18897,14 @@ function renderSqSetList() {
     const sizeActive = selectedSqSize === size;
     // ปุ่ม "ขนาดนี้ใช้กับเครื่องไหน" วางคู่หัวข้อขนาด — event.stopPropagation() อยู่ในตัวปุ่มแล้ว
     // ไม่งั้นกดปุ่มแล้วจะไปโดน onclick ของหัวข้อที่สลับการกรองขนาดด้วย
-    const header = `<div style="display:flex;align-items:center;gap:8px;">
-      <div onclick="${jsCallAttr('selectSqSize', size)}" style="cursor:pointer;flex:1;min-width:0;"
+    // แถวปุ่มเครื่อง P1–P4 ใต้หัวข้อขนาด — ตัวเดียวกับหัวข้อขนาดของหน้าอื่น (อิงเครื่องของขนาดเดียวกันฝั่ง Roll)
+    // เห็นทุกคน แก้ได้เฉพาะ Admin/หัวหน้า · ปุ่มกันคลิกทะลุไปที่หัวข้อ (ที่สลับการกรองขนาด) ไว้แล้ว
+    const mcRow = sqSizeMachineButtonsHtml(size);
+    const header = `<div onclick="${jsCallAttr('selectSqSize', size)}" style="cursor:pointer;"
         title="${escapeHtmlAttr('ดู Roll SQ ทุกชุดของขนาด ' + size + ' (กดซ้ำเพื่อดูทุกขนาด)')}">${
         rollSetSectionHeaderHtml(escapeHtmlAttr(size), sets.length + ' ชุด · ' + pieces + ' ชิ้น',
           sizeActive ? 'var(--accent)' : 'var(--text-1)', { keepCase: true, big: true })}</div>
-      ${canEditPlan() ? `<span style="flex-shrink:0;padding-top:6px;">${sqSizeMachineBtnHtml(size)}</span>` : ''}
-    </div>`;
+      ${mcRow ? `<div style="margin:-2px 0 8px -10px;">${mcRow}</div>` : ''}`;
     return header + sets.map(set => {
       const r = set[0];
       const key = sqSetKey(r);
