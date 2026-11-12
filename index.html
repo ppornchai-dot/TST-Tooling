@@ -1541,6 +1541,37 @@ canvas{display:block;}
          PAGE: PRODUCTION WEIGHT
     ══════════════════════════════════════════ -->
     <div class="page" id="page-prodWeight">
+      <!-- แท็บหมวด Tooling แบบเดียวกับหน้าทะเบียน — ช่องวันที่ด้านล่างใช้ร่วมกันทุกแท็บ (ดู switchProdWeightTab) -->
+      <div class="reg-tab-bar" id="pw-tab-bar" style="margin-top:6px;">
+        <button class="reg-tab active" onclick="switchProdWeightTab('roll')">
+          <span class="reg-tab-icon" style="background:rgba(74,142,194,.18);color:var(--accent);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="10" ry="4"/><path d="M2 12c0 4 4.5 8 10 8s10-4 10-8"/><path d="M2 12c0-4 4.5-8 10-8s10 4 10 8"/></svg>
+          </span>
+          Roll
+          <span class="reg-tab-count" id="pw-cnt-roll">—</span>
+        </button>
+        <button class="reg-tab" onclick="switchProdWeightTab('sq')">
+          <span class="reg-tab-icon" style="background:rgba(139,104,212,.18);color:var(--purple);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+          </span>
+          Roll SQ
+          <span class="reg-tab-count" id="pw-cnt-sq">—</span>
+        </button>
+        <button class="reg-tab" onclick="switchProdWeightTab('saw')">
+          <span class="reg-tab-icon" style="background:rgba(232,151,30,.18);color:var(--amber);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M16.9 16.9l1.4 1.4M5.6 18.4l1.4-1.4M16.9 7.1l1.4-1.4"/></svg>
+          </span>
+          ใบเลื่อย
+          <span class="reg-tab-count" id="pw-cnt-saw">—</span>
+        </button>
+        <button class="reg-tab" onclick="switchProdWeightTab('slitter')">
+          <span class="reg-tab-icon" style="background:rgba(217,91,91,.18);color:var(--red);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="4" y1="12" x2="20" y2="12"/><circle cx="8" cy="12" r="3"/><circle cx="16" cy="12" r="3"/></svg>
+          </span>
+          มีดสลิตเตอร์
+          <span class="reg-tab-count" id="pw-cnt-slitter">—</span>
+        </button>
+      </div>
       <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-top:14px;margin-bottom:6px;">
         <div class="form-group" style="margin-bottom:0;">
           <label class="form-label">จากวันที่</label>
@@ -1562,10 +1593,15 @@ canvas{display:block;}
           style="margin-left:auto;font-weight:800;background:var(--green);color:#fff;border:1px solid var(--green);"
           title="บันทึกตารางนี้เป็นไฟล์ Excel (.xlsx) — ตัวเลขชุดเดียวกับที่เห็นบนจอ">⬇ บันทึกเป็น Excel</button>
       </div>
-      <div id="prodweight-range-note" style="margin-top:4px;"></div>
-      <!-- แถบบอกว่าวันนี้บล็อกเดินขนาดไหน และระบุชุดสี Roll ที่เดินครบหรือยัง (ดู renderProdWeightRunBanner) -->
-      <div id="prodweight-run-banner" style="margin-top:10px;"></div>
-      <div id="prodweight-grid" style="margin-top:10px;"></div>
+      <!-- แท็บ Roll (ของเดิมทั้งหมด) -->
+      <div id="pw-panel-roll">
+        <div id="prodweight-range-note" style="margin-top:4px;"></div>
+        <!-- แถบบอกว่าวันนี้บล็อกเดินขนาดไหน และระบุชุดสี Roll ที่เดินครบหรือยัง (ดู renderProdWeightRunBanner) -->
+        <div id="prodweight-run-banner" style="margin-top:10px;"></div>
+        <div id="prodweight-grid" style="margin-top:10px;"></div>
+      </div>
+      <!-- แท็บ Roll SQ / ใบเลื่อย / มีดสลิตเตอร์ — ยอดผลิตรายรอบจากระบบผลิต (ดู renderProdWeightTooling) -->
+      <div id="pw-panel-tooling" style="display:none;margin-top:10px;"></div>
     </div>
 
 
@@ -2264,7 +2300,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.19';
+const APP_BUILD = '2026-11-12.20';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6026,6 +6062,175 @@ function prodSawInUseCardHtml() {
 }
 
 // รอบที่ยังเปิดอยู่แต่จับคู่กับทะเบียนไม่ได้ — บอกไว้ ไม่เดาให้
+// ─── หน้าน้ำหนักผลิต: แท็บ Roll / Roll SQ / ใบเลื่อย / มีดสลิตเตอร์ ─────────────────
+// แท็บ Roll = ตารางน้ำหนักผลิตรายวันเดิม (renderProdWeight)
+// แท็บ Roll SQ / ใบเลื่อย = ยอดผลิต "รายรอบการใช้งาน" จากระบบผลิต (api/sq-usage ผ่านตัวกลาง) ในช่วงวันที่ที่เลือก
+//   จัดกลุ่มตามชุด SQ / ใบเลื่อย แล้วแสดงทีละรอบ (เครื่อง · ใส่ · ถอด · สินค้า · ตัน · เส้น)
+// แท็บมีดสลิตเตอร์ = ระบบผลิตยังไม่มีข้อมูล
+var prodWeightTab = 'roll';
+var prodToolingRangeCache = new Map();   // 'kind|from|to' → { at, rows }
+function switchProdWeightTab(key) {
+  prodWeightTab = key;
+  document.querySelectorAll('#pw-tab-bar .reg-tab').forEach(t =>
+    t.classList.toggle('active', (t.getAttribute('onclick') || '').includes("'" + key + "'")));
+  const roll = key === 'roll';
+  const pRoll = document.getElementById('pw-panel-roll');
+  const pTool = document.getElementById('pw-panel-tooling');
+  if (pRoll) pRoll.style.display = roll ? '' : 'none';
+  if (pTool) pTool.style.display = roll ? 'none' : '';
+  // ปุ่ม Excel ส่งออกเฉพาะตารางของแท็บ Roll
+  const xl = document.getElementById('prodweight-export-btn');
+  if (xl) xl.style.display = roll ? '' : 'none';
+  renderProdWeight();
+}
+function renderProdWeightTabCounts() {
+  ['roll', 'sq', 'saw', 'slitter'].forEach(k => {
+    const el = document.getElementById('pw-cnt-' + k);
+    if (el && typeof dashToolingCount === 'function') el.textContent = dashToolingCount(k).toLocaleString();
+  });
+}
+
+async function fetchProdToolingRounds(kind, fromIso, toIso, force) {
+  // ระบบผลิตรับช่วงได้ไม่เกิน 1 ปี — ช่วงที่ยาวกว่านั้นตัดเหลือ 1 ปีล่าสุดของช่วง
+  const from = fromIso < addDaysIso(toIso, -364) ? addDaysIso(toIso, -364) : fromIso;
+  const key = kind + '|' + from + '|' + toIso;
+  const hit = prodToolingRangeCache.get(key);
+  if (!force && hit && Date.now() - hit.at < PROD_SQ_MIN_AGE_MS) return { rows: hit.rows, from };
+  const res = await fetch(PROD_SQ_PROXY_URL + '?kind=' + kind + '&from=' + from + '&to=' + toIso);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const json = await res.json();
+  const rows = (json.rows || []).filter(r => r && r.code != null && String(r.code).trim() !== '');
+  prodToolingRangeCache.set(key, { at: Date.now(), rows });
+  return { rows, from };
+}
+
+// รอบหนึ่งของ SQ → ชุดในทะเบียน (ขนาดจาก product_code + สี + ชุดที่ N) — เกณฑ์เดียวกับ loadProdSqInUse
+function prodSqSetOfRound(r, heads) {
+  const sizeKey = fgProductCodeToKey(String(r.product_code || ''));
+  const cands = !sizeKey ? [] : heads.filter(h => rollSetFgKey(h.sizeSq) === sizeKey
+    && h.color === r.color && sqSetOrdinalInfo(h).no === Number(r.code));
+  return { sizeKey, head: cands.length === 1 ? cands[0] : null, candCount: cands.length };
+}
+
+var prodToolingRenderGen = 0;
+async function renderProdWeightTooling(force) {
+  const el = document.getElementById('pw-panel-tooling');
+  if (!el) return;
+  const myGen = ++prodToolingRenderGen;
+  const kind = prodWeightTab;
+  const fromInput = document.getElementById('prodweight-date-from');
+  const toInput = document.getElementById('prodweight-date-to');
+  const today = toISODate(new Date());
+  if (fromInput && !fromInput.value) fromInput.value = prodWeightStartIso();
+  if (toInput && !toInput.value) toInput.value = today;
+  const fromIso = (fromInput && fromInput.value) || prodWeightStartIso();
+  const toIso = (toInput && toInput.value) || today;
+  refreshProdWeightRangeButtons();
+  const msg = (t, color) => `<div style="text-align:center;color:${color || 'var(--text-3)'};font-size:13px;padding:24px 0;">${t}</div>`;
+  if (kind === 'slitter') {
+    el.innerHTML = `<div class="card">${msg('ระบบผลิตยังไม่มีข้อมูลการใช้มีดสลิตเตอร์ — ยังแสดงน้ำหนักผลิตของหมวดนี้ไม่ได้')}</div>`;
+    return;
+  }
+  if (!PROD_SQ_PROXY_URL) { el.innerHTML = `<div class="card">${msg('ยังไม่ได้เชื่อมระบบผลิต')}</div>`; return; }
+  el.innerHTML = `<div class="card">${msg('กำลังโหลดยอดผลิตจากระบบผลิต...')}</div>`;
+  let data;
+  try { data = await fetchProdToolingRounds(kind, fromIso, toIso, !!force); }
+  catch (e) {
+    if (myGen !== prodToolingRenderGen) return;
+    el.innerHTML = `<div class="card">${msg('ดึงยอดผลิตจากระบบผลิตไม่สำเร็จ (' + escapeHtmlAttr(String((e && e.message) || e)) + ') — กด ค้นหา เพื่อลองใหม่', 'var(--red)')}</div>`;
+    return;
+  }
+  if (myGen !== prodToolingRenderGen) return;
+  const rows = data.rows;
+
+  // จัดกลุ่ม: SQ ตามชุดในทะเบียน · ใบเลื่อยตามรหัสใบ
+  const groups = new Map();
+  const heads = kind === 'sq' ? sqSets().map(s => s[0]).filter(Boolean) : [];
+  const sawReg = (toolingData || {}).saw || [];
+  rows.forEach(r => {
+    let key, title, sub, sortKey, color = null;
+    if (kind === 'sq') {
+      const m = prodSqSetOfRound(r, heads);
+      const cm = sqColorMeta(r.color);
+      if (m.head) {
+        key = sqSetKey(m.head);
+        title = String(m.head.sizeSq || '').trim();
+        sub = cm.label + ' · ชุดที่ ' + r.code;
+        color = cm.dot;
+        sortKey = '0|' + title + '|' + cm.label + '|' + String(r.code).padStart(3, '0');
+      } else {
+        key = 'x|' + r.color + '|' + r.code + '|' + (m.sizeKey || '');
+        title = (m.sizeKey ? m.sizeKey.replace('|', ' ') : 'ไม่ทราบขนาด') + ' · ' + cm.label + ' ชุดที่ ' + r.code;
+        sub = m.candCount > 1 ? 'พบในทะเบียน ' + m.candCount + ' ชุดที่ตรงกัน' : 'ไม่พบชุดนี้ในทะเบียน Roll SQ';
+        color = cm.dot;
+        sortKey = '1|' + title;
+      }
+    } else {
+      const reg = sawReg.find(x => sawCodeKey(x.id) === sawCodeKey(r.code));
+      key = sawCodeKey(r.code);
+      title = 'ใบ ' + String(r.code).trim();
+      sub = reg ? [sawOdLabel(reg), reg.machine].filter(x => x && x !== '—').join(' · ') : 'ไม่พบใบนี้ในทะเบียนใบเลื่อย';
+      sortKey = (reg ? '0|' : '1|') + String(r.code).trim().padStart(6, '0');
+    }
+    if (!groups.has(key)) groups.set(key, { key, title, sub, color, sortKey, kg: 0, pcs: 0, rounds: [] });
+    const g = groups.get(key);
+    g.kg += Number(r.kg) || 0;
+    g.pcs += Number(r.pcs) || 0;
+    g.rounds.push(r);
+  });
+  const list = [...groups.values()].sort((a, b) => a.sortKey.localeCompare(b.sortKey, 'th'));
+  const totKg = list.reduce((n, g) => n + g.kg, 0), totPcs = list.reduce((n, g) => n + g.pcs, 0);
+  const label = kind === 'sq' ? 'ชุด' : 'ใบ';
+  const fmtT = iso => iso ? prodSqFmtTime(iso) : '—';
+  const clipped = data.from !== fromIso;
+
+  const tableRows = list.map(g => {
+    const head = `<tr style="background:var(--bg-panel);">
+      <td colspan="7" style="padding:9px 12px;">
+        <span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          ${g.color ? `<span style="width:10px;height:10px;border-radius:50%;background:${g.color};box-shadow:inset 0 0 0 1px rgba(0,0,0,.2);"></span>` : ''}
+          <b style="font-size:14px;color:var(--text-1);">${escapeHtmlAttr(g.title)}</b>
+          <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr(g.sub)}</span>
+        </span>
+        <span style="float:right;font-size:12.5px;color:var(--text-2);">${g.rounds.length} รอบ ·
+          <b>${escapeHtmlAttr(fmtTons2(g.kg / 1000))}</b> ตัน · <b>${escapeHtmlAttr(g.pcs.toLocaleString())}</b> เส้น</span>
+      </td></tr>`;
+    const rs = g.rounds.slice().sort((a, b) => String(a.started_at).localeCompare(String(b.started_at))).map(r => `<tr>
+      <td style="padding-left:26px;"><span class="chip chip-blue">${escapeHtmlAttr(r.machine_id || '—')}</span></td>
+      <td>${escapeHtmlAttr(fmtT(r.started_at))}</td>
+      <td>${r.is_open ? '<span class="chip chip-yellow">ยังใช้อยู่</span>' : escapeHtmlAttr(fmtT(r.ended_at))}</td>
+      <td style="max-width:320px;white-space:normal;font-size:12px;color:var(--text-2);">${escapeHtmlAttr(r.product_name || r.product_code || '—')}${
+        r.product_source === 'mo' ? ' <span class="muted" title="ยังไม่มียอดผลิต — สินค้าตาม MO ที่ผูกไว้ตอนเปลี่ยน">(MO)</span>' : ''}</td>
+      <td style="text-align:right;font-variant-numeric:tabular-nums;">${escapeHtmlAttr(fmtTons2((Number(r.kg) || 0) / 1000))}</td>
+      <td style="text-align:right;font-variant-numeric:tabular-nums;">${escapeHtmlAttr((Number(r.pcs) || 0).toLocaleString())}</td>
+      <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--text-3);font-size:12px;"
+        title="เกรด A / เกรด B+C">${escapeHtmlAttr((Number(r.a_pcs) || 0).toLocaleString())} / ${escapeHtmlAttr((Number(r.bc_pcs) || 0).toLocaleString())}</td>
+    </tr>`).join('');
+    return head + rs;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="kpi-grid">
+      ${dashMiniKpi(kind === 'sq' ? 'ชุด Roll SQ ที่ใช้งาน' : 'ใบเลื่อยที่ใช้งาน', list.length.toLocaleString(), 'var(--accent)', 'ในช่วงวันที่ที่เลือก')}
+      ${dashMiniKpi('รอบการใช้งาน', rows.length.toLocaleString(), 'var(--purple)', 'ใส่เข้าเครื่อง 1 ครั้ง = 1 รอบ')}
+      ${dashMiniKpi('น้ำหนักผลิตรวม', fmtTons2(totKg / 1000), 'var(--green)', 'ตัน')}
+      ${dashMiniKpi('จำนวนผลิตรวม', totPcs.toLocaleString(), 'var(--amber)', 'เส้น')}
+    </div>
+    <div style="font-size:11.5px;color:var(--text-3);margin:2px 2px 8px;">
+      ข้อมูลจากระบบผลิต ช่วง ${escapeHtmlAttr(fmtIsoDateThai(data.from))} – ${escapeHtmlAttr(fmtIsoDateThai(toIso))}${
+        clipped ? ' (ระบบผลิตดึงได้ไม่เกิน 1 ปีต่อครั้ง — ตัดเหลือ 1 ปีล่าสุดของช่วงที่เลือก)' : ''}${
+        kind === 'saw' ? ' · ระบบผลิตเริ่มบันทึกใบเลื่อยตั้งแต่ 9 พ.ย. 69' : ''} · เวลาเป็นเวลาไทย</div>
+    <div class="card table-wrap">
+      <table>
+        <thead><tr>
+          <th>เครื่อง</th><th>ใส่เครื่อง</th><th>ถอด</th><th>สินค้าที่ผลิต</th>
+          <th style="text-align:right;">ตัน</th><th style="text-align:right;">เส้น</th><th style="text-align:right;">A / BC</th>
+        </tr></thead>
+        <tbody>${tableRows || `<tr><td colspan="7">${msg('ไม่มีรอบการใช้' + (kind === 'sq' ? 'ชุด Roll SQ' : 'ใบเลื่อย') + 'ในช่วงวันที่นี้')}</td></tr>`}</tbody>
+      </table>
+    </div>`;
+}
+
 function prodSqUnmatchedHtml() {
   const miss = prodSqLive.rounds.filter(r => !r.setKey);
   if (!miss.length) return '';
@@ -15246,6 +15451,9 @@ function prodWeightScrollRestore(s) {
 
 // force = true ให้ทิ้งแคชแล้วดึงใหม่ (ปุ่ม "ค้นหา") — เรียกเฉยๆ ใช้ของในแคช 5 นาที
 async function renderProdWeight(force) {
+  renderProdWeightTabCounts();
+  // แท็บอื่นที่ไม่ใช่ Roll ใช้ช่องวันที่/ปุ่มค้นหาเดียวกัน แต่วาดตารางของตัวเอง
+  if (typeof prodWeightTab !== 'undefined' && prodWeightTab !== 'roll') return renderProdWeightTooling(force);
   const myGen = ++prodWeightRenderGen;
   const scroll = prodWeightScrollState();
   const grid = document.getElementById('prodweight-grid');
