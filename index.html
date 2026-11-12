@@ -2137,6 +2137,37 @@ canvas{display:block;}
          PAGE: PENDING
     ══════════════════════════════════════════ -->
     <div class="page" id="page-pending">
+      <!-- แท็บหมวด Tooling แบบเดียวกับหน้าทะเบียน — กรองงานค้างตามประเภทงาน (ดู switchPendingTab) -->
+      <div class="reg-tab-bar" id="pd-tab-bar" style="margin-top:6px;margin-bottom:14px;">
+        <button class="reg-tab active" onclick="switchPendingTab('roll')">
+          <span class="reg-tab-icon" style="background:rgba(74,142,194,.18);color:var(--accent);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="10" ry="4"/><path d="M2 12c0 4 4.5 8 10 8s10-4 10-8"/><path d="M2 12c0-4 4.5-8 10-8s10 4 10 8"/></svg>
+          </span>
+          Roll
+          <span class="reg-tab-count" id="pd-cnt-roll">—</span>
+        </button>
+        <button class="reg-tab" onclick="switchPendingTab('sq')">
+          <span class="reg-tab-icon" style="background:rgba(139,104,212,.18);color:var(--purple);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+          </span>
+          Roll SQ
+          <span class="reg-tab-count" id="pd-cnt-sq">—</span>
+        </button>
+        <button class="reg-tab" onclick="switchPendingTab('saw')">
+          <span class="reg-tab-icon" style="background:rgba(232,151,30,.18);color:var(--amber);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M16.9 16.9l1.4 1.4M5.6 18.4l1.4-1.4M16.9 7.1l1.4-1.4"/></svg>
+          </span>
+          ใบเลื่อย
+          <span class="reg-tab-count" id="pd-cnt-saw">—</span>
+        </button>
+        <button class="reg-tab" onclick="switchPendingTab('slitter')">
+          <span class="reg-tab-icon" style="background:rgba(217,91,91,.18);color:var(--red);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="4" y1="12" x2="20" y2="12"/><circle cx="8" cy="12" r="3"/><circle cx="16" cy="12" r="3"/></svg>
+          </span>
+          มีดสลิตเตอร์
+          <span class="reg-tab-count" id="pd-cnt-slitter">—</span>
+        </button>
+      </div>
 
       <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);">
         <div class="kpi-card red">
@@ -2372,7 +2403,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.25';
+const APP_BUILD = '2026-11-12.26';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -20953,11 +20984,18 @@ function collectOverdueRecords() {
     if (pauseReasons.length) reason = pauseReasons.join('; ');
     else if (status === 'in_progress') reason = 'เริ่มงานแล้วแต่ยังไม่เสร็จ';
     else reason = 'เลยกำหนดที่วางแผนไว้ — ยังไม่เริ่มงาน';
+    const section = planTaskSectionKey(t);
+    // ใบเลื่อยระบุด้วยรหัสใบ (ชุด "SAW:all" ไม่มีความหมายกับคนอ่าน) · Roll SQ ใช้ชื่อชุดที่อ่านได้
+    const tooling = t.otherWork ? (t.rollSet || '—')
+      : section === 'saw'
+        ? 'ใบเลื่อย ' + ((t.rollIds || []).map(i => ((toolingData.saw || [])[i] || {}).id).filter(Boolean).join(', ') || '—')
+        : `${planSetLabel(t.rollSet) || '—'}${t.rollColor ? ' — ' + planRollColorLabel(t) : ''}`;
     records.push({
-      wo: t.id, typeLabel: t.workType === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)',
-      section: planTaskSectionKey(t),   // ใช้แยกการ์ด KPI ตามแท็บบน Dashboard
+      wo: t.id,
+      typeLabel: section === 'polish' ? 'ขัด Roll' : section === 'saw' ? 'ลับคมใบเลื่อย' : section === 'sq' ? 'แต่ง Roll SQ' : 'แต่ง Roll (CNC)',
+      section,   // ใช้แยกการ์ด KPI ตามแท็บบน Dashboard และแท็บของหน้างานค้าง
       dateIso, // ใช้กรองเฉพาะเดือนนี้ในการ์ด KPI หน้า Dashboard
-      tooling: `${t.rollSet || '—'}${t.rollColor ? ' — ' + planRollColorLabel(t) : ''}`,
+      tooling,
       reason, who: workerName(t.workerId),
       dueLabel: `${fmtDateThaiShort(parseISODate(t.endDate || t.date))} ${t.endTime || ''}`,
       overdueDays, overdueMin, overdueLabel,
@@ -20980,11 +21018,34 @@ function updatePendingBadge() {
   badge.style.display = count > 0 ? '' : 'none';
 }
 
+// แท็บหน้างานค้าง — แต่ละแท็บนับเฉพาะงานของหมวดนั้น (คีย์ของ planTaskSectionKey)
+// Roll = แต่ง Roll (CNC) + ขัด Roll · มีดสลิตเตอร์ยังไม่มีงานตามแผน
+var pendingTab = 'roll';
+var PENDING_TAB_SECTIONS = { roll: ['cnc', 'polish'], sq: ['sq'], saw: ['saw'], slitter: [] };
+function switchPendingTab(key) {
+  pendingTab = key;
+  document.querySelectorAll('#pd-tab-bar .reg-tab').forEach(t =>
+    t.classList.toggle('active', (t.getAttribute('onclick') || '').includes("'" + key + "'")));
+  renderPending();
+}
+
 function renderPending() {
   const tbody = document.getElementById('tbody-pending');
   if (!tbody) return;
   const priorityFilter = document.getElementById('pending-priority-filter').value || '';
-  const records = collectOverdueRecords().filter(r => !priorityFilter || r.priority === priorityFilter);
+  const tabSections = PENDING_TAB_SECTIONS[pendingTab] || PENDING_TAB_SECTIONS.roll;
+  const inTab = r => tabSections.includes(r.section);
+  // ตัวเลขบนแท็บ = จำนวนงานเกินกำหนดของหมวดนั้น (ไม่ใช่จำนวนในทะเบียน) — เห็นทันทีว่าหมวดไหนมีงานค้าง
+  const everyOverdue = collectOverdueRecords();
+  Object.keys(PENDING_TAB_SECTIONS).forEach(k => {
+    const el = document.getElementById('pd-cnt-' + k);
+    if (!el) return;
+    const n = everyOverdue.filter(r => PENDING_TAB_SECTIONS[k].includes(r.section)).length;
+    el.textContent = n.toLocaleString();
+    el.style.background = n ? 'var(--red)' : '';
+    el.style.color = n ? '#fff' : '';
+  });
+  const records = everyOverdue.filter(r => inTab(r) && (!priorityFilter || r.priority === priorityFilter));
 
   tbody.innerHTML = records.map((r, i) => `
     <tr class="overdue-row">
@@ -21000,11 +21061,12 @@ function renderPending() {
       <td><span class="chip chip-red">เกินกำหนด</span></td>
     </tr>`).join('') || `<tr><td colspan="10" style="padding:32px;text-align:center;color:var(--text-3);">ไม่มีงานค้าง</td></tr>`;
 
-  const allOverdue = collectOverdueRecords();
+  const allOverdue = everyOverdue.filter(inTab);
   document.getElementById('pending-kpi-overdue').textContent = allOverdue.length;
   const now = new Date();
   const in7Days = new Date(now.getTime() + 7 * 86400000);
   const dueSoonCount = planTasks.filter(t => {
+    if (!tabSections.includes(planTaskSectionKey(t))) return false;
     const dateIso = taskDisplayDate(t);
     const status = (dailyStatusByDate[dateIso] || {})[t.id] || 'pending';
     if (status === 'done') return false;
