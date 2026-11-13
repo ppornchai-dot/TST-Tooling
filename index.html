@@ -2407,7 +2407,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-13.21';
+const APP_BUILD = '2026-11-13.22';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -18929,16 +18929,17 @@ function syncSqColorGroupSpecs() {
 }
 
 // รายการที่ใช้รหัสนี้อยู่แล้ว (ไม่นับตัวเอง) — เว้นรหัสว่างไว้ได้ ไม่ถือว่าซ้ำ
-// รหัสใช้เฉพาะในกลุ่ม Size SQ เดียวกัน — ซ้ำกับขนาดอื่นได้ (เช่น "1_R" มีได้ทุกขนาด)
-function sqCodeOwner(code, exceptId, sizeSq) {
+// รหัสห้ามซ้ำเฉพาะใน Size SQ + ชุดสีเดียวกัน — ต่างขนาดหรือต่างสีซ้ำได้ (เช่น "1_R" มีได้ทุกสีทุกขนาด)
+function sqCodeOwner(code, exceptId, sizeSq, color) {
   const c = String(code || '').trim().toLowerCase();
   if (!c) return null;
   const size = String(sizeSq || '').trim();
   return toolingData.sq.find(r => r.id !== exceptId && String(r.code || '').trim().toLowerCase() === c
-    && (!size || String(r.sizeSq || '').trim() === size)) || null;
+    && (!size || String(r.sizeSq || '').trim() === size)
+    && (!color || (r.color || '') === color)) || null;
 }
-function sqCodeConflictMsg(code, exceptId, sizeSq) {
-  const own = sqCodeOwner(code, exceptId, sizeSq);
+function sqCodeConflictMsg(code, exceptId, sizeSq, color) {
+  const own = sqCodeOwner(code, exceptId, sizeSq, color);
   if (!own) return null;
   return 'รหัส Roll "' + String(code).trim() + '" ถูกใช้อยู่แล้วที่ '
     + sqSetFullLabel(own) + ' · ชิ้น ' + sqPieceLabel(own.piece);
@@ -18985,7 +18986,7 @@ function readSqSetForm() {
   const codes = sqSplitSetCodes(sqFormVal('f-sqs-code'));
   for (let i = 1; i <= SQ_PIECES_PER_SET; i++) {
     const code = codes[i - 1];
-    const clash = sqCodeConflictMsg(code, null, sizeSq);
+    const clash = sqCodeConflictMsg(code, null, sizeSq, color);
     if (clash) { alert(clash); return null; }
   }
   const nonEmpty = codes.filter(Boolean).map(c => c.toLowerCase());
@@ -19038,7 +19039,7 @@ function editSq(id) {
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const sizeSq = sqFormVal('f-sq-size');
     if (!sizeSq) { alert('กรอก Size SQ ก่อน'); return; }
-    const clash = sqCodeConflictMsg(sqFormVal('f-sq-code'), r.id, sizeSq);
+    const clash = sqCodeConflictMsg(sqFormVal('f-sq-code'), r.id, sizeSq, sqFormVal('f-sq-color') || SQ_COLORS[0].key);
     if (clash) { alert(clash); return; }
     // ชุดเก่าที่ยังไม่มี setId — ออกให้ทั้งชุดตอนนี้ (ทุกชิ้นที่จับกลุ่มอยู่ด้วยกัน)
     // ต้องทำก่อนแก้ค่า ไม่งั้นพอเปลี่ยนขนาด/สี คีย์แบบเก่าจะเปลี่ยนแล้วหาพี่น้องไม่เจอ
@@ -19121,15 +19122,14 @@ function editSqSet(id) {
     const keepCodes = !codeIn && !codeUniform;
     const codes = sqSplitSetCodes(codeIn);
     const ids = new Set(set.map(x => x.id));
-    if (!keepCodes) {
-      for (let i = 0; i < set.length; i++) {
-        const code = codes[(Number(set[i].piece) || i + 1) - 1] || '';
-        const own = code ? toolingData.sq.find(x => !ids.has(x.id) && String(x.code || '').trim().toLowerCase() === code.toLowerCase()
-          && String(x.sizeSq || '').trim() === String(base.sizeSq || '').trim()) : null;
-        if (own) { alert('รหัส Roll "' + code + '" ถูกใช้อยู่แล้วที่ ' + sqSetFullLabel(own) + ' · ชิ้น ' + sqPieceLabel(own.piece)); return; }
-      }
-    }
     const color = sqFormVal('f-sq-color') || SQ_COLORS[0].key;
+    // ตรวจรหัสที่จะได้จริง (รหัสใหม่ หรือรหัสเดิมถ้าเปลี่ยนสี) กับชุดอื่นใน Size + ชุดสีเดียวกัน
+    for (let i = 0; i < set.length; i++) {
+      const code = keepCodes ? String(set[i].code || '').trim() : (codes[(Number(set[i].piece) || i + 1) - 1] || '');
+      const own = code ? toolingData.sq.find(x => !ids.has(x.id) && String(x.code || '').trim().toLowerCase() === code.toLowerCase()
+        && String(x.sizeSq || '').trim() === String(base.sizeSq || '').trim() && (x.color || '') === color) : null;
+      if (own) { alert('รหัส Roll "' + code + '" ถูกใช้อยู่แล้วที่ ' + sqSetFullLabel(own) + ' · ชิ้น ' + sqPieceLabel(own.piece)); return; }
+    }
     const madeYm = sqYmFromForm();
     const filmFace = sqFormVal('f-sq-film');
     const thickness = sqFormVal('f-sq-thick');
@@ -19545,7 +19545,7 @@ function addSqPieceToSet(key) {
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const sizeSq = sqFormVal('f-sq-size');
     if (!sizeSq) { alert('กรอก Size SQ ก่อน'); return; }
-    const clash = sqCodeConflictMsg(sqFormVal('f-sq-code'), null, sizeSq);
+    const clash = sqCodeConflictMsg(sqFormVal('f-sq-code'), null, sizeSq, sqFormVal('f-sq-color') || SQ_COLORS[0].key);
     if (clash) { alert(clash); return; }
     toolingData.sq.push({
       id: newSqId(), setId: base.setId || sqSetKey(base), sizeSq, kind: sqFormKind(),
