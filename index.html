@@ -2407,7 +2407,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-13.15';
+const APP_BUILD = '2026-11-13.16';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -19311,65 +19311,59 @@ function sqSizeGroupsWithExtra() {
   const at = v => { const i = rank.get(v); return i == null ? Number.MAX_SAFE_INTEGER : i; };
   return groups.concat(extra).sort((a, b) => at(a[0]) - at(b[0]) || a[0].localeCompare(b[0], 'th', { numeric: true }));
 }
-let sqNewSizeMc = [];
+// ช่องแบ่งแบบเดียวกับฟอร์ม "เพิ่ม Size Roll ใหม่" (GS/GI · Size · OD · เครื่องจักร) แต่ไม่มีช่องชุด Roll
+// ชื่อขนาดประกอบเป็น "GS 1"x1" (23x23)" รูปเดียวกับหัวข้อขนาดฝั่ง Roll — ตรงกันแล้วเครื่องผูกกับฝั่ง Roll ให้เอง
 function openAddSqSize() {
-  sqNewSizeMc = [];
-  // ชื่อขนาดจากฝั่ง Roll ที่ยังไม่มีในทะเบียน SQ — เลือกจากรายการได้ ชื่อจะตรงกันแล้วเครื่องผูกกับฝั่ง Roll ให้เอง
-  const have = new Set(sqSizeGroupsWithExtra().map(([s]) => s));
-  const fromRoll = [...new Set(getRollSets().map(n => rollSetSizeGroupLabel(n)).filter(Boolean))]
-    .filter(s => /^(GS|GI)(?![A-Z])/i.test(s) && !have.has(s));
+  sqNewSizeLastMatch = '';
   document.getElementById('modal-title').textContent = 'เพิ่ม Size SQ';
   document.getElementById('modal-body').innerHTML = `
-    <div class="modal-row full">
-      <div class="form-group"><label class="form-label">Size SQ</label>
-        <input class="form-input" id="f-sqsize-name" list="f-sqsize-list" placeholder="เช่น GS 1&quot;x1&quot; (23x23)"
-          oninput="sqNewSizeNameChanged()"></div>
+    <div class="modal-row four">
+      <div class="form-group"><label class="form-label">GS/GI</label>
+        <select class="form-select" id="f-sqsize-gsgi" onchange="sqNewSizeNameChanged()">
+          ${SQ_KINDS.map(k => `<option value="${k}">${k}</option>`).join('')}
+        </select></div>
+      <div class="form-group"><label class="form-label">Size</label>
+        <input class="form-input" id="f-sqsize-size" placeholder="เช่น 1&quot;x1&quot;" oninput="sqNewSizeNameChanged()"></div>
+      <div class="form-group"><label class="form-label">OD</label>
+        <input class="form-input" id="f-sqsize-od" placeholder="เช่น 23x23" oninput="sqNewSizeNameChanged()"></div>
+      <div class="form-group"><label class="form-label">เครื่องจักร</label>
+        <div id="f-sqsize-mc-wrap">${machineDropdownHtml([])}</div></div>
     </div>
-    <div class="modal-row full">
-      <div class="form-group"><label class="form-label">เครื่อง (เลือกได้ไม่เกิน ${MAX_ROLL_MACHINES} เครื่อง)</label>
-        <div id="f-sqsize-mc" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;"></div></div>
-    </div>
-    <div id="f-sqsize-note" style="font-size:12px;color:var(--text-3);line-height:1.6;"></div>
-    <datalist id="f-sqsize-list">${fromRoll.map(s => `<option value="${escapeHtmlAttr(s)}"></option>`).join('')}</datalist>`;
-  renderSqNewSizeMc();
+    <div id="f-sqsize-note" style="font-size:12px;color:var(--text-3);line-height:1.6;"></div>`;
   document.getElementById('modal-overlay').classList.add('open');
   document.querySelector('.modal-footer .btn-primary').onclick = saveNewSqSize;
-  setTimeout(() => { const el = document.getElementById('f-sqsize-name'); if (el) el.focus(); }, 50);
+  setTimeout(() => { const el = document.getElementById('f-sqsize-size'); if (el) el.focus(); }, 50);
 }
-function renderSqNewSizeMc() {
-  const box = document.getElementById('f-sqsize-mc');
-  if (!box) return;
-  box.innerHTML = ROLL_MACHINES.map(m => {
-    const on = sqNewSizeMc.includes(m);
-    return `<button type="button" class="btn ${on ? 'btn-primary' : 'btn-ghost'}" style="justify-content:center;font-size:14px;font-weight:800;padding:10px;"
-      onclick="${jsCallAttr('toggleSqNewSizeMc', m)}">${on ? '✓ ' : ''}${escapeHtmlAttr(m)}</button>`;
-  }).join('');
+function sqNewSizeComposedName() {
+  const gsgi = sqFormVal('f-sqsize-gsgi');
+  const size = sqFormVal('f-sqsize-size');
+  const od = sqFormVal('f-sqsize-od');
+  if (!size) return '';
+  return [gsgi, size, od ? '(' + od + ')' : ''].filter(Boolean).join(' ');
 }
-function toggleSqNewSizeMc(m) {
-  if (sqNewSizeMc.includes(m)) sqNewSizeMc = sqNewSizeMc.filter(x => x !== m);
-  else if (sqNewSizeMc.length >= MAX_ROLL_MACHINES) {
-    alert('เลือกได้ไม่เกิน ' + MAX_ROLL_MACHINES + ' เครื่อง — กดเอาเครื่องเดิมออกก่อน'); return;
-  } else sqNewSizeMc = ROLL_MACHINES.filter(x => x === m || sqNewSizeMc.includes(x));
-  renderSqNewSizeMc();
-}
-// พิมพ์/เลือกขนาดที่มีฝั่ง Roll แล้ว — ดึงเครื่องที่ตั้งไว้ฝั่ง Roll มาให้เห็นก่อน (แก้ได้)
+// กรอกขนาดที่มีฝั่ง Roll แล้ว — ดึงเครื่องที่ตั้งไว้ฝั่ง Roll มาใส่ให้ก่อน (แก้ได้)
+let sqNewSizeLastMatch = '';
 function sqNewSizeNameChanged() {
-  const size = sqFormVal('f-sqsize-name');
+  const name = sqNewSizeComposedName();
   const note = document.getElementById('f-sqsize-note');
-  const rolls = rollSetsForSqSize(size);
-  if (rolls.length) {
-    sqNewSizeMc = sqSizeMachinesFor(size).slice(0, MAX_ROLL_MACHINES);
-    renderSqNewSizeMc();
+  const rolls = name ? rollSetsForSqSize(name) : [];
+  const match = rolls.length ? name : '';
+  if (match && match !== sqNewSizeLastMatch) {
+    const wrap = document.getElementById('f-sqsize-mc-wrap');
+    if (wrap) wrap.innerHTML = machineDropdownHtml(sqSizeMachinesFor(name).slice(0, MAX_ROLL_MACHINES));
   }
-  if (note) note.textContent = rolls.length
-    ? 'ขนาดนี้มีในทะเบียน Roll — เครื่องที่เลือกจะตรงกับฝั่ง Roll ด้วย (แก้ที่ไหนก็ตรงกันทุกที่)' : '';
+  sqNewSizeLastMatch = match;
+  if (note) note.innerHTML = name
+    ? 'ชื่อที่จะบันทึก: <b style="color:var(--text-1);">' + escapeHtmlAttr(name) + '</b>'
+      + (rolls.length ? ' · ขนาดนี้มีในทะเบียน Roll — เครื่องที่เลือกจะตรงกับฝั่ง Roll ด้วย' : '')
+    : '';
 }
 function saveNewSqSize() {
-  const size = sqFormVal('f-sqsize-name');
-  if (!size) { alert('กรอก Size SQ ก่อน'); return; }
-  if (!sqKindFromSize(size)) { alert('Size SQ ต้องขึ้นต้นด้วย GS หรือ GI\nเช่น GS 1"x1" (23x23)'); return; }
+  const size = sqNewSizeComposedName();
+  if (!size) { alert('กรอก Size ก่อน'); return; }
   if (sqSizeGroupsWithExtra().some(([s]) => s === size)) { alert('มี Size SQ "' + size + '" อยู่แล้ว'); return; }
-  const mcs = ROLL_MACHINES.filter(m => sqNewSizeMc.includes(m));
+  const picked = ((document.getElementById('f-set-machine') || {}).value || '').split(',').filter(Boolean);
+  const mcs = ROLL_MACHINES.filter(m => picked.includes(m));
   const rolls = rollSetsForSqSize(size);
   withCloudRetry(() => {
     if (!sqExtraSizes.includes(size)) sqExtraSizes.push(size);
