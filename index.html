@@ -2407,7 +2407,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-13.22';
+const APP_BUILD = '2026-11-13.23';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -19212,6 +19212,7 @@ function renderSqTable(page) {
   if (!tbody) return;
   const allSets = sqSets();
   const sets = sqVisibleSets(allSets);
+  sqSortSetsByCode(sets, true);   // เรียงตามรหัสในแต่ละขนาด ให้ตรงกับรายการด้านซ้าย
   const shown = sets.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   tbody.innerHTML = shown.length ? shown.map(set => {
     const incomplete = set.length !== SQ_PIECES_PER_SET;
@@ -19323,6 +19324,27 @@ function selectSqSet(key) {
   renderSqRegistry(pageState.sq = 1);
 }
 
+// รหัสของชุด = รหัสชิ้นตัดท้าย _R/_L (ทุกชิ้นในชุดใช้ฐานเดียวกัน)
+function sqSetCodeBase(set) {
+  return String(((set || []).find(x => x.code) || {}).code || '').trim().replace(/_[RL]$/i, '');
+}
+// เรียงชุดตามรหัส (เลขเรียงแบบตัวเลข 1, 2, 10) ชุดที่ยังไม่มีรหัสไว้ท้าย · รหัสเท่ากันเรียงตามจานสี
+// เฉพาะลำดับที่แสดงในหน้าทะเบียน — ลำดับ "ชุดที่ N" ที่ใช้จับคู่กับระบบผลิต (sqSetOrdinalInfo) ไม่เปลี่ยน
+// keepSize = true: คงลำดับขนาดเดิม เรียงเฉพาะชุดภายในขนาดเดียวกัน (ใช้กับตารางที่มีหลายขนาดปนกัน) · แก้ในที่ (in place)
+function sqSortSetsByCode(sets, keepSize) {
+  const colorIdx = c => { const i = SQ_COLORS.findIndex(x => x.key === c); return i < 0 ? SQ_COLORS.length : i; };
+  const sizeAt = new Map();
+  if (keepSize) sets.forEach(st => { const k = String(st[0].sizeSq || '').trim(); if (!sizeAt.has(k)) sizeAt.set(k, sizeAt.size); });
+  return sets.sort((a, b) => {
+    if (keepSize) {
+      const d = sizeAt.get(String(a[0].sizeSq || '').trim()) - sizeAt.get(String(b[0].sizeSq || '').trim());
+      if (d) return d;
+    }
+    const ca = sqSetCodeBase(a), cb = sqSetCodeBase(b);
+    if (!ca !== !cb) return ca ? -1 : 1;
+    return ca.localeCompare(cb, 'th', { numeric: true }) || colorIdx(a[0].color) - colorIdx(b[0].color);
+  });
+}
 function renderSqSetList() {
   const el = document.getElementById('sq-set-list');
   if (!el) return;
@@ -19346,7 +19368,7 @@ function renderSqSetList() {
         title="${escapeHtmlAttr(size + ' — ' + sets.length + ' ชุด · ' + pieces + ' ชิ้น · ดู Roll SQ ทุกชุดของขนาดนี้ (กดซ้ำเพื่อดูทุกขนาด)')}">${
         rollSetSectionHeaderHtml(escapeHtmlAttr(size) + mcRow, sets.length + ' ชุด',
           sizeActive ? 'var(--accent)' : 'var(--text-1)', { keepCase: true, big: true, tight: true })}</div>`;
-    return header + sets.map(set => {
+    return header + sqSortSetsByCode(sets).map(set => {
       const r = set[0];
       const key = sqSetKey(r);
       const cm = sqColorMeta(r.color);
@@ -19368,12 +19390,12 @@ function renderSqSetList() {
           <!-- ป้าย GS/GI เอาออกแล้ว — ชื่อขนาดที่หัวข้อบอกประเภทอยู่แล้ว -->
           <span style="width:9px;height:9px;border-radius:50%;background:${cm.dot};flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);"></span>
           <span style="flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtmlAttr(cm.label)}
-            <b style="color:var(--text-1);">${escapeHtmlAttr(sqSetOrdinalLabel(r))}</b>
-            <span style="color:var(--text-3);font-weight:400;">· ${escapeHtmlAttr(fmtYmThai(r.madeYm))}</span>${(() => {
-              // รหัสของชุด = รหัสชิ้นตัดท้าย _R/_L (ทุกชิ้นใช้ฐานเดียวกัน) · ยังไม่ใส่รหัสก็ไม่แสดง
-              const code = String((set.find(x => x.code) || {}).code || '').trim().replace(/_[RL]$/i, '');
-              return code ? ` <span style="color:var(--accent);font-weight:700;font-size:11.5px;">· ${escapeHtmlAttr(code)}</span>` : '';
-            })()}</span>
+            ${(() => {
+              // ไม่แสดง "ชุดที่ N" แล้ว — ใช้รหัสของชุด (รหัสชิ้นตัดท้าย _R/_L) เป็นตัวบอกชุด · ยังไม่ใส่รหัสขึ้นขีด
+              const code = sqSetCodeBase(set);
+              return code ? `<b style="color:var(--accent);">${escapeHtmlAttr(code)}</b>` : '<span style="color:var(--text-3);">ไม่มีรหัส</span>';
+            })()}
+            <span style="color:var(--text-3);font-weight:400;">· ${escapeHtmlAttr(fmtYmThai(r.madeYm))}</span></span>
           ${incomplete ? `<span class="chip chip-amber" style="flex-shrink:0;" title="1 ชุดต้องมี Roll ${SQ_PIECES_PER_SET} ชิ้น">ไม่ครบ</span>` : ''}
           <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;flex-shrink:0;">${set.length}</span>
         </div>
