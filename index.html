@@ -2407,7 +2407,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-13.13';
+const APP_BUILD = '2026-11-13.14';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -7399,11 +7399,11 @@ const MODAL_FORMS = {
   sq: {
     title: 'เพิ่มชุด Roll SQ ใหม่ (Roll 2 ชิ้น)',
     fields: `
-      <div class="modal-row">
+      <!-- ช่องประเภท (GS/GI) ซ่อนไว้ — ระบบหาเองจากคำนำหน้า Size SQ (ดู sqFormKind) -->
+      <div class="modal-row full">
         <div class="form-group"><label class="form-label">Size SQ</label>
-          <input class="form-input" id="f-sq-size" list="f-sq-size-list" placeholder="เช่น 38x38"></div>
-        <div class="form-group"><label class="form-label">ประเภท</label>
-          <select class="form-select" id="f-sq-kind"></select></div>
+          <input class="form-input" id="f-sq-size" list="f-sq-size-list" placeholder="เช่น GS 1&quot;x1&quot; (23x23)"></div>
+        <select class="form-select" id="f-sq-kind" style="display:none;"></select>
       </div>
       <!-- เดิมเป็น <input type="month"> ซึ่งช่องปีเป็น ค.ศ. พอกรอก พ.ศ. ลงไปตรงๆ ตารางจะบวก 543
            ทับอีกชั้น (2558 → 3101) แยกเป็นเดือน + ปี พ.ศ. ให้กรอกตามที่พูดกันหน้างานได้เลย -->
@@ -7467,11 +7467,11 @@ const MODAL_FORMS = {
         <div class="form-group"><label class="form-label">ชิ้นงาน</label>
           <select class="form-select" id="f-sq-piece"><option value="1">R (ขวา)</option><option value="2">L (ซ้าย)</option></select></div>
       </div>
-      <div class="modal-row">
+      <!-- ช่องประเภท (GS/GI) ซ่อนไว้ — ระบบหาเองจากคำนำหน้า Size SQ (ดู sqFormKind) -->
+      <div class="modal-row full">
         <div class="form-group"><label class="form-label">Size SQ</label>
-          <input class="form-input" id="f-sq-size" list="f-sq-size-list" placeholder="เช่น 38x38"></div>
-        <div class="form-group"><label class="form-label">ประเภท</label>
-          <select class="form-select" id="f-sq-kind"></select></div>
+          <input class="form-input" id="f-sq-size" list="f-sq-size-list" placeholder="เช่น GS 1&quot;x1&quot; (23x23)"></div>
+        <select class="form-select" id="f-sq-kind" style="display:none;"></select>
       </div>
       <div class="modal-row three">
         <div class="form-group"><label class="form-label">ชุดสี</label>
@@ -18880,7 +18880,7 @@ function fillSqFormOptions() {
   const thick = document.getElementById('f-sq-thick');
   if (film && thick) {
     const fill = () => {
-      const g = sqColorGroupSpec(sqFormVal('f-sq-size'), sqFormVal('f-sq-kind'), sqFormVal('f-sq-color'));
+      const g = sqColorGroupSpec(sqFormVal('f-sq-size'), sqFormKind(), sqFormVal('f-sq-color'));
       if (!film.value.trim() && g.filmFace) film.value = g.filmFace;
       if (!thick.value.trim() && g.thickness) thick.value = g.thickness;
     };
@@ -18949,6 +18949,15 @@ function sqCodeConflictMsg(code, exceptId) {
     + sqSetFullLabel(own) + ' · ชิ้น ' + sqPieceLabel(own.piece);
 }
 
+// ประเภท GS/GI ไม่ให้เลือกเองแล้ว — อ่านจากคำนำหน้า Size SQ (เช่น "GI 2"x1" …" = GI)
+// ถ้า Size ไม่ได้ขึ้นต้นด้วย GS/GI ใช้ค่าเดิมของชุด (ที่ใส่ไว้ในช่องซ่อน) แทน
+function sqKindFromSize(size) {
+  const m = String(size || '').trim().toUpperCase().match(/^(GS|GI)(?![A-Z])/);
+  return m && SQ_KINDS.includes(m[1]) ? m[1] : '';
+}
+function sqFormKind() {
+  return sqKindFromSize(sqFormVal('f-sq-size')) || sqFormVal('f-sq-kind') || SQ_KINDS[0];
+}
 function sqFormVal(id) {
   return String(((document.getElementById(id) || {}).value) || '').trim();
 }
@@ -18958,7 +18967,7 @@ function sqFormVal(id) {
 function readSqSetForm() {
   const sizeSq = sqFormVal('f-sq-size');
   if (!sizeSq) { alert('กรอก Size SQ ก่อน'); return null; }
-  const kind = sqFormVal('f-sq-kind') || SQ_KINDS[0];
+  const kind = sqFormKind();
   const color = sqFormVal('f-sq-color') || SQ_COLORS[0].key;
   const madeYm = sqYmFromForm();
   // ไม่กันชุดซ้ำแล้ว — ขนาด+ประเภท+สีเดียวกันมีได้หลายชุด แยกกันด้วยรอบผลิตและรหัส Roll
@@ -19028,7 +19037,7 @@ function editSq(id) {
       const sid = newSqSetId();
       toolingData.sq.forEach(x => { if (sqSetKey(x) === groupKey) x.setId = sid; });
     }
-    const updated = { ...r, sizeSq, kind: sqFormVal('f-sq-kind') || SQ_KINDS[0],
+    const updated = { ...r, sizeSq, kind: sqFormKind(),
       color: sqFormVal('f-sq-color') || SQ_COLORS[0].key, madeYm: sqYmFromForm(),
       filmFace: sqFormVal('f-sq-film'), thickness: sqFormVal('f-sq-thick'),
       piece: Number(sqFormVal('f-sq-piece')) || 1, code: sqFormVal('f-sq-code'),
@@ -19331,14 +19340,14 @@ function addSqPieceToSet(key) {
     const clash = sqCodeConflictMsg(sqFormVal('f-sq-code'));
     if (clash) { alert(clash); return; }
     toolingData.sq.push({
-      id: newSqId(), setId: base.setId || sqSetKey(base), sizeSq, kind: sqFormVal('f-sq-kind') || SQ_KINDS[0],
+      id: newSqId(), setId: base.setId || sqSetKey(base), sizeSq, kind: sqFormKind(),
       color: sqFormVal('f-sq-color') || SQ_COLORS[0].key, madeYm: sqYmFromForm(),
       filmFace: sqFormVal('f-sq-film'), thickness: sqFormVal('f-sq-thick'),
       piece: Number(sqFormVal('f-sq-piece')) || piece, code: sqFormVal('f-sq-code'),
       odStd: sqFormVal('f-sq-odstd'), odCur: sqFormVal('f-sq-odcur'), odMin: sqFormVal('f-sq-odmin'),
       grindTime: sqFormVal('f-sq-grind'),
     });
-    applySqColorGroupSpec(sizeSq, sqFormVal('f-sq-kind') || SQ_KINDS[0],
+    applySqColorGroupSpec(sizeSq, sqFormKind(),
       sqFormVal('f-sq-color') || SQ_COLORS[0].key, sqFormVal('f-sq-film'), sqFormVal('f-sq-thick'));
     persistState();
     closeModal();
