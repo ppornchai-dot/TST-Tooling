@@ -2407,7 +2407,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-13.20';
+const APP_BUILD = '2026-11-13.21';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -18929,13 +18929,16 @@ function syncSqColorGroupSpecs() {
 }
 
 // รายการที่ใช้รหัสนี้อยู่แล้ว (ไม่นับตัวเอง) — เว้นรหัสว่างไว้ได้ ไม่ถือว่าซ้ำ
-function sqCodeOwner(code, exceptId) {
+// รหัสใช้เฉพาะในกลุ่ม Size SQ เดียวกัน — ซ้ำกับขนาดอื่นได้ (เช่น "1_R" มีได้ทุกขนาด)
+function sqCodeOwner(code, exceptId, sizeSq) {
   const c = String(code || '').trim().toLowerCase();
   if (!c) return null;
-  return toolingData.sq.find(r => r.id !== exceptId && String(r.code || '').trim().toLowerCase() === c) || null;
+  const size = String(sizeSq || '').trim();
+  return toolingData.sq.find(r => r.id !== exceptId && String(r.code || '').trim().toLowerCase() === c
+    && (!size || String(r.sizeSq || '').trim() === size)) || null;
 }
-function sqCodeConflictMsg(code, exceptId) {
-  const own = sqCodeOwner(code, exceptId);
+function sqCodeConflictMsg(code, exceptId, sizeSq) {
+  const own = sqCodeOwner(code, exceptId, sizeSq);
   if (!own) return null;
   return 'รหัส Roll "' + String(code).trim() + '" ถูกใช้อยู่แล้วที่ '
     + sqSetFullLabel(own) + ' · ชิ้น ' + sqPieceLabel(own.piece);
@@ -18982,7 +18985,7 @@ function readSqSetForm() {
   const codes = sqSplitSetCodes(sqFormVal('f-sqs-code'));
   for (let i = 1; i <= SQ_PIECES_PER_SET; i++) {
     const code = codes[i - 1];
-    const clash = sqCodeConflictMsg(code);
+    const clash = sqCodeConflictMsg(code, null, sizeSq);
     if (clash) { alert(clash); return null; }
   }
   const nonEmpty = codes.filter(Boolean).map(c => c.toLowerCase());
@@ -19035,7 +19038,7 @@ function editSq(id) {
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const sizeSq = sqFormVal('f-sq-size');
     if (!sizeSq) { alert('กรอก Size SQ ก่อน'); return; }
-    const clash = sqCodeConflictMsg(sqFormVal('f-sq-code'), r.id);
+    const clash = sqCodeConflictMsg(sqFormVal('f-sq-code'), r.id, sizeSq);
     if (clash) { alert(clash); return; }
     // ชุดเก่าที่ยังไม่มี setId — ออกให้ทั้งชุดตอนนี้ (ทุกชิ้นที่จับกลุ่มอยู่ด้วยกัน)
     // ต้องทำก่อนแก้ค่า ไม่งั้นพอเปลี่ยนขนาด/สี คีย์แบบเก่าจะเปลี่ยนแล้วหาพี่น้องไม่เจอ
@@ -19121,7 +19124,8 @@ function editSqSet(id) {
     if (!keepCodes) {
       for (let i = 0; i < set.length; i++) {
         const code = codes[(Number(set[i].piece) || i + 1) - 1] || '';
-        const own = code ? toolingData.sq.find(x => !ids.has(x.id) && String(x.code || '').trim().toLowerCase() === code.toLowerCase()) : null;
+        const own = code ? toolingData.sq.find(x => !ids.has(x.id) && String(x.code || '').trim().toLowerCase() === code.toLowerCase()
+          && String(x.sizeSq || '').trim() === String(base.sizeSq || '').trim()) : null;
         if (own) { alert('รหัส Roll "' + code + '" ถูกใช้อยู่แล้วที่ ' + sqSetFullLabel(own) + ' · ชิ้น ' + sqPieceLabel(own.piece)); return; }
       }
     }
@@ -19541,7 +19545,7 @@ function addSqPieceToSet(key) {
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const sizeSq = sqFormVal('f-sq-size');
     if (!sizeSq) { alert('กรอก Size SQ ก่อน'); return; }
-    const clash = sqCodeConflictMsg(sqFormVal('f-sq-code'));
+    const clash = sqCodeConflictMsg(sqFormVal('f-sq-code'), null, sizeSq);
     if (clash) { alert(clash); return; }
     toolingData.sq.push({
       id: newSqId(), setId: base.setId || sqSetKey(base), sizeSq, kind: sqFormKind(),
