@@ -2406,7 +2406,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-12.41';
+const APP_BUILD = '2026-11-13.1';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -3980,8 +3980,12 @@ function toolingCalendarCardHtml(kind) {
   const baseMc = isSq ? ROLL_MACHINES : ROLL_MACHINES.concat(['C5']);
   const machines = baseMc.concat(Object.keys(byMc).filter(x => !baseMc.includes(x)));
   const body = machines.map(mc => {
-    const list = (byMc[mc] || []).sort((a, b) => a.s.localeCompare(b.s));
-    const bars = list.map(({ r, s: s0, e: e0, fromCol, toCol }) => {
+    // เรียงตามเวลาที่ใส่จริง (ไม่ใช่แค่วัน — วันเดียวกันใส่หลายใบได้) แล้วจัดแถวแบบขั้นบันได:
+    // ใบที่ใส่ก่อนอยู่แถวบน ใบถัดไปที่ช่วงวันทับกับใบก่อนหน้าลงไปแถวถัดไป ไม่ทับก็อยู่แถวเดิม
+    const list = (byMc[mc] || []).sort((a, b) => String(a.r.started_at).localeCompare(String(b.r.started_at)));
+    let rowNo = 1, prevTo = 0;
+    list.forEach(x => { if (prevTo && x.fromCol <= prevTo) rowNo++; x.row = rowNo; prevTo = x.toCol; });
+    const bars = list.map(({ r, s: s0, e: e0, fromCol, toCol, row }) => {
       const span = toCol - fromCol + 1;
       const totalDays = Math.round((parseISODate(e0) - parseISODate(s0)) / 86400000) + 1;
       const stillOn = !!r.is_open;
@@ -4013,7 +4017,7 @@ function toolingCalendarCardHtml(kind) {
         'ใส่ ' + prodSqFmtTime(r.started_at) + (stillOn ? ' — ยังใส่อยู่' : ' · ถอด ' + prodSqFmtTime(r.ended_at)),
         totalDays + ' วัน' + (ton ? ' · ผลิต ' + ton : '') + ' · ' + (Number(r.pcs) || 0).toLocaleString() + ' เส้น'];
       return `<div title="${escapeHtmlAttr(tips.join(' · '))}"${click ? ` onclick="${click}"` : ''}
-        style="grid-column:${fromCol} / span ${span};display:flex;align-items:center;gap:4px;overflow:hidden;
+        style="grid-column:${fromCol} / span ${span};grid-row:${row};display:flex;align-items:center;gap:4px;overflow:hidden;
                background:${dot};color:${txt};border-radius:5px;padding:2px 5px;font-size:10px;font-weight:800;
                ${click ? 'cursor:pointer;' : ''}box-shadow:inset 0 0 0 1px rgba(0,0,0,.22);${stillOn ? 'border-right:3px solid var(--accent);' : ''}">
         <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtmlAttr(w >= 120 ? longName : (w >= 60 || isSq) ? shortName : String(r.code).trim())}</span>
