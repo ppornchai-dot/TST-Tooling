@@ -2407,7 +2407,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-13.6';
+const APP_BUILD = '2026-11-13.7';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6155,9 +6155,10 @@ function sawTonsPcsHtml(label, tons, pcs) {
 function prodSawWaitingList() {
   const reg = (toolingData || {}).saw || [];
   const info = sawGrindPlanInfo();
-  return reg.map((r, idx) => ({ r, idx, u: sawUsageInfo(r), plannedAt: info.planned.get(idx) || null }))
-    // ใบที่กดเริ่มลับแล้ว หรือวางแผนลับไว้แล้ว ย้ายไปการ์ด "กำลังลับคม" แทน ไม่ขึ้นซ้ำสองที่
-    .filter(x => x.u.waiting && !info.working.has(x.idx) && !info.queued.has(x.idx))
+  // plannedAt = วันที่วางแผนลับไว้ (รวมงานค้างจากวันก่อน) — การ์ดรอลับคมขึ้นป้าย "แผนลับคม" ให้
+  return reg.map((r, idx) => ({ r, idx, u: sawUsageInfo(r), plannedAt: (info.queued && info.queued.get(idx)) || info.planned.get(idx) || null }))
+    // ใบที่กดเริ่มลับแล้วย้ายไปการ์ด "กำลังลับคม" · ใบที่วางแผนแล้วแต่ยังไม่เริ่ม ยังแสดงที่นี่ (มีป้ายวันแผน)
+    .filter(x => x.u.waiting && !info.working.has(x.idx))
     .sort((a, b) => String(a.u.removedAt).localeCompare(String(b.u.removedAt)));
 }
 
