@@ -2406,7 +2406,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-13.2';
+const APP_BUILD = '2026-11-13.3';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6256,6 +6256,78 @@ function sawWorkingCardHtml() {
   </div>`;
 }
 
+// ─── ใส่/เอาออก ใบเลื่อยมีปัญหา (จากการ์ดบน Dashboard) ─────────────────────────
+// เก็บที่ช่องสถานะของทะเบียน (status = "มีปัญหา") ตัวเดียวกับที่ตั้งจากปุ่ม ✏️ ในทะเบียน
+// อาการ/สาเหตุ (ถ้ากรอก) เก็บที่ problemNote ของใบนั้น — แสดงในการ์ดและทูลทิป
+function openSawProblemPicker() {
+  if (!canEditPlan()) return;
+  const reg = (toolingData || {}).saw || [];
+  document.getElementById('modal-title').textContent = 'ใส่ใบเลื่อยมีปัญหา';
+  const rows = reg.map((r, idx) => ({ r, idx, st: sawEffectiveStatus(r).status }))
+    .filter(x => x.st !== 'มีปัญหา')
+    .sort((a, b) => String(a.r.machine || '~').localeCompare(String(b.r.machine || '~'))
+      || String(a.r.id).localeCompare(String(b.r.id), undefined, { numeric: true }));
+  document.getElementById('modal-body').innerHTML = `
+    <div class="modal-row full">
+      <div class="form-group"><label class="form-label">ค้นหารหัส / เครื่อง</label>
+        <input class="form-input" id="sawprob-search" placeholder="เช่น 133 หรือ P3" oninput="filterSawProblemPicker()"></div>
+    </div>
+    <div id="sawprob-list" style="max-height:320px;overflow-y:auto;border:1px solid var(--border-light);border-radius:8px;padding:4px;">
+      ${rows.map(({ r, idx, st }) => `<label data-q="${escapeHtmlAttr((r.id + ' ' + (r.machine || '') + ' ' + (r.diameter || '')).toLowerCase())}"
+          style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:13px;">
+        <input type="checkbox" class="sawprob-cb" value="${idx}" style="width:15px;height:15px;cursor:pointer;">
+        <b style="min-width:64px;">รหัส ${escapeHtmlAttr(r.id || '—')}</b>
+        <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr([sawOdLabel(r), r.machine && r.machine !== '—' ? r.machine : ''].filter(Boolean).join(' · '))}</span>
+        <span style="margin-left:auto;">${statusChip(st)}</span>
+      </label>`).join('') || '<div style="padding:12px;color:var(--text-3);font-size:13px;">ทุกใบเป็น "มีปัญหา" อยู่แล้ว</div>'}
+    </div>
+    <div class="modal-row full" style="margin-top:12px;">
+      <div class="form-group"><label class="form-label">อาการ / สาเหตุ (ไม่บังคับ)</label>
+        <input class="form-input" id="sawprob-note" placeholder="เช่น ฟันบิ่น, ใบคด, ร้าว"></div>
+    </div>`;
+  document.getElementById('modal-overlay').classList.add('open');
+  document.querySelector('.modal-footer .btn-primary').onclick = function () {
+    const picked = [...document.querySelectorAll('.sawprob-cb:checked')].map(b => Number(b.value));
+    if (!picked.length) { alert('ยังไม่ได้เลือกใบเลื่อย'); return; }
+    const note = ((document.getElementById('sawprob-note') || {}).value || '').trim();
+    withCloudRetry(() => {
+      picked.forEach(i => {
+        const r = (toolingData.saw || [])[i];
+        if (!r) return;
+        r.status = 'มีปัญหา';
+        if (note) r.problemNote = note; else delete r.problemNote;
+      });
+      persistState();
+      closeModal();
+      refreshSawViewsAfterStatusChange();
+    });
+  };
+}
+function filterSawProblemPicker() {
+  const q = ((document.getElementById('sawprob-search') || {}).value || '').trim().toLowerCase();
+  document.querySelectorAll('#sawprob-list label[data-q]').forEach(l => {
+    l.style.display = !q || l.getAttribute('data-q').includes(q) ? 'flex' : 'none';
+  });
+}
+// เอาออกจากมีปัญหา = กลับเป็น "พร้อมใช้" ในทะเบียน (สถานะที่แสดงจะตามระบบผลิตต่อเองถ้ามีข้อมูล)
+function clearSawProblem(id) {
+  if (!canEditPlan()) return;
+  const r = ((toolingData || {}).saw || []).find(x => x.id === id);
+  if (!r) return;
+  if (!confirm('รหัส ' + id + ' แก้ปัญหาแล้ว?\nสถานะในทะเบียนจะกลับเป็น "พร้อมใช้"')) return;
+  withCloudRetry(() => {
+    r.status = 'พร้อมใช้';
+    delete r.problemNote;
+    persistState();
+    refreshSawViewsAfterStatusChange();
+  });
+}
+function refreshSawViewsAfterStatusChange() {
+  if (document.getElementById('tbody-saw')) renderSawTable(pageState.saw || 1);
+  renderDashboardToolingPanels();
+  if (typeof renderToolingStatusTable === 'function') renderToolingStatusTable();
+}
+
 // ใบเลื่อยมีปัญหา — สถานะ "มีปัญหา" ที่ตั้งเองในทะเบียน (ระบบผลิตไม่รู้ว่าใบเสีย จึงต้องตั้งเอง)
 // อยู่ต่อจากการ์ดรอลับคม · แต่ละแถวบอกเครื่องผลิต OD วันลับคมล่าสุด และยอดตัด · กดแถวไปทะเบียนใบเลื่อยเพื่อแก้ไข
 function sawProblemCardHtml() {
@@ -6276,13 +6348,17 @@ function sawProblemCardHtml() {
       <span style="margin-left:auto;"></span>
       ${u && u.p ? (u.sinceGrind != null ? sawTonsPcsHtml('หลังลับคม', u.sinceGrind, u.sinceGrindPcs) + '<span style="color:var(--border);">|</span>' : '')
         + sawTonsPcsHtml('สะสม', u.total, u.p.pcs) : ''}
-      <span class="chip chip-amber">มีปัญหา</span>
+      ${r.problemNote ? `<span class="chip chip-amber" title="อาการ / สาเหตุ">${escapeHtmlAttr(r.problemNote)}</span>` : '<span class="chip chip-amber">มีปัญหา</span>'}
+      ${canEditPlan() ? `<button class="btn btn-ghost btn-sm" style="font-size:11.5px;font-weight:700;color:var(--green);"
+        onclick="event.stopPropagation();${jsCallAttr('clearSawProblem', r.id)}" title="แก้ปัญหาแล้ว — กลับเป็นพร้อมใช้">✓ แก้แล้ว</button>` : ''}
     </div>`;
   }).join('');
   return `<div class="card" style="margin-bottom:18px;">
     <div class="card-header">
       <span class="card-title" style="font-size:17px;color:var(--amber);display:inline-flex;align-items:center;gap:8px;">
         <span style="width:11px;height:11px;border-radius:50%;background:var(--amber);"></span>ใบเลื่อยมีปัญหา</span>
+      ${canEditPlan() ? `<button class="btn" onclick="openSawProblemPicker()" title="เลือกใบเลื่อยที่มีปัญหา"
+        style="margin-left:10px;font-size:13px;font-weight:800;padding:6px 14px;border-radius:8px;background:var(--amber);color:#fff;border:1px solid var(--amber);">＋ ใส่ใบเลื่อยมีปัญหา</button>` : ''}
       <span style="margin-left:auto;font-size:12px;color:var(--text-3);"><b style="color:var(--amber);">${list.length}</b> ใบ</span>
     </div>
     <div style="padding:10px 14px;">
