@@ -2406,7 +2406,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-13.4';
+const APP_BUILD = '2026-11-13.5';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5626,6 +5626,8 @@ function switchDashTab(key) {
   if (key === 'sq') loadProdSqInUse(false);
   if (key === 'saw') loadProdSawUsage(false);
   renderDashboardToolingPanels();
+  // แถบงานค้างแสดงเฉพาะงานของแท็บนี้
+  if (typeof refreshLeftoverWatch === 'function') refreshLeftoverWatch();
 }
 
 // จำนวนบนแท็บ — ใช้เกณฑ์เดียวกับหน้าทะเบียน (Roll/ใบเลื่อย/มีดสลิตเตอร์ นับเป็นชิ้น · Roll SQ นับเป็นชุด)
@@ -13508,9 +13510,19 @@ function carryOverLeftoverTask(taskId, targetDay) {
   return carriedId;
 }
 
+// งานค้างแยกตามแท็บของ Dashboard — แท็บ Roll เห็นเฉพาะงานแต่ง/ขัด Roll, แท็บใบเลื่อยเห็นเฉพาะงานลับคม ฯลฯ
+// แถบเตือน หน้าต่างเด้ง และปุ่ม "ยกทั้งหมด" ใช้ขอบเขตเดียวกัน (ไม่ยกงานของแท็บอื่นไปด้วยโดยไม่รู้ตัว)
+var LEFTOVER_TAB_SECTIONS = { roll: ['cnc', 'polish'], sq: ['sq'], saw: ['saw'], slitter: ['slitter'] };
+var LEFTOVER_TAB_LABEL = { roll: 'Roll', sq: 'Roll SQ', saw: 'ใบเลื่อย', slitter: 'มีดสลิตเตอร์' };
+function leftoverTabKey() { return (typeof dashTab !== 'undefined' && LEFTOVER_TAB_SECTIONS[dashTab]) ? dashTab : 'roll'; }
+function leftoverWorkTasksForTab() {
+  const secs = LEFTOVER_TAB_SECTIONS[leftoverTabKey()];
+  return leftoverWorkTasks().filter(x => secs.includes(planTaskSectionKey(x.task)));
+}
+
 function carryOverAllLeftover() {
   if (!canEditPlan()) return 0;
-  const list = leftoverWorkTasks();
+  const list = leftoverWorkTasksForTab();
   if (!list.length) return 0;
   const day = nextWorkingDayForCarry();
   const before = new Map(planTasks.map(x => [x.id, taskDisplayDate(x)]));
@@ -13547,8 +13559,9 @@ function renderDashboardLeftoverAlert() {
   const el = document.getElementById('dash-leftover-alert');
   if (!el) return;
   // ด้วยเหตุผลเดียวกับ maybeOpenLeftoverPrompt — ยังไม่ได้ข้อมูลจริงจากคลาวด์ อย่าเพิ่งขึ้นแถบเตือน
-  const list = (canEditPlan() && cloudSyncReady) ? leftoverWorkTasks() : [];
+  const list = (canEditPlan() && cloudSyncReady) ? leftoverWorkTasksForTab() : [];
   if (!list.length) { el.innerHTML = ''; el.style.display = 'none'; return; }
+  const tabLabel = LEFTOVER_TAB_LABEL[leftoverTabKey()];
   el.style.display = '';
   const pieces = list.reduce((s, x) => s + x.remaining.length, 0);
   const mins = list.reduce((s, x) => s + x.minutes, 0);
@@ -13556,7 +13569,7 @@ function renderDashboardLeftoverAlert() {
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
       <div style="flex:1;min-width:260px;">
         <div style="font-size:14px;font-weight:800;color:var(--red);margin-bottom:4px;">
-          ⚠ มีงานค้างจากวันก่อน ${list.length} รายการ · ${pieces} ชิ้น${mins ? ' · ' + formatMinutesAsHm(mins).replace('≈ ', '') : ''}
+          ⚠ มีงานค้าง${escapeHtmlAttr(tabLabel)}จากวันก่อน ${list.length} รายการ · ${pieces} ชิ้น${mins ? ' · ' + formatMinutesAsHm(mins).replace('≈ ', '') : ''}
         </div>
         <div class="muted" style="font-size:11.5px;line-height:1.5;">ยกไปวางวันที่ ${escapeHtmlAttr(fmtDateThai(parseISODate(nextWorkingDayForCarry())))} โดยแทรกไว้ก่อนงานเดิมของวันนั้น</div>
       </div>
@@ -13578,7 +13591,7 @@ function openLeftoverPrompt() {
     ov.onclick = e => { if (e.target === ov) closeLeftoverPrompt(); };
     ov.innerHTML = `<div class="modal" style="max-width:720px;display:flex;flex-direction:column;max-height:90vh;overflow:hidden;">
       <div class="modal-head" style="flex:0 0 auto;">
-        <h3>งานค้างจากวันก่อน</h3>
+        <h3 id="leftover-title">งานค้างจากวันก่อน</h3>
         <button class="modal-close" onclick="closeLeftoverPrompt()">✕</button>
       </div>
       <div style="flex:0 0 auto;padding:14px 22px 0;">
@@ -13605,8 +13618,10 @@ function closeLeftoverPrompt() {
 function renderLeftoverPrompt() {
   const body = document.getElementById('leftover-body');
   if (!body) return;
-  const list = leftoverWorkTasks();
+  const list = leftoverWorkTasksForTab();
   const day = nextWorkingDayForCarry();
+  const ttl = document.getElementById('leftover-title');
+  if (ttl) ttl.textContent = 'งานค้าง' + LEFTOVER_TAB_LABEL[leftoverTabKey()] + 'จากวันก่อน';
   const note = document.getElementById('leftover-note');
   if (note) note.innerHTML = `งานของวันก่อนที่ยังมีชิ้นทำไม่เสร็จ — ยกเฉพาะ<b style="color:var(--text-1);">ส่วนที่เหลือ</b>ไปวันที่
     <b style="color:var(--text-1);">${escapeHtmlAttr(fmtDateThai(parseISODate(day)))}</b>
@@ -13623,9 +13638,9 @@ function renderLeftoverPrompt() {
     <span style="flex:0 0 auto;font-size:11px;font-weight:800;color:#fff;background:var(--red);padding:2px 9px;border-radius:6px;">${
       escapeHtmlAttr(fmtDateThaiShort(parseISODate(x.date)))}</span>
     <span style="flex:1;min-width:0;">
-      <span style="display:block;font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(x.task.rollSet || '—')}</span>
+      <span style="display:block;font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(x.task.otherWork ? (x.task.rollSet || '—') : planSetLabel(x.task.rollSet) || '—')}</span>
       <span style="display:block;font-size:11px;color:var(--text-3);">${escapeHtmlAttr(x.task.id)} ·
-        ${x.task.workType === 'polish' ? 'ขัด Roll' : 'แต่ง Roll (CNC)'} ·
+        ${escapeHtmlAttr(planWorkTypeShortLabel(x.task.workType))} ·
         เหลือ ${x.remaining.length}/${(x.task.rollIds || []).length} ชิ้น${
         x.done.length ? ' (ทำแล้ว ' + x.done.length + ')' : ''}${
         x.minutes ? ' · ' + formatMinutesAsHm(x.minutes).replace('≈ ', '') : ''}</span>
@@ -13644,13 +13659,15 @@ function maybeOpenLeftoverPrompt() {
   // (เจอจริง 31 ต.ค.: เด้ง 65 รายการของเดือน ส.ค. ทั้งที่ข้อมูลจริงบนคลาวด์ไม่มีงานค้างเลย)
   if (!cloudSyncReady) return;
   const today = dailyTodayIso();
-  if (leftoverPromptShownFor === today) return;
+  // เด้งวันละครั้งต่อแท็บ (แต่ละแท็บมีงานค้างของตัวเอง)
+  const seenKey = today + '|' + leftoverTabKey();
+  if (leftoverPromptShownFor === seenKey) return;
   try {
-    if (localStorage.getItem('tst_leftover_prompt_seen') === today) { leftoverPromptShownFor = today; return; }
+    if (localStorage.getItem('tst_leftover_prompt_seen') === seenKey) { leftoverPromptShownFor = seenKey; return; }
   } catch (e) { /* localStorage ใช้ไม่ได้ — ยอมให้เด้งซ้ำ ดีกว่าไม่เตือนเลย */ }
-  if (!leftoverWorkTasks().length) return;
-  leftoverPromptShownFor = today;
-  try { localStorage.setItem('tst_leftover_prompt_seen', today); } catch (e) {}
+  if (!leftoverWorkTasksForTab().length) return;
+  leftoverPromptShownFor = seenKey;
+  try { localStorage.setItem('tst_leftover_prompt_seen', seenKey); } catch (e) {}
   openLeftoverPrompt();
 }
 
