@@ -1444,7 +1444,7 @@ canvas{display:block;}
           <div class="card" style="position:sticky;top:70px;">
             <div style="padding:12px 14px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
               <span style="font-size:13px;font-weight:700;">Size SQ</span>
-              <button class="btn btn-primary btn-sm" onclick="openModal()" title="เพิ่มชุดใหม่ — 1 ชุดลง Roll 2 ชิ้นพร้อมกัน">+ เพิ่มชุด</button>
+              <button class="btn btn-primary btn-sm" onclick="openAddSqSize()" title="เพิ่มขนาดใหม่ — กรอกชื่อขนาดกับเครื่อง แล้วเพิ่มชุดที่ปุ่มท้ายรายการของขนาดนั้น">+ เพิ่ม Size SQ</button>
             </div>
             <div id="sq-set-list" style="max-height:620px;overflow-y:auto;padding:4px 8px 8px;"></div>
           </div>
@@ -2407,7 +2407,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-13.14';
+const APP_BUILD = '2026-11-13.15';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -13907,6 +13907,8 @@ let sqSetMachine = {};
 // คนละเรื่องกับ sqSetMachine ด้านบน: ตัวนั้นคือ "ชุดนี้ใส่อยู่ที่เครื่องไหนตอนนี้"
 // ส่วนตัวนี้คือ "ขนาดนี้ใช้กับเครื่องไหนได้บ้าง" — เทียบเท่า rollSetMachines ของทะเบียน Roll
 let sqSizeMachines = {};
+// Size SQ ที่เพิ่มจากปุ่ม "+ เพิ่ม Size SQ" แต่ยังไม่มีชุด (ขนาดที่มีชุดแล้วอ่านจากทะเบียนเอง) — ประกาศตรงนี้เหตุผลเดียวกับด้านบน
+let sqExtraSizes = [];
 function rollColorStatusFor(setName, colorKey) { return rollColorStatus[setName + '|' + colorKey] || 'ready'; }
 function getRollColorStatus(colorKey) { return rollColorStatusFor(selectedRollSet, colorKey); }
 function setRollColorStatus(colorKey, status) {
@@ -14306,7 +14308,7 @@ function requestReloadAllDevices() {
 
 function buildStateSnapshot() {
   return {
-    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollSetNote, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec, sqSetStatus, sqSetMachine, sqSizeMachines,
+    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollSetNote, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec, sqSetStatus, sqSetMachine, sqSizeMachines, sqExtraSizes,
     planTasks, planTaskSeq, companyHolidays, companyHolidaySeq, planDayEndTime, planDayWorker, teamMembers, teamSeq,
     dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
     dailyPieceStatus, rollSizeLog, rollSizeLogSeq, dailyPauseLog, dailyPauseLogSeq,
@@ -14587,6 +14589,7 @@ function applyState(saved) {
   if (saved.sqSetStatus) sqSetStatus = saved.sqSetStatus;
   if (saved.sqSetMachine) sqSetMachine = saved.sqSetMachine;
   if (saved.sqSizeMachines) sqSizeMachines = saved.sqSizeMachines;
+  if (Array.isArray(saved.sqExtraSizes)) sqExtraSizes = saved.sqExtraSizes;
   if (saved.rollColorActiveMachine) rollColorActiveMachine = saved.rollColorActiveMachine;
   if (saved.rollSetCategoryTemplates) rollSetCategoryTemplates = saved.rollSetCategoryTemplates;
   if (saved.rollLifeSpec) rollLifeSpec = saved.rollLifeSpec;
@@ -19169,7 +19172,7 @@ function renderSqTable(page) {
     actEl.innerHTML = (one && one.length < SQ_PIECES_PER_SET)
       ? `<button class="btn btn-primary btn-sm" onclick="${jsCallAttr('addSqPieceToSet', sqSetKey(one[0]))}"
            title="ชุดนี้มี Roll ${one.length} ชิ้น ยังไม่ครบ ${SQ_PIECES_PER_SET} ชิ้น">+ เพิ่ม Roll ชิ้น ${sqPieceLabel(sqMissingPiece(one))}</button>`
-      : `<button class="btn btn-primary btn-sm" onclick="openModal()" title="เพิ่มชุดใหม่ — 1 ชุดลง Roll ${SQ_PIECES_PER_SET} ชิ้นพร้อมกัน">+ เพิ่มชุด</button>`;
+      : `<button class="btn btn-primary btn-sm" onclick="${selectedSqSize ? jsCallAttr('addSqSetForSize', selectedSqSize) : 'openModal()'}" title="เพิ่มชุดใหม่ — 1 ชุดลง Roll ${SQ_PIECES_PER_SET} ชิ้นพร้อมกัน">+ เพิ่มชุด</button>`;
   }
 
   const tp = Math.max(1, Math.ceil(sets.length / PAGE_SIZE));
@@ -19206,7 +19209,8 @@ function sqSizeGroups() {
 // ขนาด/ชุดที่เลือกไว้อาจถูกลบไปแล้ว — ล้างทิ้งก่อนวาด ไม่งั้นตารางจะว่างเปล่าโดยไม่มีเหตุผลให้เห็น
 function sqClampSelection() {
   if (selectedSqSetKey && !toolingData.sq.some(r => sqSetKey(r) === selectedSqSetKey)) selectedSqSetKey = null;
-  if (selectedSqSize && !toolingData.sq.some(r => String(r.sizeSq || '').trim() === selectedSqSize)) selectedSqSize = null;
+  if (selectedSqSize && !toolingData.sq.some(r => String(r.sizeSq || '').trim() === selectedSqSize)
+    && !sqExtraSizes.includes(selectedSqSize)) selectedSqSize = null;
 }
 
 function selectSqSize(size) {
@@ -19230,7 +19234,7 @@ function selectSqSet(key) {
 function renderSqSetList() {
   const el = document.getElementById('sq-set-list');
   if (!el) return;
-  const groups = sqSizeGroups();
+  const groups = sqSizeGroupsWithExtra();
   if (!groups.length) {
     el.innerHTML = `<div style="padding:18px 8px;color:var(--text-3);font-size:12.5px;line-height:1.6;">
       ยังไม่มีชุด Roll SQ<br>กด "+ เพิ่มชุด" เพื่อเริ่มลงทะเบียน (1 ชุดลง Roll ${SQ_PIECES_PER_SET} ชิ้นพร้อมกัน)</div>`;
@@ -19282,6 +19286,10 @@ function renderSqSetList() {
           onclick="${jsCallAttr('deleteSqSet', r.id)}" title="ลบทั้งชุด (${set.length} ชิ้น)">✕</button>
       </div>`;
     }).join('')
+    + (sets.length ? '' : `<div style="display:flex;align-items:center;gap:8px;padding:6px 9px;font-size:12px;color:var(--text-3);">
+        ยังไม่มีชุดในขนาดนี้
+        <button class="btn btn-ghost btn-sm" style="margin-left:auto;padding:2px 8px;font-size:11.5px;color:var(--red);"
+          onclick="${jsCallAttr('deleteSqExtraSize', size)}" title="ลบ Size SQ นี้ (ยังไม่มีชุด)">✕ ลบ Size</button></div>`)
     // ปุ่มเพิ่มชุดต่อท้ายรายการสุดท้ายของขนาดนี้ — เปิดฟอร์มเพิ่มชุดโดยกรอก Size/ประเภท/ชุดสีของชุดล่าสุดไว้ให้
     + `<button class="btn btn-ghost btn-sm" onclick="${jsCallAttr('addSqSetForSize', size)}"
         title="${escapeHtmlAttr('เพิ่มชุดใหม่ของ ' + size + ' — 1 ชุดลง Roll ' + SQ_PIECES_PER_SET + ' ชิ้นพร้อมกัน')}"
@@ -19290,10 +19298,110 @@ function renderSqSetList() {
   }).join('');
 }
 
+// ─── เพิ่ม Size SQ (ยังไม่มีชุด) ─────────────────────────────────────────────
+// ปุ่ม "+ เพิ่ม Size SQ" หัวคอลัมน์ซ้าย — กรอกแค่ชื่อขนาดกับเครื่อง แล้วค่อยเพิ่มชุดทีหลังที่ปุ่มท้ายรายการของขนาดนั้น
+// ขนาดที่ยังไม่มีชุดเก็บไว้ที่ sqExtraSizes (ขนาดที่มีชุดแล้วมาจากทะเบียนตามเดิม)
+// รวมขนาดที่ยังไม่มีชุดเข้ากับกลุ่มเดิม — ใช้เฉพาะรายการด้านซ้ายของทะเบียน SQ (หน้าอื่นใช้ sqSizeGroups ตามเดิม)
+function sqSizeGroupsWithExtra() {
+  const groups = sqSizeGroups();
+  const have = new Set(groups.map(([s]) => s));
+  const extra = (sqExtraSizes || []).filter(s => s && !have.has(s)).map(s => [s, []]);
+  if (!extra.length) return groups;
+  const rank = sqSizeRankMap();
+  const at = v => { const i = rank.get(v); return i == null ? Number.MAX_SAFE_INTEGER : i; };
+  return groups.concat(extra).sort((a, b) => at(a[0]) - at(b[0]) || a[0].localeCompare(b[0], 'th', { numeric: true }));
+}
+let sqNewSizeMc = [];
+function openAddSqSize() {
+  sqNewSizeMc = [];
+  // ชื่อขนาดจากฝั่ง Roll ที่ยังไม่มีในทะเบียน SQ — เลือกจากรายการได้ ชื่อจะตรงกันแล้วเครื่องผูกกับฝั่ง Roll ให้เอง
+  const have = new Set(sqSizeGroupsWithExtra().map(([s]) => s));
+  const fromRoll = [...new Set(getRollSets().map(n => rollSetSizeGroupLabel(n)).filter(Boolean))]
+    .filter(s => /^(GS|GI)(?![A-Z])/i.test(s) && !have.has(s));
+  document.getElementById('modal-title').textContent = 'เพิ่ม Size SQ';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="modal-row full">
+      <div class="form-group"><label class="form-label">Size SQ</label>
+        <input class="form-input" id="f-sqsize-name" list="f-sqsize-list" placeholder="เช่น GS 1&quot;x1&quot; (23x23)"
+          oninput="sqNewSizeNameChanged()"></div>
+    </div>
+    <div class="modal-row full">
+      <div class="form-group"><label class="form-label">เครื่อง (เลือกได้ไม่เกิน ${MAX_ROLL_MACHINES} เครื่อง)</label>
+        <div id="f-sqsize-mc" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;"></div></div>
+    </div>
+    <div id="f-sqsize-note" style="font-size:12px;color:var(--text-3);line-height:1.6;"></div>
+    <datalist id="f-sqsize-list">${fromRoll.map(s => `<option value="${escapeHtmlAttr(s)}"></option>`).join('')}</datalist>`;
+  renderSqNewSizeMc();
+  document.getElementById('modal-overlay').classList.add('open');
+  document.querySelector('.modal-footer .btn-primary').onclick = saveNewSqSize;
+  setTimeout(() => { const el = document.getElementById('f-sqsize-name'); if (el) el.focus(); }, 50);
+}
+function renderSqNewSizeMc() {
+  const box = document.getElementById('f-sqsize-mc');
+  if (!box) return;
+  box.innerHTML = ROLL_MACHINES.map(m => {
+    const on = sqNewSizeMc.includes(m);
+    return `<button type="button" class="btn ${on ? 'btn-primary' : 'btn-ghost'}" style="justify-content:center;font-size:14px;font-weight:800;padding:10px;"
+      onclick="${jsCallAttr('toggleSqNewSizeMc', m)}">${on ? '✓ ' : ''}${escapeHtmlAttr(m)}</button>`;
+  }).join('');
+}
+function toggleSqNewSizeMc(m) {
+  if (sqNewSizeMc.includes(m)) sqNewSizeMc = sqNewSizeMc.filter(x => x !== m);
+  else if (sqNewSizeMc.length >= MAX_ROLL_MACHINES) {
+    alert('เลือกได้ไม่เกิน ' + MAX_ROLL_MACHINES + ' เครื่อง — กดเอาเครื่องเดิมออกก่อน'); return;
+  } else sqNewSizeMc = ROLL_MACHINES.filter(x => x === m || sqNewSizeMc.includes(x));
+  renderSqNewSizeMc();
+}
+// พิมพ์/เลือกขนาดที่มีฝั่ง Roll แล้ว — ดึงเครื่องที่ตั้งไว้ฝั่ง Roll มาให้เห็นก่อน (แก้ได้)
+function sqNewSizeNameChanged() {
+  const size = sqFormVal('f-sqsize-name');
+  const note = document.getElementById('f-sqsize-note');
+  const rolls = rollSetsForSqSize(size);
+  if (rolls.length) {
+    sqNewSizeMc = sqSizeMachinesFor(size).slice(0, MAX_ROLL_MACHINES);
+    renderSqNewSizeMc();
+  }
+  if (note) note.textContent = rolls.length
+    ? 'ขนาดนี้มีในทะเบียน Roll — เครื่องที่เลือกจะตรงกับฝั่ง Roll ด้วย (แก้ที่ไหนก็ตรงกันทุกที่)' : '';
+}
+function saveNewSqSize() {
+  const size = sqFormVal('f-sqsize-name');
+  if (!size) { alert('กรอก Size SQ ก่อน'); return; }
+  if (!sqKindFromSize(size)) { alert('Size SQ ต้องขึ้นต้นด้วย GS หรือ GI\nเช่น GS 1"x1" (23x23)'); return; }
+  if (sqSizeGroupsWithExtra().some(([s]) => s === size)) { alert('มี Size SQ "' + size + '" อยู่แล้ว'); return; }
+  const mcs = ROLL_MACHINES.filter(m => sqNewSizeMc.includes(m));
+  const rolls = rollSetsForSqSize(size);
+  withCloudRetry(() => {
+    if (!sqExtraSizes.includes(size)) sqExtraSizes.push(size);
+    // เครื่อง: มีขนาดตรงกันฝั่ง Roll → เขียนที่ rollSetMachines (ที่เดียวกับ applySqSizeMachines)
+    // ไม่เลือกเครื่องเลยก็ไม่ไปล้างเครื่องฝั่ง Roll ที่ตั้งไว้แล้ว
+    if (rolls.length) { if (mcs.length) rolls.forEach(n => { rollSetMachines[n] = mcs.slice(); }); }
+    else if (mcs.length) sqSizeMachines[size] = mcs; else delete sqSizeMachines[size];
+    persistState();
+    closeModal();
+    selectedSqSize = size;
+    selectedSqSetKey = null;
+    renderSqRegistry(pageState.sq = 1);
+    renderDashboardToolingPanels();
+  });
+}
+// ลบ Size SQ ที่ยังไม่มีชุด (ขนาดที่มีชุดแล้ว ลบทุกชุดออกก่อน)
+function deleteSqExtraSize(size) {
+  if (sqSets().some(s => String(s[0].sizeSq || '').trim() === size)) { alert('ขนาดนี้ยังมีชุดอยู่ — ลบชุดออกก่อน'); return; }
+  if (!confirm('ลบ Size SQ "' + size + '"?')) return;
+  withCloudRetry(() => {
+    sqExtraSizes = sqExtraSizes.filter(s => s !== size);
+    if (!rollSetsForSqSize(size).length) delete sqSizeMachines[size];
+    if (selectedSqSize === size) selectedSqSize = null;
+    persistState();
+    renderSqRegistry(pageState.sq || 1);
+  });
+}
+
 // เพิ่มชุดใหม่จากปุ่มท้ายรายการของขนาดนั้น — ใช้ฟอร์มเพิ่มชุดเดิม แค่กรอกค่าของชุดล่าสุดในขนาดนี้ไว้ก่อน (แก้ได้)
 function addSqSetForSize(size) {
   openModal();
-  const sets = (sqSizeGroups().find(([s]) => s === size) || [, []])[1];
+  const sets = (sqSizeGroupsWithExtra().find(([s]) => s === size) || [, []])[1];
   const last = sets.length ? sets[sets.length - 1][0] : null;
   const put = (id, v) => { const el = document.getElementById(id); if (el && v) el.value = v; };
   put('f-sq-size', size === '—' ? '' : size);
