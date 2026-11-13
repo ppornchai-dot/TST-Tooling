@@ -2407,7 +2407,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-13.10';
+const APP_BUILD = '2026-11-13.11';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -19275,8 +19275,26 @@ function renderSqSetList() {
         <button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;color:var(--red);"
           onclick="${jsCallAttr('deleteSqSet', r.id)}" title="ลบทั้งชุด (${set.length} ชิ้น)">✕</button>
       </div>`;
-    }).join('');
+    }).join('')
+    // ปุ่มเพิ่มชุดต่อท้ายรายการสุดท้ายของขนาดนี้ — เปิดฟอร์มเพิ่มชุดโดยกรอก Size/ประเภท/ชุดสีของชุดล่าสุดไว้ให้
+    + `<button class="btn btn-ghost btn-sm" onclick="${jsCallAttr('addSqSetForSize', size)}"
+        title="${escapeHtmlAttr('เพิ่มชุดใหม่ของ ' + size + ' — 1 ชุดลง Roll ' + SQ_PIECES_PER_SET + ' ชิ้นพร้อมกัน')}"
+        style="display:block;width:100%;margin:2px 0 12px;padding:6px 9px;border:1px dashed var(--border);border-radius:6px;
+               font-size:12.5px;font-weight:700;color:var(--accent);text-align:left;">＋ เพิ่มชุด SQ</button>`;
   }).join('');
+}
+
+// เพิ่มชุดใหม่จากปุ่มท้ายรายการของขนาดนั้น — ใช้ฟอร์มเพิ่มชุดเดิม แค่กรอกค่าของชุดล่าสุดในขนาดนี้ไว้ก่อน (แก้ได้)
+function addSqSetForSize(size) {
+  openModal();
+  const sets = (sqSizeGroups().find(([s]) => s === size) || [, []])[1];
+  const last = sets.length ? sets[sets.length - 1][0] : null;
+  const put = (id, v) => { const el = document.getElementById(id); if (el && v) el.value = v; };
+  put('f-sq-size', size === '—' ? '' : size);
+  if (last) { put('f-sq-kind', last.kind); put('f-sq-color', last.color); }
+  // ให้หน้าฟิล์ม/ความหนาของชุดสีนั้นเติมตามมาเหมือนตอนเลือกเอง
+  const sz = document.getElementById('f-sq-size');
+  if (sz) sz.dispatchEvent(new Event('change'));
 }
 
 // เลขชิ้นแรกที่ยังไม่มีในชุดนั้น (1 = R, 2 = L)
