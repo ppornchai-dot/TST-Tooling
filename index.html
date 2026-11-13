@@ -1461,7 +1461,7 @@ canvas{display:block;}
             <div class="table-wrap" style="overflow-x:auto;">
               <table>
                 <thead><tr>
-                  <th>Size SQ</th><th title="หน้ากว้างของฟิล์มที่ใช้กับชุดนี้ — เป็นค่าของทั้งชุด">หน้าฟิล์ม</th><th title="ความหนาของวัสดุที่ชุดนี้เดิน — เป็นค่าของทั้งชุด">ความหนา</th><th>ประเภท</th><th>ชุดสี</th><th title="สถานะของทั้งชุด — ใช้เป็นตัวบอกการ์ด 'ชุด Roll SQ กำลังแต่ง' บนหน้า Dashboard">สถานะชุด</th><th title="ชิ้นงานในชุด — R = ขวา · L = ซ้าย">ชิ้นงาน</th><th title="รหัสประจำ Roll ลูกนั้น">รหัส Roll</th><th>เดือน/ปี ที่ผลิต</th><th title="ขนาดตอนใส่ครั้งแรก — ไม่เปลี่ยนตามการแต่ง">OD Standard</th><th title="ขนาดล่าสุดหลังแต่ง">OD ปัจจุบัน</th><th title="OD ที่เล็กที่สุดที่ยังใช้ได้ — ถึงค่านี้แล้วต้องเปลี่ยนลูกใหม่">OD หมดอายุ</th><th title="เวลาที่ใช้แต่ง Roll ลูกนี้ — ใช้คิดเวลาเริ่ม-จบของงานแต่ง Roll SQ ในหน้าวางแผน">เวลาแต่ง (นาที)</th><th></th>
+                  <th>Size SQ</th><th title="หน้ากว้างของฟิล์มที่ใช้กับชุดนี้ — เป็นค่าของทั้งชุด">หน้าฟิล์ม</th><th title="ความหนาของวัสดุที่ชุดนี้เดิน — เป็นค่าของทั้งชุด">ความหนา</th><th>ชุดสี</th><th title="สถานะของทั้งชุด — ใช้เป็นตัวบอกการ์ด 'ชุด Roll SQ กำลังแต่ง' บนหน้า Dashboard">สถานะชุด</th><th title="ชิ้นงานในชุด — R = ขวา · L = ซ้าย">ชิ้นงาน</th><th title="รหัสประจำ Roll ลูกนั้น">รหัส Roll</th><th>เดือน/ปี ที่ผลิต</th><th title="ขนาดตอนใส่ครั้งแรก — ไม่เปลี่ยนตามการแต่ง">OD Standard</th><th title="ขนาดล่าสุดหลังแต่ง">OD ปัจจุบัน</th><th title="OD ที่เล็กที่สุดที่ยังใช้ได้ — ถึงค่านี้แล้วต้องเปลี่ยนลูกใหม่">OD หมดอายุ</th><th title="เวลาที่ใช้แต่ง Roll ลูกนี้ — ใช้คิดเวลาเริ่ม-จบของงานแต่ง Roll SQ ในหน้าวางแผน">เวลาแต่ง (นาที)</th><th></th>
                 </tr></thead>
                 <tbody id="tbody-sq"></tbody>
               </table>
@@ -2407,7 +2407,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-13.12';
+const APP_BUILD = '2026-11-13.13';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -19122,8 +19122,6 @@ function renderSqTable(page) {
       <td style="${dim}"><strong>${escapeHtmlAttr(r.sizeSq || '—')}</strong></td>
       <td class="muted" style="${dim}">${sqSpecCellHtml(r.filmFace)}</td>
       <td class="muted" style="${dim}">${sqSpecCellHtml(r.thickness)}</td>
-      <td style="${dim}"><span style="font-size:11.5px;font-weight:800;padding:2px 9px;border-radius:99px;
-        color:#fff;background:${SQ_KIND_COLORS[r.kind] || 'var(--text-2)'};">${escapeHtmlAttr(r.kind || '—')}</span></td>
       <td style="${dim}"><span style="display:inline-flex;align-items:center;gap:6px;">
         <span style="width:10px;height:10px;border-radius:50%;background:${cm.dot};box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);"></span>
         ${escapeHtmlAttr(cm.label)}
@@ -19141,7 +19139,7 @@ function renderSqTable(page) {
         'แก้ไขชิ้นนี้', 'ลบทั้งชุด (' + set.length + ' ชิ้น)')}
     </tr>`;
     }).join('');
-  }).join('') : `<tr><td colspan="14" style="padding:28px;text-align:center;color:var(--text-3);">${
+  }).join('') : `<tr><td colspan="13" style="padding:28px;text-align:center;color:var(--text-3);">${
     allSets.length ? 'ไม่มีรายการในที่เลือกไว้ — กดหัวข้อขนาดซ้ำอีกครั้งเพื่อดูทุกขนาด'
       : 'ยังไม่มีรายการ Roll SQ — กด "+ เพิ่มชุด" เพื่อเริ่มลงทะเบียน (1 ชุดลง Roll ' + SQ_PIECES_PER_SET + ' ชิ้นพร้อมกัน)'}</td></tr>`;
 
