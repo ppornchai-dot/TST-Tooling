@@ -1098,7 +1098,6 @@ canvas{display:block;}
       <!-- แถบเตือนเมื่อ Production Block เปลี่ยน Size ของเครื่องใด แต่ยังไม่ได้เลือกชุด Roll ที่ใช้งานใหม่
            ค้างอยู่ข้ามวันจนกว่าจะเลือกครบ (ดู renderDashboardSizeChangeAlert) -->
       <!-- งานค้างจากวันก่อน — เตือน Admin/หัวหน้าให้ยกไปวางวันถัดไป (ดู renderDashboardLeftoverAlert) -->
-      <div id="dash-leftover-alert" style="display:none;"></div>
       <div id="dash-size-change-alert" style="display:none;"></div>
 
       <!-- แท็บหมวด Tooling — ชุดเดียวกับหน้าทะเบียน เพื่อให้ Dashboard ดูแยกหมวดได้เหมือนกัน
@@ -1133,6 +1132,8 @@ canvas{display:block;}
           <span class="reg-tab-count" id="dash-cnt-slitter">—</span>
         </button>
       </div>
+      <!-- งานค้างจากวันก่อน — อยู่ใต้แถบแท็บ เพราะแสดงเฉพาะงานของแท็บที่เลือก (ดู renderDashboardLeftoverAlert) -->
+      <div id="dash-leftover-alert" style="display:none;margin-top:14px;"></div>
 
       <!-- ── แท็บ Roll (ของเดิมทั้งหมด) ── -->
       <div class="dash-panel active" id="dashpanel-roll">
@@ -2406,7 +2407,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-13.5';
+const APP_BUILD = '2026-11-13.6';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
