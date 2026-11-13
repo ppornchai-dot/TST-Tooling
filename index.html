@@ -2407,7 +2407,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-13.19';
+const APP_BUILD = '2026-11-13.20';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -19365,7 +19365,11 @@ function renderSqSetList() {
           <span style="width:9px;height:9px;border-radius:50%;background:${cm.dot};flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);"></span>
           <span style="flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtmlAttr(cm.label)}
             <b style="color:var(--text-1);">${escapeHtmlAttr(sqSetOrdinalLabel(r))}</b>
-            <span style="color:var(--text-3);font-weight:400;">· ${escapeHtmlAttr(fmtYmThai(r.madeYm))}</span></span>
+            <span style="color:var(--text-3);font-weight:400;">· ${escapeHtmlAttr(fmtYmThai(r.madeYm))}</span>${(() => {
+              // รหัสของชุด = รหัสชิ้นตัดท้าย _R/_L (ทุกชิ้นใช้ฐานเดียวกัน) · ยังไม่ใส่รหัสก็ไม่แสดง
+              const code = String((set.find(x => x.code) || {}).code || '').trim().replace(/_[RL]$/i, '');
+              return code ? ` <span style="color:var(--accent);font-weight:700;font-size:11.5px;">· ${escapeHtmlAttr(code)}</span>` : '';
+            })()}</span>
           ${incomplete ? `<span class="chip chip-amber" style="flex-shrink:0;" title="1 ชุดต้องมี Roll ${SQ_PIECES_PER_SET} ชิ้น">ไม่ครบ</span>` : ''}
           <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;flex-shrink:0;">${set.length}</span>
         </div>
