@@ -2407,7 +2407,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-13.17';
+const APP_BUILD = '2026-11-13.18';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -18428,10 +18428,10 @@ function parseYm(ym) {
   if (mi < 0 || mi > 11) return null;
   return { year: Number(m[1]), monthIdx: mi };
 }
-// "2026-09" → "ก.ย. 2569"
+// "2026-09" → "09/2569" (เดือนเป็นตัวเลข ตามที่หน้างานใช้ — รูปเดียวกับในรหัส Roll เช่น 08/58)
 function fmtYmThai(ym) {
   const p = parseYm(ym);
-  return p ? THAI_MONTHS_ABBR[p.monthIdx] + ' ' + ymYearBe(p.year) : '—';
+  return p ? String(p.monthIdx + 1).padStart(2, '0') + '/' + ymYearBe(p.year) : '—';
 }
 // อ่านเดือน + ปี พ.ศ. จากฟอร์ม → "YYYY-MM" ปี ค.ศ. (ว่างทั้งคู่ = ไม่ระบุ)
 function sqYmFromForm() {
@@ -18856,7 +18856,7 @@ function sqOdCurHtml(r) {
 function fillSqFormOptions() {
   const mon = document.getElementById('f-sq-mon');
   if (mon) mon.innerHTML = '<option value="">— เดือน —</option>'
-    + THAI_MONTHS_ABBR.map((lb, i) => `<option value="${i + 1}">${lb}</option>`).join('');
+    + THAI_MONTHS_ABBR.map((lb, i) => `<option value="${i + 1}">${String(i + 1).padStart(2, '0')}</option>`).join('');
   const kind = document.getElementById('f-sq-kind');
   if (kind) kind.innerHTML = SQ_KINDS.map(k => `<option value="${k}">${k}</option>`).join('');
   const color = document.getElementById('f-sq-color');
