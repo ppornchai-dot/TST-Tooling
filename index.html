@@ -2407,7 +2407,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-13.24';
+const APP_BUILD = '2026-11-13.25';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5709,6 +5709,12 @@ function dashSqSetRowHtml(set, badgeColor, rowBg, hideSize) {
       escapeHtmlAttr(mc || String(sqSetOrdinalInfo(head).no))}</span>
     ${hideSize ? '' : `<span style="font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(head.sizeSq || '—')}</span>`}
     ${rollColorPillHtml(cm.dot, cm.label)}
+    ${(() => {
+      // รหัส SQ ของชุด (รหัสชิ้นตัดท้าย _R/_L) — ตัวเดียวกับที่แสดงในทะเบียน · ยังไม่ใส่รหัสก็ไม่ขึ้น
+      const code = sqSetCodeBase(set);
+      return code ? `<span style="flex-shrink:0;font-size:11.5px;font-weight:600;color:var(--text-3);white-space:nowrap;"
+        title="รหัส SQ">รหัส <b style="font-size:12.5px;font-weight:800;color:var(--accent);">${escapeHtmlAttr(code)}</b></span>` : '';
+    })()}
     ${thickTag}
     ${live ? prodSqLiveTagHtml(live) : ''}
     ${tag}
