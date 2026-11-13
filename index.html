@@ -2407,7 +2407,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-13.18';
+const APP_BUILD = '2026-11-13.19';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -18436,8 +18436,10 @@ function fmtYmThai(ym) {
 // อ่านเดือน + ปี พ.ศ. จากฟอร์ม → "YYYY-MM" ปี ค.ศ. (ว่างทั้งคู่ = ไม่ระบุ)
 function sqYmFromForm() {
   const mon = Number(sqFormVal('f-sq-mon'));
-  const yearBe = Number(sqFormVal('f-sq-year'));
+  let yearBe = Number(sqFormVal('f-sq-year'));
   if (!mon || !yearBe) return '';
+  // พิมพ์ปีย่อ 2 หลัก (เช่น 69 แบบในรหัส Roll) = พ.ศ. 2569 — เดิมกลายเป็นปี ค.ศ. 0069 แล้วแสดงเป็น 612
+  if (yearBe < 100) yearBe += 2500;
   const yearAd = yearBe >= 2400 ? yearBe - YM_BE_OFFSET : yearBe;
   return String(yearAd).padStart(4, '0') + '-' + String(mon).padStart(2, '0');
 }
@@ -19070,6 +19072,90 @@ function editSq(id) {
   }
 }
 
+// ─── แก้ไขทั้งชุด (ปุ่ม ✎ ในรายการด้านซ้าย) ────────────────────────────────────
+// ใช้ฟอร์มเดียวกับเพิ่มชุด: ค่าของชุด (สี/เดือน-ปี/หน้าฟิล์ม/ความหนา) + รหัส/OD/เวลาแต่งช่องเดียวไปทั้ง R และ L
+// ชิ้น R กับ L ค่าไม่ตรงกัน (เช่นวัด OD ปัจจุบันแยกกัน) → ช่องนั้นว่างไว้ บอกค่าเดิมของแต่ละชิ้นที่ placeholder
+// เว้นว่าง = คงค่าเดิมของแต่ละชิ้น · กรอก = ใส่ค่านี้ให้ทุกชิ้น
+function editSqSet(id) {
+  const r0 = toolingData.sq.find(x => x.id === id);
+  if (!r0) return;
+  const key0 = sqSetKey(r0);
+  const set = toolingData.sq.filter(x => sqSetKey(x) === key0)
+    .sort((a, b) => (Number(a.piece) || 0) - (Number(b.piece) || 0));
+  const base = set[0];
+  document.getElementById('modal-title').textContent = 'แก้ไขชุด — ' + sqSetFullLabel(base);
+  document.getElementById('modal-body').innerHTML = MODAL_FORMS.sq.fields;
+  fillSqFormOptions();
+  const szEl = document.getElementById('f-sq-size');
+  szEl.value = base.sizeSq || '';
+  szEl.readOnly = true;
+  szEl.removeAttribute('list');
+  szEl.style.cssText += ';background:var(--bg-panel);font-weight:800;color:var(--text-1);cursor:default;';
+  document.getElementById('f-sq-kind').value = base.kind || SQ_KINDS[0];
+  document.getElementById('f-sq-color').value = base.color || SQ_COLORS[0].key;
+  sqYmToForm(base.madeYm);
+  document.getElementById('f-sq-film').value = base.filmFace || '';
+  document.getElementById('f-sq-thick').value = base.thickness || '';
+  // รหัส: ถ้าเป็นรูป <ฐาน>_R / <ฐาน>_L ครบทุกชิ้น ใส่ฐานให้ ไม่งั้นว่างไว้ (คงเดิม)
+  const codeBase = String(base.code || '').trim().replace(/_[RL]$/i, '');
+  const codeUniform = !!codeBase && set.every(x => String(x.code || '').trim() === codeBase + '_' + sqPieceLabel(x.piece));
+  const fields = { odStd: 'f-sqs-odstd', odCur: 'f-sqs-odcur', odMin: 'f-sqs-odmin', grindTime: 'f-sqs-grind' };
+  const uniform = {};
+  Object.entries(fields).forEach(([f, elId]) => {
+    const vals = set.map(x => String(x[f] == null ? '' : x[f]).trim());
+    uniform[f] = vals.every(v => v === vals[0]);
+    const el = document.getElementById(elId);
+    if (uniform[f]) el.value = vals[0];
+    else el.placeholder = set.map(x => sqPieceLabel(x.piece) + ' ' + (String(x[f] || '').trim() || '—')).join(' · ') + ' (ว่าง = คงเดิม)';
+  });
+  const codeEl = document.getElementById('f-sqs-code');
+  if (codeUniform) codeEl.value = codeBase;
+  else if (set.some(x => x.code)) codeEl.placeholder = set.map(x => x.code || '—').join(' · ') + ' (ว่าง = คงเดิม)';
+  sqSetCodePreview();
+  document.getElementById('modal-overlay').classList.add('open');
+  document.querySelector('.modal-footer .btn-primary').onclick = function () {
+    const codeIn = sqFormVal('f-sqs-code');
+    const keepCodes = !codeIn && !codeUniform;
+    const codes = sqSplitSetCodes(codeIn);
+    const ids = new Set(set.map(x => x.id));
+    if (!keepCodes) {
+      for (let i = 0; i < set.length; i++) {
+        const code = codes[(Number(set[i].piece) || i + 1) - 1] || '';
+        const own = code ? toolingData.sq.find(x => !ids.has(x.id) && String(x.code || '').trim().toLowerCase() === code.toLowerCase()) : null;
+        if (own) { alert('รหัส Roll "' + code + '" ถูกใช้อยู่แล้วที่ ' + sqSetFullLabel(own) + ' · ชิ้น ' + sqPieceLabel(own.piece)); return; }
+      }
+    }
+    const color = sqFormVal('f-sq-color') || SQ_COLORS[0].key;
+    const madeYm = sqYmFromForm();
+    const filmFace = sqFormVal('f-sq-film');
+    const thickness = sqFormVal('f-sq-thick');
+    withCloudRetry(() => {
+      // ชุดเก่าที่ยังไม่มี setId — ออกให้ก่อนแก้สี (คีย์แบบเก่าผูกกับสี) แล้วย้ายสถานะ/เครื่องของชุดไปคีย์ใหม่ด้วย
+      if (!base.setId) {
+        const sid = newSqSetId();
+        set.forEach(x => { x.setId = sid; });
+        if (sqSetStatus[key0]) { sqSetStatus[sid] = sqSetStatus[key0]; delete sqSetStatus[key0]; }
+        if (sqSetMachine[key0]) { sqSetMachine[sid] = sqSetMachine[key0]; delete sqSetMachine[key0]; }
+        if (selectedSqSetKey === key0) selectedSqSetKey = sid;
+      }
+      set.forEach((x, i) => {
+        x.color = color; x.madeYm = madeYm;
+        if (!keepCodes) x.code = codes[(Number(x.piece) || i + 1) - 1] || '';
+        Object.entries(fields).forEach(([f, elId]) => {
+          const v = sqFormVal(elId);
+          if (v || uniform[f]) x[f] = v;   // ไม่ตรงกันแต่เดิม + เว้นว่าง = คงค่าเดิมของชิ้นนั้น
+        });
+      });
+      // หน้าฟิล์ม/ความหนา เป็นค่าของ "ชุดสี" — ไปทุกชุดของ Size+ประเภท+สีเดียวกัน (เกณฑ์เดียวกับฟอร์มอื่น)
+      applySqColorGroupSpec(base.sizeSq, base.kind, color, filmFace, thickness);
+      persistState();
+      closeModal();
+      renderSqRegistry(pageState.sq || 1);
+      renderDashboardToolingPanels();
+    });
+  };
+}
+
 // ลบเฉพาะ 1 ชิ้น — ชุดจะเหลือชิ้นเดียวและขึ้นป้าย "ไม่ครบ" ให้เห็นว่ายังต้องลงเพิ่ม
 function deleteSqPiece(id) {
   const r = toolingData.sq.find(x => x.id === id);
@@ -19284,6 +19370,8 @@ function renderSqSetList() {
           <span style="font-size:11px;color:var(--text-3);background:var(--bg-panel);padding:1px 7px;border-radius:10px;flex-shrink:0;">${set.length}</span>
         </div>
         ${sqSetMachineChipHtml(key)}
+        <button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;color:var(--accent);"
+          onclick="${jsCallAttr('editSqSet', r.id)}" title="แก้ไขชุดนี้ (ทั้ง R และ L)">✎</button>
         <button class="btn btn-ghost btn-sm" style="padding:4px 6px;flex-shrink:0;color:var(--red);"
           onclick="${jsCallAttr('deleteSqSet', r.id)}" title="ลบทั้งชุด (${set.length} ชิ้น)">✕</button>
       </div>`;
