@@ -2406,7 +2406,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-13.1';
+const APP_BUILD = '2026-11-13.2';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6256,6 +6256,42 @@ function sawWorkingCardHtml() {
   </div>`;
 }
 
+// ใบเลื่อยมีปัญหา — สถานะ "มีปัญหา" ที่ตั้งเองในทะเบียน (ระบบผลิตไม่รู้ว่าใบเสีย จึงต้องตั้งเอง)
+// อยู่ต่อจากการ์ดรอลับคม · แต่ละแถวบอกเครื่องผลิต OD วันลับคมล่าสุด และยอดตัด · กดแถวไปทะเบียนใบเลื่อยเพื่อแก้ไข
+function sawProblemCardHtml() {
+  const reg = (toolingData || {}).saw || [];
+  const list = reg.filter(r => sawEffectiveStatus(r).status === 'มีปัญหา')
+    .sort((a, b) => String(a.machine || '~').localeCompare(String(b.machine || '~'))
+      || String(a.id).localeCompare(String(b.id), undefined, { numeric: true }));
+  const rows = list.map(r => {
+    const u = typeof sawUsageInfo === 'function' ? sawUsageInfo(r) : null;
+    const mc = r.machine && r.machine !== '—' ? r.machine : '';
+    return `<div onclick="showPage('registry');switchRegTab('saw');"
+      style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;margin-bottom:6px;cursor:pointer;
+             background:var(--amber-dim);border:1px solid var(--border-light);"
+      title="สถานะ มีปัญหา (ตั้งในทะเบียน) — กดเพื่อไปทะเบียนใบเลื่อย แก้สถานะได้ที่ปุ่ม ✏️">
+      <span style="font-size:14px;font-weight:800;color:#fff;background:var(--amber);padding:3px 11px;border-radius:6px;">รหัส ${escapeHtmlAttr(r.id || '—')}</span>
+      <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr([sawOdLabel(r), mc].filter(Boolean).join(' · '))}</span>
+      ${u && u.lastGrind ? `<span style="font-size:12px;color:var(--text-2);">ลับคมล่าสุด ${escapeHtmlAttr(fmtIsoDateThai(u.lastGrind))}</span>` : ''}
+      <span style="margin-left:auto;"></span>
+      ${u && u.p ? (u.sinceGrind != null ? sawTonsPcsHtml('หลังลับคม', u.sinceGrind, u.sinceGrindPcs) + '<span style="color:var(--border);">|</span>' : '')
+        + sawTonsPcsHtml('สะสม', u.total, u.p.pcs) : ''}
+      <span class="chip chip-amber">มีปัญหา</span>
+    </div>`;
+  }).join('');
+  return `<div class="card" style="margin-bottom:18px;">
+    <div class="card-header">
+      <span class="card-title" style="font-size:17px;color:var(--amber);display:inline-flex;align-items:center;gap:8px;">
+        <span style="width:11px;height:11px;border-radius:50%;background:var(--amber);"></span>ใบเลื่อยมีปัญหา</span>
+      <span style="margin-left:auto;font-size:12px;color:var(--text-3);"><b style="color:var(--amber);">${list.length}</b> ใบ</span>
+    </div>
+    <div style="padding:10px 14px;">
+      ${rows || '<div style="padding:14px;text-align:center;color:var(--text-3);font-size:13px;">ไม่มีใบเลื่อยที่มีปัญหา</div>'}
+      <div style="font-size:11px;color:var(--text-3);margin-top:6px;">มีปัญหา = ตั้งสถานะไว้ในทะเบียนใบเลื่อย (ปุ่ม ✏️ ช่องสถานะ) · แก้สถานะกลับแล้วจะหายจากการ์ดนี้เอง</div>
+    </div>
+  </div>`;
+}
+
 function prodSawWaitingCardHtml() {
   const s = prodSawLive.status;
   if (s === 'noproxy') return '';
@@ -6996,7 +7032,7 @@ function renderDashboardSimpleToolingPanel(key, name) {
       ${dashMiniKpi('ซ่อมบำรุง / รอใช้งาน', repair.toLocaleString(), 'var(--amber)', '')}
       ${dashMiniKpi('หมดอายุ / มีปัญหา', expired.toLocaleString(), 'var(--red)', '')}
     </div>`}
-    ${key === 'saw' ? sawWorkingCardHtml() + prodSawInUseCardHtml() + prodSawWaitingCardHtml() : ''}
+    ${key === 'saw' ? sawWorkingCardHtml() + prodSawInUseCardHtml() + prodSawWaitingCardHtml() + sawProblemCardHtml() : ''}
     <div class="card">
       <div class="card-header">
         <span class="card-title" style="font-size:16px;${key === 'saw' ? 'color:var(--green);' : ''}">${key === 'saw' ? 'ใบเลื่อยพร้อมใช้งาน' : 'รายการ' + escapeHtmlAttr(name) + 'ตามสถานะ'}</span>
