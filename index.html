@@ -2407,7 +2407,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-13.9';
+const APP_BUILD = '2026-11-13.10';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5844,11 +5844,9 @@ function dashSqInUseCardHtml(sets) {
     title: 'ชุด Roll SQ กำลังใช้งาน', color: 'var(--inuse)',
     emptyText: 'ยังไม่มีชุด Roll SQ ที่กำลังใช้งาน',
     groups: [{ key: 'inuse', label: 'กำลังใช้งาน', color: 'var(--inuse)', bg: 'var(--inuse-dim)' }],
-    // ปุ่มเดียวกับ "เลือกชุดที่ใช้งาน" ของการ์ดชุด Roll — เลือกทีละเครื่องจากที่เดียวจบ
-    action: (canEditPlan() ? `<button class="btn" style="font-size:13px;font-weight:800;padding:6px 14px;border-radius:8px;
-        background:var(--inuse);color:#fff;border:1px solid var(--inuse);box-shadow:0 1px 3px rgba(79,122,0,.3);"
-        onclick="openSqInUsePicker()" title="เลือกว่าแต่ละเครื่องกำลังใช้ชุด Roll SQ ชุดไหน">✎ เลือกชุดที่ใช้งาน</button>` : '')
-      + prodSqStatusHtml(),
+    // เอาปุ่ม "เลือกชุดที่ใช้งาน" ออกแล้ว — ชุดที่ใช้งานมาจากระบบผลิตโดยตรง ไม่ต้องเลือกเอง
+    // (ฟังก์ชัน openSqInUsePicker ยังอยู่ ถ้าจะเอาปุ่มกลับมาแค่ใส่คืนตรงนี้)
+    action: prodSqStatusHtml(),
     extra: prodSqUnmatchedHtml(),
   });
 }
