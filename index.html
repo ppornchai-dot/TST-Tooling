@@ -2407,7 +2407,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-13.7';
+const APP_BUILD = '2026-11-13.8';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6390,7 +6390,10 @@ function prodSawWaitingCardHtml() {
       <span style="font-size:14px;font-weight:800;color:#fff;background:var(--red);padding:3px 11px;border-radius:6px;">รหัส ${escapeHtmlAttr(r.id)}</span>
       <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr([sawOdLabel(r), r.machine].filter(x => x && x !== '—').join(' · '))}</span>
       <span style="font-size:12px;color:var(--text-2);">ถอดจาก ${escapeHtmlAttr(u.last.machine)} · ${escapeHtmlAttr(prodSqFmtTime(u.removedAt))}</span>
-      ${plannedAt ? `<span class="chip chip-amber" title="มีงานลับคมใบนี้ในแผนงานแล้ว">แผนลับคม ${escapeHtmlAttr(fmtIsoDateThai(plannedAt))}</span>` : ''}
+      ${plannedAt ? `<span class="chip chip-amber" title="มีงานลับคมใบนี้ในแผนงานแล้ว">แผนลับคม ${escapeHtmlAttr(fmtIsoDateThai(plannedAt))}</span>`
+        : `<span title="ยังไม่มีงานลับคมใบนี้ในแผนงาน — วางแผนได้ที่หน้าวางแผน แท็บลับคมใบเลื่อย"
+             style="display:inline-flex;align-items:center;font-size:12px;font-weight:800;color:#fff;background:var(--red);
+                    padding:2px 10px;border-radius:99px;">ยังไม่วางแผน</span>`}
       <span style="margin-left:auto;"></span>
       ${u.sinceGrind != null ? sawTonsPcsHtml('หลังลับคม', u.sinceGrind, u.sinceGrindPcs)
         : sawTonsPcsHtml('รอบสุดท้าย', u.last.kg / 1000, u.last.pcs)}
