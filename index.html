@@ -2407,7 +2407,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-13.25';
+const APP_BUILD = '2026-11-14.1';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -19720,8 +19720,28 @@ function renderSawTable(page) {
   const sawTb = document.getElementById('tbody-saw');
   if (prodSawLive && prodSawLive.status === 'idle' && sawTb && sawTb.offsetParent !== null) loadProdSawUsage(false);
   const data = toolingData.saw;
-  const rows = data.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
-  document.getElementById('tbody-saw').innerHTML = rows.map(r=>`
+  // แบ่งกลุ่มตามเครื่องผลิต — เรียงตามชื่อเครื่อง (C5, P1, P2 …) แล้วตามรหัสในเครื่องเดียวกัน
+  // ยังไม่ระบุเครื่องไว้ท้ายสุด · เรียงเฉพาะที่แสดง ไม่แตะลำดับใน toolingData.saw (ปุ่มแก้ไข/ลบอ้างตำแหน่งเดิม)
+  const sawMc = r => { const m = String(r.machine || '').trim(); return m && m !== '—' ? m : ''; };
+  const sorted = data.slice().sort((a, b) => {
+    const ma = sawMc(a), mb = sawMc(b);
+    if (!ma !== !mb) return ma ? -1 : 1;
+    return ma.localeCompare(mb, 'th', { numeric: true })
+      || String(a.id || '').localeCompare(String(b.id || ''), 'th', { numeric: true });
+  });
+  const mcCount = new Map();
+  sorted.forEach(r => mcCount.set(sawMc(r), (mcCount.get(sawMc(r)) || 0) + 1));
+  const rows = sorted.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
+  // แถวหัวกลุ่ม: ขึ้นเมื่อเปลี่ยนเครื่อง และที่ต้นหน้า (กลุ่มที่ต่อจากหน้าก่อนบอก "ต่อ")
+  const grpHead = (mc, cont) => `<tr><td colspan="12" style="background:var(--bg-panel);padding:7px 14px;
+      border-top:2px solid var(--border);font-size:12.5px;font-weight:800;color:var(--text-1);">
+      ${mc ? 'เครื่อง ' + escapeHtmlAttr(mc) : 'ยังไม่ระบุเครื่อง'}
+      <span style="font-weight:600;color:var(--text-3);margin-left:6px;">${mcCount.get(mc) || 0} ใบ${cont ? ' · ต่อจากหน้าก่อน' : ''}</span></td></tr>`;
+  document.getElementById('tbody-saw').innerHTML = rows.map((r, i) => {
+    const mc = sawMc(r);
+    const head = i === 0 ? grpHead(mc, (page - 1) * PAGE_SIZE > 0 && sawMc(sorted[(page - 1) * PAGE_SIZE - 1]) === mc)
+      : mc !== sawMc(rows[i - 1]) ? grpHead(mc, false) : '';
+    return head + `
     <tr>
       <td class="muted"><strong>${r.id}</strong></td>
       <td>${r.diameter}</td>
@@ -19736,7 +19756,8 @@ function renderSawTable(page) {
       ${sawStatusCellHtml(r)}
       ${regRowActionsHtml(jsCallAttr('editSaw', data.indexOf(r)), jsCallAttr('deleteSaw', data.indexOf(r)),
         'แก้ไขใบเลื่อยนี้', 'ลบใบเลื่อยนี้')}
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
   const tp = Math.max(1, Math.ceil(data.length/PAGE_SIZE));
   renderFooter('saw', data.length, rows.length, page, tp);
   document.getElementById('cnt-saw').textContent = data.length;
