@@ -2422,7 +2422,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-14.4';
+const APP_BUILD = '2026-11-14.5';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6319,6 +6319,7 @@ function openSawProblemPicker() {
         if (!r) return;
         r.status = 'มีปัญหา';
         if (note) r.problemNote = note; else delete r.problemNote;
+        sawProblemOpen(r, note);
       });
       persistState();
       closeModal();
@@ -6341,8 +6342,35 @@ function clearSawProblem(id) {
   withCloudRetry(() => {
     r.status = 'พร้อมใช้';
     delete r.problemNote;
+    sawProblemClose(r);
     persistState();
     refreshSawViewsAfterStatusChange();
+  });
+}
+// ─── บันทึกประวัติใบเลื่อยมีปัญหา (ลงหน้าประวัติการทำงาน แท็บลับคมใบเลื่อย) ──────────
+// เปิดรายการตอนตั้งเป็น "มีปัญหา" · ปิดรายการตอนแก้แล้ว — เรียกซ้ำได้ไม่ซ้อน (withCloudRetry อาจรันซ้ำ)
+// วันที่ใช้วันทำงาน (dailyTodayIso) ให้ตรงกับงานอื่นในหน้าประวัติ — กะดึกหลังเที่ยงคืนยังนับเป็นวันก่อน
+function sawProblemWho() {
+  return (typeof currentUser !== 'undefined' && currentUser && currentUser.name) || '—';
+}
+function sawProblemOpen(r, note) {
+  if (!r) return;
+  const sawId = String(r.id || '').trim();
+  const open = sawProblemLog.find(e => e.sawId === sawId && !e.fixedAt);
+  if (open) { if (note) open.note = note; return; }
+  const now = new Date();
+  sawProblemLog.push({
+    id: 'SP' + now.getTime().toString(36) + Math.random().toString(36).slice(2, 6),
+    sawId, machine: sawMachineOf(r), note: note || '',
+    at: now.toISOString(), date: dailyTodayIso(now), time: nowHHMM(), by: sawProblemWho(),
+  });
+}
+function sawProblemClose(r) {
+  if (!r) return;
+  const sawId = String(r.id || '').trim();
+  const now = new Date();
+  sawProblemLog.filter(e => e.sawId === sawId && !e.fixedAt).forEach(e => {
+    e.fixedAt = now.toISOString(); e.fixedDate = dailyTodayIso(now); e.fixedTime = nowHHMM(); e.fixedBy = sawProblemWho();
   });
 }
 function refreshSawViewsAfterStatusChange() {
@@ -13917,6 +13945,9 @@ let sqSetMachine = {};
 let sqSizeMachines = {};
 // Size SQ ที่เพิ่มจากปุ่ม "+ เพิ่ม Size SQ" แต่ยังไม่มีชุด (ขนาดที่มีชุดแล้วอ่านจากทะเบียนเอง) — ประกาศตรงนี้เหตุผลเดียวกับด้านบน
 let sqExtraSizes = [];
+// ประวัติใบเลื่อยมีปัญหา — หนึ่งรายการ = หนึ่งครั้งที่ใบถูกตั้งเป็น "มีปัญหา" (จนกดแก้แล้ว) ดู sawProblemOpen
+// เก็บแยกจากทะเบียน ลบใบออกจากทะเบียนแล้วประวัติยังอยู่ · ประกาศตรงนี้เหตุผลเดียวกับด้านบน
+let sawProblemLog = [];
 function rollColorStatusFor(setName, colorKey) { return rollColorStatus[setName + '|' + colorKey] || 'ready'; }
 function getRollColorStatus(colorKey) { return rollColorStatusFor(selectedRollSet, colorKey); }
 function setRollColorStatus(colorKey, status) {
@@ -14316,7 +14347,7 @@ function requestReloadAllDevices() {
 
 function buildStateSnapshot() {
   return {
-    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollSetNote, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec, sqSetStatus, sqSetMachine, sqSizeMachines, sqExtraSizes,
+    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollSetNote, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec, sqSetStatus, sqSetMachine, sqSizeMachines, sqExtraSizes, sawProblemLog,
     planTasks, planTaskSeq, companyHolidays, companyHolidaySeq, planDayEndTime, planDayWorker, teamMembers, teamSeq,
     dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
     dailyPieceStatus, rollSizeLog, rollSizeLogSeq, dailyPauseLog, dailyPauseLogSeq,
@@ -14598,6 +14629,7 @@ function applyState(saved) {
   if (saved.sqSetMachine) sqSetMachine = saved.sqSetMachine;
   if (saved.sqSizeMachines) sqSizeMachines = saved.sqSizeMachines;
   if (Array.isArray(saved.sqExtraSizes)) sqExtraSizes = saved.sqExtraSizes;
+  if (Array.isArray(saved.sawProblemLog)) sawProblemLog = saved.sawProblemLog;
   if (saved.rollColorActiveMachine) rollColorActiveMachine = saved.rollColorActiveMachine;
   if (saved.rollSetCategoryTemplates) rollSetCategoryTemplates = saved.rollSetCategoryTemplates;
   if (saved.rollLifeSpec) rollLifeSpec = saved.rollLifeSpec;
@@ -19688,6 +19720,7 @@ function editSaw(idx) {
       const cur = toolingData.saw[idx];
       if (!cur) return;
       const vals = sawFormInputs().map(el => el.value.trim());
+      const wasProblem = sawManualStatus(cur) === 'มีปัญหา';
       SAW_FORM_FIELDS.forEach((f, i) => {
         const v = vals[i] || '';
         // เว้นว่าง = ยังไม่รู้ยอด ไม่ใช่ศูนย์ — คงขีดไว้ ไม่เขียนเป็น 0 ให้เอง
@@ -19695,6 +19728,10 @@ function editSaw(idx) {
         else cur[f] = v || '—';
       });
       cur.grindTime = ((document.getElementById('f-saw-grind') || {}).value || '').trim();
+      // ตั้ง/เลิก "มีปัญหา" จากปุ่ม ✏️ ก็ลงประวัติเหมือนกดจากการ์ดบน Dashboard
+      const isProblem = sawManualStatus(cur) === 'มีปัญหา';
+      if (isProblem && !wasProblem) sawProblemOpen(cur, cur.problemNote);
+      else if (!isProblem && wasProblem) { sawProblemClose(cur); delete cur.problemNote; }
       persistState();
       renderSawTable(pageState.saw || 1);
     });
@@ -21387,6 +21424,32 @@ function collectHistoryRecords() {
     });
   });
 
+  // ใบเลื่อยมีปัญหา — ลงวันที่แจ้ง (มีปัญหา) และวันที่แก้ (แก้แล้ว) แยกเป็นคนละบรรทัด
+  // typeKey 'sawprob' อยู่ในแท็บ "ลับคมใบเลื่อย" ด้วย (ดู historyTypeMatches) ไม่นับเป็นชั่วโมงทำงาน
+  (sawProblemLog || []).forEach(e => {
+    if (!e || !e.date) return;
+    const tooling = 'ใบเลื่อย ' + (e.sawId || '—') + (e.machine ? ' · เครื่อง ' + e.machine : '');
+    const symptom = e.note ? e.note : 'ยังไม่ระบุอาการ';
+    const push = (date, time, who, fixed) => {
+      const sk = historyShiftKeyForTime(time, 'saw') || 'unknown';
+      records.push({
+        date, wo: fixed ? 'แก้ปัญหา' : 'แจ้งปัญหา', typeKey: 'sawprob',
+        typeLabel: fixed ? 'ใบเลื่อย · แก้ปัญหาแล้ว' : 'ใบเลื่อยมีปัญหา',
+        tooling, detail: (fixed ? 'อาการ: ' : '⚠ ') + symptom,
+        who: who || '—', hours: null, minutes: null, startTime: null, endTime: null,
+        result: fixed ? 'แก้แล้ว' : 'มีปัญหา', resultChip: fixed ? 'chip-green' : 'chip-amber',
+        resultNote: fixed
+          ? 'แก้เมื่อ ' + (time || '—') + ' · แจ้งปัญหาวันที่ ' + fmtDateThai(parseISODate(e.date))
+          : 'แจ้งเมื่อ ' + (time || '—') + (e.fixedDate ? ' · แก้แล้ววันที่ ' + fmtDateThai(parseISODate(e.fixedDate)) : ' · ยังไม่ได้แก้'),
+        sawId: e.sawId || '',
+        shiftKey: sk,
+        sortKey: date + ' ' + historyShiftRank(sk) + ' ' + String(historyDayOrderMin(time) + 1).padStart(4, '0') + ' ~' + (e.sawId || '') + (fixed ? ' 1' : ' 0'),
+      });
+    };
+    push(e.date, e.time, e.by, false);
+    if (e.fixedDate) push(e.fixedDate, e.fixedTime, e.fixedBy, true);
+  });
+
   records.sort((a, b) => (b.sortKey || b.date + ' ' + b.wo).localeCompare(a.sortKey || a.date + ' ' + a.wo));
   return records;
 }
@@ -21395,7 +21458,8 @@ function collectHistoryRecords() {
 let currentHistoryType = '';
 function historyTypeMatches(r, filter) {
   if (!filter) return true;
-  return r.typeKey === filter;
+  // ใบเลื่อยมีปัญหาอยู่ในแท็บ "ลับคมใบเลื่อย" (ช่างลับคมใบเลื่อยก็เห็น)
+  return r.typeKey === filter || (filter === 'saw' && r.typeKey === 'sawprob');
 }
 // ช่าง CNC เห็นประวัติเฉพาะงานแต่ง Roll และช่างขัด Roll เห็นเฉพาะงานขัด Roll — คืน null ถ้าไม่ถูกจำกัด (admin/หัวหน้า/ช่างเครื่อง)
 function forcedHistoryTypeForRole() {
@@ -21434,9 +21498,10 @@ const HISTORY_CAL_TYPE = {
   sq:     { icon: '◆', label: 'แต่ง Roll SQ',    color: 'var(--amber)',  bg: 'var(--amber-dim)' },
   saw:    { icon: '✧', label: 'ลับคมใบเลื่อย',    color: 'var(--green)',  bg: 'var(--green-dim)' },
   slitter: { icon: '⚯', label: 'ลับคมมีดสลิตเตอร์', color: 'var(--red)', bg: 'var(--red-dim)' },
+  sawprob: { icon: '⚠', label: 'ใบเลื่อยมีปัญหา', color: 'var(--amber)', bg: 'var(--amber-dim)' },
 };
 // ลำดับที่ใช้เรียงบรรทัดในช่องวันของปฏิทิน — ไล่ตามลำดับงานจริง (แต่ง → ขัด → แต่ง SQ)
-const HISTORY_CAL_TYPE_ORDER = ['cnc', 'polish', 'sq', 'saw', 'slitter'];
+const HISTORY_CAL_TYPE_ORDER = ['cnc', 'polish', 'sq', 'saw', 'sawprob', 'slitter'];
 let historyCalMonth = null;   // เดือนที่กำลังดู (วันที่ 1 ของเดือนนั้น)
 // เปิด/ปิดค้างไว้ตามเครื่อง — บางคนใช้หน้านี้ค้นรายการอย่างเดียว ไม่อยากให้ปฏิทินดันตารางลงไป
 // เก็บใน localStorage ไม่ใช่ข้อมูลกลาง เพราะเป็นความชอบของเครื่องที่ใช้ ไม่ใช่ข้อมูลงาน
@@ -21620,7 +21685,7 @@ function renderHistoryCalendar(records, fromIso, toIso) {
   const leading = new Date(year, month, 1).getDay();   // 0 = อาทิตย์
   const today = dailyTodayIso();
   const dayNames = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
-  const monthTotal = { cnc: 0, polish: 0, sq: 0, saw: 0, days: 0, hours: 0 };
+  const monthTotal = { cnc: 0, polish: 0, sq: 0, saw: 0, sawprob: 0, days: 0, hours: 0 };
 
   let cells = '';
   for (let i = 0; i < leading; i++) cells += '<div style="min-height:74px;"></div>';
@@ -21641,6 +21706,17 @@ function renderHistoryCalendar(records, fromIso, toIso) {
 
     const rows = groupsFor(list).map(g => {
       const meta = HISTORY_CAL_TYPE[g.typeKey] || { icon: '•', label: g.typeKey, color: 'var(--text-2)' };
+      // ใบเลื่อยมีปัญหา — บรรทัดเดียวบอกรหัสใบ · กดแล้วกรองตารางเฉพาะวันนั้น (ไม่มีรายชิ้น/OD ให้เปิดดู)
+      if (g.typeKey === 'sawprob') {
+        const ids = [...new Set(g.items.map(x => x.sawId).filter(Boolean))];
+        const tip = g.items.map(x => x.tooling + ' — ' + x.result + ' · ' + x.detail).join('\n');
+        return `<div title="${escapeHtmlAttr(tip + '\nกดเพื่อดูในตารางด้านล่าง')}"
+          style="display:flex;align-items:center;gap:4px;font-size:10.5px;line-height:1.45;margin-top:2px;padding:0 2px;margin-left:-2px;margin-right:-2px;">
+          <span style="font-size:9px;font-weight:800;padding:0 4px;border-radius:3px;line-height:1.6;flex-shrink:0;background:${meta.color};color:#fff;">${meta.icon}</span>
+          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--amber);font-weight:700;">ใบเลื่อย ${escapeHtmlAttr(ids.join(', '))}</span>
+          <span style="margin-left:auto;flex-shrink:0;font-weight:800;color:${meta.color};">${g.items.length}</span>
+        </div>`;
+      }
       const dot = g.set && g.colorKey ? inUseColorDot(g.set, g.colorKey) : null;
       const colorName = g.set && g.colorKey ? rollColorLabelFor(g.set, g.colorKey) : '';
       // ชื่อชุดเต็มคือ 'GI 4"x4" (100x100) Forming' ซึ่งยาวเกินช่องวันมาก โดนตัดเหลือ 'GI 4"x4" (100x1…'
@@ -21709,6 +21785,9 @@ function renderHistoryCalendar(records, fromIso, toIso) {
       ${monthTotal.saw ? `<span style="display:inline-flex;align-items:center;gap:5px;font-weight:800;color:var(--green);">
         <span style="font-size:9px;padding:0 4px;border-radius:3px;line-height:1.6;background:var(--green);color:#fff;">✧</span>
         ลับคมใบเลื่อย ${monthTotal.saw.toLocaleString()} ใบ</span>` : ''}
+      ${monthTotal.sawprob ? `<span style="display:inline-flex;align-items:center;gap:5px;font-weight:800;color:var(--amber);">
+        <span style="font-size:9px;padding:0 4px;border-radius:3px;line-height:1.6;background:var(--amber);color:#fff;">⚠</span>
+        ใบเลื่อยมีปัญหา/แก้แล้ว ${monthTotal.sawprob.toLocaleString()} รายการ</span>` : ''}
       <span style="color:var(--text-3);">มีงาน ${monthTotal.days} วัน${
         monthTotal.hours ? ' · รวม ' + (Math.round(monthTotal.hours * 10) / 10).toLocaleString() + ' ชม.' : ''}</span>
       <span style="margin-left:auto;color:var(--text-3);">ตัวเลขท้ายบรรทัด = จำนวนชิ้น · <b style="color:var(--amber);">•</b> = มีชิ้นที่ยังไม่สำเร็จ ·
