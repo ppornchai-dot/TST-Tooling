@@ -2422,7 +2422,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-14.2';
+const APP_BUILD = '2026-11-14.3';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -19802,8 +19802,9 @@ function renderSawMachineList() {
           + (inuse ? ' · กำลังใช้งาน ' + inuse : '') + ' · กดเพื่อดูเฉพาะเครื่องนี้ (กดซ้ำเพื่อดูทุกเครื่อง)')}">${
         rollSetSectionHeaderHtml(mc ? 'เครื่อง ' + escapeHtmlAttr(mc) : 'ยังไม่ระบุเครื่อง', blades.length + ' ใบ',
           active ? 'var(--accent)' : 'var(--text-1)', { keepCase: true, big: true, tight: true })}</div>`;
-    // เลือกเครื่องอื่นอยู่ = ย่อเครื่องนี้ไว้แค่หัวข้อ ไม่งั้นรายการยาว 50 กว่าใบ หาเครื่องที่ต้องการยาก
-    if (selectedSawMachine !== null && !active) return header;
+    // ขยายเฉพาะเครื่องที่เลือก — เครื่องอื่น (และตอนดูทุกเครื่อง) ย่อไว้แค่หัวข้อ
+    // กดเครื่องเดิมซ้ำ = ยกเลิกการเลือก → รายการย่อปิดลง ไม่งั้นรายการยาว 50 กว่าใบ หาเครื่องที่ต้องการยาก
+    if (!active) return header;
     return header + blades.map(r => {
       const idx = data.indexOf(r);
       const on = selectedSawBlade === r;
