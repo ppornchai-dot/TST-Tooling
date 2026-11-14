@@ -2422,7 +2422,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-14.3';
+const APP_BUILD = '2026-11-14.4';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6414,7 +6414,7 @@ function prodSawWaitingCardHtml() {
       <span style="flex:0 0 auto;font-size:11.5px;font-weight:700;color:${plannedAt ? 'var(--accent)' : 'var(--text-3)'};"
         title="${escapeHtmlAttr(plannedAt ? 'ตามแผนจะลับคมวันที่ ' + fmtDateThai(parseISODate(plannedAt))
           : 'ยังไม่ได้วางแผนลับคมใบนี้ — วางแผนได้ที่หน้าวางแผน แท็บลับคมใบเลื่อย')}">${plannedAt
-        ? 'ลับคม ' + escapeHtmlAttr(fmtDateThaiShort(parseISODate(plannedAt))) : 'ยังไม่ได้วางแผน'}</span>
+        ? 'แผนลับคม ' + escapeHtmlAttr(fmtDateThaiShort(parseISODate(plannedAt))) : 'ยังไม่ได้วางแผน'}</span>
       <span style="margin-left:auto;"></span>
       ${u.sinceGrind != null ? sawTonsPcsHtml('หลังลับคม', u.sinceGrind, u.sinceGrindPcs)
         : sawTonsPcsHtml('รอบสุดท้าย', u.last.kg / 1000, u.last.pcs)}
