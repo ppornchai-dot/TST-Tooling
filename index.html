@@ -2422,7 +2422,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-14.5';
+const APP_BUILD = '2026-11-14.6';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -19855,7 +19855,8 @@ function renderSawMachineList() {
         <b style="font-size:12.5px;min-width:34px;color:${on ? 'var(--accent)' : 'var(--text-1)'};">${escapeHtmlAttr(r.id || '—')}</b>
         <span style="flex:1;min-width:0;font-size:12px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${
           dia && dia !== '—' ? 'Ø' + escapeHtmlAttr(dia) : ''}</span>
-        <span style="flex-shrink:0;transform:scale(.9);transform-origin:right center;">${statusChip(st)}</span>
+        <span style="flex-shrink:0;transform:scale(.9);transform-origin:right center;${canEditPlan() ? 'cursor:pointer;' : ''}"
+          ${canEditPlan() ? `onclick="openSawStatusMenu(event, ${idx})" title="กดเพื่อเปลี่ยนสถานะ"` : ''}>${statusChip(st)}${canEditPlan() ? '<span style="font-size:9px;color:var(--text-3);margin-left:2px;">▾</span>' : ''}</span>
       </div>`;
     }).join('');
   }).join('');
@@ -19951,9 +19952,92 @@ function sawEffectiveStatus(r) {
   }
   return { status: manual, src: 'manual' };
 }
+// ─── กดป้ายสถานะใบเลื่อยเพื่อเปลี่ยนสถานะ (รายการซ้าย + คอลัมน์สถานะในตาราง) ───────────
+// เขียนลงช่องสถานะของทะเบียน (ตัวเดียวกับปุ่ม ✏️) · "มีปัญหา" ถามอาการ แล้วลงประวัติเหมือนการ์ดบน Dashboard
+// เฉพาะ Admin/หัวหน้า (canEditPlan) — คนอื่นเห็นป้ายเฉยๆ กดไม่ได้
+const SAW_STATUS_OPTIONS = ['พร้อมใช้', 'กำลังใช้งาน', 'รอลับคม', 'มีปัญหา', 'หมดอายุ'];
+function closeSawStatusMenu() {
+  const el = document.getElementById('saw-status-menu');
+  if (el) el.remove();
+  document.removeEventListener('click', closeSawStatusMenu);
+  document.removeEventListener('keydown', sawStatusMenuEsc);
+  window.removeEventListener('scroll', closeSawStatusMenu, true);
+}
+function sawStatusMenuEsc(e) { if (e.key === 'Escape') closeSawStatusMenu(); }
+function openSawStatusMenu(ev, idx) {
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  closeSawStatusMenu();
+  if (!canEditPlan()) return;
+  const r = ((toolingData || {}).saw || [])[idx];
+  if (!r) return;
+  const eff = sawEffectiveStatus(r);
+  const anchor = ev && ev.currentTarget ? ev.currentTarget.getBoundingClientRect() : { left: 100, right: 100, bottom: 100, top: 100 };
+  const el = document.createElement('div');
+  el.id = 'saw-status-menu';
+  el.onclick = e => e.stopPropagation();
+  el.style.cssText = 'position:fixed;z-index:1300;background:var(--bg-surface);border:1px solid var(--border);border-radius:10px;'
+    + 'box-shadow:0 10px 28px rgba(0,0,0,.2);padding:6px;min-width:210px;max-width:260px;';
+  el.innerHTML = `<div style="font-size:11.5px;font-weight:800;color:var(--text-2);padding:4px 8px 6px;">ใบเลื่อย ${escapeHtmlAttr(r.id || '—')} · เปลี่ยนสถานะ</div>`
+    + SAW_STATUS_OPTIONS.map(o => `<div onclick="${jsCallAttr('setSawStatus', idx, o)}"
+        onmouseover="this.style.background='var(--bg-panel)'" onmouseout="this.style.background='transparent'"
+        style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;">
+        ${statusChip(o)}<span style="margin-left:auto;font-weight:800;color:var(--accent);">${o === eff.status ? '✓' : ''}</span></div>`).join('')
+    + (eff.src !== 'manual' ? `<div style="font-size:10.5px;color:var(--text-3);line-height:1.5;padding:6px 8px 2px;border-top:1px solid var(--border-light);margin-top:4px;">
+        ตอนนี้แสดงตาม${eff.src === 'plan' ? 'งานลับคมในแผน' : 'ระบบผลิต'} — "มีปัญหา" / "หมดอายุ" มีผลทันที
+        สถานะอื่นระบบจะยังแสดงตาม${eff.src === 'plan' ? 'แผน' : 'ระบบผลิต'}ก่อน</div>` : '');
+  document.body.appendChild(el);
+  // วางใต้ป้าย ชิดขวาของป้าย · ล้นจอล่างก็พลิกขึ้นด้านบน
+  const w = el.offsetWidth, h = el.offsetHeight;
+  let left = Math.min(Math.max(8, anchor.right - w), window.innerWidth - w - 8);
+  let top = anchor.bottom + 4;
+  if (top + h > window.innerHeight - 8) top = Math.max(8, anchor.top - h - 4);
+  el.style.left = left + 'px';
+  el.style.top = top + 'px';
+  setTimeout(() => {
+    document.addEventListener('click', closeSawStatusMenu);
+    document.addEventListener('keydown', sawStatusMenuEsc);
+    window.addEventListener('scroll', closeSawStatusMenu, true);
+  }, 0);
+}
+function setSawStatus(idx, st) {
+  closeSawStatusMenu();
+  if (!canEditPlan() || !SAW_STATUS_OPTIONS.includes(st)) return;
+  const r0 = ((toolingData || {}).saw || [])[idx];
+  if (!r0) return;
+  const id = r0.id;
+  let note = '';
+  if (st === 'มีปัญหา') {
+    const ans = prompt('ใบเลื่อย ' + (id || '—') + ' มีปัญหา\nอาการ / สาเหตุ (ไม่บังคับ — เว้นว่างได้)', r0.problemNote || '');
+    if (ans === null) return;   // กดยกเลิก = ไม่เปลี่ยน
+    note = ans.trim();
+  }
+  withCloudRetry(() => {
+    // ข้อมูลอาจถูกโหลดใหม่ระหว่างลองซ้ำ — ยืนยันด้วยรหัส ไม่เชื่อตำแหน่งอย่างเดียว
+    const list = toolingData.saw || [];
+    const cur = (list[idx] && list[idx].id === id) ? list[idx] : list.find(x => x.id === id);
+    if (!cur) return;
+    const was = sawManualStatus(cur) === 'มีปัญหา';
+    cur.status = st;
+    if (st === 'มีปัญหา') {
+      if (note) cur.problemNote = note; else delete cur.problemNote;
+      sawProblemOpen(cur, note);
+    } else if (was) {
+      delete cur.problemNote;
+      sawProblemClose(cur);
+    }
+    persistState();
+    refreshSawViewsAfterStatusChange();
+  });
+}
 function sawStatusCellHtml(r) {
   const e = sawEffectiveStatus(r);
   const manual = sawManualStatus(r);
+  const sIdx = ((toolingData || {}).saw || []).indexOf(r);
+  if (canEditPlan() && sIdx >= 0) {
+    return `<td><span style="cursor:pointer;white-space:nowrap;" onclick="openSawStatusMenu(event, ${sIdx})"
+      title="${escapeHtmlAttr('กดเพื่อเปลี่ยนสถานะ · ' + (e.src === 'prod' ? 'ตามระบบผลิต' + (e.note ? ' — ' + e.note : '')
+        : e.src === 'plan' ? 'ตามแผนงานลับคม' + (e.note ? ' — ' + e.note : '') : 'ตั้งเองในทะเบียน'))}">${statusChip(e.status)}<span style="font-size:9px;color:var(--text-3);margin-left:3px;">▾</span></span></td>`;
+  }
   const tip = e.src === 'prod' ? 'ตามระบบผลิต' + (e.note ? ' — ' + e.note : '')
     : e.src === 'plan' ? (e.note ? 'ตามแผนงานลับคม — ' + e.note : 'ตามงานลับคมในหน้างานประจำวัน (กดเริ่มแล้ว ยังไม่กดจบ)')
     : 'ตั้งเองในทะเบียน';
