@@ -1483,21 +1483,36 @@ canvas{display:block;}
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--amber);" id="kpi-saw-problem">0</span><span class="reg-kpi-lbl">มีปัญหา</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--text-3);" id="kpi-saw-expired">0</span><span class="reg-kpi-lbl">หมดอายุ</span></div>
         </div>
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">รายการใบเลื่อย</span>
-            <button class="btn btn-primary btn-sm" onclick="openModal()">+ เพิ่มใบเลื่อย</button>
+        <!-- วางแบบเดียวกับแท็บ Roll SQ: คอลัมน์ซ้ายเลือกเครื่องผลิต / ใบเลื่อย · คอลัมน์ขวาเป็นตารางของที่เลือก -->
+        <div class="reg-registry-grid" style="display:grid;grid-template-columns:340px 1fr;gap:14px;align-items:start;">
+          <!-- COL 1: เครื่องผลิต → ใบเลื่อย (กดเครื่อง = ดูเฉพาะเครื่องนั้น · กดซ้ำ = ดูทั้งหมด) -->
+          <div class="card" style="position:sticky;top:70px;">
+            <div style="padding:12px 14px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:13px;font-weight:700;">เครื่องผลิต</span>
+              <button class="btn btn-ghost btn-sm" id="saw-show-all" onclick="selectSawMachine(null)" title="ดูใบเลื่อยทุกเครื่อง">ดูทั้งหมด</button>
+            </div>
+            <div id="saw-mc-list" style="max-height:620px;overflow-y:auto;padding:4px 8px 8px;"></div>
           </div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr>
-                <th>รหัส</th><th>เส้นผ่าศูนย์กลาง</th><th>จำนวนฟัน</th><th title="ความสูงของฟันที่วัดได้ (mm)">ความสูงฟัน</th><th title="ความหนาของใบเลื่อย (mm)">ความหนาใบเลื่อย</th><th>เครื่องผลิต</th><th>ตัดสะสม (ตัน)</th><th>Regrind ครั้งที่</th><th title="วันที่ลับคมครั้งล่าสุด">ลับคมล่าสุด</th><th title="เวลาที่ใช้ลับคมใบนี้ — ใช้คิดเวลาเริ่ม-จบของงานลับคมใบเลื่อยในหน้าวางแผน">เวลาลับคม (นาที)</th><th>สถานะ</th><th></th>
-              </tr></thead>
-              <tbody>
-              <tbody id="tbody-saw"></tbody>
-            </table>
+
+          <!-- COL 2: ตารางใบเลื่อยของเครื่อง/ใบที่เลือก -->
+          <div class="card" style="min-width:0;overflow:hidden;">
+            <div style="padding:12px 16px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+              <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+                <span style="font-size:13px;font-weight:700;" id="saw-detail-title">ใบเลื่อยทั้งหมด</span>
+                <span style="font-size:11px;color:var(--text-3);" id="saw-detail-count"></span>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="openAddSaw()">+ เพิ่มใบเลื่อย</button>
+            </div>
+            <div class="table-wrap" style="overflow-x:auto;">
+              <table>
+                <thead><tr>
+                  <th>รหัส</th><th>เส้นผ่าศูนย์กลาง</th><th>จำนวนฟัน</th><th title="ความสูงของฟันที่วัดได้ (mm)">ความสูงฟัน</th><th title="ความหนาของใบเลื่อย (mm)">ความหนาใบเลื่อย</th><th>เครื่องผลิต</th><th>ตัดสะสม (ตัน)</th><th>Regrind ครั้งที่</th><th title="วันที่ลับคมครั้งล่าสุด">ลับคมล่าสุด</th><th title="เวลาที่ใช้ลับคมใบนี้ — ใช้คิดเวลาเริ่ม-จบของงานลับคมใบเลื่อยในหน้าวางแผน">เวลาลับคม (นาที)</th><th>สถานะ</th><th></th>
+                </tr></thead>
+                <tbody id="tbody-saw"></tbody>
+              </table>
+            </div>
+            <div class="tbl-footer" id="footer-saw"></div>
           </div>
-          <div class="tbl-footer" id="footer-saw"></div>
         </div>
       </div>
 
@@ -2407,7 +2422,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-14.1';
+const APP_BUILD = '2026-11-14.2';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -19714,33 +19729,129 @@ function regRowActionsHtml(editCall, deleteCall, editTitle, deleteTitle) {
     deleteCall ? btn(deleteCall, deleteTitle || 'ลบ', true) : ''}</td>`;
 }
 
+// ─── ทะเบียนใบเลื่อย: แบ่งกลุ่มตามเครื่องผลิต (วางแบบเดียวกับ Size SQ ของแท็บ Roll SQ) ─────
+// คอลัมน์ซ้าย = เครื่องผลิต → ใบเลื่อยของเครื่องนั้น · กดเครื่อง = ดูเฉพาะเครื่องนั้น กดซ้ำ = ดูทั้งหมด
+// กดใบเลื่อย = ดูเฉพาะใบนั้น กดซ้ำ = กลับไปดูทั้งเครื่อง
+// var ไม่ใช่ let — renderSawTable ถูกเรียกตอนบูต อาจก่อนบรรทัดนี้ (let จะชน TDZ)
+var selectedSawMachine = null;   // null = ทุกเครื่อง · '' = ยังไม่ระบุเครื่อง · อื่นๆ = ชื่อเครื่อง
+var selectedSawBlade = null;     // ตัว object ของใบที่เลือก (ไม่ใช้ index — ลบ/เพิ่มแล้ว index เลื่อน)
+
+// เครื่องของใบเลื่อย — ว่าง/ขีด = ยังไม่ระบุ
+function sawMachineOf(r) {
+  const m = String((r || {}).machine || '').trim();
+  return m && m !== '—' ? m : '';
+}
+// เรียงตามเครื่อง (C5, P1, P2 …) แล้วตามรหัสในเครื่องเดียวกัน · ยังไม่ระบุเครื่องไว้ท้ายสุด
+// เรียงเฉพาะที่แสดง ไม่แตะลำดับใน toolingData.saw (ปุ่มแก้ไข/ลบอ้างตำแหน่งเดิม)
+function sawSortedByMachine() {
+  return ((toolingData || {}).saw || []).slice().sort((a, b) => {
+    const ma = sawMachineOf(a), mb = sawMachineOf(b);
+    if (!ma !== !mb) return ma ? -1 : 1;
+    return ma.localeCompare(mb, 'th', { numeric: true })
+      || String(a.id || '').localeCompare(String(b.id || ''), 'th', { numeric: true });
+  });
+}
+// [เครื่อง, [ใบ, ใบ, ...]] ตามลำดับของ sawSortedByMachine
+function sawMachineGroups() {
+  const map = new Map();
+  sawSortedByMachine().forEach(r => {
+    const mc = sawMachineOf(r);
+    if (!map.has(mc)) map.set(mc, []);
+    map.get(mc).push(r);
+  });
+  return [...map.entries()];
+}
+function selectSawMachine(mc) {
+  selectedSawMachine = (mc === null || (selectedSawMachine === mc && !selectedSawBlade)) ? null : mc;
+  selectedSawBlade = null;
+  renderSawTable(pageState.saw = 1);
+}
+function selectSawBlade(idx) {
+  const r = ((toolingData || {}).saw || [])[idx];
+  if (!r) return;
+  if (selectedSawBlade === r) selectedSawBlade = null;
+  else { selectedSawBlade = r; selectedSawMachine = sawMachineOf(r); }
+  renderSawTable(pageState.saw = 1);
+}
+// เพิ่มใบเลื่อย — เลือกเครื่องไว้อยู่ก็กรอกช่อง "เครื่องผลิต" ให้เลย
+function openAddSaw() {
+  openModal();
+  if (selectedSawMachine) {
+    const el = sawFormInputs()[SAW_FORM_FIELDS.indexOf('machine')];
+    if (el && !el.value) el.value = selectedSawMachine;
+  }
+}
+
+function renderSawMachineList() {
+  const el = document.getElementById('saw-mc-list');
+  if (!el) return;
+  const data = (toolingData || {}).saw || [];
+  const allBtn = document.getElementById('saw-show-all');
+  if (allBtn) allBtn.style.visibility = selectedSawMachine === null ? 'hidden' : 'visible';
+  const groups = sawMachineGroups();
+  if (!groups.length) {
+    el.innerHTML = `<div style="padding:18px 8px;color:var(--text-3);font-size:12.5px;line-height:1.6;">
+      ยังไม่มีใบเลื่อย<br>กด "+ เพิ่มใบเลื่อย" เพื่อเริ่มลงทะเบียน</div>`;
+    return;
+  }
+  el.innerHTML = groups.map(([mc, blades]) => {
+    const active = selectedSawMachine === mc;
+    const inuse = blades.filter(r => sawEffectiveStatus(r).status === 'กำลังใช้งาน').length;
+    const header = `<div onclick="${jsCallAttr('selectSawMachine', mc)}" style="cursor:pointer;"
+        title="${escapeHtmlAttr((mc ? 'เครื่อง ' + mc : 'ยังไม่ระบุเครื่อง') + ' — ' + blades.length + ' ใบ'
+          + (inuse ? ' · กำลังใช้งาน ' + inuse : '') + ' · กดเพื่อดูเฉพาะเครื่องนี้ (กดซ้ำเพื่อดูทุกเครื่อง)')}">${
+        rollSetSectionHeaderHtml(mc ? 'เครื่อง ' + escapeHtmlAttr(mc) : 'ยังไม่ระบุเครื่อง', blades.length + ' ใบ',
+          active ? 'var(--accent)' : 'var(--text-1)', { keepCase: true, big: true, tight: true })}</div>`;
+    // เลือกเครื่องอื่นอยู่ = ย่อเครื่องนี้ไว้แค่หัวข้อ ไม่งั้นรายการยาว 50 กว่าใบ หาเครื่องที่ต้องการยาก
+    if (selectedSawMachine !== null && !active) return header;
+    return header + blades.map(r => {
+      const idx = data.indexOf(r);
+      const on = selectedSawBlade === r;
+      const st = sawEffectiveStatus(r).status;
+      const dia = String(r.diameter || '').trim();
+      return `<div onclick="${jsCallAttr('selectSawBlade', idx)}"
+          style="display:flex;align-items:center;gap:8px;padding:6px 9px;border-radius:6px;cursor:pointer;margin-bottom:3px;
+                 background:${on ? 'var(--accent-glow)' : 'transparent'};color:${on ? 'var(--accent)' : 'var(--text-2)'};transition:background .12s;"
+          title="${escapeHtmlAttr('ใบเลื่อย ' + (r.id || '—') + (dia && dia !== '—' ? ' · Ø' + dia : '') + ' · ' + st
+            + ' — กดเพื่อดูเฉพาะใบนี้ (กดซ้ำเพื่อดูทั้งเครื่อง)')}">
+        <b style="font-size:12.5px;min-width:34px;color:${on ? 'var(--accent)' : 'var(--text-1)'};">${escapeHtmlAttr(r.id || '—')}</b>
+        <span style="flex:1;min-width:0;font-size:12px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${
+          dia && dia !== '—' ? 'Ø' + escapeHtmlAttr(dia) : ''}</span>
+        <span style="flex-shrink:0;transform:scale(.9);transform-origin:right center;">${statusChip(st)}</span>
+      </div>`;
+    }).join('');
+  }).join('');
+}
+
 function renderSawTable(page) {
   // เปิดทะเบียนใบเลื่อยครั้งแรก = ดึงยอดจากระบบผลิต (loadProdSawUsage วาดตารางนี้ใหม่ให้เองตอนได้ผล)
   // เฉพาะตอนตารางนี้อยู่บนจอจริง — ตารางถูกวาดตอนบูต/ซิงก์ด้วย ไม่งั้นจะดึงทุกครั้งที่เปิดแอป
   const sawTb = document.getElementById('tbody-saw');
   if (prodSawLive && prodSawLive.status === 'idle' && sawTb && sawTb.offsetParent !== null) loadProdSawUsage(false);
   const data = toolingData.saw;
-  // แบ่งกลุ่มตามเครื่องผลิต — เรียงตามชื่อเครื่อง (C5, P1, P2 …) แล้วตามรหัสในเครื่องเดียวกัน
-  // ยังไม่ระบุเครื่องไว้ท้ายสุด · เรียงเฉพาะที่แสดง ไม่แตะลำดับใน toolingData.saw (ปุ่มแก้ไข/ลบอ้างตำแหน่งเดิม)
-  const sawMc = r => { const m = String(r.machine || '').trim(); return m && m !== '—' ? m : ''; };
-  const sorted = data.slice().sort((a, b) => {
-    const ma = sawMc(a), mb = sawMc(b);
-    if (!ma !== !mb) return ma ? -1 : 1;
-    return ma.localeCompare(mb, 'th', { numeric: true })
-      || String(a.id || '').localeCompare(String(b.id || ''), 'th', { numeric: true });
-  });
+  // ใบ/เครื่องที่เลือกไว้อาจถูกลบหรือย้ายเครื่องไปแล้ว — ล้างทิ้งก่อนวาด ไม่งั้นตารางว่างโดยไม่มีเหตุผลให้เห็น
+  if (selectedSawBlade && !data.includes(selectedSawBlade)) selectedSawBlade = null;
+  if (selectedSawMachine !== null && !data.some(r => sawMachineOf(r) === selectedSawMachine)) selectedSawMachine = null;
+  const sorted = sawSortedByMachine();
+  const shownAll = selectedSawBlade ? [selectedSawBlade]
+    : selectedSawMachine !== null ? sorted.filter(r => sawMachineOf(r) === selectedSawMachine) : sorted;
+  const tp = Math.max(1, Math.ceil(shownAll.length / PAGE_SIZE));
+  page = Math.min(Math.max(1, page || 1), tp);
+  pageState.saw = page;
+  const rows = shownAll.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
+  // ดูทุกเครื่อง = มีแถวหัวกลุ่มคั่นแต่ละเครื่อง (ต้นหน้าที่ต่อจากหน้าก่อนบอก "ต่อ")
+  const grouped = selectedSawMachine === null && !selectedSawBlade;
   const mcCount = new Map();
-  sorted.forEach(r => mcCount.set(sawMc(r), (mcCount.get(sawMc(r)) || 0) + 1));
-  const rows = sorted.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
-  // แถวหัวกลุ่ม: ขึ้นเมื่อเปลี่ยนเครื่อง และที่ต้นหน้า (กลุ่มที่ต่อจากหน้าก่อนบอก "ต่อ")
-  const grpHead = (mc, cont) => `<tr><td colspan="12" style="background:var(--bg-panel);padding:7px 14px;
-      border-top:2px solid var(--border);font-size:12.5px;font-weight:800;color:var(--text-1);">
+  sorted.forEach(r => mcCount.set(sawMachineOf(r), (mcCount.get(sawMachineOf(r)) || 0) + 1));
+  const grpHead = (mc, cont) => `<tr><td colspan="12" onclick="${jsCallAttr('selectSawMachine', mc)}" style="cursor:pointer;background:var(--bg-panel);padding:7px 14px;
+      border-top:2px solid var(--border);font-size:12.5px;font-weight:800;color:var(--text-1);" title="กดเพื่อดูเฉพาะเครื่องนี้">
       ${mc ? 'เครื่อง ' + escapeHtmlAttr(mc) : 'ยังไม่ระบุเครื่อง'}
       <span style="font-weight:600;color:var(--text-3);margin-left:6px;">${mcCount.get(mc) || 0} ใบ${cont ? ' · ต่อจากหน้าก่อน' : ''}</span></td></tr>`;
   document.getElementById('tbody-saw').innerHTML = rows.map((r, i) => {
-    const mc = sawMc(r);
-    const head = i === 0 ? grpHead(mc, (page - 1) * PAGE_SIZE > 0 && sawMc(sorted[(page - 1) * PAGE_SIZE - 1]) === mc)
-      : mc !== sawMc(rows[i - 1]) ? grpHead(mc, false) : '';
+    const mc = sawMachineOf(r);
+    const head = !grouped ? ''
+      : i === 0 ? grpHead(mc, (page - 1) * PAGE_SIZE > 0 && sawMachineOf(shownAll[(page - 1) * PAGE_SIZE - 1]) === mc)
+      : mc !== sawMachineOf(rows[i - 1]) ? grpHead(mc, false) : '';
     return head + `
     <tr>
       <td class="muted"><strong>${r.id}</strong></td>
@@ -19758,9 +19869,15 @@ function renderSawTable(page) {
         'แก้ไขใบเลื่อยนี้', 'ลบใบเลื่อยนี้')}
     </tr>`;
   }).join('');
-  const tp = Math.max(1, Math.ceil(data.length/PAGE_SIZE));
-  renderFooter('saw', data.length, rows.length, page, tp);
+  renderFooter('saw', shownAll.length, rows.length, page, tp);
+  const title = document.getElementById('saw-detail-title');
+  if (title) title.textContent = selectedSawBlade ? 'ใบเลื่อย ' + (selectedSawBlade.id || '—')
+    : selectedSawMachine === null ? 'ใบเลื่อยทั้งหมด'
+    : selectedSawMachine ? 'ใบเลื่อย เครื่อง ' + selectedSawMachine : 'ใบเลื่อยที่ยังไม่ระบุเครื่อง';
+  const cnt = document.getElementById('saw-detail-count');
+  if (cnt) cnt.textContent = selectedSawBlade ? '' : shownAll.length + ' ใบ';
   document.getElementById('cnt-saw').textContent = data.length;
+  renderSawMachineList();
   renderSawKpis();
 }
 
