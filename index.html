@@ -2422,7 +2422,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-14.6';
+const APP_BUILD = '2026-11-14.7';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -19999,18 +19999,36 @@ function openSawStatusMenu(ev, idx) {
     window.addEventListener('scroll', closeSawStatusMenu, true);
   }, 0);
 }
-function setSawStatus(idx, st) {
+// note: undefined = ยังไม่ได้ถามอาการ (ตั้ง "มีปัญหา" จะเปิดหน้าต่างกลางจอให้กรอกก่อน)
+function setSawStatus(idx, st, note) {
   closeSawStatusMenu();
   if (!canEditPlan() || !SAW_STATUS_OPTIONS.includes(st)) return;
   const r0 = ((toolingData || {}).saw || [])[idx];
   if (!r0) return;
   const id = r0.id;
-  let note = '';
-  if (st === 'มีปัญหา') {
-    const ans = prompt('ใบเลื่อย ' + (id || '—') + ' มีปัญหา\nอาการ / สาเหตุ (ไม่บังคับ — เว้นว่างได้)', r0.problemNote || '');
-    if (ans === null) return;   // กดยกเลิก = ไม่เปลี่ยน
-    note = ans.trim();
+  if (st === 'มีปัญหา' && note === undefined) {
+    // หน้าต่างของแอปเอง (กลางจอ) แทน prompt() ของเบราว์เซอร์ที่เด้งชิดขอบบน
+    document.getElementById('modal-title').textContent = 'ใบเลื่อย ' + (id || '—') + ' มีปัญหา';
+    document.getElementById('modal-body').innerHTML = `
+      <div class="modal-row full">
+        <div class="form-group"><label class="form-label">อาการ / สาเหตุ (ไม่บังคับ — เว้นว่างได้)</label>
+          <input class="form-input" id="sawst-note" placeholder="เช่น ฟันบิ่น, ใบคด, ร้าว" value="${escapeHtmlAttr(r0.problemNote || '')}"></div>
+      </div>`;
+    document.getElementById('modal-overlay').classList.add('open');
+    const save = () => {
+      const v = ((document.getElementById('sawst-note') || {}).value || '').trim();
+      closeModal();
+      setSawStatus(idx, st, v);
+    };
+    document.querySelector('.modal-footer .btn-primary').onclick = save;
+    const inp = document.getElementById('sawst-note');
+    if (inp) {
+      inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); save(); } };
+      setTimeout(() => inp.focus(), 50);
+    }
+    return;
   }
+  note = String(note || '').trim();
   withCloudRetry(() => {
     // ข้อมูลอาจถูกโหลดใหม่ระหว่างลองซ้ำ — ยืนยันด้วยรหัส ไม่เชื่อตำแหน่งอย่างเดียว
     const list = toolingData.saw || [];
