@@ -2422,7 +2422,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-16.1';
+const APP_BUILD = '2026-11-16.2';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -18462,6 +18462,9 @@ const SQ_COLORS = [
   { key: 'purple', label: 'สีม่วง', dot: '#5E44B0' },
   { key: 'red',    label: 'สีแดง',  dot: '#C03030' },
   { key: 'gold',   label: 'สีทอง',  dot: '#A97806' },
+  // ชุดสองสี — จุดสี/แถบแบ่งครึ่งแนวทแยง แดงกับทอง (ใช้เป็น background เท่านั้น ไม่ใช่ค่า #RRGGBB
+  // ตัวอักษรบนแถบจึงเป็นสีขาวตามค่าเริ่มต้นของ rollColorPillHtml / rollColorTextOn)
+  { key: 'redgold', label: 'สีแดง+สีทอง', dot: 'linear-gradient(135deg, #C03030 50%, #A97806 50%)' },
 ];
 function sqColorMeta(key) {
   return SQ_COLORS.find(c => c.key === key) || { key: '', label: 'ไม่ระบุสี', dot: '#9CA3AF' };
