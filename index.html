@@ -2422,7 +2422,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-16.3';
+const APP_BUILD = '2026-11-16.4';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -18462,10 +18462,10 @@ const SQ_COLORS = [
   { key: 'blue',   label: 'สีฟ้า',  dot: '#3B82F6' },
   { key: 'purple', label: 'สีม่วง', dot: '#5E44B0' },
   { key: 'red',    label: 'สีแดง',  dot: '#C03030' },
-  { key: 'gold',   label: 'สีทอง',  dot: '#A97806' },
-  // ชุดสองสี — จุดสี/แถบแบ่งครึ่งแนวทแยง แดงกับทอง (ใช้เป็น background เท่านั้น ไม่ใช่ค่า #RRGGBB
+  // ชุดสองสี (อยู่ระหว่างแดงกับทอง ตามตารางสเปก: ฟิล์มหนาขึ้นตามลำดับ) — จุดสี/แถบแบ่งครึ่งแนวทแยง แดงกับทอง (ใช้เป็น background เท่านั้น ไม่ใช่ค่า #RRGGBB
   // ตัวอักษรบนแถบจึงเป็นสีขาวตามค่าเริ่มต้นของ rollColorPillHtml / rollColorTextOn)
   { key: 'redgold', label: 'สีแดง+สีทอง', dot: 'linear-gradient(135deg, #C03030 50%, #A97806 50%)' },
+  { key: 'gold',   label: 'สีทอง',  dot: '#A97806' },
 ];
 function sqColorMeta(key) {
   return SQ_COLORS.find(c => c.key === key) || { key: '', label: 'ไม่ระบุสี', dot: '#9CA3AF' };
@@ -19474,7 +19474,7 @@ function selectSqSet(key) {
 function sqSetCodeBase(set) {
   return String(((set || []).find(x => x.code) || {}).code || '').trim().replace(/_[RL]$/i, '');
 }
-// เรียงชุดตามรหัส (เลขเรียงแบบตัวเลข 1, 2, 10) ชุดที่ยังไม่มีรหัสไว้ท้าย · รหัสเท่ากันเรียงตามจานสี
+// เรียงชุดเป็นกลุ่มสี (ลำดับ SQ_COLORS) แล้วตามรหัสในสีเดียวกัน (เลขเรียงแบบตัวเลข 1, 2, 10) ชุดที่ยังไม่มีรหัสไว้ท้ายของสีนั้น
 // เฉพาะลำดับที่แสดงในหน้าทะเบียน — ลำดับ "ชุดที่ N" ที่ใช้จับคู่กับระบบผลิต (sqSetOrdinalInfo) ไม่เปลี่ยน
 // keepSize = true: คงลำดับขนาดเดิม เรียงเฉพาะชุดภายในขนาดเดียวกัน (ใช้กับตารางที่มีหลายขนาดปนกัน) · แก้ในที่ (in place)
 function sqSortSetsByCode(sets, keepSize) {
@@ -19486,9 +19486,12 @@ function sqSortSetsByCode(sets, keepSize) {
       const d = sizeAt.get(String(a[0].sizeSq || '').trim()) - sizeAt.get(String(b[0].sizeSq || '').trim());
       if (d) return d;
     }
+    // จัดเป็นกลุ่มสีก่อน (ตามลำดับ SQ_COLORS) แล้วค่อยเรียงตามรหัสในสีเดียวกัน — ไม่ให้สีสลับไปมาในรายการ
+    const d = colorIdx(a[0].color) - colorIdx(b[0].color);
+    if (d) return d;
     const ca = sqSetCodeBase(a), cb = sqSetCodeBase(b);
     if (!ca !== !cb) return ca ? -1 : 1;
-    return ca.localeCompare(cb, 'th', { numeric: true }) || colorIdx(a[0].color) - colorIdx(b[0].color);
+    return ca.localeCompare(cb, 'th', { numeric: true });
   });
 }
 function renderSqSetList() {
