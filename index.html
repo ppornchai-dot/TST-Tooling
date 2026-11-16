@@ -2422,7 +2422,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-16.2';
+const APP_BUILD = '2026-11-16.3';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -7623,6 +7623,7 @@ function openModal() {
 }
 
 function closeModal() {
+  if (typeof closeSqColorPicker === 'function') closeSqColorPicker();
   document.getElementById('modal-overlay').classList.remove('open');
   const modal = document.querySelector('.modal');
   modal.style.position = '';
@@ -18912,6 +18913,91 @@ function sqOdCurHtml(r) {
       + (min != null ? ' · เหลืออีก ' + (Math.round((cur - min) * 100) / 100).toLocaleString() + ' mm ถึง OD หมดอายุ' : ''))}">−${escapeHtmlAttr(worn.toLocaleString())}</span>`;
 }
 
+// ─── ช่อง "ชุดสี" แบบมีแถบสี ─────────────────────────────────────────────
+// <select> ของเบราว์เซอร์วาดสีในรายการตัวเลือกไม่ได้ (โดยเฉพาะชุดสองสี แดง+ทอง ที่เป็น gradient)
+// จึงซ่อน select ตัวจริงไว้เป็นที่เก็บค่า แล้ววาดปุ่ม + รายการที่มีแถบสีแทน
+// โค้ดเดิมที่อ่าน/ตั้ง .value ของ f-sq-color ใช้ได้เหมือนเดิม — ตั้ง .value แล้วปุ่มอัปเดตตามเอง
+function sqColorBarHtml(dot, w) {
+  return `<span style="display:inline-block;width:${w || 34}px;height:14px;border-radius:4px;flex-shrink:0;
+    background:${dot};box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);"></span>`;
+}
+function closeSqColorPicker() {
+  const el = document.getElementById('sq-color-pick-menu');
+  if (el) el.remove();
+  document.removeEventListener('click', closeSqColorPicker);
+  document.removeEventListener('keydown', sqColorPickerEsc);
+  window.removeEventListener('scroll', sqColorPickerOnScroll, true);
+}
+function sqColorPickerEsc(e) { if (e.key === 'Escape') { e.stopPropagation(); closeSqColorPicker(); } }
+function sqColorPickerOnScroll(e) {
+  const menu = document.getElementById('sq-color-pick-menu');
+  if (menu && menu.contains(e.target)) return;
+  closeSqColorPicker();
+}
+function sqColorPickerMount(sel) {
+  if (!sel || sel._sqPick) return;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'form-select';
+  btn.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;text-align:left;cursor:pointer;';
+  sel.style.display = 'none';
+  sel.insertAdjacentElement('afterend', btn);
+  sel._sqPick = btn;
+  const paint = () => {
+    const cm = sqColorMeta(sel.value);
+    btn.innerHTML = sqColorBarHtml(cm.dot, 30)
+      + `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtmlAttr(cm.label)}</span>`;
+  };
+  // ตั้ง .value จากโค้ด (เปิดฟอร์มแก้ไข / เติมค่าชุดล่าสุด) ไม่มี event — ดักที่ตัว property แทน
+  const proto = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+  Object.defineProperty(sel, 'value', {
+    configurable: true,
+    get() { return proto.get.call(this); },
+    set(v) { proto.set.call(this, v); paint(); },
+  });
+  sel.addEventListener('change', paint);
+  btn.onclick = ev => {
+    ev.stopPropagation();
+    if (document.getElementById('sq-color-pick-menu')) { closeSqColorPicker(); return; }
+    const r = btn.getBoundingClientRect();
+    const menu = document.createElement('div');
+    menu.id = 'sq-color-pick-menu';
+    menu.onclick = e => e.stopPropagation();
+    menu.style.cssText = 'position:fixed;z-index:1300;background:var(--bg-surface);border:1px solid var(--border);border-radius:8px;'
+      + 'box-shadow:0 10px 28px rgba(0,0,0,.2);padding:4px;max-height:300px;overflow-y:auto;';
+    menu.style.minWidth = Math.max(r.width, 180) + 'px';
+    const cur = sel.value;
+    menu.innerHTML = SQ_COLORS.map(c => `<div data-k="${escapeHtmlAttr(c.key)}"
+        onmouseover="this.style.background='var(--bg-panel)'" onmouseout="this.style.background='${c.key === cur ? 'var(--accent-glow)' : 'transparent'}'"
+        style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:13.5px;
+          font-weight:${c.key === cur ? 800 : 600};background:${c.key === cur ? 'var(--accent-glow)' : 'transparent'};">
+        ${sqColorBarHtml(c.dot, 44)}<span style="flex:1;">${escapeHtmlAttr(c.label)}</span>
+        <span style="font-weight:800;color:var(--accent);">${c.key === cur ? '✓' : ''}</span></div>`).join('');
+    menu.querySelectorAll('[data-k]').forEach(row => {
+      row.onclick = () => {
+        closeSqColorPicker();
+        if (sel.value !== row.dataset.k) {
+          sel.value = row.dataset.k;
+          sel.dispatchEvent(new Event('change'));   // ให้หน้าฟิล์ม/ความหนาเติมตามสีเหมือนเดิม
+        }
+        btn.focus();
+      };
+    });
+    document.body.appendChild(menu);
+    const h = menu.offsetHeight;
+    let top = r.bottom + 4;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 4);
+    menu.style.left = Math.min(r.left, window.innerWidth - menu.offsetWidth - 8) + 'px';
+    menu.style.top = top + 'px';
+    setTimeout(() => {
+      document.addEventListener('click', closeSqColorPicker);
+      document.addEventListener('keydown', sqColorPickerEsc);
+      window.addEventListener('scroll', sqColorPickerOnScroll, true);
+    }, 0);
+  };
+  paint();
+}
+
 // เติมตัวเลือกในฟอร์ม (ประเภท/ชุดสี/รายการ Size SQ ที่มีอยู่) — เรียกทุกครั้งที่เปิดฟอร์ม
 function fillSqFormOptions() {
   const mon = document.getElementById('f-sq-mon');
@@ -18920,8 +19006,11 @@ function fillSqFormOptions() {
   const kind = document.getElementById('f-sq-kind');
   if (kind) kind.innerHTML = SQ_KINDS.map(k => `<option value="${k}">${k}</option>`).join('');
   const color = document.getElementById('f-sq-color');
-  if (color) color.innerHTML = SQ_COLORS.map(c =>
-    `<option value="${c.key}">${escapeHtmlAttr(c.label)}</option>`).join('');
+  if (color) {
+    color.innerHTML = SQ_COLORS.map(c =>
+      `<option value="${c.key}">${escapeHtmlAttr(c.label)}</option>`).join('');
+    sqColorPickerMount(color);
+  }
   const list = document.getElementById('f-sq-size-list');
   if (list) list.innerHTML = sqSizeList().map(s => `<option value="${escapeHtmlAttr(s)}"></option>`).join('');
   // เลือก Size/ประเภท/ชุดสี แล้วเติมหน้าฟิล์ม-ความหนาของสีนั้นให้เลย จะได้เห็นก่อนกดบันทึก
