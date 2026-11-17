@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.19';
+const APP_BUILD = '2026-11-17.20';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -9008,7 +9008,7 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
         ? `<div class="muted" style="font-size:11px;font-weight:400;color:var(--amber);">⏸ พักงาน: ${escapeHtmlAttr(pieceEntry.pauseReason)}${pieceEntry.pausedAt ? ` (${escapeHtmlAttr(pieceEntry.pausedAt)})` : ''}</div>` : '';
       const rollCell = isBreak
         ? `<td colspan="2" class="muted" style="${breakStyle}">${escapeHtmlAttr(typeMeta.label)}</td>`
-        : `<td class="muted">${isFirstRow ? escapeHtmlAttr(p.roll.id) : ''}</td><td><strong>${isFirstRow ? escapeHtmlAttr(p.roll.name) : ''}</strong>${isFirstRow ? continuedBadge + contPieceLine : ''}${measuredSizeLine}${pauseReasonLine}</td>`;
+        : `<td class="muted">${isFirstRow ? escapeHtmlAttr(pieceCodeOf(p.roll, (t.__origin || t).workType)) : ''}</td><td><strong>${isFirstRow ? escapeHtmlAttr(pieceNameOf(p.roll, (t.__origin || t).workType)) : ''}</strong>${isFirstRow ? continuedBadge + contPieceLine : ''}${measuredSizeLine}${pauseReasonLine}</td>`;
       // ปุ่ม "เริ่มงาน/จบงาน/พักงาน" แยกทีละชิ้น Roll (เฉพาะโหมด interactive จากหน้างานประจำวัน) — โชว์แค่แถวแรกของชิ้นนั้น กด "จบงาน" แล้วบันทึกขนาดที่วัดได้เป็นล็อกแยก
       let actionCell = '';
       if (interactive && !isBreak && isFirstRow) {
@@ -10843,6 +10843,19 @@ function isSqPlanSet(setName) { return String(setName || '').startsWith(SQ_PLAN_
 function sqPlanSetKeyOf(setName) { return String(setName || '').slice(SQ_PLAN_PREFIX.length); }
 function sqPlanSetNameOf(r) { return SQ_PLAN_PREFIX + sqSetKey(r); }
 
+// คอลัมน์ "รหัส" / "ชื่อ Roll" ในตารางรายชิ้นของงาน (หน้างานประจำวัน / หน้าแผนงาน)
+// Roll SQ: id เป็นรหัสภายในของระบบ (SQ-xxxx) ไม่ใช่รหัสที่หน้างานใช้ — ใช้รหัสในทะเบียน (เช่น 1_R) และชื่อเป็นชิ้น R/L แทน
+function pieceCodeOf(roll, workType) {
+  if (!roll) return '';
+  if (workType === 'sq') return String(roll.code || '').trim() || '—';
+  return roll.id == null ? '' : String(roll.id);
+}
+function pieceNameOf(roll, workType) {
+  if (!roll) return '';
+  if (workType === 'sq') return 'ชิ้น ' + sqPieceLabel(roll.piece);
+  return roll.name == null ? '' : String(roll.name);
+}
+
 // ให้ชิ้น Roll SQ มีชื่อฟิลด์ "name" เหมือนชิ้น Roll ที่งานตามแผนใช้ โดยไม่ต้องเก็บซ้ำลงข้อมูล
 // ประกาศเป็น non-enumerable ค่าจึงไม่ถูก JSON.stringify เก็บขึ้น cloud (ข้อมูลไม่บวมและไม่กิน egress)
 // และยังชี้ไปที่ออบเจกต์ตัวจริงในทะเบียน การแก้ค่าจากหน้างานจึงเข้าทะเบียนตามปกติ
@@ -10862,7 +10875,9 @@ function planSetLabel(setName) {
   if (!isSqPlanSet(setName)) return setName || '—';
   const k = sqPlanSetKeyOf(setName);
   const head = (toolingData.sq || []).find(r => sqSetKey(r) === k);
-  return head ? 'SQ ' + sqSetFullLabel(head) : 'SQ — ชุดที่ถูกลบไปแล้ว';
+  if (!head) return 'SQ — ชุดที่ถูกลบไปแล้ว';
+  // ถูกเรียกได้ตั้งแต่ตอนบูต (การ์ดงานค้างบน Dashboard) ก่อน SQ_COLORS/ค่าคงที่ของ Roll SQ ถูกประกาศ — ใช้ชื่อขนาดไปก่อน
+  try { return 'SQ ' + sqSetFullLabel(head); } catch (e) { return 'SQ ' + String(head.sizeSq || '').trim(); }
 }
 
 // ชุด Roll SQ ที่วางแผนแต่งได้ = สถานะ "รอแต่ง" — สถานะเดียวกับการ์ด "ชุด Roll SQ รอแต่ง" บน Dashboard
@@ -15126,8 +15141,12 @@ let adminViewAsName = null; // Admin-only: preview the UI as another team member
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 // เรียกหลัง restoreState() เสมอ เพื่อให้ Dashboard แสดงข้อมูลที่กู้คืนจาก localStorage ได้ถูกต้อง
-initDashboard();
-renderCurrentPlanView();
+// ครอบ try/catch — จุดนี้รันกลางสคริปต์ ค่าคงที่ที่ประกาศถัดลงไป (เช่น SQ_COLORS) ยังใช้ไม่ได้ (TDZ)
+// ถ้าการวาดรอบแรกอ้างถึงของพวกนั้นแล้ว error สคริปต์ทั้งก้อนจะหยุดตรงนี้ ส่วนที่เหลือของแอปพังตามไปหมด
+// (เคยเกิดจริงเมื่อมีงานแต่ง Roll SQ ในแผน: การ์ดงานค้างเรียกชื่อชุด SQ ก่อน SQ_COLORS ถูกประกาศ)
+// วาดไม่ครบรอบแรกไม่เป็นไร — โหลดข้อมูลจาก cloud เสร็จจะวาดทุกหน้าใหม่อีกรอบ (refreshAfterCloudUpdate)
+try { initDashboard(); } catch (e) { console.error('initDashboard (boot)', e); }
+try { renderCurrentPlanView(); } catch (e) { console.error('renderCurrentPlanView (boot)', e); }
 
 function getRollSets() {
   const sets = [];
