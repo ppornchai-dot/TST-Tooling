@@ -1410,7 +1410,7 @@ canvas{display:block;}
               <div class="table-wrap" style="overflow-x:auto;">
                 <table>
                   <thead><tr>
-                    <th>Size</th><th>ชื่อ Roll</th><th title="ขนาดตอนใส่ครั้งแรก — ไม่เปลี่ยนตามการแต่ง Roll">Ø มาตรฐาน</th><th title="ขนาดล่าสุดหลังแต่ง Roll — อัปเดตทุกครั้งที่จบงานแต่งพร้อมกรอกขนาด">Ø ปัจจุบัน</th><th title="ขนาดเล็กสุดที่ยังใช้ได้ — เล็กกว่านี้ถือว่าหมดอายุ ต้องเปลี่ยนลูกใหม่">Ø หมดอายุ</th><th>ความหนา</th><th>รอบการใช้งาน</th><th>แต่งครั้งที่</th><th>เวลาแต่ง Roll (นาที)</th><th>เวลาขัด Roll (นาที)</th><th>แต่งล่าสุด</th><th>สถานะ</th><th></th>
+                    <th>Size</th><th>ชื่อ Roll</th><th title="ขนาดตอนใส่ครั้งแรก — ไม่เปลี่ยนตามการแต่ง Roll">Ø เริ่มต้น</th><th title="ขนาดล่าสุดหลังแต่ง Roll — อัปเดตทุกครั้งที่จบงานแต่งพร้อมกรอกขนาด">Ø ปัจจุบัน</th><th title="ขนาดเล็กสุดที่ยังใช้ได้ — เล็กกว่านี้ถือว่าหมดอายุ ต้องเปลี่ยนลูกใหม่">Ø หมดอายุ</th><th>ความหนา</th><th>รอบการใช้งาน</th><th>แต่งครั้งที่</th><th>เวลาแต่ง Roll (นาที)</th><th>เวลาขัด Roll (นาที)</th><th>แต่งล่าสุด</th><th>สถานะ</th><th></th>
                   </tr></thead>
                   <tbody id="tbody-roll"></tbody>
                 </table>
@@ -1841,7 +1841,7 @@ canvas{display:block;}
         <div class="table-wrap table-wrap-sticky">
           <table>
             <thead>
-              <tr><th class="pw-fz1">Size Roll</th><th class="pw-fz2">ชุดสี</th><th style="text-align:right;">จำนวน (ลูก)</th><th style="text-align:right;" title="ช่วง OD ที่วัดได้ล่าสุดของ Roll ในชุด · Std = ช่วงขนาดตอนใส่ครั้งแรกของลูกในชุดนั้น · ▼ = ลูกที่สึกมากสุดเทียบกับ Ø มาตรฐานของลูกนั้นเอง">OD ปัจจุบัน / Std</th><th style="text-align:right;">สึกไปมากสุด</th><th style="text-align:right;" title="ตันที่รีดได้ต่อการแต่ง Roll 1 รอบ — มาจากช่อง &quot;รอบการใช้งาน&quot; ของ Roll ในทะเบียน Tooling">น้ำหนักต่อรอบการแต่ง (ตัน)</th><th style="text-align:right;" title="ยอดผลิตของชุด Roll ชุดนี้ตลอดอายุ — เกณฑ์เดียวกับหน้าน้ำหนักผลิต คือลงเฉพาะวันที่ชุดสีนี้เป็นชุดที่ใช้เดิน และรวมขนาดที่มาใช้ Forming ร่วมด้วย — % คือใช้รอบการแต่งไปแล้วเท่าไร (ไม่เกิน 80% เขียว, 81–90% เหลือง, เกิน 90% แดง)">น้ำหนักผลิต (ตัน / %)</th><th style="text-align:right;" title="น้ำหนักต่อรอบการแต่ง ลบ น้ำหนักผลิต — เหลืออีกเท่าไรก่อนถึงรอบแต่งถัดไป ">น้ำหนักเหลือ (ตัน)</th><th>อายุคงเหลือ</th><th title="สถานะของชุดสี Roll ที่ตั้งไว้ในทะเบียน Tooling">สถานะ (ทะเบียน)</th></tr>
+              <tr><th class="pw-fz1">Size Roll</th><th class="pw-fz2">ชุดสี</th><th style="text-align:right;">จำนวน (ลูก)</th><th style="text-align:right;" title="ช่วง OD ที่วัดได้ล่าสุดของ Roll ในชุด · Std = ช่วงขนาดตอนใส่ครั้งแรกของลูกในชุดนั้น · ▼ = ลูกที่สึกมากสุดเทียบกับ Ø เริ่มต้นของลูกนั้นเอง">OD ปัจจุบัน / เริ่มต้น</th><th style="text-align:right;">สึกไปมากสุด</th><th style="text-align:right;" title="ตันที่รีดได้ต่อการแต่ง Roll 1 รอบ — มาจากช่อง &quot;รอบการใช้งาน&quot; ของ Roll ในทะเบียน Tooling">น้ำหนักต่อรอบการแต่ง (ตัน)</th><th style="text-align:right;" title="ยอดผลิตของชุด Roll ชุดนี้ตลอดอายุ — เกณฑ์เดียวกับหน้าน้ำหนักผลิต คือลงเฉพาะวันที่ชุดสีนี้เป็นชุดที่ใช้เดิน และรวมขนาดที่มาใช้ Forming ร่วมด้วย — % คือใช้รอบการแต่งไปแล้วเท่าไร (ไม่เกิน 80% เขียว, 81–90% เหลือง, เกิน 90% แดง)">น้ำหนักผลิต (ตัน / %)</th><th style="text-align:right;" title="น้ำหนักต่อรอบการแต่ง ลบ น้ำหนักผลิต — เหลืออีกเท่าไรก่อนถึงรอบแต่งถัดไป ">น้ำหนักเหลือ (ตัน)</th><th>อายุคงเหลือ</th><th title="สถานะของชุดสี Roll ที่ตั้งไว้ในทะเบียน Tooling">สถานะ (ทะเบียน)</th></tr>
             </thead>
             <tbody id="rolllife-tbody"></tbody>
           </table>
@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.36';
+const APP_BUILD = '2026-11-17.37';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -7681,7 +7681,7 @@ const MODAL_FORMS = {
         <div class="form-group"><label class="form-label">ชื่อ Roll</label><input class="form-input" id="f-name" placeholder="เช่น Work Roll #3 (Top)"></div>
       </div>
       <div class="modal-row four">
-        <div class="form-group"><label class="form-label">Ø มาตรฐาน <span style="text-transform:none;">(mm. — ตอนใส่ครั้งแรก)</span></label><input class="form-input" id="f-diameter-std" placeholder="เช่น 320"></div>
+        <div class="form-group"><label class="form-label">Ø เริ่มต้น <span style="text-transform:none;">(mm. — ตอนใส่ครั้งแรก)</span></label><input class="form-input" id="f-diameter-std" placeholder="เช่น 320"></div>
         <div class="form-group"><label class="form-label">Ø ปัจจุบัน <span style="text-transform:none;">(mm. — หลังแต่งล่าสุด)</span></label><input class="form-input" id="f-diameter" placeholder="เช่น 320"></div>
         <div class="form-group"><label class="form-label">Ø หมดอายุ <span style="text-transform:none;">(mm. — เล็กกว่านี้เลิกใช้)</span></label><input class="form-input" id="f-diameter-min" placeholder="เช่น 280"></div>
         <div class="form-group"><label class="form-label">ความหนา <span style="text-transform:none;">(mm.)</span></label><input class="form-input" id="f-width" placeholder="เช่น 10"></div>
@@ -16954,7 +16954,7 @@ function rollLifeNum(v) {
 
 // ─── เทียบ "OD มาตรฐาน" กับขนาดที่วัดได้จริงหลังแต่ง/ขัด ─────────────────────
 // ลำดับค่าที่ใช้เป็น "มาตรฐาน" ของการเทียบ:
-//   1) Ø มาตรฐานของ Roll ตัวนั้น (roll.diameterStd — เก็บครั้งแรกที่แต่ง ไม่ถูกเขียนทับอีก) ← ใช้ก่อนเสมอ
+//   1) Ø เริ่มต้นของ Roll ตัวนั้น (roll.diameterStd — เก็บครั้งแรกที่แต่ง ไม่ถูกเขียนทับอีก) ← ใช้ก่อนเสมอ
 //   2) "OD ตอนใหม่" ของชุดนั้นใน rollLifeSpec (ถ้ากรอกเกณฑ์อายุ Roll ไว้)
 //   3) เส้นผ่านศูนย์กลางในทะเบียนที่บันทึกติดไว้ตอนกดจบงาน — ทางสุดท้าย
 // เดิมไม่ได้ใช้ (1) เลย จึงเทียบกับ "Ø ก่อนแต่งครั้งล่าสุด" ซึ่งเล็กลงเรื่อยๆ ทุกครั้งที่แต่ง
@@ -16973,12 +16973,12 @@ function odCompareHtml(measuredSize, registryDiameter, setName, odStandard) {
   const reg = rollLifeNum(registryDiameter);
   const rollStd = rollLifeNum(odStandard);
   const std = rollStd != null ? rollStd : (specNew != null ? specNew : reg);
-  const stdLabel = (rollStd != null || specNew != null) ? 'มาตรฐาน' : 'ทะเบียน';
+  const stdLabel = (rollStd != null || specNew != null) ? 'เริ่มต้น' : 'ทะเบียน';
   const stdTitle = rollStd != null
-    ? 'Ø มาตรฐานของ Roll ตัวนี้ (ขนาดตอนใส่ครั้งแรก ก่อนถูกแต่ง)'
+    ? 'Ø เริ่มต้นของ Roll ตัวนี้ (ขนาดตอนใส่ครั้งแรก ก่อนถูกแต่ง)'
     : (specNew != null
-      ? 'OD ตอนใหม่ (มาตรฐาน) ของชุดนี้ ตามเกณฑ์อายุ Roll'
-      : 'เส้นผ่านศูนย์กลางในทะเบียน Tooling ที่บันทึกไว้ตอนกดจบงาน — ยังไม่มี Ø มาตรฐานของ Roll ตัวนี้');
+      ? 'OD ตอนใหม่ (เริ่มต้น) ของชุดนี้ ตามเกณฑ์อายุ Roll'
+      : 'เส้นผ่านศูนย์กลางในทะเบียน Tooling ที่บันทึกไว้ตอนกดจบงาน — ยังไม่มี Ø เริ่มต้นของ Roll ตัวนี้');
 
   if (std == null || measured == null) {
     return `<div class="muted" style="font-size:11px;font-weight:400;">วัดได้ ${escapeHtmlAttr(measuredText)}</div>`;
@@ -16991,7 +16991,7 @@ function odCompareHtml(measuredSize, registryDiameter, setName, odStandard) {
     <span title="${escapeHtmlAttr(stdTitle)}">${stdLabel} ${escapeHtmlAttr(fmtOD(std))}</span>
     <span style="opacity:.6;">→</span>
     <span style="font-weight:700;color:var(--text-2);" title="ขนาดที่วัดได้จริงหลังแต่ง/ขัด">วัดได้ ${escapeHtmlAttr(measuredText)}</span>
-    <span style="font-weight:700;color:${diffColor};" title="${escapeHtmlAttr('ผลต่างจาก' + stdLabel + ' ' + fmtOD(std) + (diff > 0 ? ' — ใหญ่กว่ามาตรฐาน ตรวจสอบค่าที่กรอก' : ''))}">${escapeHtmlAttr(diffText)}</span>
+    <span style="font-weight:700;color:${diffColor};" title="${escapeHtmlAttr('ผลต่างจาก' + stdLabel + ' ' + fmtOD(std) + (diff > 0 ? ' — ใหญ่กว่าขนาดเริ่มต้น ตรวจสอบค่าที่กรอก' : ''))}">${escapeHtmlAttr(diffText)}</span>
     ${belowMin ? `<span style="color:var(--red);font-weight:700;" title="เล็กกว่า OD เล็กสุดที่กำหนดไว้สำหรับชุดนี้">· ต่ำกว่าเกณฑ์ ${escapeHtmlAttr(fmtOD(minOD))}</span>` : ''}
   </div>`;
 }
@@ -17026,20 +17026,20 @@ function odStdCellHtml(g) {
   if (g.stdODMin == null) return '';
   const fmt = n => (Math.round(n * 100) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 });
   const stdText = g.stdODMax !== g.stdODMin ? `Ø${fmt(g.stdODMin)} – Ø${fmt(g.stdODMax)}` : `Ø${fmt(g.stdODMin)}`;
-  const parts = [`<div class="muted" style="font-size:10px;" title="ขนาดตอนใส่ครั้งแรกของ Roll ในชุดนี้ (Ø มาตรฐาน ในทะเบียน Tooling)">Std ${escapeHtmlAttr(stdText)}</div>`];
+  const parts = [`<div class="muted" style="font-size:10px;" title="ขนาดตอนใส่ครั้งแรกของ Roll ในชุดนี้ (Ø เริ่มต้น ในทะเบียน Tooling)">เริ่มต้น ${escapeHtmlAttr(stdText)}</div>`];
   if (g.dropMax) {
     parts.push(`<div style="font-size:10.5px;font-weight:800;color:var(--amber);"
-      title="ลูกที่สึกมากสุดในชุด เล็กลงจาก Ø มาตรฐานของลูกนั้น ${escapeHtmlAttr(fmt(g.dropMax))} มม.">▼ ${escapeHtmlAttr(fmt(g.dropMax))} มม.</div>`);
+      title="ลูกที่สึกมากสุดในชุด เล็กลงจาก Ø เริ่มต้นของลูกนั้น ${escapeHtmlAttr(fmt(g.dropMax))} มม.">▼ ${escapeHtmlAttr(fmt(g.dropMax))} มม.</div>`);
   } else if (!g.unmeasured && !g.overMax) {
-    parts.push('<div style="font-size:10.5px;font-weight:800;color:var(--green);" title="ทุกลูกวัดแล้วและยังเท่า Ø มาตรฐาน">= เท่ามาตรฐาน</div>');
+    parts.push('<div style="font-size:10.5px;font-weight:800;color:var(--green);" title="ทุกลูกวัดแล้วและยังเท่า Ø เริ่มต้น">= เท่าเริ่มต้น</div>');
   }
   if (g.overMax) {
     parts.push(`<div style="font-size:10.5px;font-weight:800;color:var(--accent);"
-      title="วัดได้ใหญ่กว่า Ø มาตรฐาน ${escapeHtmlAttr(fmt(g.overMax))} มม. — ตรวจค่าที่บันทึกอีกครั้ง">▲ ${escapeHtmlAttr(fmt(g.overMax))} มม.</div>`);
+      title="วัดได้ใหญ่กว่า Ø เริ่มต้น ${escapeHtmlAttr(fmt(g.overMax))} มม. — ตรวจค่าที่บันทึกอีกครั้ง">▲ ${escapeHtmlAttr(fmt(g.overMax))} มม.</div>`);
   }
   if (g.unmeasured) {
     parts.push(`<div class="muted" style="font-size:10px;"
-      title="ยังไม่เคยกรอกขนาดหลังแต่ง Roll ระบบจึงถือว่าเท่า Ø มาตรฐานไว้ก่อน">ยังไม่วัด ${g.unmeasured}/${g.count} ลูก</div>`);
+      title="ยังไม่เคยกรอกขนาดหลังแต่ง Roll ระบบจึงถือว่าเท่า Ø เริ่มต้นไว้ก่อน">ยังไม่วัด ${g.unmeasured}/${g.count} ลูก</div>`);
   }
   return parts.join('');
 }
@@ -17421,7 +17421,7 @@ function renderRollLife() {
         dot: colorMeta ? colorMeta.dot : '#9CA3AF',
         count: 0, lifePct: null, basis: null, wornMm: null,
         curODMin: null, curODMax: null, usedTon: null, minOD: null, maxTon: null,
-        // เทียบกับ Ø มาตรฐาน "ของลูกนั้นๆ" (roll.diameterStd) ไม่ใช่ newOD ของเกณฑ์รายชุด
+        // เทียบกับ Ø เริ่มต้น "ของลูกนั้นๆ" (roll.diameterStd) ไม่ใช่ newOD ของเกณฑ์รายชุด
         // เพราะชุดหนึ่งมีหลายลูกและขนาดตั้งต้นไม่เท่ากัน (เช่น Ø100 กับ Ø300 อยู่ชุดเดียวกัน)
         // stdODMin/Max = ช่วงขนาดตั้งต้นของชุด · dropMax = ลูกที่สึกมากสุดกี่ มม.
         // overMax = ลูกที่วัดได้ใหญ่กว่ามาตรฐาน (ค่าผิดปกติ ควรวัดซ้ำ) · unmeasured = ยังไม่เคยวัดหลังแต่ง
@@ -18333,7 +18333,7 @@ function editRoll(idx) {
   document.getElementById('modal-body').innerHTML = MODAL_FORMS.roll.fields;
   document.getElementById('f-id').value = r.id;
   document.getElementById('f-name').value = r.name;
-  // Ø ปัจจุบัน ปล่อยว่างถ้ายังไม่เคยวัดหลังแต่ง ให้ตรงกับที่ตารางแสดง (ไม่เอา Ø มาตรฐานมาใส่ซ้ำ)
+  // Ø ปัจจุบัน ปล่อยว่างถ้ายังไม่เคยวัดหลังแต่ง ให้ตรงกับที่ตารางแสดง (ไม่เอา Ø เริ่มต้นมาใส่ซ้ำ)
   document.getElementById('f-diameter').value = (!rollHasCurrentOd(r) || r.diameter === '—') ? '' : r.diameter;
   const stdEl = document.getElementById('f-diameter-std');
   if (stdEl) { const s = rollStdDiameter(r); stdEl.value = s === '—' ? '' : s; }
@@ -18353,7 +18353,7 @@ function editRoll(idx) {
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const g = id => (document.getElementById(id)||{}).value||'—';
     const isFirstInGroup = toolingData.roll.findIndex(x => x.set === r.set) === idx;
-    // Ø มาตรฐาน / Ø ปัจจุบัน: ถ้าเว้น Ø ปัจจุบันไว้ = ยังไม่เคยวัดหลังแต่ง
+    // Ø เริ่มต้น / Ø ปัจจุบัน: ถ้าเว้น Ø ปัจจุบันไว้ = ยังไม่เคยวัดหลังแต่ง
     // เก็บ diameter ให้เท่ากับมาตรฐาน (ที่อื่นยังอ่านค่านี้เป็น OD ปัจจุบัน) และไม่ตั้ง diameterStd
     // ไม่งั้นจะกลายเป็น "วัดแล้ว" ทันทีที่กดบันทึก และตารางจะเลิกเว้นว่าง
     const rawStd = ((document.getElementById('f-diameter-std')||{}).value || '').trim();
@@ -21254,9 +21254,9 @@ function voicePrompt(title, placeholder) {
 // ทั้งที่แต่งไปแล้ว — และหน้าอายุ Tooling คิด % จาก OD ในทะเบียน จึงคลาดเคลื่อนตามไปด้วย
 // getMatchingRollsForPlan() คืน object ตัวจริงจาก toolingData.roll (filter ไม่ได้ก็อป) แก้ที่นี่คือแก้ทะเบียน
 // bumpRegrind = true เฉพาะตอนจบงานครั้งแรก — แก้ค่าที่วัดผิดภายหลังไม่ต้องนับรอบการแต่งเพิ่ม
-// ─── Ø มาตรฐาน (ตอนใส่ครั้งแรก) แยกจาก Ø ปัจจุบัน (หลังแต่งล่าสุด) ─────────────
+// ─── Ø เริ่มต้น (ตอนใส่ครั้งแรก) แยกจาก Ø ปัจจุบัน (หลังแต่งล่าสุด) ─────────────
 // เดิมมีช่องเดียว การแต่ง Roll เขียนทับไปเลย ขนาดตั้งต้นจึงหายไป เทียบไม่ได้ว่าสึกไปเท่าไร
-// Roll ที่ยังไม่เคยแต่ง (ไม่มี diameterStd) ถือว่า Ø ปัจจุบัน = Ø มาตรฐาน
+// Roll ที่ยังไม่เคยแต่ง (ไม่มี diameterStd) ถือว่า Ø ปัจจุบัน = Ø เริ่มต้น
 function rollStdDiameter(roll) {
   const std = String((roll || {}).diameterStd || '').trim();
   return std || String((roll || {}).diameter || '—');
@@ -21268,7 +21268,7 @@ function rollHasCurrentOd(roll) {
   return !!String((roll || {}).diameterStd || '').trim();
 }
 
-// ช่อง "Ø ปัจจุบัน" — ยังไม่เคยแต่ง/ยังไม่ได้ใส่ค่า ให้ว่างไว้ ไม่เอา Ø มาตรฐานมาโชว์ซ้ำ
+// ช่อง "Ø ปัจจุบัน" — ยังไม่เคยแต่ง/ยังไม่ได้ใส่ค่า ให้ว่างไว้ ไม่เอา Ø เริ่มต้นมาโชว์ซ้ำ
 // เพราะดูแล้วเข้าใจผิดว่าวัดมาแล้วและได้ค่าเท่าเดิม
 function rollCurrentOdHtml(roll) {
   if (!rollHasCurrentOd(roll)) return '<span class="muted" title="ยังไม่ได้แต่ง Roll หรือยังไม่ได้กรอกขนาดหลังแต่ง">—</span>';
@@ -21311,7 +21311,7 @@ function rollMinOdHtml(roll) {
     title="จาก Ø ปัจจุบัน ${escapeHtmlAttr(String(roll.diameter))} มม. ยังแต่งลงได้อีก ${escapeHtmlAttr(String(left))} มม. ก่อนถึงขนาดหมดอายุ">เหลือ ${escapeHtmlAttr(String(left))} มม.</div>`;
 }
 
-// บอกว่าสึกไปกี่ มม. เทียบกับ Ø มาตรฐาน — โชว์เฉพาะตอนที่ต่างกันจริง
+// บอกว่าสึกไปกี่ มม. เทียบกับ Ø เริ่มต้น — โชว์เฉพาะตอนที่ต่างกันจริง
 function rollWearHtml(roll) {
   const std = parseFloat(String(rollStdDiameter(roll)).replace(/[^0-9.]/g, ''));
   const cur = parseFloat(String((roll || {}).diameter || '').replace(/[^0-9.]/g, ''));
@@ -21319,8 +21319,8 @@ function rollWearHtml(roll) {
   const diff = Math.round((cur - std) * 100) / 100;
   const down = diff < 0;
   return `<div style="font-size:10.5px;font-weight:700;color:${down ? 'var(--amber)' : 'var(--accent)'};"
-    title="${escapeHtmlAttr(down ? 'เล็กลงจาก Ø มาตรฐาน ' + rollStdDiameter(roll) + ' มม.'
-      : 'ใหญ่กว่า Ø มาตรฐาน ' + rollStdDiameter(roll) + ' มม. — ตรวจค่าที่วัดอีกครั้ง')}">${
+    title="${escapeHtmlAttr(down ? 'เล็กลงจาก Ø เริ่มต้น ' + rollStdDiameter(roll) + ' มม.'
+      : 'ใหญ่กว่า Ø เริ่มต้น ' + rollStdDiameter(roll) + ' มม. — ตรวจค่าที่วัดอีกครั้ง')}">${
     down ? '▼ ' + Math.abs(diff) : '▲ ' + diff} มม.</div>`;
 }
 
@@ -21392,13 +21392,13 @@ function applyMeasuredSizeToRegistry(roll, size, dateIso, bumpRegrind) {
   if (od == null) return false;
   const clean = String(od);
   // ชิ้น Roll SQ — OD Standard เป็นค่าตั้งต้นที่กรอกไว้ในทะเบียน ไม่ถูกเขียนทับเหมือนฝั่ง Roll
-  // (ฝั่ง Roll ต้องเก็บ Ø มาตรฐานไว้ครั้งแรกที่แต่ง เพราะเดิมมีช่องเดียว)
+  // (ฝั่ง Roll ต้องเก็บ Ø เริ่มต้นไว้ครั้งแรกที่แต่ง เพราะเดิมมีช่องเดียว)
   if (isSqPieceRecord(roll)) {
     roll.odCur = clean;
     roll.lastService = dateIso || dailyViewDate;
     return true;
   }
-  // เก็บ Ø มาตรฐานไว้ครั้งแรกที่แต่ง — หลังจากนี้ Ø ปัจจุบันเปลี่ยนได้ แต่ตัวมาตรฐานไม่ถูกเขียนทับอีก
+  // เก็บ Ø เริ่มต้นไว้ครั้งแรกที่แต่ง — หลังจากนี้ Ø ปัจจุบันเปลี่ยนได้ แต่ตัวมาตรฐานไม่ถูกเขียนทับอีก
   if (!String(roll.diameterStd || '').trim() && String(roll.diameter || '').trim()) {
     roll.diameterStd = String(roll.diameter).trim();
   }
@@ -22073,7 +22073,7 @@ function collectHistoryRecords() {
           measuredSize: entry.measuredSize || null,
           // เก็บไว้ให้หน้าประวัติเทียบ OD มาตรฐานกับขนาดที่วัดได้ (ดู odCompareHtml)
           registryDiameter: entry.registryDiameter || null,
-          // Ø มาตรฐานของ Roll ตัวนั้น — ใช้เป็นตัวเทียบหลัก ถ้าบันทึกตอนจบงานไม่มี
+          // Ø เริ่มต้นของ Roll ตัวนั้น — ใช้เป็นตัวเทียบหลัก ถ้าบันทึกตอนจบงานไม่มี
           // (บันทึกเก่าก่อนมีช่องนี้) ก็อ่านจากทะเบียนตัวปัจจุบันแทน
           odStandard: entry.odStandard || (roll ? String(roll.diameterStd || '').trim() || null : null),
           rollSetName: t.rollSet || null,
