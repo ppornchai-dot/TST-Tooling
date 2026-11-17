@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.18';
+const APP_BUILD = '2026-11-17.19';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -17965,9 +17965,20 @@ function rollSetSectionHeaderHtml(label, count, color, opts) {
   </div>`;
 }
 
+// กลุ่มขนาดที่ขยายอยู่ในรายการ Size Roll (แบบทะเบียน Roll SQ / ใบเลื่อย) — กลุ่มอื่นย่อไว้แค่หัวข้อ
+// var ไม่ใช่ let: renderRollSetList ถูกเรียกตั้งแต่ตอนบูต (กัน TDZ)
+// เลือก Size Roll จากทางไหนก็ตาม (กดในรายการ / กดจาก Dashboard) กลุ่มของมันจะเปิดให้เอง
+var rollOpenSizeGroup = null;
+var rollListLastSelected = null;
+function toggleRollSizeGroup(key) {
+  rollOpenSizeGroup = rollOpenSizeGroup === key ? '' : key;   // '' = ย่อหมด (ต่างจาก null ที่ยังไม่เคยเลือก)
+  renderRollSetList();
+}
 function renderRollSetList() {
   const el = document.getElementById('roll-set-list');
   if (!el) return;
+  if (selectedRollSet && selectedRollSet !== rollListLastSelected) rollOpenSizeGroup = rollSetSizeGroupKey(selectedRollSet);
+  rollListLastSelected = selectedRollSet;
   // สีที่เลือกไว้อาจถูกลบ/เปลี่ยนชื่อไปแล้ว — ล้างทิ้งก่อน ไม่งั้นจะไฮไลต์แถวที่ไม่มีอยู่จริง
   // (เดิมกันไว้ใน renderRollColorList ซึ่งตอนนี้ไม่มีคอลัมน์นั้นแล้ว)
   if (selectedRollSet && selectedRollColor && selectedRollColor !== NO_COLOR_KEY
@@ -17990,7 +18001,7 @@ function renderRollSetList() {
   const ordered = [...groups.entries()].sort((a, b) => (a[0] === 'อื่นๆ' ? 1 : 0) - (b[0] === 'อื่นๆ' ? 1 : 0));
 
   let num = 0;
-  el.innerHTML = ordered.map(([, g]) => {
+  el.innerHTML = ordered.map(([gKey, g]) => {
     const sorted = g.list.slice().sort((a, b) => {
       const ca = ROLL_SET_CATEGORY_ORDER[parseSizeRollName(a).category], cb = ROLL_SET_CATEGORY_ORDER[parseSizeRollName(b).category];
       return (ca === undefined ? 9 : ca) - (cb === undefined ? 9 : cb);
@@ -18001,7 +18012,14 @@ function renderRollSetList() {
       return n + (rs.length ? new Set(rs.map(r => r.color || NO_COLOR_KEY)).size : 1);
     }, 0);
     const pieceCount = sorted.reduce((n, s) => n + toolingData.roll.filter(r => r.set === s).length, 0);
-    return rollSetSectionHeaderHtml(escapeHtmlAttr(g.label), `${setColorCount} ชุด · ${pieceCount} ลูก`, 'var(--text-1)', { keepCase: true, big: true })
+    const open = rollOpenSizeGroup === gKey;
+    const header = `<div onclick="${jsCallAttr('toggleRollSizeGroup', gKey)}" style="cursor:pointer;"
+        title="${escapeHtmlAttr(g.label + ' — ' + setColorCount + ' ชุด · ' + pieceCount + ' ลูก · กดเพื่อ' + (open ? 'ย่อ' : 'ดูชุดของขนาดนี้'))}">${
+        rollSetSectionHeaderHtml(escapeHtmlAttr(g.label), `${setColorCount} ชุด · ${pieceCount} ลูก`,
+          open ? 'var(--accent)' : 'var(--text-1)', { keepCase: true, big: true })}</div>`;
+    // ย่อไว้ — เลขลำดับยังนับต่อเนื่อง (นับแถวของกลุ่มที่ย่อไว้ด้วย)
+    if (!open) { num += sorted.reduce((n, s) => n + rollSetColorList(s).length, 0); return header; }
+    return header
       + sorted.map(s => rollSetColorList(s)
           .map((c, i) => rollSetRowHtml(s, c, ++num, i === 0)).join('')).join('');
   }).join('');
