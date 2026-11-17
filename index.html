@@ -2280,6 +2280,20 @@ canvas{display:block;}
           ช่างขัด Roll
           <span class="reg-tab-count" id="cnt-team-polish">1</span>
         </button>
+        <button class="reg-tab" onclick="switchTeamTab('sq')">
+          <span class="reg-tab-icon" style="background:rgba(184,114,0,.16);color:var(--amber);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          </span>
+          ช่างแต่ง Roll SQ
+          <span class="reg-tab-count" id="cnt-team-sq">0</span>
+        </button>
+        <button class="reg-tab" onclick="switchTeamTab('saw')">
+          <span class="reg-tab-icon" style="background:rgba(217,91,91,.16);color:var(--red);">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2l2 3 3.5-.9.4 3.6 3.1 1.8-1.8 3.1 1.8 3.1-3.1 1.8-.4 3.6L14 19l-2 3-2-3-3.5.9-.4-3.6L3 14.5l1.8-3.1L3 8.3l3.1-1.8.4-3.6L10 5z"/></svg>
+          </span>
+          ช่างลับคมใบเลื่อย
+          <span class="reg-tab-count" id="cnt-team-saw">0</span>
+        </button>
         <button class="reg-tab" onclick="switchTeamTab('operator')">
           <span class="reg-tab-icon" style="background:rgba(21,128,80,.18);color:var(--green);">
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
@@ -2422,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.8';
+const APP_BUILD = '2026-11-17.9';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -22454,7 +22468,7 @@ function renderTeamGrid() {
 }
 
 function updateTeamCounts() {
-  const counts = { all: teamMembers.length, admin: 0, lead: 0, cnc: 0, polish: 0, operator: 0 };
+  const counts = { all: teamMembers.length, admin: 0, lead: 0, cnc: 0, polish: 0, sq: 0, saw: 0, operator: 0 };
   teamMembers.forEach(m => { if (counts[m.role] !== undefined) counts[m.role]++; });
   Object.keys(counts).forEach(k => {
     const el = document.getElementById('cnt-team-' + k);
