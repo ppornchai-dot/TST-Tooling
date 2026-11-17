@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.15';
+const APP_BUILD = '2026-11-17.16';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5776,7 +5776,64 @@ function dashSqSetRowHtml(set, badgeColor, rowBg, hideSize) {
     ${thickTag}
     ${live ? prodSqLiveTagHtml(live) : ''}
     ${tag}
+    ${sqSetStatusChipHtml(sqSetKey(head))}
   </div>`;
+}
+// ป้ายสถานะชุดบนแถวของ Dashboard — Admin/หัวหน้ากดเปลี่ยนสถานะได้ตรงนี้ (ตัวเดียวกับคอลัมน์ "สถานะชุด" ในทะเบียน)
+// แสดงสถานะที่ใช้จริง (ระบบผลิต/แผนแต่ง) · เมนูติ๊กที่ค่าในทะเบียน
+function sqSetStatusChipHtml(setKeyStr) {
+  const meta = SQ_SET_STATUS_META[dashSqEffectiveStatus(setKeyStr)] || SQ_SET_STATUS_META.ready;
+  const can = canEditPlan();
+  return `<span ${can ? `data-sqkey="${escapeHtmlAttr(setKeyStr)}" onclick="openSqSetStatusMenu(event, this.dataset.sqkey)" title="กดเพื่อเปลี่ยนสถานะชุด"` : ''}
+    style="flex-shrink:0;white-space:nowrap;font-size:11px;font-weight:800;padding:2px 8px;border-radius:99px;
+      color:${meta.color};background:${meta.bg};box-shadow:inset 0 0 0 1px ${meta.color};${can ? 'cursor:pointer;' : ''}">${
+    escapeHtmlAttr(meta.short)}${can ? ' ▾' : ''}</span>`;
+}
+function closeSqSetStatusMenu() {
+  const el = document.getElementById('sq-status-menu');
+  if (el) el.remove();
+  document.removeEventListener('click', closeSqSetStatusMenu);
+  document.removeEventListener('keydown', sqSetStatusMenuEsc);
+  window.removeEventListener('scroll', closeSqSetStatusMenu, true);
+}
+function sqSetStatusMenuEsc(e) { if (e.key === 'Escape') closeSqSetStatusMenu(); }
+function openSqSetStatusMenu(ev, setKeyStr) {
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  closeSqSetStatusMenu();
+  if (!canEditPlan()) return;
+  const head = (toolingData.sq || []).find(r => sqSetKey(r) === setKeyStr);
+  if (!head) return;
+  const stored = sqSetStatusFor(setKeyStr), eff = dashSqEffectiveStatus(setKeyStr);
+  const anchor = ev && ev.currentTarget ? ev.currentTarget.getBoundingClientRect() : { left: 100, right: 100, bottom: 100, top: 100 };
+  const el = document.createElement('div');
+  el.id = 'sq-status-menu';
+  el.onclick = e => e.stopPropagation();
+  el.style.cssText = 'position:fixed;z-index:1300;background:var(--bg-surface);border:1px solid var(--border);border-radius:10px;'
+    + 'box-shadow:0 10px 28px rgba(0,0,0,.2);padding:6px;min-width:210px;max-width:270px;';
+  el.innerHTML = `<div style="font-size:11.5px;font-weight:800;color:var(--text-2);padding:4px 8px 6px;">${escapeHtmlAttr(sqSetFullLabel(head))}</div>`
+    + Object.entries(SQ_SET_STATUS_META).map(([k, m]) => `<div onclick="${jsCallAttr('pickSqSetStatus', setKeyStr, k)}"
+        onmouseover="this.style.background='var(--bg-panel)'" onmouseout="this.style.background='transparent'"
+        style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;">
+        <span style="font-size:11.5px;font-weight:800;padding:2px 9px;border-radius:99px;color:${m.color};background:${m.bg};box-shadow:inset 0 0 0 1px ${m.color};">${escapeHtmlAttr(m.label)}</span>
+        <span style="margin-left:auto;font-weight:800;color:var(--accent);">${k === stored ? '✓' : ''}</span></div>`).join('')
+    + (eff !== stored ? `<div style="font-size:10.5px;color:var(--text-3);line-height:1.5;padding:6px 8px 2px;border-top:1px solid var(--border-light);margin-top:4px;">
+        ตอนนี้แสดงเป็น "${escapeHtmlAttr((SQ_SET_STATUS_META[eff] || {}).label || eff)}" ตาม${eff === 'inuse' ? 'ระบบผลิต' : 'แผนงานแต่ง'} — จะแสดงตามนั้นก่อน</div>` : '');
+  document.body.appendChild(el);
+  const w = el.offsetWidth, h = el.offsetHeight;
+  el.style.left = Math.min(Math.max(8, anchor.right - w), window.innerWidth - w - 8) + 'px';
+  let top = anchor.bottom + 4;
+  if (top + h > window.innerHeight - 8) top = Math.max(8, anchor.top - h - 4);
+  el.style.top = top + 'px';
+  setTimeout(() => {
+    document.addEventListener('click', closeSqSetStatusMenu);
+    document.addEventListener('keydown', sqSetStatusMenuEsc);
+    window.addEventListener('scroll', closeSqSetStatusMenu, true);
+  }, 0);
+}
+function pickSqSetStatus(setKeyStr, status) {
+  closeSqSetStatusMenu();
+  if (!canEditPlan() || !SQ_SET_STATUS_META[status]) return;
+  setSqSetStatus(setKeyStr, status);
 }
 
 // หัวข้อย่อยของแต่ละขนาดในคอลัมน์ — ชุดของขนาดเดียวกันมักมีหลายชุด ถ้าเรียงติดกันเฉยๆ
