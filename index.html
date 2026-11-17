@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.34';
+const APP_BUILD = '2026-11-17.35';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5738,12 +5738,13 @@ function dashSqSetRowHtml(set, badgeColor, rowBg, hideSize) {
   const mc = live ? live.machine : sqSetMachineFor(sqSetKey(head));
   const expired = set.filter(sqOdExpired).length;
   const unmeasured = set.filter(r => !sqHasCurrentOd(r)).length;
-  // ความหนาของวัสดุที่ชุดนี้เดิน — เป็นค่าของชุดสี ดูได้จากหน้างานโดยไม่ต้องเปิดทะเบียน
+  // ขนาดหน้าฟิล์มของชุดนี้ — เป็นค่าของชุดสี ดูได้จากหน้างานโดยไม่ต้องเปิดทะเบียน (เดิมแสดงความหนา)
   // ชุดที่ยังไม่ได้กรอกไม่ต้องขึ้นป้ายเปล่า แถวนี้แคบอยู่แล้ว (อยู่ในตารางแบ่งคอลัมน์ตามเครื่อง)
+  const film = String(head.filmFace || '').trim();
   const thick = String(head.thickness || '').trim();
-  const thickTag = !thick ? '' : `<span style="flex-shrink:0;font-size:11.5px;font-weight:800;padding:1px 8px;
+  const thickTag = !film ? '' : `<span style="flex-shrink:0;font-size:11.5px;font-weight:800;padding:1px 8px;
       border-radius:99px;background:var(--bg-panel);color:var(--text-2);box-shadow:inset 0 0 0 1px var(--border-light);"
-      title="${escapeHtmlAttr('ความหนาของวัสดุที่ชุดนี้เดิน ' + thick + ' mm')}">หนา ${escapeHtmlAttr(thick)}</span>`;
+      title="${escapeHtmlAttr('ขนาดหน้าฟิล์ม ' + film + ' mm' + (thick ? ' · ความหนา ' + thick + ' mm' : ''))}">หน้าฟิล์ม ${escapeHtmlAttr(film)}</span>`;
   const tag = expired
     ? `<span class="chip chip-red" style="margin-left:auto;flex-shrink:0;"
          title="${escapeHtmlAttr('มี Roll ถึง OD หมดอายุแล้ว ' + expired + ' ชิ้น')}">ถึงอายุ ${expired}</span>`
