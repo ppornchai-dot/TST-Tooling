@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.16';
+const APP_BUILD = '2026-11-17.17';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5782,7 +5782,10 @@ function dashSqSetRowHtml(set, badgeColor, rowBg, hideSize) {
 // ป้ายสถานะชุดบนแถวของ Dashboard — Admin/หัวหน้ากดเปลี่ยนสถานะได้ตรงนี้ (ตัวเดียวกับคอลัมน์ "สถานะชุด" ในทะเบียน)
 // แสดงสถานะที่ใช้จริง (ระบบผลิต/แผนแต่ง) · เมนูติ๊กที่ค่าในทะเบียน
 function sqSetStatusChipHtml(setKeyStr) {
-  const meta = SQ_SET_STATUS_META[dashSqEffectiveStatus(setKeyStr)] || SQ_SET_STATUS_META.ready;
+  const eff = dashSqEffectiveStatus(setKeyStr);
+  // ชุดที่กำลังใช้งาน (อยู่บนเครื่อง) ไม่ต้องมีป้ายให้เลือกสถานะ — การ์ดบอกอยู่แล้ว และแถวแคบจนป้ายล้นคอลัมน์
+  if (eff === 'inuse') return '';
+  const meta = SQ_SET_STATUS_META[eff] || SQ_SET_STATUS_META.ready;
   const can = canEditPlan();
   return `<span ${can ? `data-sqkey="${escapeHtmlAttr(setKeyStr)}" onclick="openSqSetStatusMenu(event, this.dataset.sqkey)" title="กดเพื่อเปลี่ยนสถานะชุด"` : ''}
     style="flex-shrink:0;white-space:nowrap;font-size:11px;font-weight:800;padding:2px 8px;border-radius:99px;
