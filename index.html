@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.25';
+const APP_BUILD = '2026-11-17.26';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6804,7 +6804,7 @@ async function renderProdWeightTooling(force) {
   const fmtT = iso => iso ? prodSqFmtTime(iso) : '—';
   const clipped = data.from !== fromIso;
 
-  const tableRows = list.map(g => {
+  const groupHtml = g => {
     const head = `<tr style="background:var(--bg-panel);">
       <td colspan="7" style="padding:9px 12px;">
         <span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;">
@@ -6827,7 +6827,34 @@ async function renderProdWeightTooling(force) {
         title="เกรด A / เกรด B+C">${escapeHtmlAttr((Number(r.a_pcs) || 0).toLocaleString())} / ${escapeHtmlAttr((Number(r.bc_pcs) || 0).toLocaleString())}</td>
     </tr>`).join('');
     return head + rs;
-  }).join('');
+  };
+  let tableRows;
+  if (kind === 'saw') {
+    // ใบเลื่อย: คั่นหัวข้อตามเครื่องก่อน (เครื่องตามทะเบียน ถ้าไม่มีใช้เครื่องของรอบล่าสุดจากระบบผลิต)
+    const mcOf = g => {
+      const reg = sawReg.find(x => sawCodeKey(x.id) === g.key);
+      const m = String((reg && reg.machine) || '').trim();
+      if (m && m !== '—') return m;
+      const last = g.rounds.slice().sort((a, b) => String(b.started_at).localeCompare(String(a.started_at)))[0];
+      return String((last && last.machine_id) || '').trim() || 'ไม่ทราบเครื่อง';
+    };
+    const byMc = new Map();
+    list.forEach(g => { const m = mcOf(g); if (!byMc.has(m)) byMc.set(m, []); byMc.get(m).push(g); });
+    tableRows = [...byMc.entries()]
+      .sort((a, b) => (a[0] === 'ไม่ทราบเครื่อง') - (b[0] === 'ไม่ทราบเครื่อง') || a[0].localeCompare(b[0], 'th', { numeric: true }))
+      .map(([mc, gs]) => {
+        const kg = gs.reduce((n, g) => n + g.kg, 0), pcs = gs.reduce((n, g) => n + g.pcs, 0);
+        const rounds = gs.reduce((n, g) => n + g.rounds.length, 0);
+        return `<tr><td colspan="7" style="background:var(--bg-card);padding:11px 12px;border-top:2px solid var(--text-1);">
+          <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);">
+            <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>เครื่อง ${escapeHtmlAttr(mc)}</span>
+          <span style="float:right;font-size:12.5px;font-weight:700;color:var(--text-2);">${gs.length} ใบ · ${rounds} รอบ ·
+            ${escapeHtmlAttr(fmtTons2(kg / 1000))} ตัน · ${escapeHtmlAttr(pcs.toLocaleString())} เส้น</span>
+        </td></tr>` + gs.map(groupHtml).join('');
+      }).join('');
+  } else {
+    tableRows = list.map(groupHtml).join('');
+  }
 
   el.innerHTML = `
     <div class="kpi-grid">
