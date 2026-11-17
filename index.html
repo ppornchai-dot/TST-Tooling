@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.23';
+const APP_BUILD = '2026-11-17.24';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -21235,6 +21235,8 @@ function isSawRecord(r) {
 function pieceStdOdOf(r) {
   if (!r) return '';
   if (isSqPieceRecord(r)) return String(r.odStd || '').trim();
+  // ใบเลื่อย: เทียบกับ OD ก่อนลับครั้งนี้ (OD ปัจจุบันเดิม) — OD เริ่มต้นส่วนใหญ่ว่าง
+  if (isSawRecord(r)) return sawCurOd(r) || String(r.diameter || '').replace('—', '').trim();
   return String(r.diameterStd || '').trim() || String(r.diameter || '').trim();
 }
 
