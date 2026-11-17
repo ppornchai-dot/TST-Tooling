@@ -2422,7 +2422,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.5';
+const APP_BUILD = '2026-11-17.6';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -10725,9 +10725,25 @@ function planSetLabel(setName) {
 
 // ชุด Roll SQ ที่วางแผนแต่งได้ = สถานะ "รอแต่ง" — สถานะเดียวกับการ์ด "ชุด Roll SQ รอแต่ง" บน Dashboard
 // (ระบบผลิตบอกว่าอยู่บนเครื่อง = กำลังใช้งาน ไม่นับ)
+// ชุดที่วางแผนแต่งไว้แล้ว (มีงานแต่ง Roll SQ ที่ยังไม่เสร็จ) ไม่ขึ้นให้เลือกซ้ำ — งานที่เสร็จครบแล้วไม่นับ
 function sqPlannableSets() {
+  const planned = sqSetsWithOpenPlan();
   return (typeof sqSets === 'function' ? sqSets() : [])
-    .filter(set => set[0] && dashSqEffectiveStatus(sqSetKey(set[0])) === 'waitdress');
+    .filter(set => set[0] && dashSqEffectiveStatus(sqSetKey(set[0])) === 'waitdress'
+      && !planned.has(sqPlanSetNameOf(set[0])));
+}
+// ชื่อชุด (SQ:<คีย์>) ที่อยู่ในงานแต่ง Roll SQ ซึ่งยังไม่เสร็จ — งานทั้งใบกดเสร็จแล้ว หรือทุกชิ้นในงานเสร็จแล้ว = ไม่นับ
+function sqSetsWithOpenPlan() {
+  const out = new Set();
+  (planTasks || []).forEach(t => {
+    if (!t || t.workType !== 'sq' || t.otherWork || !isSqPlanSet(t.rollSet)) return;
+    const d = taskDisplayDate(t);
+    if ((dailyStatusByDate[d] || {})[t.id] === 'done') return;
+    const ids = t.rollIds || [];
+    if (ids.length && ids.every(i => pieceEntryFor(d, t.id, i).status === 'done')) return;
+    out.add(t.rollSet);
+  });
+  return out;
 }
 
 // ใบเลื่อยไม่ได้จัดกลุ่ม — หนึ่งใบงานเลือกใบไหนก็ได้จากทั้งทะเบียน จึงใช้คีย์เดียวตายตัว
