@@ -2422,7 +2422,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.4';
+const APP_BUILD = '2026-11-17.5';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -10643,10 +10643,20 @@ function populatePlanRollSetSelect(selectedSet) {
 function populatePlanRollColorSelect(setName, selectedColor) {
   const sel = document.getElementById('pf-rollcolor');
   if (!sel) return;
-  // ชุด Roll SQ ระบุสีมาในตัวชุดอยู่แล้ว (ขนาด+ประเภท+สี+ลำดับชุด) ไม่มีอะไรให้เลือกต่อ
+  // ชุด Roll SQ ระบุสีมาในตัวชุดอยู่แล้ว — แสดงชุดสีของชุดนั้นจากทะเบียน Roll SQ ให้เลย (เลือกไว้ให้)
+  // ค่านี้ใช้แสดงผลเท่านั้น ตอนบันทึกงาน SQ เก็บ rollColor เป็นค่าว่างเหมือนเดิม (ชิ้นงานหาจากคีย์ชุด ไม่ใช่สี)
   if (isSqPlanSet(setName) || planFormWorkType() === 'sq') {
-    sel.innerHTML = '<option value="">— ชุด Roll SQ ระบุสีมาในชุดแล้ว —</option>';
-    sel.disabled = true;
+    const k = isSqPlanSet(setName) ? sqPlanSetKeyOf(setName) : '';
+    const head = k ? (toolingData.sq || []).find(r => sqSetKey(r) === k) : null;
+    if (!head) {
+      sel.innerHTML = '<option value="">— เลือกชุด Roll SQ ก่อน —</option>';
+      sel.disabled = true;
+      return null;
+    }
+    const cm = sqColorMeta(head.color);
+    sel.innerHTML = `<option value="${escapeHtmlAttr(head.color || '')}" selected>${escapeHtmlAttr(cm.label + ' · ' + sqSetOrdinalLabel(head))}</option>`;
+    sel.disabled = false;
+    sel.style.borderColor = '';
     return null;
   }
   if (isCodePlanSet(setName) || isCodeWorkType(planFormWorkType())) {
@@ -12590,7 +12600,8 @@ function openPlanTaskModal(mode, taskId, presetDate, presetShift) {
     const other = planFormOtherWork ? planOtherWorkFields() : null;
     // งานอื่นๆ ใช้ "ชื่องาน" แทน Size Roll และไม่ต้องเลือก Roll — ตรวจความครบถ้วนแยกกัน
     const setName = other ? other.name : document.getElementById('pf-rollset').value;
-    const colorKey = other ? '' : document.getElementById('pf-rollcolor').value;
+    // งาน Roll SQ: ช่องชุดสีแค่แสดงสีของชุด — ไม่เก็บลงงาน (ชุดระบุสีมาในคีย์ชุดแล้ว)
+    const colorKey = other || isSqPlanSet(setName) ? '' : document.getElementById('pf-rollcolor').value;
     const rolls = other ? [] : getSelectedRollsForPlan();
     if (!date) { alert('กรุณาเลือกวันที่'); return; }
     if (other) {
@@ -12606,7 +12617,7 @@ function openPlanTaskModal(mode, taskId, presetDate, presetShift) {
         return;
       }
       // ใบเลื่อยไม่มีชุดสี (ทั้งทะเบียนเป็นกลุ่มเดียว ดู SAW_PLAN_SET) — ไม่ต้องตรวจช่องนี้
-      if (!colorKey && !isCodePlanSet(setName)) {
+      if (!colorKey && !isCodePlanSet(setName) && !isSqPlanSet(setName)) {
         focusField('pf-rollcolor');
         alert('ยังไม่ได้เลือกชุดสี Roll ของ ' + setName + ' — เลือกชุดสีก่อนบันทึก');
         return;
