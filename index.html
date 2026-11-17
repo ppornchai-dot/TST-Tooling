@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.30';
+const APP_BUILD = '2026-11-17.31';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -7049,12 +7049,32 @@ function renderToolingLife() {
   // ใบเลื่อย
   const reg = (toolingData || {}).saw || [];
   const loaded = !!(prodSawLive && prodSawLive.at);
-  const list = reg.map(r => ({ r, u: sawUsageInfo(r), st: sawEffectiveStatus(r) }));
-  list.sort((a, b) => (b.u.sinceGrind || 0) - (a.u.sinceGrind || 0) || b.u.total - a.u.total
-    || String(a.r.id).localeCompare(String(b.r.id)));
+  // อายุใบเลื่อย = OD ปัจจุบัน เทียบ OD หมดอายุ — เหลือ (mm) = OD ปัจจุบัน − OD หมดอายุ
+  // ถึงอายุ (≤ 0) ขึ้นก่อน แล้วเรียงตามที่เหลือน้อยสุด · ใบที่ยังไม่มี OD หมดอายุ/OD ปัจจุบันไปท้ายสุด
+  const SAW_OD_WARN_MM = 10;
+  const list = reg.map(r => {
+    const cur = sawOdNum(sawCurOd(r)), min = sawOdNum(r.odMin);
+    const left = cur != null && min != null ? Math.round((cur - min) * 10) / 10 : null;
+    return { r, u: sawUsageInfo(r), st: sawEffectiveStatus(r), cur, min, left };
+  });
+  list.sort((a, b) => (a.left == null) - (b.left == null) || (a.left || 0) - (b.left || 0)
+    || (b.u.sinceGrind || 0) - (a.u.sinceGrind || 0)
+    || String(a.r.id).localeCompare(String(b.r.id), 'th', { numeric: true }));
   const n = s => list.filter(x => x.st.status === s).length;
+  const nExp = list.filter(x => x.left != null && x.left <= 0).length;
+  const nWarn = list.filter(x => x.left != null && x.left > 0 && x.left <= SAW_OD_WARN_MM).length;
+  const nNoSpec = list.filter(x => x.left == null).length;
+  const leftCell = x => {
+    if (x.left == null) return `<span class="muted" title="${x.min == null ? 'ยังไม่ได้กรอก OD หมดอายุ' : 'ยังไม่มี OD ปัจจุบัน'}">${x.min == null ? 'ยังไม่กรอก OD หมดอายุ' : 'ยังไม่วัด OD'}</span>`;
+    const color = x.left <= 0 ? 'var(--red)' : x.left <= SAW_OD_WARN_MM ? 'var(--amber)' : 'var(--green)';
+    return `<span style="font-weight:800;color:${color};">${x.left <= 0 ? 'ถึงอายุ' : 'เหลือ ' + escapeHtmlAttr(x.left.toLocaleString()) + ' mm'}</span>${
+      x.left < 0 ? ` <span class="muted" style="font-size:11px;">(เกิน ${escapeHtmlAttr((-x.left).toLocaleString())} mm)</span>` : ''}`;
+  };
   el.innerHTML = `
-    <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));">
+    <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));">
+      ${dashMiniKpi('ถึง OD หมดอายุ', nExp.toLocaleString(), 'var(--red)', 'OD ปัจจุบัน ≤ OD หมดอายุ')}
+      ${dashMiniKpi('ใกล้หมดอายุ', nWarn.toLocaleString(), 'var(--amber)', 'เหลือไม่เกิน ' + SAW_OD_WARN_MM + ' mm')}
+      ${dashMiniKpi('ยังไม่มี OD หมดอายุ', nNoSpec.toLocaleString(), 'var(--text-3)', 'หรือยังไม่มี OD ปัจจุบัน')}
       ${dashMiniKpi('กำลังใช้งาน', n('กำลังใช้งาน').toLocaleString(), 'var(--inuse)', 'ใบที่อยู่บนเครื่องตอนนี้')}
       ${dashMiniKpi('รอลับคม', n('รอลับคม').toLocaleString(), 'var(--red)', 'ถอดแล้ว ยังไม่ได้วางแผนลับ')}
       ${dashMiniKpi('กำลังลับคม', n('กำลังลับคม').toLocaleString(), 'var(--amber)', 'วางแผน/กำลังลับอยู่')}
@@ -7062,13 +7082,17 @@ function renderToolingLife() {
     </div>
     <div class="card table-wrap">
       <table>
-        <thead><tr>${th('รหัส')}${th('OD')}${th('เครื่องผลิต')}${th('สถานะ')}
+        <thead><tr>${th('รหัส')}${th('OD ปัจจุบัน', true)}${th('OD หมดอายุ', true)}
+          ${th('อายุ (เทียบ OD)', false, 'OD ปัจจุบัน − OD หมดอายุ — ถึงอายุเมื่อ OD ปัจจุบันเท่ากับหรือต่ำกว่า OD หมดอายุ')}
+          ${th('เครื่องผลิต')}${th('สถานะ')}
           ${th('ตัดหลังลับคม', true, 'นับจากวันลับคมล่าสุด (ทะเบียน หรือวันที่กดจบงานลับคมในแผน)')}
           ${th('ตัดสะสม', true, 'ยอดตั้งต้นในทะเบียน + ยอดจากระบบผลิตตั้งแต่ 9 พ.ย. 69')}
           ${th('Regrind')}${th('ลับคมล่าสุด')}</tr></thead>
-        <tbody>${list.map(({ r, u, st }) => `<tr style="cursor:pointer;" onclick="${jsCallAttr('goToSawBlade', r.id)}" title="กดเพื่อไปที่ใบนี้ในทะเบียนใบเลื่อย">
+        <tbody>${list.map(x => { const { r, u, st } = x; return `<tr style="cursor:pointer;" onclick="${jsCallAttr('goToSawBlade', r.id)}" title="กดเพื่อไปที่ใบนี้ในทะเบียนใบเลื่อย">
           <td><b>${escapeHtmlAttr(r.id || '—')}</b></td>
-          <td>${escapeHtmlAttr(sawOdLabel(r) || '—')}</td>
+          <td style="text-align:right;${x.left != null && x.left <= 0 ? 'color:var(--red);font-weight:800;' : ''}">${x.cur != null ? escapeHtmlAttr(x.cur.toLocaleString()) : '<span class="muted">—</span>'}</td>
+          <td style="text-align:right;" class="muted">${x.min != null ? escapeHtmlAttr(x.min.toLocaleString()) : '—'}</td>
+          <td style="white-space:nowrap;">${leftCell(x)}</td>
           <td>${escapeHtmlAttr(r.machine || '—')}${u.open ? ` <span class="chip chip-yellow" style="font-size:10.5px;">บน ${escapeHtmlAttr(u.open.machine)}</span>` : ''}</td>
           <td>${statusChip(st.status)}</td>
           <td style="text-align:right;white-space:nowrap;">${u.sinceGrind != null
@@ -7079,12 +7103,12 @@ function renderToolingLife() {
             : `<span class="muted">${escapeHtmlAttr(r.usage || '—')}</span>`}</td>
           <td class="muted">${escapeHtmlAttr(r.regrind || '—')}</td>
           <td class="muted">${u.lastGrind ? escapeHtmlAttr(fmtIsoDateThai(u.lastGrind)) : '—'}</td>
-        </tr>`).join('') || `<tr><td colspan="8">${msg('ยังไม่มีใบเลื่อยในทะเบียน')}</td></tr>`}</tbody>
+        </tr>`; }).join('') || `<tr><td colspan="10">${msg('ยังไม่มีใบเลื่อยในทะเบียน')}</td></tr>`}</tbody>
       </table>
     </div>
     <div style="font-size:11.5px;color:var(--text-3);margin:8px 2px;">
-      ${loaded ? '' : 'กำลังดึงยอดจากระบบผลิต… · '}เรียงตามยอดตัดหลังลับคมมากสุดก่อน — ใบที่ตัดไปมากควรได้ลับก่อน ·
-      ยังไม่มีเกณฑ์ "ตัดได้กี่ตันต่อการลับ 1 ครั้ง" จึงยังคิดเป็น % ไม่ได้</div>`;
+      ${loaded ? '' : 'กำลังดึงยอดจากระบบผลิต… · '}อายุคิดจาก OD ปัจจุบันเทียบ OD หมดอายุในทะเบียน ·
+      เรียงใบที่ถึงอายุ/เหลือน้อยสุดขึ้นก่อน · สถานะในทะเบียนไม่ได้เปลี่ยนเป็น "หมดอายุ" ให้เอง</div>`;
 }
 
 function prodSqUnmatchedHtml() {
