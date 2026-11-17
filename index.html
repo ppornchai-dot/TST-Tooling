@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.10';
+const APP_BUILD = '2026-11-17.11';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5826,10 +5826,11 @@ function dashSqSizeGroupsHtml(list, badgeColor, rowBg) {
 // การ์ดที่มีสถานะเดียว (กำลังใช้งาน/พร้อมใช้งาน) แสดงเป็นตารางคอลัมน์ GS/GI ตรงๆ
 // การ์ดที่มีหลายสถานะ (กำลังแต่ง/รอแต่ง) คั่นด้วยแถบสีของแต่ละสถานะก่อน แล้วค่อยแบ่งคอลัมน์ข้างใน
 // (เกณฑ์เดียวกับการ์ด "ชุด Roll กำลังแต่ง" ที่คั่นเป็น งานค้าง/กำลังทำ/รอทำ)
-function dashSqStatusCardHtml(sets, { title, color, groups, emptyText, maxHeight, action, extra }) {
-  const byGroup = groups.map(g => ({ ...g, list: sets.filter(s => dashSqEffectiveStatus(sqSetKey(s[0])) === g.key) }));
+function dashSqStatusCardHtml(sets, { title, color, groups, emptyText, maxHeight, action, extra, keyOf }) {
+  const keyFn = keyOf || (s => dashSqEffectiveStatus(sqSetKey(s[0])));
+  const byGroup = groups.map(g => ({ ...g, list: sets.filter(s => keyFn(s) === g.key) }));
   const total = byGroup.reduce((n, g) => n + g.list.length, 0);
-  const sub = groups.length > 1 ? byGroup.map(g => g.label + ' ' + g.list.length).join(' · ') : '';
+  const sub = groups.length > 1 ? byGroup.filter(g => g.list.length).map(g => g.label + ' ' + g.list.length).join(' · ') : '';
   const body = (extra || '') + (!total
     ? `<div style="padding:22px 14px;text-align:center;color:var(--text-3);font-size:13px;">
          ${escapeHtmlAttr(emptyText)}<br>
@@ -5865,7 +5866,18 @@ function dashSqWorkingCardHtml(sets) {
   return dashSqStatusCardHtml(sets, {
     title: 'ชุด Roll SQ กำลังแต่ง', color: 'var(--amber)',
     emptyText: 'ยังไม่มีชุด Roll SQ ที่กำลังแต่ง',
-    groups: [{ key: 'dressing', label: 'กำลังแต่ง', color: 'var(--amber)', bg: 'var(--amber-dim)' }],
+    // ชุดที่วางแผนแต่งแล้วขึ้นการ์ดนี้ด้วย แบ่งกลุ่มแบบการ์ด "ชุด Roll กำลังแต่ง" (งานค้าง/กำลังทำ/รอทำ)
+    groups: [
+      { key: 'late',     label: 'งานค้าง',  color: 'var(--red)',    bg: 'var(--red-dim)' },
+      { key: 'doing',    label: 'กำลังทำ',  color: 'var(--amber)',  bg: 'var(--amber-dim)' },
+      { key: 'wait',     label: 'รอทำ',     color: 'var(--accent)', bg: 'var(--accent-glow)' },
+      { key: 'dressing', label: 'กำลังแต่ง (ไม่มีในแผน)', color: 'var(--amber)', bg: 'var(--amber-dim)' },
+    ],
+    keyOf: s => {
+      const k = sqSetKey(s[0]);
+      if (dashSqEffectiveStatus(k) !== 'dressing') return null;
+      return sqSetPlanState(k) || 'dressing';
+    },
   });
 }
 function dashSqWaitDressCardHtml(sets) {
@@ -5912,8 +5924,33 @@ function prodSqLiveFor(setKeyStr) {
   return (prodSqLive && prodSqLive.byKey[setKeyStr]) || null;
 }
 // สถานะที่การ์ดบน Dashboard ใช้ — ระบบผลิตบอกว่าอยู่บนเครื่อง = กำลังใช้งาน ไม่ว่าทะเบียนจะตั้งไว้อะไร
+// วางแผนแต่งไว้แล้ว (งานแต่ง Roll SQ ที่ยังไม่เสร็จ) = กำลังแต่ง — ย้ายจากการ์ดรอแต่งไปการ์ดกำลังแต่ง
+// (เกณฑ์เดียวกับใบเลื่อยที่วางแผนลับแล้วนับเป็นกำลังลับคม) · ระบบผลิตบอกว่าอยู่บนเครื่องยังชนะเสมอ
 function dashSqEffectiveStatus(setKeyStr) {
-  return prodSqLiveFor(setKeyStr) ? 'inuse' : sqSetStatusFor(setKeyStr);
+  if (prodSqLiveFor(setKeyStr)) return 'inuse';
+  if (sqSetPlanState(setKeyStr)) return 'dressing';
+  return sqSetStatusFor(setKeyStr);
+}
+// สถานะแผนแต่งของชุดหนึ่ง — 'doing' (กดเริ่มชิ้นไหนแล้ว) / 'late' (วันของงานผ่านไปแล้วยังไม่เสร็จ) / 'wait' (รอทำ) / null (ไม่มีแผนค้าง)
+// งานที่กดเสร็จทั้งใบ หรือทุกชิ้นเสร็จแล้ว ไม่นับ · เกณฑ์งานค้างเดียวกับการ์ดชุด Roll กำลังแต่ง (taskRemainderScheduledAhead)
+function sqSetPlanState(setKeyStr) {
+  const name = SQ_PLAN_PREFIX + setKeyStr;
+  const today = dailyTodayIso();
+  let st = null;
+  (planTasks || []).forEach(t => {
+    if (!t || t.workType !== 'sq' || t.otherWork || t.rollSet !== name) return;
+    const d = taskDisplayDate(t);
+    if ((dailyStatusByDate[d] || {})[t.id] === 'done') return;
+    const pieces = (dailyPieceStatus[d] || {})[t.id] || {};
+    const ids = t.rollIds || [];
+    if (ids.length && ids.every(i => (pieces[i] || {}).status === 'done')) return;
+    if (ids.some(i => ['in_progress', 'paused'].includes((pieces[i] || {}).status))) { st = 'doing'; return; }
+    const late = d < today && !taskRemainderScheduledAhead(t, i => (pieces[i] || {}).status === 'done');
+    if (st === 'doing') return;
+    if (late) st = 'late';
+    else if (!st) st = 'wait';
+  });
+  return st;
 }
 
 function loadProdSqInUse(force) {
