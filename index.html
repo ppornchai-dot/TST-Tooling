@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.41';
+const APP_BUILD = '2026-11-17.42';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6130,7 +6130,7 @@ function loadProdSqInUse(force) {
         });
         const sizeKey = apiSizeKey(r) || Object.keys(kgBy).sort((a, b) => kgBy[b] - kgBy[a])[0] || null;
         const cands = !sizeKey ? [] : heads.filter(h => rollSetFgKey(h.sizeSq) === sizeKey
-          && h.color === r.color && sqSetOrdinalInfo(h).no === Number(r.code));
+          && h.color === r.color && sqSetMatchesProdCode(h, r.code));
         return {
           machine: String(r.machine_id), code: String(r.code || ''), color: String(r.color || ''),
           startedAt: r.started_at, kg: Number(r.kg) || 0, pcs: Number(r.pcs) || 0,
@@ -6147,7 +6147,7 @@ function loadProdSqInUse(force) {
         if (!r) return;
         const sk = apiSizeKey(r);
         if (!sk) return;
-        const cands = heads.filter(h => rollSetFgKey(h.sizeSq) === sk && h.color === r.color && sqSetOrdinalInfo(h).no === Number(r.code));
+        const cands = heads.filter(h => rollSetFgKey(h.sizeSq) === sk && h.color === r.color && sqSetMatchesProdCode(h, r.code));
         if (cands.length !== 1) return;
         const k = sqSetKey(cands[0]);
         if (!latest[k] || String(r.started_at) > String(latest[k].started_at)) latest[k] = r;
@@ -6781,7 +6781,7 @@ async function fetchProdToolingRounds(kind, fromIso, toIso, force) {
 function prodSqSetOfRound(r, heads) {
   const sizeKey = fgProductCodeToKey(String(r.product_code || ''));
   const cands = !sizeKey ? [] : heads.filter(h => rollSetFgKey(h.sizeSq) === sizeKey
-    && h.color === r.color && sqSetOrdinalInfo(h).no === Number(r.code));
+    && h.color === r.color && sqSetMatchesProdCode(h, r.code));
   return { sizeKey, head: cands.length === 1 ? cands[0] : null, candCount: cands.length };
 }
 
@@ -19011,6 +19011,20 @@ function sqSetOrdinalInfo(r) {
   if (Number.isFinite(code) && code > 0) return { no: code, total: keys.length };
   const i = keys.indexOf(sqSetKey(r));
   return { no: i < 0 ? 1 : i + 1, total: keys.length };
+}
+// จับคู่ชุดในทะเบียนกับเลขชุดที่ฝ่ายผลิตเลือก — อิง "รหัส Roll SQ" ของชุด (เช่น 5_R/5_L → 5)
+// เทียบแบบตัวอักษร (ไม่สนตัวพิมพ์เล็ก-ใหญ่) และแบบตัวเลข (05 = 5) · ชุดที่ยังไม่มีรหัสเท่านั้นที่ใช้ลำดับ "ชุดที่ N" แทน
+function sqNormCode(v) {
+  const t = String(v == null ? '' : v).trim().replace(/_[RL]$/i, '').toLowerCase();
+  return /^\d+$/.test(t) ? String(parseInt(t, 10)) : t;
+}
+function sqSetMatchesProdCode(h, prodCode) {
+  const want = sqNormCode(prodCode);
+  if (!want) return false;
+  const key = sqSetKey(h);
+  const own = ((toolingData || {}).sq || []).find(x => sqSetKey(x) === key && String(x.code || '').trim());
+  if (own) return sqNormCode(own.code) === want;
+  return String(sqSetOrdinalInfo(h).no) === want;
 }
 function sqSetOrdinalLabel(r) {
   return 'ชุดที่ ' + sqSetOrdinalInfo(r).no;
