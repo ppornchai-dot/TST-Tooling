@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.24';
+const APP_BUILD = '2026-11-17.25';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6939,9 +6939,12 @@ function renderToolingLife() {
       nospec:     { label: 'ยังไม่กรอก OD หมดอายุ', color: 'var(--accent)', order: 2 },
       ok:         { label: 'ปกติ',          color: 'var(--green)',  order: 3 },
     };
-    rows.sort((a, b) => STATE[a.state].order - STATE[b.state].order
-      || (a.minMargin == null) - (b.minMargin == null) || (a.minMargin || 0) - (b.minMargin || 0)
-      || String(a.head.sizeSq).localeCompare(String(b.head.sizeSq), 'th'));
+    // จัดแบบเดียวกับหน้าอายุ Roll: คั่นหัวข้อตามขนาด (ลำดับเดียวกับทะเบียน Roll SQ — sqSizeGroups)
+    // ในขนาดเดียวกันเรียงเป็นกลุ่มสีแล้วตามรหัส (sqSortSetsByCode) เหมือนรายการชุดในทะเบียน
+    const rowByKey = new Map(rows.map(x => [x.key, x]));
+    const sizeGroups = sqSizeGroups().map(([size, sets]) => ({
+      size, rows: sqSortSetsByCode(sets.slice()).map(st => rowByKey.get(sqSetKey(st[0]))).filter(Boolean),
+    })).filter(g => g.rows.length);
     const cnt = s => rows.filter(r => r.state === s).length;
     const inUse = rows.filter(r => r.use && r.use.open).length;
     const fmt1 = v => v == null ? '—' : (Math.round(v * 100) / 100).toLocaleString();
@@ -6954,15 +6957,23 @@ function renderToolingLife() {
       </div>
       <div class="card table-wrap">
         <table>
-          <thead><tr>${th('Size SQ')}${th('ชุด')}${th('เครื่อง (ตอนนี้)', false, 'ตามระบบผลิต — รอบที่ยังไม่ถอด')}${th('จำนวน (ลูก)', true)}
+          <thead><tr>${th('ชุดสี')}${th('เครื่อง (ตอนนี้)', false, 'ตามระบบผลิต — รอบที่ยังไม่ถอด')}${th('จำนวน (ลูก)', true)}
             ${th('OD ปัจจุบัน (ต่ำสุด)', true, 'OD ปัจจุบันที่วัดได้ต่ำสุดในชุด')}${th('OD หมดอายุ', true)}
             ${th('เหลือก่อนหมดอายุ (mm)', true, 'OD ปัจจุบัน − OD หมดอายุ ของลูกที่เหลือน้อยสุดในชุด')}
             ${th('ผลิตจากระบบผลิต', true, 'ยอดผลิตรวมของชุดนี้ 1 ปีล่าสุด — ระบบผลิตเริ่มบันทึกประมาณ 9 พ.ย. 69')}${th('อายุ')}</tr></thead>
-          <tbody>${rows.map(x => {
+          <tbody>${sizeGroups.map(g => {
+            const pcs = g.rows.reduce((n, x) => n + x.set.length, 0);
+            const exp = g.rows.filter(x => x.state === 'expired').length;
+            return `<tr><td colspan="8" style="background:var(--bg-panel);padding:11px 12px;border-top:2px solid var(--text-1);">
+              <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);">
+                <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(g.size)}
+              </span>
+              <span style="float:right;font-size:12px;font-weight:700;color:var(--text-3);">${g.rows.length.toLocaleString()} ชุด · ${pcs.toLocaleString()} ลูก${
+                exp ? ` · <span style="color:var(--red);">ถึงอายุ ${exp} ชุด</span>` : ''}</span>
+            </td></tr>` + g.rows.map(x => {
             const cm = sqColorMeta(x.head.color);
             const st = STATE[x.state];
-            return `<tr style="cursor:pointer;" onclick="${jsCallAttr('goToSqSet', x.key)}" title="กดเพื่อเปิดชุดนี้ในทะเบียน Roll SQ">
-              <td style="white-space:nowrap;"><b>${escapeHtmlAttr(x.head.sizeSq || '—')}</b></td>
+            return `<tr style="cursor:pointer;" onclick="${jsCallAttr('goToSqSet', x.key)}" title="${escapeHtmlAttr((x.head.sizeSq || '') + ' — กดเพื่อเปิดชุดนี้ในทะเบียน Roll SQ')}">
               <td>${rollColorPillHtml(cm.dot, cm.label)} <span class="muted">${escapeHtmlAttr(sqSetOrdinalLabel(x.head))}</span></td>
               <td>${x.use && x.use.open ? `<span class="chip chip-yellow">${escapeHtmlAttr(x.use.open.machine)}</span>` : '<span class="muted">—</span>'}</td>
               <td style="text-align:right;">${x.set.length}</td>
@@ -6974,7 +6985,8 @@ function renderToolingLife() {
               <td><span style="font-size:12px;font-weight:800;color:${st.color};">${escapeHtmlAttr(st.label)}</span>${
                 x.expired ? ` <span class="chip chip-red">${x.expired} ลูก</span>` : ''}</td>
             </tr>`;
-          }).join('') || `<tr><td colspan="9">${msg('ยังไม่มีชุด Roll SQ ในทะเบียน')}</td></tr>`}</tbody>
+          }).join('');
+          }).join('') || `<tr><td colspan="8">${msg('ยังไม่มีชุด Roll SQ ในทะเบียน')}</td></tr>`}</tbody>
         </table>
       </div>
       <div style="font-size:11.5px;color:var(--text-3);margin:8px 2px;">
