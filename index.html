@@ -1506,7 +1506,7 @@ canvas{display:block;}
             <div class="table-wrap" style="overflow-x:auto;">
               <table>
                 <thead><tr>
-                  <th>รหัส</th><th>เส้นผ่าศูนย์กลาง</th><th title="OD ต่ำสุดที่ยังใช้ได้ — OD ปัจจุบันเท่านี้หรือน้อยกว่า = ถึงอายุ">OD หมดอายุ</th><th>จำนวนฟัน</th><th title="ความสูงของฟันที่วัดได้ (mm)">ความสูงฟัน</th><th title="ความหนาของใบเลื่อย (mm)">ความหนาใบเลื่อย</th><th>เครื่องผลิต</th><th>ตัดสะสม (ตัน)</th><th>Regrind ครั้งที่</th><th title="วันที่ลับคมครั้งล่าสุด">ลับคมล่าสุด</th><th title="เวลาที่ใช้ลับคมใบนี้ — ใช้คิดเวลาเริ่ม-จบของงานลับคมใบเลื่อยในหน้าวางแผน">เวลาลับคม (นาที)</th><th>สถานะ</th><th></th>
+                  <th>รหัส</th><th title="OD ตั้งต้นของใบ — ไม่เปลี่ยนตามการลับคม">OD เริ่มต้น</th><th title="OD ที่วัดได้ตอนจบงานลับคมครั้งล่าสุด">OD ปัจจุบัน</th><th title="OD ต่ำสุดที่ยังใช้ได้ — OD ปัจจุบันเท่านี้หรือน้อยกว่า = ถึงอายุ">OD หมดอายุ</th><th>จำนวนฟัน</th><th title="ความสูงของฟันที่วัดได้ (mm)">ความสูงฟัน</th><th title="ความหนาของใบเลื่อย (mm)">ความหนาใบเลื่อย</th><th>เครื่องผลิต</th><th>ตัดสะสม (ตัน)</th><th>Regrind ครั้งที่</th><th title="วันที่ลับคมครั้งล่าสุด">ลับคมล่าสุด</th><th title="เวลาที่ใช้ลับคมใบนี้ — ใช้คิดเวลาเริ่ม-จบของงานลับคมใบเลื่อยในหน้าวางแผน">เวลาลับคม (นาที)</th><th>สถานะ</th><th></th>
                 </tr></thead>
                 <tbody id="tbody-saw"></tbody>
               </table>
@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.22';
+const APP_BUILD = '2026-11-17.23';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6164,8 +6164,10 @@ var prodSawLive = { status: 'idle', at: 0, byCode: {}, open: [], orphan: [], err
 var prodSawLoading = false;
 
 // ขนาดใบเลื่อยพร้อมคำนำหน้า "OD" ให้รู้ว่าเลขนั้นคืออะไร (ทะเบียนเก็บเป็นเลขล้วน เช่น 710) — ว่าง/ขีด = ''
+// ป้าย "OD …" บนการ์ด/รายการ = OD ปัจจุบัน (ยังไม่เคยวัดใช้ OD เริ่มต้น)
 function sawOdLabel(r) {
-  const d = String((r || {}).diameter || '').trim().replace(/^(OD|Ø)\s*/i, '');
+  const c = String((r || {}).odCur == null ? '' : r.odCur).trim();
+  const d = (c && c !== '—' ? c : String((r || {}).diameter || '').trim()).replace(/^(OD|Ø)\s*/i, '');
   return d && d !== '—' ? 'OD ' + d : '';
 }
 // รหัสใบเลื่อย — ทะเบียนเขียน "080" ระบบผลิตอาจส่ง "80" มา ตัด 0 นำหน้าก่อนเทียบ
@@ -7687,21 +7689,23 @@ const MODAL_FORMS = {
            ช่องที่มี id (f-saw-odmin / f-saw-grind) อ่านด้วย id จึงวางตรงไหนก็ได้ -->
       <div class="modal-row three">
         <div class="form-group"><label class="form-label">รหัส</label><input class="form-input" placeholder="เช่น 193"></div>
-        <div class="form-group"><label class="form-label">เส้นผ่าศูนย์กลาง (OD ปัจจุบัน)</label><input class="form-input" placeholder="เช่น 710"></div>
+        <div class="form-group"><label class="form-label" title="OD ตั้งต้นของใบ — ไม่เปลี่ยนตามการลับคม">OD เริ่มต้น (mm)</label><input class="form-input" placeholder="เช่น 710"></div>
+        <div class="form-group"><label class="form-label" title="บันทึกเองตอนกดจบงานลับคม — แก้ที่นี่ได้ถ้าวัดใหม่">OD ปัจจุบัน (mm)</label>
+          <input class="form-input" id="f-saw-odcur" type="number" step="0.1" placeholder="ยังไม่วัด — เว้นว่างได้"></div>
+      </div>
+      <div class="modal-row three">
         <div class="form-group"><label class="form-label" title="OD ต่ำสุดที่ยังใช้ได้ — OD ปัจจุบันเท่านี้หรือน้อยกว่า = ถึงอายุ">OD หมดอายุ (mm)</label>
           <input class="form-input" id="f-saw-odmin" type="number" step="0.1" placeholder="เช่น 620"></div>
-      </div>
-      <div class="modal-row three">
         <div class="form-group"><label class="form-label">จำนวนฟัน</label><input class="form-input" placeholder="เช่น 96 ฟัน"></div>
         <div class="form-group"><label class="form-label">ความสูงฟัน (mm)</label><input class="form-input" placeholder="เช่น 5.5"></div>
-        <div class="form-group"><label class="form-label">ความหนาใบเลื่อย (mm)</label><input class="form-input" placeholder="เช่น 5.0 mm"></div>
       </div>
       <div class="modal-row three">
+        <div class="form-group"><label class="form-label">ความหนาใบเลื่อย (mm)</label><input class="form-input" placeholder="เช่น 5.0 mm"></div>
         <div class="form-group"><label class="form-label">เครื่องผลิต</label><input class="form-input" placeholder="เช่น C5"></div>
         <div class="form-group"><label class="form-label" title="ยอดก่อน 9 พ.ย. 69 — ยอดหลังจากนั้นระบบดึงจากระบบผลิตมาบวกให้เอง อย่ากรอกซ้ำ">ตัดสะสม ยอดตั้งต้น (ตัน)</label><input class="form-input" type="number" placeholder="0" title="ยอดก่อน 9 พ.ย. 69 — ยอดหลังจากนั้นระบบดึงจากระบบผลิตมาบวกให้เอง อย่ากรอกซ้ำ"></div>
-        <div class="form-group"><label class="form-label">Regrind ครั้งที่ / สูงสุด</label><input class="form-input" placeholder="เช่น 1/6"></div>
       </div>
       <div class="modal-row three">
+        <div class="form-group"><label class="form-label">Regrind ครั้งที่ / สูงสุด</label><input class="form-input" placeholder="เช่น 1/6"></div>
         <div class="form-group"><label class="form-label">สถานะ</label>
           <select class="form-select">
             <option>พร้อมใช้</option><option>กำลังใช้งาน</option><option>รอลับคม</option>
@@ -7710,6 +7714,8 @@ const MODAL_FORMS = {
         </div>
         <div class="form-group"><label class="form-label">ลับคมล่าสุด</label>
           <input class="form-input" type="date"></div>
+      </div>
+      <div class="modal-row three">
         <div class="form-group"><label class="form-label">เวลาลับคม (นาที)</label>
           <input class="form-input" id="f-saw-grind" type="number" step="1" placeholder="เช่น 45"></div>
       </div>`
@@ -7872,7 +7878,8 @@ function saveModal() {
     // อ่านตามลำดับช่องของฟอร์ม (SAW_FORM_FIELDS) — เพิ่ม/ย้ายช่องแล้วไม่ต้องไล่แก้เลขตำแหน่งอีก
     const sawVals = sawFormInputs().map(el => el.value.trim());
     const rec = { grindTime: ((document.getElementById('f-saw-grind') || {}).value || '').trim(),
-      odMin: ((document.getElementById('f-saw-odmin') || {}).value || '').trim() };
+      odMin: ((document.getElementById('f-saw-odmin') || {}).value || '').trim(),
+      odCur: ((document.getElementById('f-saw-odcur') || {}).value || '').trim() };
     SAW_FORM_FIELDS.forEach((f, i) => {
       const v = sawVals[i] || '';
       if (f === 'usage') rec.usage = (v || '—') + ' ตัน';
@@ -19996,15 +20003,26 @@ function sawOdNum(v) {
   const n = parseFloat(String(v == null ? '' : v).replace(/[^0-9.]/g, ''));
   return Number.isFinite(n) ? n : null;
 }
+// OD ของใบเลื่อยมี 3 ค่า: diameter = OD เริ่มต้น (ค่าตั้งต้น ไม่ถูกเขียนทับ) · odCur = OD ปัจจุบัน (บันทึกตอนจบงานลับคม)
+// · odMin = OD หมดอายุ — ใบที่ยังไม่เคยวัด OD ปัจจุบัน ใช้ OD เริ่มต้นแทน
+function sawCurOd(r) {
+  const c = String((r || {}).odCur == null ? '' : r.odCur).trim();
+  if (c && c !== '—') return c;
+  const d = String((r || {}).diameter == null ? '' : r.diameter).trim();
+  return d && d !== '—' ? d : '';
+}
 function sawOdExpired(r) {
-  const cur = sawOdNum((r || {}).diameter), min = sawOdNum((r || {}).odMin);
+  const cur = sawOdNum(sawCurOd(r)), min = sawOdNum((r || {}).odMin);
   return cur != null && min != null && cur <= min;
 }
 function sawOdCellsHtml(r) {
   const exp = sawOdExpired(r);
-  const cur = sawOdNum(r.diameter), min = sawOdNum(r.odMin);
+  const curRaw = String(r.odCur == null ? '' : r.odCur).trim();
+  const cur = sawOdNum(sawCurOd(r)), min = sawOdNum(r.odMin);
   const left = cur != null && min != null && !exp ? Math.round((cur - min) * 10) / 10 : null;
-  return `<td${exp ? ' style="color:var(--red);font-weight:800;"' : ''}>${escapeHtmlAttr(r.diameter == null ? '—' : String(r.diameter))}${
+  return `<td>${escapeHtmlAttr(r.diameter == null || r.diameter === '' ? '—' : String(r.diameter))}</td>
+    <td${exp ? ' style="color:var(--red);font-weight:800;"' : ''}${curRaw ? '' : ' title="ยังไม่ได้วัด OD ปัจจุบัน — จะบันทึกเองตอนกดจบงานลับคม"'}>${
+      curRaw ? escapeHtmlAttr(curRaw) : '<span class="muted">—</span>'}${
       exp ? ' <span class="chip chip-red" style="font-size:10.5px;" title="OD ปัจจุบันถึง OD หมดอายุแล้ว">ถึงอายุ</span>' : ''}</td>
     <td class="muted"${left != null ? ` title="${escapeHtmlAttr('เหลืออีก ' + left + ' mm ถึง OD หมดอายุ')}"` : ''}>${min != null ? escapeHtmlAttr(String(r.odMin)) : '—'}${
       left != null ? ` <span style="font-size:11px;color:${left <= 10 ? 'var(--amber)' : 'var(--text-3)'};">(เหลือ ${left})</span>` : ''}</td>`;
@@ -20012,7 +20030,7 @@ function sawOdCellsHtml(r) {
 
 function sawFormInputs() {
   return Array.from(document.querySelectorAll('#modal-body input, #modal-body select'))
-    .filter(el => el.id !== 'f-saw-grind' && el.id !== 'f-saw-odmin');
+    .filter(el => el.id !== 'f-saw-grind' && el.id !== 'f-saw-odmin' && el.id !== 'f-saw-odcur');
 }
 
 // สถานะใบเลื่อยชุดใหม่: พร้อมใช้ · กำลังใช้งาน · รอลับคม · มีปัญหา · หมดอายุ (ดูตัวเลือกใน MODAL_FORMS.saw)
@@ -20041,6 +20059,8 @@ function editSaw(idx) {
   if (g) g.value = r.grindTime == null ? '' : String(r.grindTime);
   const om = document.getElementById('f-saw-odmin');
   if (om) om.value = r.odMin == null ? '' : String(r.odMin);
+  const oc = document.getElementById('f-saw-odcur');
+  if (oc) oc.value = r.odCur == null ? '' : String(r.odCur);
   // สถานะในตารางอิงระบบผลิต/งานลับคม — บอกไว้ใต้ช่อง กันงงว่าทำไมในตารางไม่ตรงกับที่ตั้ง
   const stSel = document.querySelector('#modal-body select.form-select');
   const eff = sawEffectiveStatus(r);
@@ -20068,6 +20088,7 @@ function editSaw(idx) {
       });
       cur.grindTime = ((document.getElementById('f-saw-grind') || {}).value || '').trim();
       cur.odMin = ((document.getElementById('f-saw-odmin') || {}).value || '').trim();
+      cur.odCur = ((document.getElementById('f-saw-odcur') || {}).value || '').trim();
       // ตั้ง/เลิก "มีปัญหา" จากปุ่ม ✏️ ก็ลงประวัติเหมือนกดจากการ์ดบน Dashboard
       const isProblem = sawManualStatus(cur) === 'มีปัญหา';
       if (isProblem && !wasProblem) sawProblemOpen(cur, cur.problemNote);
@@ -20219,7 +20240,7 @@ function renderSawMachineList() {
       const idx = data.indexOf(r);
       const on = selectedSawBlade === r;
       const st = sawEffectiveStatus(r).status;
-      const dia = String(r.diameter || '').trim();
+      const dia = String(sawCurOd(r) || '').trim();   // OD ปัจจุบัน (ยังไม่วัดใช้ OD เริ่มต้น)
       return `<div onclick="${jsCallAttr('selectSawBlade', idx)}"${on ? ' data-saw-on="1"' : ''}
           style="display:flex;align-items:center;gap:8px;padding:6px 9px;border-radius:6px;cursor:pointer;margin-bottom:3px;
                  background:${on ? 'var(--accent-glow)' : 'transparent'};color:${on ? 'var(--accent)' : 'var(--text-2)'};transition:background .12s;"
@@ -20255,7 +20276,7 @@ function renderSawTable(page) {
   const grouped = selectedSawMachine === null && !selectedSawBlade;
   const mcCount = new Map();
   sorted.forEach(r => mcCount.set(sawMachineOf(r), (mcCount.get(sawMachineOf(r)) || 0) + 1));
-  const grpHead = (mc, cont) => `<tr><td colspan="13" onclick="${jsCallAttr('selectSawMachine', mc)}" style="cursor:pointer;background:var(--bg-panel);padding:7px 14px;
+  const grpHead = (mc, cont) => `<tr><td colspan="14" onclick="${jsCallAttr('selectSawMachine', mc)}" style="cursor:pointer;background:var(--bg-panel);padding:7px 14px;
       border-top:2px solid var(--border);font-size:12.5px;font-weight:800;color:var(--text-1);" title="กดเพื่อดูเฉพาะเครื่องนี้">
       ${mc ? 'เครื่อง ' + escapeHtmlAttr(mc) : 'ยังไม่ระบุเครื่อง'}
       <span style="font-weight:600;color:var(--text-3);margin-left:6px;">${mcCount.get(mc) || 0} ใบ${cont ? ' · ต่อจากหน้าก่อน' : ''}</span></td></tr>`;
@@ -21203,7 +21224,13 @@ function isSqPieceRecord(r) {
 // OD ปัจจุบัน / OD มาตรฐาน ของชิ้นหนึ่ง — อ่านได้ทั้งชิ้น Roll และชิ้น Roll SQ
 function pieceCurrentOdOf(r) {
   if (!r) return '';
+  if (isSawRecord(r)) return sawCurOd(r);
   return String((isSqPieceRecord(r) ? r.odCur : r.diameter) || '').trim();
+}
+// ใบเลื่อย (สำเนาจาก getMatchingRollsForPlan หรือตัวจริง) — มีช่องความหนาใบ (kerf) / ความสูงฟัน ที่ Roll ไม่มี
+function isSawRecord(r) {
+  return !!r && !isSqPieceRecord(r) && (Object.prototype.hasOwnProperty.call(r, 'kerf')
+    || Object.prototype.hasOwnProperty.call(r, 'toothHeight'));
 }
 function pieceStdOdOf(r) {
   if (!r) return '';
@@ -21222,13 +21249,13 @@ function parseMeasuredSawOd(raw) {
   return null;
 }
 // ใบเลื่อยในงานตามแผนเป็นสำเนา (getMatchingRollsForPlan) — ต้องเขียนลงตัวจริงใน toolingData.saw ตามลำดับ
-// เก็บ OD ใหม่ที่ช่อง diameter (ช่องที่ทะเบียน/การ์ดแสดงเป็น "OD …") และวันลับคมล่าสุด
+// เก็บ OD ที่วัดได้เป็น "OD ปัจจุบัน" (odCur) และวันลับคมล่าสุด — OD เริ่มต้น (diameter) ไม่ถูกเขียนทับ
 function applyMeasuredSawOd(rollIdx, size, dateIso) {
   const rec = ((toolingData || {}).saw || [])[Number(rollIdx)];
   if (!rec) return false;
   const od = parseMeasuredSawOd(size);
   if (od == null) return false;
-  rec.diameter = String(od);
+  rec.odCur = String(od);   // OD ปัจจุบัน — OD เริ่มต้น (diameter) คงไว้
   rec.lastService = dateIso || dailyViewDate;
   return true;
 }
