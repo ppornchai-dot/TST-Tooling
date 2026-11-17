@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.26';
+const APP_BUILD = '2026-11-17.27';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6804,9 +6804,11 @@ async function renderProdWeightTooling(force) {
   const fmtT = iso => iso ? prodSqFmtTime(iso) : '—';
   const clipped = data.from !== fromIso;
 
-  const groupHtml = g => {
+  // mc = เครื่องของหัวข้อที่ใบนี้อยู่ (เฉพาะใบเลื่อย) — ย่อหน้าเข้าไปใต้หัวข้อเครื่อง
+  // และช่องแรกของแต่ละรอบแสดง "รอบที่" แทนชื่อเครื่อง (ซ้ำกับหัวข้อ) ยกเว้นรอบที่ไปเดินเครื่องอื่น
+  const groupHtml = (g, mc) => {
     const head = `<tr style="background:var(--bg-panel);">
-      <td colspan="7" style="padding:9px 12px;">
+      <td colspan="7" style="padding:9px 12px;${mc ? 'padding-left:22px;border-left:5px solid var(--accent);' : ''}">
         <span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;">
           ${g.color ? `<span style="width:10px;height:10px;border-radius:50%;background:${g.color};box-shadow:inset 0 0 0 1px rgba(0,0,0,.2);"></span>` : ''}
           <b style="font-size:14px;color:var(--text-1);">${escapeHtmlAttr(g.title)}</b>
@@ -6815,8 +6817,12 @@ async function renderProdWeightTooling(force) {
         <span style="float:right;font-size:12.5px;color:var(--text-2);">${g.rounds.length} รอบ ·
           <b>${escapeHtmlAttr(fmtTons2(g.kg / 1000))}</b> ตัน · <b>${escapeHtmlAttr(g.pcs.toLocaleString())}</b> เส้น</span>
       </td></tr>`;
-    const rs = g.rounds.slice().sort((a, b) => String(a.started_at).localeCompare(String(b.started_at))).map(r => `<tr>
-      <td style="padding-left:26px;"><span class="chip chip-blue">${escapeHtmlAttr(r.machine_id || '—')}</span></td>
+    const rs = g.rounds.slice().sort((a, b) => String(a.started_at).localeCompare(String(b.started_at))).map((r, i) => `<tr>
+      ${mc
+        ? `<td style="padding-left:40px;border-left:5px solid var(--accent);white-space:nowrap;"><span style="font-size:12px;color:var(--text-3);">รอบที่ ${i + 1}</span>${
+            String(r.machine_id || '').trim() && String(r.machine_id).trim() !== mc
+              ? ` <span class="chip chip-yellow" title="รอบนี้เดินที่เครื่อง ${escapeHtmlAttr(r.machine_id)} ไม่ใช่เครื่องตามทะเบียน">${escapeHtmlAttr(r.machine_id)}</span>` : ''}</td>`
+        : `<td style="padding-left:26px;"><span class="chip chip-blue">${escapeHtmlAttr(r.machine_id || '—')}</span></td>`}
       <td>${escapeHtmlAttr(fmtT(r.started_at))}</td>
       <td>${r.is_open ? '<span class="chip chip-yellow">ยังใช้อยู่</span>' : escapeHtmlAttr(fmtT(r.ended_at))}</td>
       <td style="max-width:320px;white-space:normal;font-size:12px;color:var(--text-2);">${escapeHtmlAttr(r.product_name || r.product_code || '—')}${
@@ -6828,7 +6834,7 @@ async function renderProdWeightTooling(force) {
     </tr>`).join('');
     return head + rs;
   };
-  let tableRows;
+  let tableRows, sawMcStrip = '';
   if (kind === 'saw') {
     // ใบเลื่อย: คั่นหัวข้อตามเครื่องก่อน (เครื่องตามทะเบียน ถ้าไม่มีใช้เครื่องของรอบล่าสุดจากระบบผลิต)
     const mcOf = g => {
@@ -6840,20 +6846,30 @@ async function renderProdWeightTooling(force) {
     };
     const byMc = new Map();
     list.forEach(g => { const m = mcOf(g); if (!byMc.has(m)) byMc.set(m, []); byMc.get(m).push(g); });
-    tableRows = [...byMc.entries()]
+    const mcList = [...byMc.entries()]
       .sort((a, b) => (a[0] === 'ไม่ทราบเครื่อง') - (b[0] === 'ไม่ทราบเครื่อง') || a[0].localeCompare(b[0], 'th', { numeric: true }))
-      .map(([mc, gs]) => {
-        const kg = gs.reduce((n, g) => n + g.kg, 0), pcs = gs.reduce((n, g) => n + g.pcs, 0);
-        const rounds = gs.reduce((n, g) => n + g.rounds.length, 0);
-        return `<tr><td colspan="7" style="background:var(--bg-card);padding:11px 12px;border-top:2px solid var(--text-1);">
-          <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);">
-            <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>เครื่อง ${escapeHtmlAttr(mc)}</span>
-          <span style="float:right;font-size:12.5px;font-weight:700;color:var(--text-2);">${gs.length} ใบ · ${rounds} รอบ ·
-            ${escapeHtmlAttr(fmtTons2(kg / 1000))} ตัน · ${escapeHtmlAttr(pcs.toLocaleString())} เส้น</span>
-        </td></tr>` + gs.map(groupHtml).join('');
-      }).join('');
+      .map(([mc, gs]) => ({ mc, gs, kg: gs.reduce((n, g) => n + g.kg, 0), pcs: gs.reduce((n, g) => n + g.pcs, 0),
+        rounds: gs.reduce((n, g) => n + g.rounds.length, 0) }));
+    const mcAnchor = mc => 'pw-saw-mc-' + String(mc).replace(/[^A-Za-z0-9]/g, '_');
+    // แถบสรุปรายเครื่องเหนือตาราง — กดแล้วเลื่อนไปที่หัวข้อเครื่องนั้น
+    sawMcStrip = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px;">${mcList.map(x => `
+      <button onclick="document.getElementById('${mcAnchor(x.mc)}').scrollIntoView({behavior:'smooth',block:'start'})"
+        style="cursor:pointer;display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:10px;
+               border:1px solid var(--accent);background:var(--bg-surface);color:var(--text-1);">
+        <span style="background:var(--accent);color:#fff;font-weight:800;font-size:13px;padding:2px 9px;border-radius:6px;">${escapeHtmlAttr(x.mc)}</span>
+        <span style="font-size:12px;color:var(--text-2);text-align:left;line-height:1.35;"><b>${escapeHtmlAttr(fmtTons2(x.kg / 1000))}</b> ตัน
+          <span style="color:var(--text-3);">· ${x.gs.length} ใบ · ${x.rounds} รอบ</span></span>
+      </button>`).join('')}</div>`;
+    tableRows = mcList.map((x, i) => `${i ? '<tr><td colspan="7" style="padding:0;height:14px;background:var(--bg-base);border:none;"></td></tr>' : ''}
+        <tr id="${mcAnchor(x.mc)}" style="scroll-margin-top:70px;"><td colspan="7" style="background:var(--accent);padding:10px 14px;border:none;">
+          <span style="display:inline-flex;align-items:center;gap:10px;color:#fff;">
+            <span style="font-size:12px;font-weight:700;opacity:.85;">เครื่อง</span>
+            <span style="font-size:19px;font-weight:900;letter-spacing:.5px;">${escapeHtmlAttr(x.mc)}</span></span>
+          <span style="float:right;font-size:13px;font-weight:700;color:#fff;line-height:28px;">${x.gs.length} ใบ · ${x.rounds} รอบ ·
+            ${escapeHtmlAttr(fmtTons2(x.kg / 1000))} ตัน · ${escapeHtmlAttr(x.pcs.toLocaleString())} เส้น</span>
+        </td></tr>` + x.gs.map(g => groupHtml(g, x.mc)).join('')).join('');
   } else {
-    tableRows = list.map(groupHtml).join('');
+    tableRows = list.map(g => groupHtml(g)).join('');
   }
 
   el.innerHTML = `
@@ -6867,10 +6883,11 @@ async function renderProdWeightTooling(force) {
       ข้อมูลจากระบบผลิต ช่วง ${escapeHtmlAttr(fmtIsoDateThai(data.from))} – ${escapeHtmlAttr(fmtIsoDateThai(toIso))}${
         clipped ? ' (ระบบผลิตดึงได้ไม่เกิน 1 ปีต่อครั้ง — ตัดเหลือ 1 ปีล่าสุดของช่วงที่เลือก)' : ''}${
         kind === 'saw' ? ' · ระบบผลิตเริ่มบันทึกใบเลื่อยตั้งแต่ 9 พ.ย. 69' : ''} · เวลาเป็นเวลาไทย</div>
+    ${sawMcStrip}
     <div class="card table-wrap">
       <table>
         <thead><tr>
-          <th>เครื่อง</th><th>ใส่เครื่อง</th><th>ถอด</th><th>สินค้าที่ผลิต</th>
+          <th>${kind === 'saw' ? 'รอบ' : 'เครื่อง'}</th><th>ใส่เครื่อง</th><th>ถอด</th><th>สินค้าที่ผลิต</th>
           <th style="text-align:right;">ตัน</th><th style="text-align:right;">เส้น</th><th style="text-align:right;">A / BC</th>
         </tr></thead>
         <tbody>${tableRows || `<tr><td colspan="7">${msg('ไม่มีรอบการใช้' + (kind === 'sq' ? 'ชุด Roll SQ' : 'ใบเลื่อย') + 'ในช่วงวันที่นี้')}</td></tr>`}</tbody>
