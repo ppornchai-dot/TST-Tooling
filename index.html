@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.17';
+const APP_BUILD = '2026-11-17.18';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -7174,10 +7174,17 @@ function dashSqReadyCardHtml(sets) {
 function goToSqSet(setKeyStr) {
   showPage('registry');
   switchRegTab('sq');
-  selectedSqSize = null;
+  // เปิดขนาดของชุดนั้นไว้ด้วย — รายการซ้ายย่อขนาดที่ไม่ได้เลือก ถ้าไม่ตั้ง ชุดที่กดมาจะไม่เห็นในรายการ
+  const hit = (toolingData.sq || []).find(r => sqSetKey(r) === setKeyStr);
+  selectedSqSize = hit ? String(hit.sizeSq || '').trim() : null;
   selectedSqSetKey = setKeyStr;
   pageState.sq = 1;
   renderSqRegistry(1);   // วาดทั้งแท็บ (คอลัมน์ซ้าย + ตาราง + KPI) ให้ชุดที่เลือกไฮไลต์ด้วย
+  // เลื่อนรายการซ้ายไปที่ชุดนั้น (ขนาดที่อยู่ล่างๆ จะได้ไม่ต้องเลื่อนหาเอง)
+  setTimeout(() => {
+    const row = document.querySelector('#sq-set-list [onclick="' + jsCallAttr('selectSqSet', setKeyStr).replace(/"/g, '\\"') + '"]');
+    if (row) row.scrollIntoView({ block: 'nearest' });
+  }, 0);
 }
 
 // แผงสรุป Roll SQ — หมวดนี้ไม่มีคอลัมน์สถานะของแต่ละชิ้น แต่มี OD ปัจจุบัน/OD หมดอายุ
@@ -19688,6 +19695,9 @@ function renderSqSetList() {
         title="${escapeHtmlAttr(size + ' — ' + sets.length + ' ชุด · ' + pieces + ' ชิ้น · ดู Roll SQ ทุกชุดของขนาดนี้ (กดซ้ำเพื่อดูทุกขนาด)')}">${
         rollSetSectionHeaderHtml(escapeHtmlAttr(size) + mcRow, sets.length + ' ชุด',
           sizeActive ? 'var(--accent)' : 'var(--text-1)', { keepCase: true, big: true, tight: true })}</div>`;
+    // ขยายเฉพาะขนาดที่เลือก (แบบทะเบียนใบเลื่อย) — ขนาดอื่นย่อไว้แค่หัวข้อ · กดขนาดเดิมซ้ำ = ย่อปิด
+    // เลขลำดับยังนับต่อเนื่องทั้งทะเบียน (นับชุดของขนาดที่ย่อไว้ด้วย)
+    if (!sizeActive) { num += sets.length; return header; }
     return header + sqSortSetsByCode(sets).map(set => {
       const r = set[0];
       const key = sqSetKey(r);
