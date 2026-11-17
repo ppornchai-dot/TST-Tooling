@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.28';
+const APP_BUILD = '2026-11-17.29';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6866,7 +6866,7 @@ async function renderProdWeightTooling(force) {
           <span style="color:var(--text-3);">· ${x.gs.length} ใบ · ${x.rounds} รอบ</span></span>
       </button>`).join('')}</div>`;
     tableRows = mcList.map((x, i) => `${i ? '<tr><td colspan="7" style="padding:0;height:14px;background:var(--bg-base);border:none;"></td></tr>' : ''}
-        <tr id="${mcAnchor(x.mc)}" style="scroll-margin-top:70px;"><td colspan="7" style="background:var(--accent);padding:10px 14px;border:none;">
+        <tr id="${mcAnchor(x.mc)}" style="scroll-margin-top:42px;"><td colspan="7" style="background:var(--accent);padding:10px 14px;border:none;">
           <span style="display:inline-flex;align-items:center;gap:10px;color:#fff;">
             <span style="font-size:12px;font-weight:700;opacity:.85;">เครื่อง</span>
             <span style="font-size:19px;font-weight:900;letter-spacing:.5px;">${escapeHtmlAttr(x.mc)}</span></span>
@@ -6889,7 +6889,7 @@ async function renderProdWeightTooling(force) {
         clipped ? ' (ระบบผลิตดึงได้ไม่เกิน 1 ปีต่อครั้ง — ตัดเหลือ 1 ปีล่าสุดของช่วงที่เลือก)' : ''}${
         kind === 'saw' ? ' · ระบบผลิตเริ่มบันทึกใบเลื่อยตั้งแต่ 9 พ.ย. 69' : ''} · เวลาเป็นเวลาไทย</div>
     ${sawMcStrip}
-    <div class="card table-wrap">
+    <div class="card table-wrap table-wrap-sticky">
       <table>
         <thead><tr>
           <th>${kind === 'saw' ? 'รอบ' : 'เครื่อง'}</th><th>ใส่เครื่อง</th><th>ถอด</th><th>สินค้าที่ผลิต</th>
