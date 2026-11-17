@@ -2422,7 +2422,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-16.4';
+const APP_BUILD = '2026-11-17.1';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6179,7 +6179,8 @@ function prodSawWaitingList() {
   // plannedAt = วันที่วางแผนลับไว้ (รวมงานค้างจากวันก่อน) — การ์ดรอลับคมขึ้นป้าย "แผนลับคม" ให้
   return reg.map((r, idx) => ({ r, idx, u: sawUsageInfo(r), plannedAt: (info.queued && info.queued.get(idx)) || info.planned.get(idx) || null }))
     // ใบที่กดเริ่มลับแล้วย้ายไปการ์ด "กำลังลับคม" · ใบที่วางแผนแล้วแต่ยังไม่เริ่ม ยังแสดงที่นี่ (มีป้ายวันแผน)
-    .filter(x => x.u.waiting && !info.working.has(x.idx))
+    .filter(x => x.u.waiting && !info.working.has(x.idx)
+      && !['มีปัญหา', 'หมดอายุ'].includes(sawManualStatus(x.r)))
     .sort((a, b) => String(a.u.removedAt).localeCompare(String(b.u.removedAt)));
 }
 
@@ -6429,7 +6430,7 @@ function prodSawWaitingCardHtml() {
   const s = prodSawLive.status;
   if (s === 'noproxy') return '';
   const list = s === 'ok' || prodSawLive.at ? prodSawWaitingList() : [];
-  const rows = list.map(({ r, u, plannedAt }) => `
+  const rows = list.map(({ r, idx, u, plannedAt }) => `
     <div onclick="showPage('registry');switchRegTab('saw');"
       style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;margin-bottom:6px;cursor:pointer;
              background:var(--red-dim);border:1px solid var(--border-light);"
@@ -6437,6 +6438,11 @@ function prodSawWaitingCardHtml() {
         + ' · รอบสุดท้าย ' + fmtTons2(u.last.kg / 1000) + ' ตัน (' + u.last.pcs.toLocaleString() + ' เส้น)'
         + (u.lastGrind ? ' · ลับคมล่าสุด ' + fmtIsoDateThai(u.lastGrind) : ' · ยังไม่มีวันลับคมล่าสุดที่ใช้ได้ในทะเบียน'))}">
       <span style="font-size:14px;font-weight:800;color:#fff;background:var(--red);padding:3px 11px;border-radius:6px;">รหัส ${escapeHtmlAttr(r.id)}</span>
+      <!-- ป้ายสถานะ — Admin/หัวหน้ากดเปลี่ยนสถานะได้ตรงนี้เลย (เมนูเดียวกับทะเบียนใบเลื่อย) -->
+      ${canEditPlan()
+        ? `<span onclick="openSawStatusMenu(event, ${idx})" title="กดเพื่อเปลี่ยนสถานะ" style="flex:0 0 auto;cursor:pointer;white-space:nowrap;">${
+            statusChip(sawEffectiveStatus(r).status)}<span style="font-size:9px;color:var(--text-3);margin-left:3px;">▾</span></span>`
+        : `<span style="flex:0 0 auto;">${statusChip(sawEffectiveStatus(r).status)}</span>`}
       <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr([sawOdLabel(r), r.machine].filter(x => x && x !== '—').join(' · '))}</span>
       <span style="font-size:12px;color:var(--text-2);">ถอดจาก ${escapeHtmlAttr(u.last.machine)} · ${escapeHtmlAttr(prodSqFmtTime(u.removedAt))}</span>
       <!-- ป้ายแผน — รูปแบบเดียวกับ "แต่ง/ขัดเสร็จ …" / "ยังไม่ได้วางแผน" ของการ์ด Roll (rollFinishTagHtml):
@@ -20081,7 +20087,9 @@ function openSawStatusMenu(ev, idx) {
         ${statusChip(o)}<span style="margin-left:auto;font-weight:800;color:var(--accent);">${o === eff.status ? '✓' : ''}</span></div>`).join('')
     + (eff.src !== 'manual' ? `<div style="font-size:10.5px;color:var(--text-3);line-height:1.5;padding:6px 8px 2px;border-top:1px solid var(--border-light);margin-top:4px;">
         ตอนนี้แสดงตาม${eff.src === 'plan' ? 'งานลับคมในแผน' : 'ระบบผลิต'} — "มีปัญหา" / "หมดอายุ" มีผลทันที
-        สถานะอื่นระบบจะยังแสดงตาม${eff.src === 'plan' ? 'แผน' : 'ระบบผลิต'}ก่อน</div>` : '');
+        ${eff.src === 'prod' && eff.status === 'รอลับคม'
+          ? '· "พร้อมใช้" = ลับคมแล้ว (ตั้งวันลับคมล่าสุดเป็นวันนี้)'
+          : 'สถานะอื่นระบบจะยังแสดงตาม' + (eff.src === 'plan' ? 'แผน' : 'ระบบผลิต') + 'ก่อน'}</div>` : '');
   document.body.appendChild(el);
   // วางใต้ป้าย ชิดขวาของป้าย · ล้นจอล่างก็พลิกขึ้นด้านบน
   const w = el.offsetWidth, h = el.offsetHeight;
@@ -20132,7 +20140,10 @@ function setSawStatus(idx, st, note) {
     const cur = (list[idx] && list[idx].id === id) ? list[idx] : list.find(x => x.id === id);
     if (!cur) return;
     const was = sawManualStatus(cur) === 'มีปัญหา';
+    const waitingGrind = st === 'พร้อมใช้' && typeof sawUsageInfo === 'function'
+      && typeof prodSawLive !== 'undefined' && prodSawLive && prodSawLive.at && sawUsageInfo(cur).waiting;
     cur.status = st;
+    if (waitingGrind) cur.lastService = toISODate(new Date());
     if (st === 'มีปัญหา') {
       if (note) cur.problemNote = note; else delete cur.problemNote;
       sawProblemOpen(cur, note);
