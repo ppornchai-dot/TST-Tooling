@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.31';
+const APP_BUILD = '2026-11-17.32';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -7061,6 +7061,16 @@ function renderToolingLife() {
     || (b.u.sinceGrind || 0) - (a.u.sinceGrind || 0)
     || String(a.r.id).localeCompare(String(b.r.id), 'th', { numeric: true }));
   const n = s => list.filter(x => x.st.status === s).length;
+  // คั่นหัวข้อตามเครื่อง (ตามทะเบียน) — ในเครื่องยังเรียงตามลำดับข้างบน (ถึงอายุ/เหลือน้อยก่อน)
+  const mcGroups = new Map();
+  list.forEach(x => {
+    const m = String(x.r.machine || '').trim();
+    const k = m && m !== '—' ? m : 'ไม่ระบุเครื่อง';
+    if (!mcGroups.has(k)) mcGroups.set(k, []);
+    mcGroups.get(k).push(x);
+  });
+  const mcOrder = [...mcGroups.entries()].sort((a, b) => (a[0] === 'ไม่ระบุเครื่อง') - (b[0] === 'ไม่ระบุเครื่อง')
+    || a[0].localeCompare(b[0], 'th', { numeric: true }));
   const nExp = list.filter(x => x.left != null && x.left <= 0).length;
   const nWarn = list.filter(x => x.left != null && x.left > 0 && x.left <= SAW_OD_WARN_MM).length;
   const nNoSpec = list.filter(x => x.left == null).length;
@@ -7088,7 +7098,18 @@ function renderToolingLife() {
           ${th('ตัดหลังลับคม', true, 'นับจากวันลับคมล่าสุด (ทะเบียน หรือวันที่กดจบงานลับคมในแผน)')}
           ${th('ตัดสะสม', true, 'ยอดตั้งต้นในทะเบียน + ยอดจากระบบผลิตตั้งแต่ 9 พ.ย. 69')}
           ${th('Regrind')}${th('ลับคมล่าสุด')}</tr></thead>
-        <tbody>${list.map(x => { const { r, u, st } = x; return `<tr style="cursor:pointer;" onclick="${jsCallAttr('goToSawBlade', r.id)}" title="กดเพื่อไปที่ใบนี้ในทะเบียนใบเลื่อย">
+        <tbody>${mcOrder.map(([mc, xs], gi) => {
+          const e = xs.filter(x => x.left != null && x.left <= 0).length;
+          const w = xs.filter(x => x.left != null && x.left > 0 && x.left <= SAW_OD_WARN_MM).length;
+          return (gi ? '<tr><td colspan="10" style="padding:0;height:14px;background:var(--bg-base);border:none;"></td></tr>' : '')
+          + `<tr><td colspan="10" style="background:var(--accent);padding:10px 14px;border:none;">
+            <span style="display:inline-flex;align-items:center;gap:10px;color:#fff;">
+              <span style="font-size:12px;font-weight:700;opacity:.85;">เครื่อง</span>
+              <span style="font-size:19px;font-weight:900;letter-spacing:.5px;">${escapeHtmlAttr(mc)}</span></span>
+            <span style="float:right;font-size:13px;font-weight:700;color:#fff;line-height:28px;">${xs.length} ใบ${
+              e ? ` · <span style="background:var(--red);padding:2px 8px;border-radius:99px;">ถึงอายุ ${e}</span>` : ''}${
+              w ? ` · <span style="background:var(--amber);padding:2px 8px;border-radius:99px;">ใกล้หมด ${w}</span>` : ''}</span>
+          </td></tr>` + xs.map(x => { const { r, u, st } = x; return `<tr style="cursor:pointer;" onclick="${jsCallAttr('goToSawBlade', r.id)}" title="กดเพื่อไปที่ใบนี้ในทะเบียนใบเลื่อย">
           <td><b>${escapeHtmlAttr(r.id || '—')}</b></td>
           <td style="text-align:right;${x.left != null && x.left <= 0 ? 'color:var(--red);font-weight:800;' : ''}">${x.cur != null ? escapeHtmlAttr(x.cur.toLocaleString()) : '<span class="muted">—</span>'}</td>
           <td style="text-align:right;" class="muted">${x.min != null ? escapeHtmlAttr(x.min.toLocaleString()) : '—'}</td>
@@ -7103,12 +7124,13 @@ function renderToolingLife() {
             : `<span class="muted">${escapeHtmlAttr(r.usage || '—')}</span>`}</td>
           <td class="muted">${escapeHtmlAttr(r.regrind || '—')}</td>
           <td class="muted">${u.lastGrind ? escapeHtmlAttr(fmtIsoDateThai(u.lastGrind)) : '—'}</td>
-        </tr>`; }).join('') || `<tr><td colspan="10">${msg('ยังไม่มีใบเลื่อยในทะเบียน')}</td></tr>`}</tbody>
+        </tr>`; }).join('');
+        }).join('') || `<tr><td colspan="10">${msg('ยังไม่มีใบเลื่อยในทะเบียน')}</td></tr>`}</tbody>
       </table>
     </div>
     <div style="font-size:11.5px;color:var(--text-3);margin:8px 2px;">
       ${loaded ? '' : 'กำลังดึงยอดจากระบบผลิต… · '}อายุคิดจาก OD ปัจจุบันเทียบ OD หมดอายุในทะเบียน ·
-      เรียงใบที่ถึงอายุ/เหลือน้อยสุดขึ้นก่อน · สถานะในทะเบียนไม่ได้เปลี่ยนเป็น "หมดอายุ" ให้เอง</div>`;
+      แบ่งตามเครื่องในทะเบียน ในแต่ละเครื่องเรียงใบที่ถึงอายุ/เหลือน้อยสุดขึ้นก่อน · สถานะในทะเบียนไม่ได้เปลี่ยนเป็น "หมดอายุ" ให้เอง</div>`;
 }
 
 function prodSqUnmatchedHtml() {
