@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.14';
+const APP_BUILD = '2026-11-17.15';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6587,7 +6587,8 @@ function prodSawInUseCardHtml() {
     const u = r ? sawUsageInfo(r) : null;
     return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;margin-bottom:6px;
         background:var(--inuse-dim);border:1px solid var(--border-light);${r ? 'cursor:pointer;' : ''}"
-      ${r ? `onclick="${jsCallAttr('goToSawBlade', r.id)}"` : ''}
+      data-saw-inuse="${escapeHtmlAttr(sawCodeKey(o.code))}"
+      ${r ? `onclick="${jsCallAttr('goToSawInUse', r.id)}"` : ''}
       title="${escapeHtmlAttr('ใส่เมื่อ ' + prodSqFmtTime(o.startedAt) + (o.productName ? ' · ' + o.productName : '')
         + ' · รอบนี้ ' + fmtTons2(o.kg / 1000) + ' ตัน (' + o.pcs.toLocaleString() + ' เส้น)')}">
       <span style="font-size:14px;font-weight:800;color:#fff;background:var(--inuse);padding:3px 11px;border-radius:6px;">${escapeHtmlAttr(o.machine)}</span>
@@ -20033,6 +20034,22 @@ function goToSawBlade(id) {
     const card = document.getElementById('saw-detail-title');
     if (card) card.scrollIntoView({ block: 'nearest' });
   }, 0);
+}
+// กดใบเลื่อยกำลังใช้งาน: จาก Dashboard → หน้า Tooling กำลังใช้งาน แท็บใบเลื่อย แล้วไฮไลต์ใบนั้น
+// กดจากหน้า Tooling กำลังใช้งานเอง (การ์ดเดียวกัน) → ไปที่ใบนั้นในทะเบียนใบเลื่อยเหมือนเดิม
+function goToSawInUse(id) {
+  if (typeof currentPage !== 'undefined' && currentPage === 'inuse') { goToSawBlade(id); return; }
+  showPage('inuse');
+  switchInUseTab('saw');
+  // รอให้หน้า/แท็บวาดเสร็จก่อน (วาดซ้ำหลังสลับหน้า) ไม่งั้นไฮไลต์ไปติดแถวที่ถูกแทนที่ไปแล้ว
+  setTimeout(() => {
+    const el = document.querySelector('#page-inuse [data-saw-inuse="' + String(sawCodeKey(id)).replace(/"/g, '') + '"]');
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    const prev = el.style.outline;
+    el.style.outline = '3px solid var(--accent)';
+    setTimeout(() => { el.style.outline = prev; }, 2500);
+  }, 250);
 }
 // เพิ่มใบเลื่อย — เลือกเครื่องไว้อยู่ก็กรอกช่อง "เครื่องผลิต" ให้เลย
 function openAddSaw() {
