@@ -2422,7 +2422,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.7';
+const APP_BUILD = '2026-11-17.8';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -8104,7 +8104,8 @@ const PLAN_WORKTYPE_META = {
   // ไม่จัดกลุ่มใบเลื่อย หนึ่งใบงานเลือกใบไหนก็ได้ (ดู SAW_PLAN_SET)
   saw:    { label: 'แผนงานลับคมใบเลื่อย', field: 'grindTime', metricLabel: 'เวลาลับคม (นาที)', shifts: ['morning', 'night', 'both'], otMaxMin: 3 * 60, otNote: 'สูงสุด 3 ชม. — กะเช้า OT 17:00–20:00 / กะดึก 05:00–08:00 (หักพัก 20 นาที เหลือทำงาน 2 ชม. 40 นาที)' },
   slitter: { label: 'แผนงานลับคมมีดสลิตเตอร์', field: 'grindTime', metricLabel: 'เวลาลับคม (นาที)', shifts: ['morning', 'night', 'both'], otMaxMin: 3 * 60, otNote: 'สูงสุด 3 ชม. — กะเช้า OT 17:00–20:00 / กะดึก 05:00–08:00 (หักพัก 20 นาที เหลือทำงาน 2 ชม. 40 นาที)' },
-  sq:     { label: 'แผนงานแต่ง Roll SQ', field: 'grindTime', metricLabel: 'เวลาแต่ง Roll SQ (นาที)', shifts: ['morning', 'night', 'both'], otMaxMin: 3 * 60, fillSameSetOnly: true, otNote: 'สูงสุด 3 ชม. — กะเช้า OT 17:00–20:00 / กะดึก 05:00–08:00 (หักพัก 20 นาที เหลือทำงาน 2 ชม. 40 นาที)' },
+  // งานแต่ง Roll SQ มีกะเช้ากะเดียว (เหมือนงานขัด Roll) — ส่วนที่ล้นกะไปต่อเช้าวันถัดไป ไม่ลงกะดึก
+  sq:     { label: 'แผนงานแต่ง Roll SQ', field: 'grindTime', metricLabel: 'เวลาแต่ง Roll SQ (นาที)', shifts: ['morning'], otMaxMin: 3 * 60, fillSameSetOnly: true, otNote: 'สูงสุด 3 ชม. — OT 17:00–20:00 (หักพัก 20 นาที เหลือทำงาน 2 ชม. 40 นาที)' },
 };
 // ชื่อประเภทงานแบบสั้น ใช้ในหัวข้อกล่องต่างๆ — เดิมเขียนเป็นเงื่อนไขสองทาง (ขัด/CNC) กระจายหลายที่
 // พอมีประเภทที่สามเข้ามาจึงรวมไว้ที่เดียว
