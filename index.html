@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.38';
+const APP_BUILD = '2026-11-17.39';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -18815,6 +18815,13 @@ const SQ_COLORS = [
   { key: 'redgold', label: 'สีแดง+สีทอง', dot: 'linear-gradient(135deg, #C03030 50%, #A97806 50%)' },
   { key: 'gold',   label: 'สีทอง',  dot: '#A97806' },
 ];
+// ชุดสีที่เลือกได้ตามประเภทเหล็กของ Size SQ — GS = ฟ้า/ม่วง · GI = แดง/แดง+ทอง/ทอง · อื่นๆ (ยังไม่ระบุ) เลือกได้ทุกสี
+function sqAllowedColors(sizeSq) {
+  const t = String(sizeSq || '').trim().toUpperCase();
+  if (t.startsWith('GS')) return SQ_COLORS.filter(c => c.key === 'blue' || c.key === 'purple');
+  if (t.startsWith('GI')) return SQ_COLORS.filter(c => c.key === 'red' || c.key === 'redgold' || c.key === 'gold');
+  return SQ_COLORS;
+}
 function sqColorMeta(key) {
   return SQ_COLORS.find(c => c.key === key) || { key: '', label: 'ไม่ระบุสี', dot: '#9CA3AF' };
 }
@@ -19315,7 +19322,9 @@ function sqColorPickerMount(sel) {
       + 'box-shadow:0 10px 28px rgba(0,0,0,.2);padding:4px;max-height:300px;overflow-y:auto;';
     menu.style.minWidth = Math.max(r.width, 180) + 'px';
     const cur = sel.value;
-    menu.innerHTML = SQ_COLORS.map(c => `<div data-k="${escapeHtmlAttr(c.key)}"
+    // เลือกได้เฉพาะสีของประเภทเหล็ก (GS/GI) ตาม Size SQ ที่กรอกในฟอร์ม
+    const sizeEl = document.getElementById('f-sq-size');
+    menu.innerHTML = sqAllowedColors(sizeEl ? sizeEl.value : '').map(c => `<div data-k="${escapeHtmlAttr(c.key)}"
         onmouseover="this.style.background='var(--bg-panel)'" onmouseout="this.style.background='${c.key === cur ? 'var(--accent-glow)' : 'transparent'}'"
         style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:13.5px;
           font-weight:${c.key === cur ? 800 : 600};background:${c.key === cur ? 'var(--accent-glow)' : 'transparent'};">
@@ -19375,6 +19384,20 @@ function fillSqFormOptions() {
       const el = document.getElementById(id);
       if (el) el.addEventListener('change', fill);
     });
+  }
+  // เปลี่ยน Size SQ เป็นอีกประเภทเหล็ก (GS ↔ GI) แล้วสีเดิมใช้ไม่ได้ → เปลี่ยนเป็นสีแรกที่ใช้ได้ให้เลย
+  // ทำเฉพาะตอนผู้ใช้แก้ Size (ไม่ใช่ตอนเปิดฟอร์ม) ข้อมูลเดิมจะไม่ถูกเปลี่ยนเงียบๆ
+  const sizeEl = document.getElementById('f-sq-size');
+  if (sizeEl && color) {
+    const fixColor = () => {
+      const allowed = sqAllowedColors(sizeEl.value);
+      if (allowed.length && !allowed.some(c => c.key === color.value)) {
+        color.value = allowed[0].key;
+        color.dispatchEvent(new Event('change'));
+      }
+    };
+    sizeEl.addEventListener('change', fixColor);
+    sizeEl.addEventListener('input', fixColor);
   }
 }
 
