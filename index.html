@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.9';
+const APP_BUILD = '2026-11-17.10';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -22567,15 +22567,24 @@ function openTeamMemberModal(mode, id) {
       if (dupe) { alert('ชื่อผู้ใช้นี้ถูกใช้แล้วโดย "' + dupe.name + '" กรุณาตั้งชื่อผู้ใช้อื่น'); return; }
       data.username = username;
     } else if (member) data.username = member.username || null;
-    if (mode === 'edit') {
-      Object.assign(member, data);
-    } else {
-      teamSeq++;
-      teamMembers.push({ id: 'TM-' + String(teamSeq).padStart(4, '0'), ...data });
-    }
-    persistState();
-    renderTeamGrid();
-    renderLoginOptions();
+    // ครอบด้วย withCloudRetry — ถ้าเครื่องอื่นเขียนแทรกพอดี ระบบดึงข้อมูลใหม่ลงมาแล้วทำรายการนี้ซ้ำให้
+    // (เดิมไม่ได้ครอบ สมาชิกที่เพิ่งเพิ่มจึงหายเงียบๆ เมื่อเขียนชน)
+    // ทำซ้ำได้อย่างปลอดภัย: แก้ไข = หาด้วย id แล้วตั้งค่า · เพิ่ม = ข้ามถ้ามีคนชื่อ+ชื่อผู้ใช้เดียวกันอยู่แล้ว
+    const editId = member ? member.id : null;
+    withCloudRetry(() => {
+      if (mode === 'edit') {
+        const cur = teamMembers.find(m => m.id === editId);
+        if (cur) Object.assign(cur, data);
+      } else if (!teamMembers.some(m => m.name === data.name && (m.username || null) === (data.username || null))) {
+        // รหัสถัดไป = มากกว่าทั้ง teamSeq และรหัสที่มีอยู่จริง (กันรหัสซ้ำเมื่อ teamSeq ตามข้อมูลไม่ทัน)
+        const maxNo = teamMembers.reduce((n, m) => Math.max(n, parseInt(String(m.id || '').replace(/\D/g, ''), 10) || 0), teamSeq);
+        teamSeq = maxNo + 1;
+        teamMembers.push({ id: 'TM-' + String(teamSeq).padStart(4, '0'), ...data });
+      }
+      persistState();
+      renderTeamGrid();
+      renderLoginOptions();
+    });
     const btn = this;
     const orig = btn.innerHTML;
     btn.innerHTML = '✓ บันทึกแล้ว';
