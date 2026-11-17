@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.32';
+const APP_BUILD = '2026-11-17.33';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6998,45 +6998,59 @@ function renderToolingLife() {
     const cnt = s => rows.filter(r => r.state === s).length;
     const inUse = rows.filter(r => r.use && r.use.open).length;
     const fmt1 = v => v == null ? '—' : (Math.round(v * 100) / 100).toLocaleString();
+    // อายุ = OD ปัจจุบัน เทียบ OD หมดอายุ (แบบเดียวกับแท็บใบเลื่อย) — ยึดลูกที่เหลือน้อยสุดในชุด
+    const SQ_OD_WARN_MM = 10;
+    const isNear = x => x.state !== 'expired' && x.minMargin != null && x.minMargin <= SQ_OD_WARN_MM;
+    const ageCell = x => {
+      const m = x.minMargin == null ? null : Math.round(x.minMargin * 100) / 100;
+      let main;
+      if (x.state === 'expired') main = `<span style="font-weight:800;color:var(--red);">ถึงอายุ</span> <span class="chip chip-red">${x.expired} ลูก</span>${
+        m != null && m < 0 ? ` <span class="muted" style="font-size:11px;">(เกิน ${escapeHtmlAttr((-m).toLocaleString())} mm)</span>` : ''}`;
+      else if (m != null) main = `<span style="font-weight:800;color:${m <= SQ_OD_WARN_MM ? 'var(--amber)' : 'var(--green)'};">เหลือ ${escapeHtmlAttr(m.toLocaleString())} mm</span>`;
+      else if (x.odMin == null) main = '<span class="muted">ยังไม่กรอก OD หมดอายุ</span>';
+      else main = '<span class="muted">ยังไม่วัด OD</span>';
+      return main + (x.unmeasured && x.unmeasured < x.set.length
+        ? ` <div style="font-size:11px;color:var(--amber);">ยังไม่วัด ${x.unmeasured} ลูก</div>` : '');
+    };
     el.innerHTML = `
-      <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));">
+      <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));">
         ${dashMiniKpi('ถึง OD หมดอายุ', cnt('expired').toLocaleString(), 'var(--red)', 'ชุดที่มีลูกถึง OD หมดอายุแล้ว')}
+        ${dashMiniKpi('ใกล้หมดอายุ', rows.filter(isNear).length.toLocaleString(), 'var(--amber)', 'เหลือไม่เกิน ' + SQ_OD_WARN_MM + ' mm')}
         ${dashMiniKpi('ยังวัด OD ไม่ครบ', cnt('unmeasured').toLocaleString(), 'var(--amber)', 'ชุดที่ยังมีลูกไม่ได้วัด OD ปัจจุบัน')}
         ${dashMiniKpi('ปกติ', cnt('ok').toLocaleString(), 'var(--green)', 'วัดครบ และยังไม่ถึง OD หมดอายุ')}
         ${dashMiniKpi('กำลังใช้งาน', loading ? '…' : inUse.toLocaleString(), 'var(--inuse)', 'ตามระบบผลิต')}
       </div>
       <div class="card table-wrap">
         <table>
-          <thead><tr>${th('ชุดสี')}${th('เครื่อง (ตอนนี้)', false, 'ตามระบบผลิต — รอบที่ยังไม่ถอด')}${th('จำนวน (ลูก)', true)}
-            ${th('OD ปัจจุบัน (ต่ำสุด)', true, 'OD ปัจจุบันที่วัดได้ต่ำสุดในชุด')}${th('OD หมดอายุ', true)}
-            ${th('เหลือก่อนหมดอายุ (mm)', true, 'OD ปัจจุบัน − OD หมดอายุ ของลูกที่เหลือน้อยสุดในชุด')}
-            ${th('ผลิตจากระบบผลิต', true, 'ยอดผลิตรวมของชุดนี้ 1 ปีล่าสุด — ระบบผลิตเริ่มบันทึกประมาณ 9 พ.ย. 69')}${th('อายุ')}</tr></thead>
+          <thead><tr>${th('ชุดสี')}${th('OD ปัจจุบัน (ต่ำสุด)', true, 'OD ปัจจุบันที่วัดได้ต่ำสุดในชุด')}${th('OD หมดอายุ', true)}
+            ${th('อายุ (เทียบ OD)', false, 'OD ปัจจุบัน − OD หมดอายุ ของลูกที่เหลือน้อยสุดในชุด — ถึงอายุเมื่อ OD ปัจจุบันเท่ากับหรือต่ำกว่า OD หมดอายุ')}
+            ${th('เครื่อง (ตอนนี้)', false, 'ตามระบบผลิต — รอบที่ยังไม่ถอด')}${th('จำนวน (ลูก)', true)}
+            ${th('ผลิตจากระบบผลิต', true, 'ยอดผลิตรวมของชุดนี้ 1 ปีล่าสุด — ระบบผลิตเริ่มบันทึกประมาณ 9 พ.ย. 69')}</tr></thead>
           <tbody>${sizeGroups.map(g => {
             const pcs = g.rows.reduce((n, x) => n + x.set.length, 0);
             const exp = g.rows.filter(x => x.state === 'expired').length;
-            return `<tr><td colspan="8" style="background:var(--bg-panel);padding:11px 12px;border-top:2px solid var(--text-1);">
+            const near = g.rows.filter(isNear).length;
+            return `<tr><td colspan="7" style="background:var(--bg-panel);padding:11px 12px;border-top:2px solid var(--text-1);">
               <span style="display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--text-1);">
                 <span style="width:10px;height:10px;border-radius:50%;background:var(--text-1);"></span>${escapeHtmlAttr(g.size)}
               </span>
               <span style="float:right;font-size:12px;font-weight:700;color:var(--text-3);">${g.rows.length.toLocaleString()} ชุด · ${pcs.toLocaleString()} ลูก${
-                exp ? ` · <span style="color:var(--red);">ถึงอายุ ${exp} ชุด</span>` : ''}</span>
+                exp ? ` · <span style="color:var(--red);">ถึงอายุ ${exp} ชุด</span>` : ''}${
+                near ? ` · <span style="color:var(--amber);">ใกล้หมด ${near} ชุด</span>` : ''}</span>
             </td></tr>` + g.rows.map(x => {
             const cm = sqColorMeta(x.head.color);
-            const st = STATE[x.state];
             return `<tr style="cursor:pointer;" onclick="${jsCallAttr('goToSqSet', x.key)}" title="${escapeHtmlAttr((x.head.sizeSq || '') + ' — กดเพื่อเปิดชุดนี้ในทะเบียน Roll SQ')}">
               <td>${rollColorPillHtml(cm.dot, cm.label)} <span class="muted">${escapeHtmlAttr(sqSetOrdinalLabel(x.head))}</span></td>
+              <td style="text-align:right;${x.state === 'expired' ? 'color:var(--red);font-weight:800;' : ''}">${escapeHtmlAttr(fmt1(x.odCurMin))}</td>
+              <td style="text-align:right;" class="muted">${escapeHtmlAttr(fmt1(x.odMin))}</td>
+              <td style="white-space:nowrap;">${ageCell(x)}</td>
               <td>${x.use && x.use.open ? `<span class="chip chip-yellow">${escapeHtmlAttr(x.use.open.machine)}</span>` : '<span class="muted">—</span>'}</td>
               <td style="text-align:right;">${x.set.length}</td>
-              <td style="text-align:right;">${escapeHtmlAttr(fmt1(x.odCurMin))}${x.unmeasured ? ` <span class="muted" style="font-size:11px;">(ยังไม่วัด ${x.unmeasured})</span>` : ''}</td>
-              <td style="text-align:right;">${escapeHtmlAttr(fmt1(x.odMin))}</td>
-              <td style="text-align:right;font-weight:700;color:${x.minMargin != null && x.minMargin <= 0 ? 'var(--red)' : 'var(--text-1)'};">${escapeHtmlAttr(fmt1(x.minMargin))}</td>
               <td style="text-align:right;white-space:nowrap;">${x.use ? `<b>${escapeHtmlAttr(fmtTons2(x.use.kg / 1000))}</b> ตัน · ${escapeHtmlAttr(x.use.pcs.toLocaleString())} เส้น
                 <div class="muted" style="font-size:11px;">${x.use.rounds} รอบ</div>` : `<span class="muted">${loading ? 'กำลังดึง…' : '—'}</span>`}</td>
-              <td><span style="font-size:12px;font-weight:800;color:${st.color};">${escapeHtmlAttr(st.label)}</span>${
-                x.expired ? ` <span class="chip chip-red">${x.expired} ลูก</span>` : ''}</td>
             </tr>`;
           }).join('');
-          }).join('') || `<tr><td colspan="8">${msg('ยังไม่มีชุด Roll SQ ในทะเบียน')}</td></tr>`}</tbody>
+          }).join('') || `<tr><td colspan="7">${msg('ยังไม่มีชุด Roll SQ ในทะเบียน')}</td></tr>`}</tbody>
         </table>
       </div>
       <div style="font-size:11.5px;color:var(--text-3);margin:8px 2px;">
