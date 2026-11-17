@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.20';
+const APP_BUILD = '2026-11-17.21';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -10914,8 +10914,8 @@ function isCodePlanSet(setName) { return isSawPlanSet(setName) || isSlitterPlanS
 function isCodeWorkType(wt) { return wt === 'saw' || wt === 'slitter'; }
 function codePlanSetFor(wt) { return wt === 'slitter' ? SLITTER_PLAN_SET : SAW_PLAN_SET; }
 
-// ประเภทงานที่ต้องวัด OD ตอนจบงาน — งานขัด Roll กับงานลับคมใบเลื่อยไม่ได้วัด
-function workTypeMeasuresOd(workType) { return workType === 'cnc' || workType === 'sq'; }
+// ประเภทงานที่ต้องวัด OD ตอนจบงาน — งานแต่ง Roll / แต่ง Roll SQ / ลับคมใบเลื่อย (งานขัด Roll ไม่ได้วัด)
+function workTypeMeasuresOd(workType) { return workType === 'cnc' || workType === 'sq' || workType === 'saw'; }
 
 function getMatchingRollsForPlan(setName, colorKey) {
   if (!setName) return [];
@@ -21186,6 +21186,29 @@ function pieceStdOdOf(r) {
   return String(r.diameterStd || '').trim() || String(r.diameter || '').trim();
 }
 
+// OD ใบเลื่อยอยู่ราว 300–1,000 มม. (ทะเบียนตอนนี้ 430–710) — ช่วงของ Roll (50–400) ใช้ไม่ได้
+// กู้จุดทศนิยมตกหายหนึ่งตำแหน่งแบบเดียวกับ parseMeasuredOd (4525 → 452.5)
+function parseMeasuredSawOd(raw) {
+  const m = String(raw == null ? '' : raw).match(/-?\d+(?:\.\d+)?/);
+  if (!m) return null;
+  const v = parseFloat(m[0]);
+  if (v >= 100 && v <= 2000) return v;
+  if (v / 10 >= 100 && v / 10 <= 2000) return v / 10;
+  return null;
+}
+// ใบเลื่อยในงานตามแผนเป็นสำเนา (getMatchingRollsForPlan) — ต้องเขียนลงตัวจริงใน toolingData.saw ตามลำดับ
+// เก็บ OD ใหม่ที่ช่อง diameter (ช่องที่ทะเบียน/การ์ดแสดงเป็น "OD …") และวันลับคมล่าสุด
+function applyMeasuredSawOd(rollIdx, size, dateIso) {
+  const rec = ((toolingData || {}).saw || [])[Number(rollIdx)];
+  if (!rec) return false;
+  const od = parseMeasuredSawOd(size);
+  if (od == null) return false;
+  rec.diameter = String(od);
+  rec.lastService = dateIso || dailyViewDate;
+  return true;
+}
+function sawRecordForPiece(rollIdx) { return ((toolingData || {}).saw || [])[Number(rollIdx)] || null; }
+
 function applyMeasuredSizeToRegistry(roll, size, dateIso, bumpRegrind) {
   if (!roll) return false;
   const od = parseMeasuredOd(size);
@@ -21224,14 +21247,21 @@ async function finishDailyPiece(taskId, rollIdx, workerId) {
   let size = null;
   if (needsMeasuredSize) {
     const curOd = pieceCurrentOdOf(roll);
-    const label = roll ? roll.name + (curOd ? ` (เดิม ${curOd})` : '') : 'ชิ้นนี้';
-    size = await voicePrompt(`บันทึกขนาดที่วัดได้จริงหลังแต่ง Roll ของ "${label}":`, 'พิมพ์ หรือกด 🎤 แล้วพูด');
+    const isSaw = task.workType === 'saw';
+    const label = roll ? (isSaw ? 'ใบเลื่อย รหัส ' + roll.id : roll.name) + (curOd ? ` (เดิม ${curOd})` : '') : 'ชิ้นนี้';
+    size = await voicePrompt(isSaw ? `บันทึก OD ใบเลื่อยปัจจุบัน (หลังลับคม) ของ "${label}":`
+      : `บันทึกขนาดที่วัดได้จริงหลังแต่ง Roll ของ "${label}":`, 'พิมพ์ หรือกด 🎤 แล้วพูด');
     if (size === null) return; // กดยกเลิก — ไม่จบงานและไม่บันทึกอะไร
+    // ใบเลื่อย: ค่าที่อ่านไม่ออก/นอกช่วง ถามยืนยันก่อน ไม่งั้นทะเบียนไม่ขยับโดยไม่รู้ตัว
+    if (isSaw && String(size).trim() && parseMeasuredSawOd(size) == null
+        && !confirm('อ่านค่า OD "' + String(size).trim() + '" ไม่ได้ (ควรอยู่ราว 100–2,000 มม.)\n\nจบงานต่อโดยไม่แก้ OD ในทะเบียนหรือไม่?')) return;
     // เว้นว่างแล้วจบงานผ่านได้เลย คือสาเหตุที่ทะเบียนไม่มีขนาด OD หลังแต่งเป็นส่วนใหญ่
     // (ตรวจข้อมูลจริงแล้วพบว่างานแต่งที่จบไป 120 ชิ้น มีขนาดจริงแค่ 29 ชิ้น)
     // ยังจบได้ถ้าวัดไม่ได้จริงๆ แต่ต้องยืนยันก่อน ไม่ให้เว้นว่างโดยไม่ตั้งใจ
     if (!String(size).trim()
-        && !confirm('ยังไม่ได้กรอกขนาด OD หลังแต่ง Roll ของ "' + (roll ? roll.name : 'ชิ้นนี้') + '"\n\n'
+        && !confirm(task.workType === 'saw'
+          ? 'ยังไม่ได้กรอก OD ใบเลื่อยปัจจุบันของ "' + (roll ? 'รหัส ' + roll.id : 'ใบนี้') + '"\n\nจบงานโดยไม่บันทึก OD หรือไม่?'
+          : 'ยังไม่ได้กรอกขนาด OD หลังแต่ง Roll ของ "' + (roll ? roll.name : 'ชิ้นนี้') + '"\n\n'
                     + 'จบงานโดยไม่บันทึกขนาดหรือไม่?\n'
                     + '(กด "ยกเลิก" เพื่อกลับไปกรอกขนาด — ขนาดนี้ใช้คิดอายุ Roll)')) return;
   }
@@ -21263,7 +21293,9 @@ async function finishDailyPiece(taskId, rollIdx, workerId) {
         date: dailyViewDate, measuredSize: size, registryDiameter: pieceCurrentOdOf(roll2) || null,
       });
       // อัปเดตทะเบียนหลัง push ล็อกแล้ว เพื่อให้ registryDiameter ในล็อกยังเป็น "ค่าก่อนแต่ง"
-      applyMeasuredSizeToRegistry(roll2, size, dailyViewDate, true);
+      // ใบเลื่อยเขียนลงทะเบียนใบเลื่อยตัวจริง (roll2 เป็นสำเนา) · ไม่นับ Regrind ให้เอง
+      if (t2.workType === 'saw') applyMeasuredSawOd(rollIdx, size, dailyViewDate);
+      else applyMeasuredSizeToRegistry(roll2, size, dailyViewDate, true);
     }
     const allDone = (t2.rollIds || []).every(idx => getDailyPieceEntry(taskId, idx).status === 'done');
     const dayMap = dailyStatusByDate[dailyStatusDateFor(taskId)] || (dailyStatusByDate[dailyStatusDateFor(taskId)] = {});
@@ -21280,6 +21312,7 @@ async function finishDailyPiece(taskId, rollIdx, workerId) {
     if (currentPage === 'registry') { renderRollSetList(); renderRollColorList(); }
     if (currentPage === 'rollLife') renderRollLife();
     updateRollKpi();
+    if (t2.workType === 'saw' && typeof refreshSawViewsAfterStatusChange === 'function') refreshSawViewsAfterStatusChange();
   });
 }
 // พักงานชิ้นนี้ — ต้องระบุเหตุผลเสมอ (ยกเลิก/ปล่อยว่างไม่พักงาน) บันทึกเป็นล็อกแยกไว้ทุกครั้งที่พัก แม้จะกดทำต่อแล้วก็ตาม
@@ -21293,7 +21326,7 @@ async function editDailyPieceSize(taskId, rollIdx, workerId) {
   if (prevEntry.status !== 'done') return;
   const scoped = getMatchingRollsForPlan(task.rollSet, task.rollColor);
   const roll = scoped[rollIdx];
-  const label = roll ? roll.name : 'ชิ้นนี้';
+  const label = roll ? (task.workType === 'saw' ? 'ใบเลื่อย รหัส ' + roll.id : roll.name) : 'ชิ้นนี้';
   const size = await voicePrompt(`แก้ขนาด OD ที่วัดได้ของ "${label}":`, 'พิมพ์ หรือกด 🎤 แล้วพูด');
   if (size === null) return;                       // กดยกเลิก — ไม่แก้อะไร
   if (!String(size).trim()) { alert('กรุณากรอกขนาดที่วัดได้'); return; }
@@ -21319,7 +21352,8 @@ async function editDailyPieceSize(taskId, rollIdx, workerId) {
       correctedFrom: oldSize == null ? null : String(oldSize), correctedBy: effectiveUserName(), correctedAt,
     });
     // แก้ค่าที่วัดผิด — ทะเบียนต้องตามไปด้วย แต่ไม่นับรอบการแต่งเพิ่ม (เป็นการแก้ค่าเดิม ไม่ใช่แต่งใหม่)
-    applyMeasuredSizeToRegistry(roll2, size, dailyViewDate, false);
+    if (t2.workType === 'saw') applyMeasuredSawOd(rollIdx, size, dailyViewDate);
+    else applyMeasuredSizeToRegistry(roll2, size, dailyViewDate, false);
     persistState();
     renderDailyTasks();
     if (currentPage === 'registry') { renderRollSetList(); renderRollColorList(); }
