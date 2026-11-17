@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.40';
+const APP_BUILD = '2026-11-17.41';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5775,7 +5775,13 @@ function dashSqSetRowHtml(set, badgeColor, rowBg, hideSize) {
         title="รหัส SQ">รหัส <b style="font-size:12.5px;font-weight:800;color:var(--accent);">${escapeHtmlAttr(code)}</b></span>` : '';
     })()}
     ${thickTag}
-    ${live ? prodSqLiveTagHtml(live) : ''}
+    ${live ? prodSqLiveTagHtml(live) : (() => {
+      const w = sqProdWaitInfo(sqSetKey(head));
+      return !w ? '' : `<span style="flex-shrink:0;font-size:11.5px;font-weight:800;padding:1px 8px;border-radius:99px;
+          background:var(--red-dim);color:var(--red);box-shadow:inset 0 0 0 1px var(--red);"
+        title="${escapeHtmlAttr('จากระบบผลิต · ถอดจากเครื่อง ' + w.machine + ' เมื่อ ' + prodSqFmtTime(w.endedAt)
+          + ' · รอบนั้นผลิต ' + prodSqTons(w.kg) + ' ตัน (' + w.pcs.toLocaleString() + ' เส้น)')}">ถอดจาก ${escapeHtmlAttr(w.machine)} · ${escapeHtmlAttr(prodSqFmtTime(w.endedAt))}</span>`;
+    })()}
     ${tag}
     ${sqSetStatusChipHtml(sqSetKey(head))}
   </div>`;
@@ -5837,6 +5843,13 @@ function openSqSetStatusMenu(ev, setKeyStr) {
 function pickSqSetStatus(setKeyStr, status) {
   closeSqSetStatusMenu();
   if (!canEditPlan() || !SQ_SET_STATUS_META[status]) return;
+  if (status === 'ready' && sqProdWaitInfo(setKeyStr)) {
+    const today = toISODate(new Date());
+    withCloudRetry(() => {
+      (toolingData.sq || []).forEach(x => { if (sqSetKey(x) === setKeyStr) x.lastService = today; });
+      persistState();
+    });
+  }
   setSqSetStatus(setKeyStr, status);
 }
 
@@ -6022,7 +6035,7 @@ function dashSqInUseCardHtml(sets) {
 var PROD_SQ_PROXY_URL = 'https://tst-tooling-api.vercel.app/api/sq-usage'; // ตัวกลางบน Vercel (โปรเจกต์ tst-tooling-api) — ว่าง = ปิดการเชื่อม
 var PROD_SQ_MIN_AGE_MS = 5 * 60 * 1000;  // เปิดแท็บซ้ำภายใน 5 นาทีใช้ผลเดิม (ตัวกลางก็แคช 5 นาทีเหมือนกัน)
 var PROD_SQ_FG_MAX_DAYS = 31;            // ยอดผลิตย้อนหลังที่ใช้หาขนาด — รอบที่ใส่มานานกว่านี้ดูแค่ช่วงล่าสุดก็พอ
-var prodSqLive = { status: 'idle', at: 0, rounds: [], byKey: {}, error: null };
+var prodSqLive = { status: 'idle', at: 0, rounds: [], byKey: {}, removed: {}, error: null };
 var prodSqLoading = false;
 
 function prodSqLiveFor(setKeyStr) {
@@ -6034,7 +6047,27 @@ function prodSqLiveFor(setKeyStr) {
 function dashSqEffectiveStatus(setKeyStr) {
   if (prodSqLiveFor(setKeyStr)) return 'inuse';
   if (sqSetPlanState(setKeyStr)) return 'dressing';
-  return sqSetStatusFor(setKeyStr);
+  const st = sqSetStatusFor(setKeyStr);
+  // ตั้งเองว่า กำลังแต่ง / ไม่พร้อมใช้ ไว้ — เชื่อที่ตั้งเอง
+  if (st === 'dressing' || st === 'not-ready') return st;
+  // ฝ่ายผลิตถอดออกแล้ว และยังไม่ได้แต่งหลังถอด → รอแต่ง (แบบเดียวกับใบเลื่อยที่ถอดแล้วขึ้นรอลับคม)
+  if (sqProdWaitInfo(setKeyStr)) return 'waitdress';
+  // ถอดแล้วและแต่งเสร็จหลังถอด แต่ทะเบียนยังค้าง "กำลังใช้งาน" → พร้อมใช้งาน (ไม่ได้อยู่บนเครื่องแล้ว)
+  if (st === 'inuse' && prodSqRemovedFor(setKeyStr)) return 'ready';
+  return st;
+}
+function prodSqRemovedFor(setKeyStr) {
+  return (prodSqLive && prodSqLive.removed && prodSqLive.removed[setKeyStr]) || null;
+}
+// ชุดที่ถอดจากเครื่องแล้วยังไม่ได้แต่ง — แต่งเสร็จ (กดจบงานแต่ง / ตั้งพร้อมใช้งานเอง) จะลงวันที่ lastService ของชิ้นไว้
+// lastService ตั้งแต่วันที่ถอดขึ้นไป = แต่งหลังถอดแล้ว
+function sqProdWaitInfo(setKeyStr) {
+  const rm = prodSqRemovedFor(setKeyStr);
+  if (!rm) return null;
+  const last = ((toolingData || {}).sq || []).filter(x => sqSetKey(x) === setKeyStr)
+    .map(x => String(x.lastService || '')).sort().pop() || '';
+  const remDate = toISODate(new Date(rm.endedAt));
+  return last && last >= remDate ? null : rm;
 }
 // สถานะแผนแต่งของชุดหนึ่ง — 'doing' (กดเริ่มชิ้นไหนแล้ว) / 'late' (วันของงานผ่านไปแล้วยังไม่เสร็จ) / 'wait' (รอทำ) / null (ไม่มีแผนค้าง)
 // งานที่กดเสร็จทั้งใบ หรือทุกชิ้นเสร็จแล้ว ไม่นับ · เกณฑ์งานค้างเดียวกับการ์ดชุด Roll กำลังแต่ง (taskRemainderScheduledAhead)
@@ -6107,7 +6140,26 @@ function loadProdSqInUse(force) {
       });
       const byKey = {};
       rounds.forEach(x => { if (x.setKey) byKey[x.setKey] = x; });
-      prodSqLive = { status: 'ok', at: Date.now(), rounds, byKey, error: null };
+      // ชุดที่ฝ่ายผลิตถอดออกแล้ว = รอบล่าสุดของชุดนั้นปิดไปแล้ว (มีเวลาถอด) และตอนนี้ไม่ได้อยู่บนเครื่อง
+      // ใช้ขนาดจาก product_code ของรอบ (รอบที่ปิดแล้วมียอดผลิต จึงมี product_code แทบทุกรอบ)
+      const latest = {};
+      (json.rows || []).forEach(r => {
+        if (!r) return;
+        const sk = apiSizeKey(r);
+        if (!sk) return;
+        const cands = heads.filter(h => rollSetFgKey(h.sizeSq) === sk && h.color === r.color && sqSetOrdinalInfo(h).no === Number(r.code));
+        if (cands.length !== 1) return;
+        const k = sqSetKey(cands[0]);
+        if (!latest[k] || String(r.started_at) > String(latest[k].started_at)) latest[k] = r;
+      });
+      const removed = {};
+      Object.keys(latest).forEach(k => {
+        const r = latest[k];
+        if (r.is_open || !r.ended_at || byKey[k]) return;
+        removed[k] = { machine: String(r.machine_id || ''), endedAt: r.ended_at, startedAt: r.started_at,
+          kg: Number(r.kg) || 0, pcs: Number(r.pcs) || 0 };
+      });
+      prodSqLive = { status: 'ok', at: Date.now(), rounds, byKey, removed, error: null };
     } catch (e) {
       // ดึงไม่ได้ก็ยังโชว์ผลรอบก่อน (ถ้ามี) — แค่บอกว่ารอบล่าสุดล้มเหลว
       prodSqLive = { ...prodSqLive, status: 'error', at: Date.now(), error: String((e && e.message) || e) };
@@ -18953,6 +19005,10 @@ function sqSetOrdinalInfo(r) {
     const k = sqSetKey(x);
     if (!keys.includes(k)) keys.push(k);
   });
+  // ชุดที่มีรหัสเป็นเลข (เช่น 5_R / 5_L) ใช้เลขนั้นเป็น "ชุดที่" ให้ตรงกับ NO. บน Roll และตารางของหน้างาน
+  // (เดิมนับลำดับตามรอบผลิต ชุดที่เพิ่ม/ไม่มีเดือนผลิตทำให้เลขของชุดอื่นเลื่อน)
+  const code = parseInt(String((r || {}).code || '').trim().replace(/_[RL]$/i, ''), 10);
+  if (Number.isFinite(code) && code > 0) return { no: code, total: keys.length };
   const i = keys.indexOf(sqSetKey(r));
   return { no: i < 0 ? 1 : i + 1, total: keys.length };
 }
