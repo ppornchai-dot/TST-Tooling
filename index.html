@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.12';
+const APP_BUILD = '2026-11-17.14';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5285,11 +5285,16 @@ function getWorkingRollEntries(workType) {
         set: t.rollSet, colorKey, cat,
         colorLabel: colorMeta ? colorMeta.label : 'ไม่ระบุสี',
         dot: colorMeta ? colorMeta.dot : '#9CA3AF',
-        doing: 0, done: 0, total: 0, remainAmt: 0, dates: new Set(), tasks: [],
+        doing: 0, done: 0, total: 0, remainAmt: 0, dates: new Set(), tasks: [], ids: new Set(), doneIds: new Set(),
       });
     }
     const e = byKey.get(key);
-    e.doing += doing; e.done += done; e.total += rollIds.length; e.remainAmt += remainAmt;
+    e.doing += doing; e.remainAmt += remainAmt;
+    rollIds.forEach(idx => {
+      e.ids.add(idx);
+      if ((pieces[idx] || {}).status === 'done') e.doneIds.add(idx);
+    });
+    e.total = e.ids.size; e.done = e.doneIds.size;
     e.dates.add(d);
     // เก็บงานตามแผนที่ยุบมารวมกันไว้ด้วย เพื่อให้กดจาก Dashboard แล้วเด้งไปหางานนั้นได้
     e.tasks.push({ id: t.id, date: d, workType: t.workType });
@@ -5334,20 +5339,21 @@ function dashRollWorkingChipHtml(e, accentVar, bgVar) {
   // ป้ายของชุดที่กำลังทำเดิมโชว์ "จำนวนชิ้นที่กดเริ่มค้างไว้" ซึ่งเป็น 0 ได้ทั้งที่ยังมีงานเหลือ
   // (เช่น เสร็จ 7/8 ชิ้น แต่ชิ้นที่ 8 ยังไม่ได้กดเริ่ม ป้ายจึงขึ้น "0 ชิ้น") — เปลี่ยนเป็นบอกงานที่เหลือแทน
   const remain = fmtRollAmount(e.remainAmt != null ? e.remainAmt : Math.max(e.total - e.done, 0));
+  const unit = e.unit || 'ชิ้น';   // ใบเลื่อยนับเป็น "ใบ"
   // รวมทุกวันที่วางแผนไว้แล้ว จึงต้องบอกวันด้วย ไม่งั้นไม่รู้ว่าของวันไหน
   // ชุดเดียวกันอาจถูกวางแผนไว้หลายวัน — แสดงวันแรกสุดแล้วต่อท้ายว่ามีอีกกี่วัน
   const dateNote = e.firstDate
     ? ` · ${escapeHtmlAttr(fmtDateThaiShort(parseISODate(e.firstDate)))}${e.dayCount > 1 ? ` +${e.dayCount - 1} วัน` : ''}`
     : '';
   const style = {
-    late:  { border: '1px solid var(--red)',      bg: 'var(--red-dim)',  badge: e.insert ? 'ค้าง' : `ค้าง ${remain} ชิ้น`,   badgeColor: 'var(--red)' },
-    doing: { border: `1px solid ${accentVar}`,    bg: bgVar,             badge: e.insert ? 'กำลังทำ' : `เหลือ ${remain} ชิ้น`, badgeColor: accentVar },
-    wait:  { border: `1px dashed ${accentVar}`,   bg: 'transparent',     badge: e.insert ? 'รอทำ' : `รอทำ ${remain} ชิ้น`,   badgeColor: 'var(--text-3)' },
+    late:  { border: '1px solid var(--red)',      bg: 'var(--red-dim)',  badge: e.badge || (e.insert ? 'ค้าง' : `ค้าง ${remain} ${unit}`),   badgeColor: 'var(--red)' },
+    doing: { border: `1px solid ${accentVar}`,    bg: bgVar,             badge: e.badge || (e.insert ? 'กำลังทำ' : `เหลือ ${remain} ${unit}`), badgeColor: accentVar },
+    wait:  { border: `1px dashed ${accentVar}`,   bg: 'transparent',     badge: e.badge || (e.insert ? 'รอทำ' : `รอทำ ${remain} ${unit}`),   badgeColor: 'var(--text-3)' },
   }[e.cat];
   // งานแทรกไม่ได้นับเป็นชิ้น Roll — ใช้คำอธิบายของตัวเอง (ดู detailNote ใน getWorkingRollEntries)
-  const detail = e.detailNote || (e.cat === 'wait' ? `ตามแผน ${e.total} ชิ้น` : `เสร็จ ${e.done}/${e.total} ชิ้น`);
+  const detail = e.detailNote || (e.cat === 'wait' ? `ตามแผน ${e.total} ${unit}` : `เสร็จ ${e.done}/${e.total} ${unit}`);
   // กดแล้วเด้งไปหน้างานประจำวันของวันนั้นเลย จะกดเริ่ม/จบงานต่อได้ทันที
-  const jump = e.insert
+  const jump = e.jumpAttr ? e.jumpAttr : e.insert
     ? jsCallAttr('goToDailyInsert', e.taskId, e.taskDate || '')
     : (e.taskId
       ? jsCallAttr('goToDailyTask', e.taskId, e.taskDate || '', e.workType || '')
@@ -5358,12 +5364,12 @@ function dashRollWorkingChipHtml(e, accentVar, bgVar) {
     onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
     title="${escapeHtmlAttr((e.taskId ? 'ไปที่งานประจำวัน' + (e.firstDate ? ' วันที่ ' + fmtDateThai(parseISODate(e.firstDate)) : '')
       : 'ดูรายละเอียดในทะเบียน Tooling')
-      + (e.insert ? '' : ' · กดเริ่มค้างไว้ ' + e.doing + ' ชิ้น'
+      + (e.insert || e.unit ? '' : ' · กดเริ่มค้างไว้ ' + e.doing + ' ชิ้น'
           + ' · งานที่เหลือคิดเป็นสัดส่วนของเวลาต่อชิ้น ชิ้นที่ทำได้ครึ่งเดียวนับเป็น 0.5 ชิ้น'))}">
     <span style="width:9px;height:9px;border-radius:50%;background:${e.dot};flex-shrink:0;"></span>
     <span style="flex:1;min-width:0;">
       <span style="display:block;font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(e.set)}</span>
-      <span style="display:block;font-size:11px;color:var(--text-3);">${escapeHtmlAttr(e.colorLabel)} · ${detail}${dateNote}</span>
+      <span style="display:block;font-size:11px;color:var(--text-3);">${escapeHtmlAttr(e.colorLabel)}${e.colorLabel ? ' · ' : ''}${detail}${dateNote}</span>
     </span>
     <span style="font-size:${e.cat === 'doing' ? '12px' : '10px'};font-weight:${e.cat === 'doing' ? 800 : 700};color:${style.badgeColor};flex-shrink:0;white-space:nowrap;
       ${e.cat === 'doing' ? '' : `border:1px solid ${e.cat === 'late' ? 'var(--red)' : 'var(--border)'};border-radius:99px;padding:1px 7px;`}">${style.badge}</span>
@@ -5459,6 +5465,27 @@ function highlightPlanTask(taskId) {
       el.style.outline = prev.outline; el.style.borderRadius = prev.radius; el.style.background = prev.bg;
     }, 2500);
   });
+}
+
+// หัวข้อกลุ่ม + ชิปของแต่ละกลุ่ม — การ์ดชุด Roll / Roll SQ / ใบเลื่อย ใช้รูปแบบเดียวกัน
+function dashWorkingGroupsHtml(entries, accent, bg, countWord) {
+  return ROLL_WORK_CAT_META.map(m => ({ ...m, list: entries.filter(e => e.cat === m.cat) }))
+    .filter(g => g.list.length).map(g => {
+      const c = g.color || accent, b = g.bg || bg;
+      return `
+        <div style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;letter-spacing:.01em;
+                    color:${c};background:${b};border-left:4px solid ${c};border-radius:0 6px 6px 0;
+                    padding:7px 11px;margin:10px 0 7px;">
+          <span style="width:9px;height:9px;border-radius:50%;background:${c};flex-shrink:0;"></span>
+          ${g.label}
+          <span style="margin-left:auto;font-size:12px;font-weight:800;color:${c};opacity:.85;">${g.list.length} ${countWord || 'ชุด'}</span>
+        </div>
+        ${g.list.map(e => dashRollWorkingChipHtml(e, accent, bg)).join('')}`;
+    }).join('');
+}
+function dashWorkingCountNote(entries) {
+  const parts = ROLL_WORK_CAT_META.map(m => [m.label, entries.filter(e => e.cat === m.cat).length]).filter(x => x[1]);
+  return parts.length ? ' (' + parts.map(x => x[0] + ' ' + x[1]).join(' · ') + ')' : '';
 }
 
 function renderDashboardWorkingRoll() {
@@ -5862,98 +5889,38 @@ function dashSqStatusCardHtml(sets, { title, color, groups, emptyText, maxHeight
 }
 
 // แยก "กำลังแต่ง" กับ "รอแต่ง" เป็นคนละการ์ด — เดิมรวมอยู่การ์ดเดียว ชุดที่รอคิวแต่งจึงจมอยู่ใต้ชุดที่กำลังแต่ง
-// งานแต่ง Roll SQ ตามแผนที่ยังไม่เสร็จ — หนึ่งแถว = หนึ่งงาน (ชุดเดียว ชิ้น R/L) แบ่ง งานค้าง/กำลังทำ/รอทำ
-// เกณฑ์เดียวกับ sawWorkEntries (การ์ดใบเลื่อยกำลังลับคม)
-function sqWorkEntries() {
-  const today = dailyTodayIso();
-  const out = [];
-  (planTasks || []).forEach(t => {
-    if (!t || t.workType !== 'sq' || t.otherWork || !isSqPlanSet(t.rollSet)) return;
-    const d = taskDisplayDate(t);
-    if ((dailyStatusByDate[d] || {})[t.id] === 'done') return;
-    const pieces = (dailyPieceStatus[d] || {})[t.id] || {};
-    const scoped = getMatchingRollsForPlan(t.rollSet, t.rollColor);
-    const left = (t.rollIds || []).filter(i => (pieces[i] || {}).status !== 'done');
-    if (!left.length) return;
-    const late = d < today && !taskRemainderScheduledAhead(t, i => (pieces[i] || {}).status === 'done');
-    const startedIdx = left.find(i => ['in_progress', 'paused'].includes((pieces[i] || {}).status));
-    const entry = startedIdx != null ? pieces[startedIdx] : {};
-    const head = (toolingData.sq || []).find(r => sqSetKey(r) === sqPlanSetKeyOf(t.rollSet)) || null;
-    out.push({ task: t, date: d, head, entry,
-      names: left.map(i => (scoped[i] || {}).name || ('ชิ้น ' + (i + 1))),
-      minutes: left.reduce((n, i) => n + (pieceMinutesOfTask(t, i, scoped) || 0), 0),
-      cat: late ? 'late' : (startedIdx != null ? 'doing' : 'wait') });
-  });
-  return out.sort((a, b) => (a.date + (a.task.startTime || '')).localeCompare(b.date + (b.task.startTime || '')));
-}
-
-// ชุด Roll SQ กำลังแต่ง — รูปแบบเดียวกับการ์ด "ใบเลื่อยกำลังลับคม"
-// งานตามแผน (งานค้าง/กำลังทำ/รอทำ) + ชุดที่ตั้งสถานะ "กำลังแต่ง" เองในทะเบียนแต่ไม่มีในแผน
+// ชุด Roll SQ กำลังแต่ง — รูปแบบเดียวกับการ์ด "ชุด Roll กำลังแต่ง" (getWorkingRollEntries ตัวเดียวกัน ยุบตามชุด)
+// + ชุดที่ตั้งสถานะ "กำลังแต่ง" เองในทะเบียนแต่ไม่มีในแผน (อยู่กลุ่มกำลังทำ ป้าย "ไม่มีในแผน")
 function dashSqWorkingCardHtml(sets) {
-  const entries = sqWorkEntries();
-  const planned = new Set(entries.map(e => e.task.rollSet));
-  const manual = (sets || []).filter(st => st[0] && !prodSqLiveFor(sqSetKey(st[0]))
-    && sqSetStatusFor(sqSetKey(st[0])) === 'dressing' && !planned.has(sqPlanSetNameOf(st[0])));
   const accent = 'var(--amber)', accentBg = 'var(--amber-dim)';
-  const groups = ROLL_WORK_CAT_META.map(m => ({ ...m, list: entries.filter(e => e.cat === m.cat) }));
-  const setName = head => head ? (String(head.sizeSq || '').trim() + ' · ' + sqColorMeta(head.color).label + ' ' + sqSetOrdinalLabel(head)) : 'ชุดที่ถูกลบไปแล้ว';
-  const dot = head => `<span style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:${sqColorMeta((head || {}).color).dot};box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);"></span>`;
-  const chip = e => {
-    const paused = e.entry.status === 'paused';
-    const style = {
-      late:  { border: '1px solid var(--red)',  bg: 'var(--red-dim)', badge: 'ค้าง',                          badgeColor: 'var(--red)' },
-      doing: { border: `1px solid ${accent}`,   bg: accentBg,         badge: paused ? '⏸ พักงาน' : 'กำลังแต่ง', badgeColor: accent },
-      wait:  { border: `1px dashed ${accent}`,  bg: 'transparent',    badge: 'รอทำ',                          badgeColor: 'var(--text-3)' },
-    }[e.cat];
-    const when = fmtDateThaiShort(parseISODate(e.date)) + (e.task.startTime ? ' ' + e.task.startTime : '');
-    const detail = [
-      e.names.join(', '),
-      (e.cat === 'doing' && e.entry.startTime ? 'เริ่ม ' + e.entry.startTime : 'แผน ' + when),
-      e.minutes ? e.minutes + ' นาที' : '',
-      e.task.workerId ? workerName(e.task.workerId) : '',
-    ].filter(Boolean).join(' · ');
-    return `<div onclick="${jsCallAttr('goToDailyTask', e.task.id, e.date, 'sq')}"
-      style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:8px;cursor:pointer;
-             border:${style.border};background:${style.bg};margin-bottom:6px;transition:filter .12s;"
-      onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
-      title="${escapeHtmlAttr('ไปที่งานประจำวัน วันที่ ' + fmtDateThai(parseISODate(e.date))
-        + (paused && e.entry.pauseReason ? ' · พักงาน: ' + e.entry.pauseReason : ''))}">
-      <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:800;color:#fff;
-        background:${e.cat === 'late' ? 'var(--red)' : accent};padding:2px 10px;border-radius:6px;flex-shrink:0;">${dot(e.head)}${escapeHtmlAttr(setName(e.head))}</span>
-      <span style="flex:1;min-width:0;font-size:12px;color:var(--text-2);">${escapeHtmlAttr(detail)}</span>
-      <span style="font-size:${e.cat === 'doing' ? '12px' : '10px'};font-weight:800;color:${style.badgeColor};flex-shrink:0;white-space:nowrap;
-        ${e.cat === 'doing' ? '' : `border:1px solid ${e.cat === 'late' ? 'var(--red)' : 'var(--border)'};border-radius:99px;padding:1px 7px;`}">${style.badge}</span>
-    </div>`;
-  };
-  const manualRow = st => `<div onclick="${jsCallAttr('goToSqSet', sqSetKey(st[0]))}"
-      style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:8px;cursor:pointer;
-             border:1px solid ${accent};background:${accentBg};margin-bottom:6px;"
-      title="ตั้งสถานะกำลังแต่งไว้ในทะเบียน Roll SQ — ยังไม่มีงานในแผน · กดเพื่อไปที่ชุดนี้ในทะเบียน">
-      <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:800;color:#fff;background:${accent};padding:2px 10px;border-radius:6px;flex-shrink:0;">${dot(st[0])}${escapeHtmlAttr(setName(st[0]))}</span>
-      <span style="flex:1;min-width:0;font-size:12px;color:var(--text-2);">${escapeHtmlAttr(st.map(r => r.name || r.code || '').filter(Boolean).join(', '))}</span>
-      <span style="font-size:10px;font-weight:800;color:var(--text-3);border:1px solid var(--border);border-radius:99px;padding:1px 7px;flex-shrink:0;">ไม่มีในแผน</span>
-    </div>`;
-  const head = (label, n, c, b) => `<div style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;letter-spacing:.01em;
-      color:${c};background:${b};border-left:4px solid ${c};border-radius:0 6px 6px 0;padding:7px 11px;margin:10px 0 7px;">
-      <span style="width:9px;height:9px;border-radius:50%;background:${c};flex-shrink:0;"></span>${label}
-      <span style="margin-left:auto;font-size:12px;font-weight:800;color:${c};opacity:.85;">${n} งาน</span></div>`;
-  const total = entries.length + manual.length;
-  const body = total
-    ? groups.filter(g => g.list.length).map(g => head(g.label, g.list.length, g.color || accent, g.bg || accentBg) + g.list.map(chip).join('')).join('')
-      + (manual.length ? head('กำลังแต่ง (ไม่มีในแผน)', manual.length, accent, accentBg) + manual.map(manualRow).join('') : '')
-    : '<div style="padding:14px;text-align:center;color:var(--text-3);font-size:13px;">ยังไม่มีชุด Roll SQ ที่กำลังแต่งหรือวางแผนไว้</div>';
-  const parts = groups.filter(g => g.list.length).map(g => g.label + ' ' + g.list.length)
-    .concat(manual.length ? ['ไม่มีในแผน ' + manual.length] : []);
+  const headOf = setName => (toolingData.sq || []).find(r => sqSetKey(r) === sqPlanSetKeyOf(setName)) || null;
+  const planned = getWorkingRollEntries('sq').map(e => {
+    if (e.insert || !isSqPlanSet(e.set)) return e;
+    const h = headOf(e.set);
+    const cm = sqColorMeta(h && h.color);
+    return { ...e, planSet: e.set,
+      set: h ? String(h.sizeSq || '').trim() + ' ' + sqSetOrdinalLabel(h) : 'ชุดที่ถูกลบไปแล้ว',
+      colorLabel: h ? cm.label : '', dot: cm.dot };
+  });
+  const plannedSets = new Set(planned.map(e => e.planSet).filter(Boolean));
+  const manual = (sets || []).filter(st => st[0] && !prodSqLiveFor(sqSetKey(st[0]))
+    && sqSetStatusFor(sqSetKey(st[0])) === 'dressing' && !plannedSets.has(sqPlanSetNameOf(st[0])))
+    .map(st => ({
+      set: String(st[0].sizeSq || '').trim() + ' ' + sqSetOrdinalLabel(st[0]),
+      colorLabel: sqColorMeta(st[0].color).label, dot: sqColorMeta(st[0].color).dot,
+      cat: 'doing', done: 0, total: st.length, doing: 0, badge: 'ไม่มีในแผน',
+      detailNote: 'ตั้งสถานะกำลังแต่งในทะเบียน', jumpAttr: jsCallAttr('goToSqSet', sqSetKey(st[0])),
+    }));
+  const entries = planned.concat(manual);
   return `<div class="card" style="margin-bottom:18px;">
     <div class="card-header">
       <span class="card-title" style="font-size:17px;color:${accent};display:inline-flex;align-items:center;gap:8px;">
         <span style="width:11px;height:11px;border-radius:50%;background:${accent};"></span>ชุด Roll SQ กำลังแต่ง</span>
-      <span style="margin-left:auto;font-size:12px;color:var(--text-3);"><b style="color:${accent};">${total}</b> งาน${parts.length ? escapeHtmlAttr(' (' + parts.join(' · ') + ')') : ''}</span>
+      <span style="margin-left:auto;font-size:12px;color:var(--text-3);"><b style="color:${accent};">${entries.length}</b> ชุด${escapeHtmlAttr(dashWorkingCountNote(entries))}</span>
     </div>
     <div style="padding:4px 14px 10px;">
-      ${body}
-      <div style="font-size:11px;color:var(--text-3);margin-top:6px;">
-        แสดงงานแต่ง Roll SQ ตามแผนที่ยังไม่เสร็จ (รวมของวันนี้และวันข้างหน้า) · กดที่งานเพื่อไปกดเริ่ม/จบงานในหน้างานประจำวัน</div>
+      ${entries.length ? dashWorkingGroupsHtml(entries, accent, accentBg, 'ชุด')
+        : '<div style="padding:14px;text-align:center;color:var(--text-3);font-size:13px;">ยังไม่มีชุด Roll SQ ที่กำลังแต่งหรือวางแผนไว้</div>'}
     </div>
   </div>`;
 }
@@ -6351,59 +6318,32 @@ function sawWorkEntries() {
     || String(a.r.id).localeCompare(String(b.r.id)));
 }
 
+// ใบเลื่อยกำลังลับคม — รูปแบบเดียวกับการ์ด "ชุด Roll กำลังแต่ง" (หัวข้อ งานค้าง/กำลังทำ/รอทำ + ชิปเดียวกัน)
+// แถวละใบ (ช่างเรียกใบเลื่อยด้วยรหัส) · งานแทรกของงานลับคมใบเลื่อยขึ้นด้วยเหมือนการ์ด Roll
 function sawWorkingCardHtml() {
-  const entries = sawWorkEntries();
   const accent = 'var(--amber)', accentBg = 'var(--amber-dim)';
-  const groups = ROLL_WORK_CAT_META.map(m => ({ ...m, list: entries.filter(e => e.cat === m.cat) }));
-  const chip = e => {
+  const entries = sawWorkEntries().map(e => {
     const paused = e.entry.status === 'paused';
-    const style = {
-      late:  { border: '1px solid var(--red)',  bg: 'var(--red-dim)', badge: 'ค้าง',                          badgeColor: 'var(--red)' },
-      doing: { border: `1px solid ${accent}`,   bg: accentBg,         badge: paused ? '⏸ พักงาน' : 'กำลังลับ', badgeColor: accent },
-      wait:  { border: `1px dashed ${accent}`,  bg: 'transparent',    badge: 'รอทำ',                          badgeColor: 'var(--text-3)' },
-    }[e.cat];
-    const u = e.r && e.r.id && typeof sawUsageInfo === 'function' ? sawUsageInfo(e.r) : null;
-    const when = fmtDateThaiShort(parseISODate(e.date)) + (e.task.startTime ? ' ' + e.task.startTime : '');
-    const detail = [
-      [sawOdLabel(e.r), e.r.machine].filter(x => x && x !== '—').join(' · '),
-      (e.cat === 'doing' && e.entry.startTime ? 'เริ่ม ' + e.entry.startTime : 'แผน ' + when),
-      e.minutes ? e.minutes + ' นาที' : '',
-      e.task.workerId ? workerName(e.task.workerId) : '',
-    ].filter(Boolean).join(' · ');
-    return `<div onclick="${jsCallAttr('goToDailyTask', e.task.id, e.date, 'saw')}"
-      style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:8px;cursor:pointer;
-             border:${style.border};background:${style.bg};margin-bottom:6px;transition:filter .12s;"
-      onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
-      title="${escapeHtmlAttr('ไปที่งานประจำวัน วันที่ ' + fmtDateThai(parseISODate(e.date))
-        + (paused && e.entry.pauseReason ? ' · พักงาน: ' + e.entry.pauseReason : ''))}">
-      <span style="font-size:13px;font-weight:800;color:#fff;background:${e.cat === 'late' ? 'var(--red)' : accent};padding:2px 10px;border-radius:6px;flex-shrink:0;">รหัส ${escapeHtmlAttr(e.r.id)}</span>
-      <span style="flex:1;min-width:0;font-size:12px;color:var(--text-2);">${escapeHtmlAttr(detail)}</span>
-      ${u && u.p ? sawTonsPcsHtml(u.sinceGrind != null ? 'หลังลับคม' : 'สะสม', u.sinceGrind != null ? u.sinceGrind : u.total,
-        u.sinceGrind != null ? u.sinceGrindPcs : u.p.pcs) : ''}
-      <span style="font-size:${e.cat === 'doing' ? '12px' : '10px'};font-weight:800;color:${style.badgeColor};flex-shrink:0;white-space:nowrap;
-        ${e.cat === 'doing' ? '' : `border:1px solid ${e.cat === 'late' ? 'var(--red)' : 'var(--border)'};border-radius:99px;padding:1px 7px;`}">${style.badge}</span>
-    </div>`;
-  };
-  const body = entries.length
-    ? groups.filter(g => g.list.length).map(g => {
-      const c = g.color || accent, b = g.bg || accentBg;
-      return `<div style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;letter-spacing:.01em;
-                  color:${c};background:${b};border-left:4px solid ${c};border-radius:0 6px 6px 0;padding:7px 11px;margin:10px 0 7px;">
-          <span style="width:9px;height:9px;border-radius:50%;background:${c};flex-shrink:0;"></span>${g.label}
-          <span style="margin-left:auto;font-size:12px;font-weight:800;color:${c};opacity:.85;">${g.list.length} ใบ</span>
-        </div>${g.list.map(chip).join('')}`;
-    }).join('')
-    : '<div style="padding:14px;text-align:center;color:var(--text-3);font-size:13px;">ยังไม่มีใบเลื่อยที่กำลังลับคมหรือวางแผนไว้</div>';
-  const note = entries.length
-    ? ' (' + groups.filter(g => g.list.length).map(g => g.label + ' ' + g.list.length).join(' · ') + ')' : '';
+    return {
+      set: 'ใบเลื่อย รหัส ' + (e.r.id || '—'),
+      colorLabel: [sawOdLabel(e.r), e.r.machine].filter(x => x && x !== '—').join(' · '),
+      dot: toolCalSawColor(e.r.id), cat: e.cat, unit: 'ใบ',
+      done: 0, total: 1, remainAmt: 1, doing: e.cat === 'doing' ? 1 : 0,
+      firstDate: e.date, dayCount: 1, taskId: e.task.id, taskDate: e.date, workType: 'saw',
+      badge: e.cat === 'doing' ? (paused ? '⏸ พักงาน' : 'กำลังลับ') : (e.cat === 'late' ? 'ค้าง' : 'รอทำ'),
+      detailNote: [e.cat === 'doing' && e.entry.startTime ? 'เริ่ม ' + e.entry.startTime : (e.task.startTime ? 'แผน ' + e.task.startTime : ''),
+        e.minutes ? e.minutes + ' นาที' : '', e.task.workerId ? workerName(e.task.workerId) : ''].filter(Boolean).map(escapeHtmlAttr).join(' · '),
+    };
+  }).concat(getWorkingRollEntries('saw').filter(e => e.insert));
   return `<div class="card" style="margin-bottom:18px;">
     <div class="card-header">
       <span class="card-title" style="font-size:17px;color:${accent};display:inline-flex;align-items:center;gap:8px;">
         <span style="width:11px;height:11px;border-radius:50%;background:${accent};"></span>ใบเลื่อยกำลังลับคม</span>
-      <span style="margin-left:auto;font-size:12px;color:var(--text-3);"><b style="color:${accent};">${entries.length}</b> ใบ${escapeHtmlAttr(note)}</span>
+      <span style="margin-left:auto;font-size:12px;color:var(--text-3);"><b style="color:${accent};">${entries.length}</b> ใบ${escapeHtmlAttr(dashWorkingCountNote(entries))}</span>
     </div>
     <div style="padding:4px 14px 10px;">
-      ${body}
+      ${entries.length ? dashWorkingGroupsHtml(entries, accent, accentBg, 'ใบ')
+        : '<div style="padding:14px;text-align:center;color:var(--text-3);font-size:13px;">ยังไม่มีใบเลื่อยที่กำลังลับคมหรือวางแผนไว้</div>'}
       <div style="font-size:11px;color:var(--text-3);margin-top:6px;">
         แสดงงานลับคมตามแผนที่ยังไม่เสร็จ (รวมของวันนี้และวันข้างหน้า) แยกรายใบ · กดที่ใบเพื่อไปกดเริ่ม/จบงานในหน้างานประจำวัน</div>
     </div>
@@ -9207,7 +9147,12 @@ function planGroupPieceMinutes(t) {
   const prev = planTasks.find(x => x.id !== t.id && sameGroup(x)
     && (x.endDate || x.date) === t.date && x.endTime === t.startTime) || null;
   const map = new Map();
-  [prev, t, planNextAdjacentSameGroupTask(t)].forEach(x => {
+  // ใบที่ถูกตัดออกจากงานเดียวกัน (splitGroupId เดียวกัน) เช่นส่วนที่ล้นกะไปต่อวันถัดไป — ไม่ได้ต่อเวลากันสนิท
+  // จึงหาด้วยการต่อเวลาไม่เจอ ชิ้นที่ถูกแบ่งไว้สองใบเลยถูกนับเป็นชิ้นเต็มทั้งสองใบ
+  const parts = new Map();
+  [prev, t, planNextAdjacentSameGroupTask(t)].forEach(x => { if (x) parts.set(x.id, x); });
+  if (t.splitGroupId) planTasks.forEach(x => { if (x.splitGroupId === t.splitGroupId && sameGroup(x)) parts.set(x.id, x); });
+  [...parts.values()].forEach(x => {
     if (!x) return;
     (x.rollIds || []).forEach(idx => {
       const ov = x.rollMinutesOverride && x.rollMinutesOverride[idx];
