@@ -2422,7 +2422,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.3';
+const APP_BUILD = '2026-11-17.4';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -10614,17 +10614,19 @@ function populatePlanRollSetSelect(selectedSet) {
     return;
   }
   // งานแต่ง Roll SQ เลือกจาก "ชุด Roll SQ" ในทะเบียน ไม่ใช่ Size Roll
-  // เอาเฉพาะชุดที่กรอกเวลาแต่งไว้แล้ว ชุดที่ยังไม่กรอกคิดเวลาเริ่ม-จบไม่ได้
+  // เอาเฉพาะชุดที่สถานะ "รอแต่ง" (ตั้งในทะเบียน Roll SQ) — ชุดที่ใช้งานอยู่/พร้อมใช้ไม่ต้องวางแผนแต่ง
+  // ชุดที่ยังไม่กรอกเวลาแต่งยังเลือกได้ (มีป้ายบอก) — กรอกเวลาต่อชิ้นในฟอร์มนี้แทนได้
   if (planFormWorkType() === 'sq') {
     const sets = sqPlannableSets();
     const opts = sets.map(set => {
       const v = sqPlanSetNameOf(set[0]);
-      return `<option value="${escapeHtmlAttr(v)}"${v === selectedSet ? ' selected' : ''}>${escapeHtmlAttr(planSetLabel(v))}</option>`;
+      const noTime = !set.some(r => (parseFloat(r.grindTime) || 0) > 0);
+      return `<option value="${escapeHtmlAttr(v)}"${v === selectedSet ? ' selected' : ''}>${escapeHtmlAttr(planSetLabel(v) + (noTime ? ' (ยังไม่กรอกเวลาแต่ง)' : ''))}</option>`;
     }).join('');
     // ชุดที่กำลังแก้อยู่ต้องอยู่ในรายการเสมอ ไม่งั้นเปิดฟอร์มแก้งานเก่าแล้วค่าหาย
     const missing = selectedSet && isSqPlanSet(selectedSet) && !sets.some(set => sqPlanSetNameOf(set[0]) === selectedSet)
       ? `<option value="${escapeHtmlAttr(selectedSet)}" selected>${escapeHtmlAttr(planSetLabel(selectedSet))}</option>` : '';
-    sel.innerHTML = `<option value="">${sets.length ? '— เลือกชุด Roll SQ —' : '— ยังไม่มีชุด Roll SQ ที่กรอกเวลาแต่งไว้ —'}</option>` + missing + opts;
+    sel.innerHTML = `<option value="">${sets.length ? '— เลือกชุด Roll SQ ที่รอแต่ง —' : '— ไม่มีชุด Roll SQ ที่รอแต่ง —'}</option>` + missing + opts;
     return;
   }
   const need = planFormRequiredColorStatus();
@@ -10711,10 +10713,11 @@ function planSetLabel(setName) {
   return head ? 'SQ ' + sqSetFullLabel(head) : 'SQ — ชุดที่ถูกลบไปแล้ว';
 }
 
-// ชุด Roll SQ ที่กรอกเวลาแต่งไว้ครบแล้ว — ชุดที่ยังไม่กรอกเอาไปวางแผนไม่ได้ (ไม่รู้ว่าใช้เวลาเท่าไร)
+// ชุด Roll SQ ที่วางแผนแต่งได้ = สถานะ "รอแต่ง" — สถานะเดียวกับการ์ด "ชุด Roll SQ รอแต่ง" บน Dashboard
+// (ระบบผลิตบอกว่าอยู่บนเครื่อง = กำลังใช้งาน ไม่นับ)
 function sqPlannableSets() {
   return (typeof sqSets === 'function' ? sqSets() : [])
-    .filter(set => set.some(r => (parseFloat(r.grindTime) || 0) > 0));
+    .filter(set => set[0] && dashSqEffectiveStatus(sqSetKey(set[0])) === 'waitdress');
 }
 
 // ใบเลื่อยไม่ได้จัดกลุ่ม — หนึ่งใบงานเลือกใบไหนก็ได้จากทั้งทะเบียน จึงใช้คีย์เดียวตายตัว
