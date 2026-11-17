@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.29';
+const APP_BUILD = '2026-11-17.30';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6823,7 +6823,7 @@ async function renderProdWeightTooling(force) {
       ${mc
         ? `<td style="padding-left:40px;border-left:5px solid var(--accent);white-space:nowrap;"><span style="font-size:12px;color:var(--text-3);">รอบที่ ${i + 1}</span>${
             String(r.machine_id || '').trim() && String(r.machine_id).trim() !== mc
-              ? ` <span class="chip chip-yellow" title="รอบนี้เดินที่เครื่อง ${escapeHtmlAttr(r.machine_id)} ไม่ใช่เครื่องตามทะเบียน">${escapeHtmlAttr(r.machine_id)}</span>` : ''}</td>`
+              ? ` <span class="chip chip-yellow" title="รอบนี้เดินที่เครื่อง ${escapeHtmlAttr(r.machine_id)} ไม่ใช่เครื่องของหัวข้อนี้">${escapeHtmlAttr(r.machine_id)}</span>` : ''}</td>`
         : `<td style="padding-left:26px;"><span class="chip chip-blue">${escapeHtmlAttr(r.machine_id || '—')}</span></td>`}
       <td>${escapeHtmlAttr(fmtT(r.started_at))}</td>
       <td>${r.is_open ? '<span class="chip chip-yellow">ยังใช้อยู่</span>' : escapeHtmlAttr(fmtT(r.ended_at))}</td>
@@ -6837,17 +6837,18 @@ async function renderProdWeightTooling(force) {
     return head + rs;
   };
   let tableRows, sawMcStrip = '';
-  if (kind === 'saw') {
-    // ใบเลื่อย: คั่นหัวข้อตามเครื่องก่อน (เครื่องตามทะเบียน ถ้าไม่มีใช้เครื่องของรอบล่าสุดจากระบบผลิต)
+  if (kind === 'saw' || kind === 'sq') {
+    // คั่นหัวข้อตามเครื่องก่อน — ใบเลื่อยใช้เครื่องตามทะเบียน · Roll SQ ย้ายเครื่องได้ จึงใช้เครื่องของรอบล่าสุดจากระบบผลิต
+    const unit = kind === 'sq' ? 'ชุด' : 'ใบ';
     const mcOf = g => {
-      const reg = sawReg.find(x => sawCodeKey(x.id) === g.key);
+      const reg = kind === 'saw' ? sawReg.find(x => sawCodeKey(x.id) === g.key) : null;
       const m = String((reg && reg.machine) || '').trim();
       if (m && m !== '—') return m;
       const last = g.rounds.slice().sort((a, b) => String(b.started_at).localeCompare(String(a.started_at)))[0];
       return String((last && last.machine_id) || '').trim() || 'ไม่ทราบเครื่อง';
     };
     const byMc = new Map();
-    // ในเครื่องเดียวกัน ใบที่ใส่เครื่องล่าสุดอยู่บนสุด
+    // ในเครื่องเดียวกัน ใบ/ชุดที่ใส่เครื่องล่าสุดอยู่บนสุด
     const lastStart = g => g.rounds.reduce((m, r) => String(r.started_at || '') > m ? String(r.started_at || '') : m, '');
     list.slice().sort((a, b) => lastStart(b).localeCompare(lastStart(a)))
       .forEach(g => { const m = mcOf(g); if (!byMc.has(m)) byMc.set(m, []); byMc.get(m).push(g); });
@@ -6863,14 +6864,14 @@ async function renderProdWeightTooling(force) {
                border:1px solid var(--accent);background:var(--bg-surface);color:var(--text-1);">
         <span style="background:var(--accent);color:#fff;font-weight:800;font-size:13px;padding:2px 9px;border-radius:6px;">${escapeHtmlAttr(x.mc)}</span>
         <span style="font-size:12px;color:var(--text-2);text-align:left;line-height:1.35;"><b>${escapeHtmlAttr(fmtTons2(x.kg / 1000))}</b> ตัน
-          <span style="color:var(--text-3);">· ${x.gs.length} ใบ · ${x.rounds} รอบ</span></span>
+          <span style="color:var(--text-3);">· ${x.gs.length} ${unit} · ${x.rounds} รอบ</span></span>
       </button>`).join('')}</div>`;
     tableRows = mcList.map((x, i) => `${i ? '<tr><td colspan="7" style="padding:0;height:14px;background:var(--bg-base);border:none;"></td></tr>' : ''}
         <tr id="${mcAnchor(x.mc)}" style="scroll-margin-top:42px;"><td colspan="7" style="background:var(--accent);padding:10px 14px;border:none;">
           <span style="display:inline-flex;align-items:center;gap:10px;color:#fff;">
             <span style="font-size:12px;font-weight:700;opacity:.85;">เครื่อง</span>
             <span style="font-size:19px;font-weight:900;letter-spacing:.5px;">${escapeHtmlAttr(x.mc)}</span></span>
-          <span style="float:right;font-size:13px;font-weight:700;color:#fff;line-height:28px;">${x.gs.length} ใบ · ${x.rounds} รอบ ·
+          <span style="float:right;font-size:13px;font-weight:700;color:#fff;line-height:28px;">${x.gs.length} ${unit} · ${x.rounds} รอบ ·
             ${escapeHtmlAttr(fmtTons2(x.kg / 1000))} ตัน · ${escapeHtmlAttr(x.pcs.toLocaleString())} เส้น</span>
         </td></tr>` + x.gs.map(g => groupHtml(g, x.mc)).join('')).join('');
   } else {
@@ -6892,7 +6893,7 @@ async function renderProdWeightTooling(force) {
     <div class="card table-wrap table-wrap-sticky">
       <table>
         <thead><tr>
-          <th>${kind === 'saw' ? 'รอบ' : 'เครื่อง'}</th><th>ใส่เครื่อง</th><th>ถอด</th><th>สินค้าที่ผลิต</th>
+          <th>${kind === 'saw' || kind === 'sq' ? 'รอบ' : 'เครื่อง'}</th><th>ใส่เครื่อง</th><th>ถอด</th><th>สินค้าที่ผลิต</th>
           <th style="text-align:right;">ตัน</th><th style="text-align:right;">เส้น</th><th style="text-align:right;">A / BC</th>
         </tr></thead>
         <tbody>${tableRows || `<tr><td colspan="7">${msg('ไม่มีรอบการใช้' + (kind === 'sq' ? 'ชุด Roll SQ' : 'ใบเลื่อย') + 'ในช่วงวันที่นี้')}</td></tr>`}</tbody>
