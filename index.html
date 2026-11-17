@@ -2422,7 +2422,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.1';
+const APP_BUILD = '2026-11-17.2';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -4026,7 +4026,7 @@ function toolingCalendarCardHtml(kind) {
         shortName = 'รหัส ' + code;
         longName = shortName + (reg && sawOdLabel(reg) ? ' · ' + sawOdLabel(reg) : '');
         firstTip = longName + (r.product_name ? ' · ' + r.product_name : '') + (reg ? '' : ' (ไม่พบในทะเบียน)');
-        click = "showPage('registry');switchRegTab('saw');";
+        click = jsCallAttr('goToSawBlade', code);
       }
       const txt = typeof rollColorTextOn === 'function' ? rollColorTextOn(dot) : '#fff';
       const meta = totalDays + ' วัน' + (ton ? ' · ' + ton : '') + (stillOn && w >= 260 ? ' · ยังใส่อยู่' : '');
@@ -6392,10 +6392,10 @@ function sawProblemCardHtml() {
   const rows = list.map(r => {
     const u = typeof sawUsageInfo === 'function' ? sawUsageInfo(r) : null;
     const mc = r.machine && r.machine !== '—' ? r.machine : '';
-    return `<div onclick="showPage('registry');switchRegTab('saw');"
+    return `<div onclick="${jsCallAttr('goToSawBlade', r.id)}"
       style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;margin-bottom:6px;cursor:pointer;
              background:var(--amber-dim);border:1px solid var(--border-light);"
-      title="สถานะ มีปัญหา (ตั้งในทะเบียน) — กดเพื่อไปทะเบียนใบเลื่อย แก้สถานะได้ที่ปุ่ม ✏️">
+      title="สถานะ มีปัญหา (ตั้งในทะเบียน) — กดเพื่อไปที่ใบนี้ในทะเบียนใบเลื่อย">
       <span style="font-size:14px;font-weight:800;color:#fff;background:var(--amber);padding:3px 11px;border-radius:6px;">รหัส ${escapeHtmlAttr(r.id || '—')}</span>
       <!-- อาการเป็นข้อมูลสำคัญสุดของแถวนี้ — วางถัดจากรหัสเลย ตัวหนา พื้นแดง อ่านได้จากระยะไกล -->
       ${r.problemNote
@@ -6431,7 +6431,7 @@ function prodSawWaitingCardHtml() {
   if (s === 'noproxy') return '';
   const list = s === 'ok' || prodSawLive.at ? prodSawWaitingList() : [];
   const rows = list.map(({ r, idx, u, plannedAt }) => `
-    <div onclick="showPage('registry');switchRegTab('saw');"
+    <div onclick="${jsCallAttr('goToSawBlade', r.id)}"
       style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;margin-bottom:6px;cursor:pointer;
              background:var(--red-dim);border:1px solid var(--border-light);"
       title="${escapeHtmlAttr('ถอดจากเครื่อง ' + u.last.machine + ' เมื่อ ' + prodSqFmtTime(u.removedAt)
@@ -6519,7 +6519,7 @@ function prodSawInUseCardHtml() {
     const u = r ? sawUsageInfo(r) : null;
     return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;margin-bottom:6px;
         background:var(--inuse-dim);border:1px solid var(--border-light);${r ? 'cursor:pointer;' : ''}"
-      ${r ? `onclick="showPage('registry');switchRegTab('saw');"` : ''}
+      ${r ? `onclick="${jsCallAttr('goToSawBlade', r.id)}"` : ''}
       title="${escapeHtmlAttr('ใส่เมื่อ ' + prodSqFmtTime(o.startedAt) + (o.productName ? ' · ' + o.productName : '')
         + ' · รอบนี้ ' + fmtTons2(o.kg / 1000) + ' ตัน (' + o.pcs.toLocaleString() + ' เส้น)')}">
       <span style="font-size:14px;font-weight:800;color:#fff;background:var(--inuse);padding:3px 11px;border-radius:6px;">${escapeHtmlAttr(o.machine)}</span>
@@ -6873,7 +6873,7 @@ function renderToolingLife() {
           ${th('ตัดหลังลับคม', true, 'นับจากวันลับคมล่าสุด (ทะเบียน หรือวันที่กดจบงานลับคมในแผน)')}
           ${th('ตัดสะสม', true, 'ยอดตั้งต้นในทะเบียน + ยอดจากระบบผลิตตั้งแต่ 9 พ.ย. 69')}
           ${th('Regrind')}${th('ลับคมล่าสุด')}</tr></thead>
-        <tbody>${list.map(({ r, u, st }) => `<tr style="cursor:pointer;" onclick="showPage('registry');switchRegTab('saw');" title="กดเพื่อไปทะเบียนใบเลื่อย">
+        <tbody>${list.map(({ r, u, st }) => `<tr style="cursor:pointer;" onclick="${jsCallAttr('goToSawBlade', r.id)}" title="กดเพื่อไปที่ใบนี้ในทะเบียนใบเลื่อย">
           <td><b>${escapeHtmlAttr(r.id || '—')}</b></td>
           <td>${escapeHtmlAttr(sawOdLabel(r) || '—')}</td>
           <td>${escapeHtmlAttr(r.machine || '—')}${u.open ? ` <span class="chip chip-yellow" style="font-size:10.5px;">บน ${escapeHtmlAttr(u.open.machine)}</span>` : ''}</td>
@@ -7211,7 +7211,7 @@ function sawReadyListHtml(list) {
     const r = reg.find(x => x.id === it.id) || it;
     const u = typeof sawUsageInfo === 'function' ? sawUsageInfo(r) : null;
     const mc = it.machine && it.machine !== '—' ? it.machine : '—';
-    return `<div onclick="showPage('registry');switchRegTab('saw');"
+    return `<div onclick="${jsCallAttr('goToSawBlade', it.id)}"
       style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;margin-bottom:6px;cursor:pointer;
              background:var(--green-dim);border:1px solid var(--border-light);"
       title="${escapeHtmlAttr('พร้อมใช้งาน — เครื่องผลิต ' + mc + (u && u.lastGrind ? ' · ลับคมล่าสุด ' + fmtIsoDateThai(u.lastGrind) : ''))}">
@@ -19913,6 +19913,23 @@ function selectSawBlade(idx) {
   else { selectedSawBlade = r; selectedSawMachine = sawMachineOf(r); }
   renderSawTable(pageState.saw = 1);
 }
+// กดใบเลื่อยจากหน้าอื่น (Dashboard / ปฏิทิน) → เปิดทะเบียนใบเลื่อย เลือกใบนั้นไว้ (ตารางเหลือใบเดียว) แล้วเลื่อนไปให้เห็น
+// หาด้วยรหัส (sawCodeKey — "093" กับ "93" เป็นใบเดียวกัน) · ไม่พบในทะเบียนก็แค่เปิดทะเบียนใบเลื่อย
+function goToSawBlade(id) {
+  showPage('registry');
+  switchRegTab('saw');
+  const r = ((toolingData || {}).saw || []).find(x => sawCodeKey(x.id) === sawCodeKey(id));
+  selectedSawBlade = r || null;
+  selectedSawMachine = r ? sawMachineOf(r) : null;   // ไม่พบ = แสดงทุกใบ ไม่ค้างใบที่เลือกไว้ก่อน
+  renderSawTable(pageState.saw = 1);
+  if (!r) return;
+  setTimeout(() => {
+    const on = document.querySelector('#saw-mc-list [data-saw-on="1"]');
+    if (on) on.scrollIntoView({ block: 'nearest' });
+    const card = document.getElementById('saw-detail-title');
+    if (card) card.scrollIntoView({ block: 'nearest' });
+  }, 0);
+}
 // เพิ่มใบเลื่อย — เลือกเครื่องไว้อยู่ก็กรอกช่อง "เครื่องผลิต" ให้เลย
 function openAddSaw() {
   openModal();
@@ -19950,7 +19967,7 @@ function renderSawMachineList() {
       const on = selectedSawBlade === r;
       const st = sawEffectiveStatus(r).status;
       const dia = String(r.diameter || '').trim();
-      return `<div onclick="${jsCallAttr('selectSawBlade', idx)}"
+      return `<div onclick="${jsCallAttr('selectSawBlade', idx)}"${on ? ' data-saw-on="1"' : ''}
           style="display:flex;align-items:center;gap:8px;padding:6px 9px;border-radius:6px;cursor:pointer;margin-bottom:3px;
                  background:${on ? 'var(--accent-glow)' : 'transparent'};color:${on ? 'var(--accent)' : 'var(--text-2)'};transition:background .12s;"
           title="${escapeHtmlAttr('ใบเลื่อย ' + (r.id || '—') + (dia && dia !== '—' ? ' · Ø' + dia : '') + ' · ' + st
