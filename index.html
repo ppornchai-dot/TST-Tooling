@@ -2422,7 +2422,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.2';
+const APP_BUILD = '2026-11-17.3';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6440,7 +6440,7 @@ function prodSawWaitingCardHtml() {
       <span style="font-size:14px;font-weight:800;color:#fff;background:var(--red);padding:3px 11px;border-radius:6px;">รหัส ${escapeHtmlAttr(r.id)}</span>
       <!-- ป้ายสถานะ — Admin/หัวหน้ากดเปลี่ยนสถานะได้ตรงนี้เลย (เมนูเดียวกับทะเบียนใบเลื่อย) -->
       ${canEditPlan()
-        ? `<span onclick="openSawStatusMenu(event, ${idx})" title="กดเพื่อเปลี่ยนสถานะ" style="flex:0 0 auto;cursor:pointer;white-space:nowrap;">${
+        ? `<span onclick="openSawStatusMenu(event, ${idx}, true)" title="กดเพื่อเปลี่ยนเป็นพร้อมใช้ (ลับคมแล้ว)" style="flex:0 0 auto;cursor:pointer;white-space:nowrap;">${
             statusChip(sawEffectiveStatus(r).status)}<span style="font-size:9px;color:var(--text-3);margin-left:3px;">▾</span></span>`
         : `<span style="flex:0 0 auto;">${statusChip(sawEffectiveStatus(r).status)}</span>`}
       <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr([sawOdLabel(r), r.machine].filter(x => x && x !== '—').join(' · '))}</span>
@@ -20084,7 +20084,8 @@ function closeSawStatusMenu() {
   window.removeEventListener('scroll', closeSawStatusMenu, true);
 }
 function sawStatusMenuEsc(e) { if (e.key === 'Escape') closeSawStatusMenu(); }
-function openSawStatusMenu(ev, idx) {
+// readyOnly = เปิดจากการ์ด "ใบเลื่อยรอลับคม" — มีให้เลือกแค่ "พร้อมใช้" (= ลับคมแล้ววันนี้) ตามที่หน้างานใช้จริง
+function openSawStatusMenu(ev, idx, readyOnly) {
   if (ev) { ev.stopPropagation(); ev.preventDefault(); }
   closeSawStatusMenu();
   if (!canEditPlan()) return;
@@ -20098,11 +20099,13 @@ function openSawStatusMenu(ev, idx) {
   el.style.cssText = 'position:fixed;z-index:1300;background:var(--bg-surface);border:1px solid var(--border);border-radius:10px;'
     + 'box-shadow:0 10px 28px rgba(0,0,0,.2);padding:6px;min-width:210px;max-width:260px;';
   el.innerHTML = `<div style="font-size:11.5px;font-weight:800;color:var(--text-2);padding:4px 8px 6px;">ใบเลื่อย ${escapeHtmlAttr(r.id || '—')} · เปลี่ยนสถานะ</div>`
-    + SAW_STATUS_OPTIONS.map(o => `<div onclick="${jsCallAttr('setSawStatus', idx, o)}"
+    + (readyOnly ? ['พร้อมใช้'] : SAW_STATUS_OPTIONS).map(o => `<div onclick="${jsCallAttr('setSawStatus', idx, o)}"
         onmouseover="this.style.background='var(--bg-panel)'" onmouseout="this.style.background='transparent'"
         style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;">
         ${statusChip(o)}<span style="margin-left:auto;font-weight:800;color:var(--accent);">${o === eff.status ? '✓' : ''}</span></div>`).join('')
-    + (eff.src !== 'manual' ? `<div style="font-size:10.5px;color:var(--text-3);line-height:1.5;padding:6px 8px 2px;border-top:1px solid var(--border-light);margin-top:4px;">
+    + (readyOnly ? `<div style="font-size:10.5px;color:var(--text-3);line-height:1.5;padding:6px 8px 2px;border-top:1px solid var(--border-light);margin-top:4px;">
+        พร้อมใช้ = ลับคมแล้ว ตั้งวันลับคมล่าสุดเป็นวันนี้ ใบนี้จะออกจากรายการรอลับคม</div>`
+      : eff.src !== 'manual' ? `<div style="font-size:10.5px;color:var(--text-3);line-height:1.5;padding:6px 8px 2px;border-top:1px solid var(--border-light);margin-top:4px;">
         ตอนนี้แสดงตาม${eff.src === 'plan' ? 'งานลับคมในแผน' : 'ระบบผลิต'} — "มีปัญหา" / "หมดอายุ" มีผลทันที
         ${eff.src === 'prod' && eff.status === 'รอลับคม'
           ? '· "พร้อมใช้" = ลับคมแล้ว (ตั้งวันลับคมล่าสุดเป็นวันนี้)'
