@@ -2422,7 +2422,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.6';
+const APP_BUILD = '2026-11-17.7';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -21417,9 +21417,11 @@ function renderDailyTasks() {
     // กางหมดแล้วจึงไม่มีอะไรให้พับ — ตัดลูกศร ▸ กับการกดแถวออกด้วย ไม่ให้กดแล้วเหมือนไม่มีอะไรเกิดขึ้น
     const techView = isDailyTechRole();
     // งานลับคมใบเลื่อยกางรายใบไว้เสมอ — ลับทีละไม่กี่ใบ ช่างต้องกดเริ่ม/จบรายใบอยู่แล้ว ไม่ต้องกดเข้าไปดู
+    // งานแต่ง Roll SQ ก็กางไว้เสมอเหมือนกัน — ชุดละ 2 ชิ้น (R/L) ไม่ต้องซ่อนรายการ
     const sawTask = !!(item.raw && isCodeWorkType(item.raw.workType));   // ใบเลื่อย / มีดสลิตเตอร์
-    const expanded = item.expandable && (techView || sawTask || expandedDailyTaskId === item.key);
-    const rowClickable = item.expandable && !techView && !sawTask;
+    const alwaysOpen = sawTask || !!(item.raw && item.raw.workType === 'sq');
+    const expanded = item.expandable && (techView || alwaysOpen || expandedDailyTaskId === item.key);
+    const rowClickable = item.expandable && !techView && !alwaysOpen;
     const rowOpacity = isMine ? '' : 'opacity:.55;';
     // งานหลายชิ้นไม่ดัมป์ชื่อ Roll ทั้งหมดลงแถวสรุป (21 ชื่อทำให้แถวเดียวสูงเต็มจอบนมือถือ) — โชว์ 2 ชื่อแรกแล้วบอกจำนวนที่เหลือ รายชิ้นครบดูได้จากการกดขยายแถว
     const rollNames = item.expandable ? String(item.task).split(',').map(s => s.trim()).filter(Boolean) : [];
