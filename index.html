@@ -1506,7 +1506,7 @@ canvas{display:block;}
             <div class="table-wrap" style="overflow-x:auto;">
               <table>
                 <thead><tr>
-                  <th>รหัส</th><th>เส้นผ่าศูนย์กลาง</th><th>จำนวนฟัน</th><th title="ความสูงของฟันที่วัดได้ (mm)">ความสูงฟัน</th><th title="ความหนาของใบเลื่อย (mm)">ความหนาใบเลื่อย</th><th>เครื่องผลิต</th><th>ตัดสะสม (ตัน)</th><th>Regrind ครั้งที่</th><th title="วันที่ลับคมครั้งล่าสุด">ลับคมล่าสุด</th><th title="เวลาที่ใช้ลับคมใบนี้ — ใช้คิดเวลาเริ่ม-จบของงานลับคมใบเลื่อยในหน้าวางแผน">เวลาลับคม (นาที)</th><th>สถานะ</th><th></th>
+                  <th>รหัส</th><th>เส้นผ่าศูนย์กลาง</th><th title="OD ต่ำสุดที่ยังใช้ได้ — OD ปัจจุบันเท่านี้หรือน้อยกว่า = ถึงอายุ">OD หมดอายุ</th><th>จำนวนฟัน</th><th title="ความสูงของฟันที่วัดได้ (mm)">ความสูงฟัน</th><th title="ความหนาของใบเลื่อย (mm)">ความหนาใบเลื่อย</th><th>เครื่องผลิต</th><th>ตัดสะสม (ตัน)</th><th>Regrind ครั้งที่</th><th title="วันที่ลับคมครั้งล่าสุด">ลับคมล่าสุด</th><th title="เวลาที่ใช้ลับคมใบนี้ — ใช้คิดเวลาเริ่ม-จบของงานลับคมใบเลื่อยในหน้าวางแผน">เวลาลับคม (นาที)</th><th>สถานะ</th><th></th>
                 </tr></thead>
                 <tbody id="tbody-saw"></tbody>
               </table>
@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.21';
+const APP_BUILD = '2026-11-17.22';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -7683,29 +7683,31 @@ const MODAL_FORMS = {
   saw: {
     title: 'เพิ่มใบเลื่อยใหม่',
     fields: `
+      <!-- ช่องที่ไม่มี id อ่านตามลำดับ (SAW_FORM_FIELDS) — ห้ามสลับลำดับช่องพวกนี้
+           ช่องที่มี id (f-saw-odmin / f-saw-grind) อ่านด้วย id จึงวางตรงไหนก็ได้ -->
       <div class="modal-row three">
         <div class="form-group"><label class="form-label">รหัส</label><input class="form-input" placeholder="เช่น 193"></div>
-        <div class="form-group"><label class="form-label">เส้นผ่าศูนย์กลาง</label><input class="form-input" placeholder="เช่น Ø710 mm"></div>
-        <div class="form-group"><label class="form-label">จำนวนฟัน</label><input class="form-input" placeholder="เช่น 96 ฟัน"></div>
+        <div class="form-group"><label class="form-label">เส้นผ่าศูนย์กลาง (OD ปัจจุบัน)</label><input class="form-input" placeholder="เช่น 710"></div>
+        <div class="form-group"><label class="form-label" title="OD ต่ำสุดที่ยังใช้ได้ — OD ปัจจุบันเท่านี้หรือน้อยกว่า = ถึงอายุ">OD หมดอายุ (mm)</label>
+          <input class="form-input" id="f-saw-odmin" type="number" step="0.1" placeholder="เช่น 620"></div>
       </div>
       <div class="modal-row three">
+        <div class="form-group"><label class="form-label">จำนวนฟัน</label><input class="form-input" placeholder="เช่น 96 ฟัน"></div>
         <div class="form-group"><label class="form-label">ความสูงฟัน (mm)</label><input class="form-input" placeholder="เช่น 5.5"></div>
         <div class="form-group"><label class="form-label">ความหนาใบเลื่อย (mm)</label><input class="form-input" placeholder="เช่น 5.0 mm"></div>
-        <div class="form-group"><label class="form-label">เครื่องผลิต</label><input class="form-input" placeholder="เช่น C5"></div>
       </div>
       <div class="modal-row three">
+        <div class="form-group"><label class="form-label">เครื่องผลิต</label><input class="form-input" placeholder="เช่น C5"></div>
         <div class="form-group"><label class="form-label" title="ยอดก่อน 9 พ.ย. 69 — ยอดหลังจากนั้นระบบดึงจากระบบผลิตมาบวกให้เอง อย่ากรอกซ้ำ">ตัดสะสม ยอดตั้งต้น (ตัน)</label><input class="form-input" type="number" placeholder="0" title="ยอดก่อน 9 พ.ย. 69 — ยอดหลังจากนั้นระบบดึงจากระบบผลิตมาบวกให้เอง อย่ากรอกซ้ำ"></div>
         <div class="form-group"><label class="form-label">Regrind ครั้งที่ / สูงสุด</label><input class="form-input" placeholder="เช่น 1/6"></div>
+      </div>
+      <div class="modal-row three">
         <div class="form-group"><label class="form-label">สถานะ</label>
           <select class="form-select">
             <option>พร้อมใช้</option><option>กำลังใช้งาน</option><option>รอลับคม</option>
             <option>มีปัญหา</option><option>หมดอายุ</option>
           </select>
         </div>
-      </div>
-      <!-- อยู่ท้ายสุดเพราะฟอร์มนี้อ่านค่าตามลำดับช่อง ถ้าแทรกไว้กลางฟอร์มค่าอื่นจะเลื่อนหมด
-           (ตัวนี้อ่านด้วย id ไม่ได้อ่านตามลำดับ) -->
-      <div class="modal-row">
         <div class="form-group"><label class="form-label">ลับคมล่าสุด</label>
           <input class="form-input" type="date"></div>
         <div class="form-group"><label class="form-label">เวลาลับคม (นาที)</label>
@@ -7869,7 +7871,8 @@ function saveModal() {
   } else if (currentRegTab === 'saw') {
     // อ่านตามลำดับช่องของฟอร์ม (SAW_FORM_FIELDS) — เพิ่ม/ย้ายช่องแล้วไม่ต้องไล่แก้เลขตำแหน่งอีก
     const sawVals = sawFormInputs().map(el => el.value.trim());
-    const rec = { grindTime: ((document.getElementById('f-saw-grind') || {}).value || '').trim() };
+    const rec = { grindTime: ((document.getElementById('f-saw-grind') || {}).value || '').trim(),
+      odMin: ((document.getElementById('f-saw-odmin') || {}).value || '').trim() };
     SAW_FORM_FIELDS.forEach((f, i) => {
       const v = sawVals[i] || '';
       if (f === 'usage') rec.usage = (v || '—') + ' ตัน';
@@ -19988,9 +19991,28 @@ function setSawGrindTime(idx, value) {
 // ช่อง "เวลาลับคม" มี id ของตัวเอง (f-saw-grind) เพราะถูกเพิ่มทีหลังและอยู่ท้ายฟอร์ม
 const SAW_FORM_FIELDS = ['id', 'diameter', 'teeth', 'toothHeight', 'kerf', 'machine', 'usage', 'regrind', 'status', 'lastService'];
 
+// OD ปัจจุบัน + OD หมดอายุ ของใบเลื่อย — OD ปัจจุบันเท่ากับหรือต่ำกว่า OD หมดอายุ = ถึงอายุ (ตัวแดง + ป้าย)
+function sawOdNum(v) {
+  const n = parseFloat(String(v == null ? '' : v).replace(/[^0-9.]/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+function sawOdExpired(r) {
+  const cur = sawOdNum((r || {}).diameter), min = sawOdNum((r || {}).odMin);
+  return cur != null && min != null && cur <= min;
+}
+function sawOdCellsHtml(r) {
+  const exp = sawOdExpired(r);
+  const cur = sawOdNum(r.diameter), min = sawOdNum(r.odMin);
+  const left = cur != null && min != null && !exp ? Math.round((cur - min) * 10) / 10 : null;
+  return `<td${exp ? ' style="color:var(--red);font-weight:800;"' : ''}>${escapeHtmlAttr(r.diameter == null ? '—' : String(r.diameter))}${
+      exp ? ' <span class="chip chip-red" style="font-size:10.5px;" title="OD ปัจจุบันถึง OD หมดอายุแล้ว">ถึงอายุ</span>' : ''}</td>
+    <td class="muted"${left != null ? ` title="${escapeHtmlAttr('เหลืออีก ' + left + ' mm ถึง OD หมดอายุ')}"` : ''}>${min != null ? escapeHtmlAttr(String(r.odMin)) : '—'}${
+      left != null ? ` <span style="font-size:11px;color:${left <= 10 ? 'var(--amber)' : 'var(--text-3)'};">(เหลือ ${left})</span>` : ''}</td>`;
+}
+
 function sawFormInputs() {
   return Array.from(document.querySelectorAll('#modal-body input, #modal-body select'))
-    .filter(el => el.id !== 'f-saw-grind');
+    .filter(el => el.id !== 'f-saw-grind' && el.id !== 'f-saw-odmin');
 }
 
 // สถานะใบเลื่อยชุดใหม่: พร้อมใช้ · กำลังใช้งาน · รอลับคม · มีปัญหา · หมดอายุ (ดูตัวเลือกใน MODAL_FORMS.saw)
@@ -20017,6 +20039,8 @@ function editSaw(idx) {
   });
   const g = document.getElementById('f-saw-grind');
   if (g) g.value = r.grindTime == null ? '' : String(r.grindTime);
+  const om = document.getElementById('f-saw-odmin');
+  if (om) om.value = r.odMin == null ? '' : String(r.odMin);
   // สถานะในตารางอิงระบบผลิต/งานลับคม — บอกไว้ใต้ช่อง กันงงว่าทำไมในตารางไม่ตรงกับที่ตั้ง
   const stSel = document.querySelector('#modal-body select.form-select');
   const eff = sawEffectiveStatus(r);
@@ -20043,6 +20067,7 @@ function editSaw(idx) {
         else cur[f] = v || '—';
       });
       cur.grindTime = ((document.getElementById('f-saw-grind') || {}).value || '').trim();
+      cur.odMin = ((document.getElementById('f-saw-odmin') || {}).value || '').trim();
       // ตั้ง/เลิก "มีปัญหา" จากปุ่ม ✏️ ก็ลงประวัติเหมือนกดจากการ์ดบน Dashboard
       const isProblem = sawManualStatus(cur) === 'มีปัญหา';
       if (isProblem && !wasProblem) sawProblemOpen(cur, cur.problemNote);
@@ -20230,7 +20255,7 @@ function renderSawTable(page) {
   const grouped = selectedSawMachine === null && !selectedSawBlade;
   const mcCount = new Map();
   sorted.forEach(r => mcCount.set(sawMachineOf(r), (mcCount.get(sawMachineOf(r)) || 0) + 1));
-  const grpHead = (mc, cont) => `<tr><td colspan="12" onclick="${jsCallAttr('selectSawMachine', mc)}" style="cursor:pointer;background:var(--bg-panel);padding:7px 14px;
+  const grpHead = (mc, cont) => `<tr><td colspan="13" onclick="${jsCallAttr('selectSawMachine', mc)}" style="cursor:pointer;background:var(--bg-panel);padding:7px 14px;
       border-top:2px solid var(--border);font-size:12.5px;font-weight:800;color:var(--text-1);" title="กดเพื่อดูเฉพาะเครื่องนี้">
       ${mc ? 'เครื่อง ' + escapeHtmlAttr(mc) : 'ยังไม่ระบุเครื่อง'}
       <span style="font-weight:600;color:var(--text-3);margin-left:6px;">${mcCount.get(mc) || 0} ใบ${cont ? ' · ต่อจากหน้าก่อน' : ''}</span></td></tr>`;
@@ -20242,7 +20267,7 @@ function renderSawTable(page) {
     return head + `
     <tr>
       <td class="muted"><strong>${r.id}</strong></td>
-      <td>${r.diameter}</td>
+      ${sawOdCellsHtml(r)}
       <td>${r.teeth}</td>
       <td>${r.toothHeight || '—'}</td>
       <td>${r.kerf}</td>
