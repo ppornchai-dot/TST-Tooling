@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-17.39';
+const APP_BUILD = '2026-11-17.40';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -19578,6 +19578,10 @@ function editSq(id) {
     toolingData.sq.forEach(x => {
       if (x !== updated && sqSetKey(x) === sqSetKey(updated)) {
         x.sizeSq = updated.sizeSq; x.kind = updated.kind; x.color = updated.color; x.madeYm = updated.madeYm;
+        // OD / เวลาแต่ง: กรอกที่ชิ้นเดียวแล้วใส่ให้ทุกชิ้นในชุด (ผู้ใช้ขอ) — ช่องที่เว้นว่างไม่ไปล้างค่าของชิ้นอื่น
+        ['odStd', 'odCur', 'odMin', 'grindTime'].forEach(f => {
+          if (String(updated[f] == null ? '' : updated[f]).trim()) x[f] = updated[f];
+        });
       }
     });
     // หน้าฟิล์ม/ความหนา กว้างกว่านั้น — เป็นค่าของ "ชุดสี" ไปทุกชุดของ Size+ประเภท+สีเดียวกัน
