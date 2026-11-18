@@ -2463,7 +2463,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.35';
+const APP_BUILD = '2026-11-18.36';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -22877,7 +22877,8 @@ function collectHistoryRecords() {
         records.push({
           date: dateIso, wo: taskId, typeKey: t.workType,
           typeLabel: planWorkTypeShortLabel(t.workType),
-          tooling: `${t.rollSet || '—'}${t.rollColor ? ' — ' + planRollColorLabel(t) : ''}`,
+          // Roll SQ / ใบเลื่อย / มีดสลิตเตอร์ เก็บชื่อชุดเป็นคีย์ภายใน (เช่น SQ:SQS-…) — แปลงเป็นชื่อที่อ่านได้ก่อนแสดง
+          tooling: `${t.rollSet ? planSetLabel(t.rollSet) : '—'}${t.rollColor ? ' — ' + planRollColorLabel(t) : ''}`,
           detail: (roll ? roll.name : 'ชิ้นที่ ' + (idxNum + 1)) + (seq >= 0 && order.length ? ` (ชิ้นที่ ${seq + 1}/${order.length})` : ''),
           measuredSize: entry.measuredSize || null,
           // เก็บไว้ให้หน้าประวัติเทียบ OD มาตรฐานกับขนาดที่วัดได้ (ดู odCompareHtml)
@@ -23051,8 +23052,10 @@ function openHistoryCalDetail(iso, typeKey, setName, colorKey) {
     // เรียงตามลำดับที่ทำจริงในวันนั้น (ตารางเรียงใหม่→เก่า แต่ในวันเดียวกันอยากเห็นไล่ตามเวลา)
     .sort((a, b) => String(a.sortKey || '').localeCompare(String(b.sortKey || '')));
 
-  const colorName = setName && colorKey ? rollColorLabelFor(setName, colorKey) : '';
-  const dot = setName && colorKey ? inUseColorDot(setName, colorKey) : null;
+  // Roll SQ / ใบเลื่อย / มีดสลิตเตอร์ ไม่มีชุดสีแบบ Roll (ชื่อชุดเป็นคีย์ภายใน — planSetLabel แปลงชื่อให้)
+  const plainRollSet = setName && !isSqPlanSet(setName) && !isSawPlanSet(setName) && !isSlitterPlanSet(setName);
+  const colorName = plainRollSet && colorKey ? rollColorLabelFor(setName, colorKey) : '';
+  const dot = plainRollSet && colorKey ? inUseColorDot(setName, colorKey) : null;
   // งานขัด Roll ไม่ได้บันทึกขนาด OD (ไม่ได้แต่งเนื้อ Roll) — ตัดคอลัมน์ทิ้งไปเลย ไม่ต้องโชว์ขีดเปล่าทั้งแถว
   const showOd = workTypeMeasuresOd(typeKey);
   const actualOf = r => actualMinutesBetween(r.startTime, r.endTime);
@@ -23096,7 +23099,7 @@ function openHistoryCalDetail(iso, typeKey, setName, colorKey) {
                background:${meta.color};color:#fff;">${meta.icon} ${escapeHtmlAttr(meta.label)}</span>
         <div style="min-width:0;flex:1;">
           <div style="font-size:16px;font-weight:800;color:var(--text-1);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            ${escapeHtmlAttr(setName || 'งานแทรก')}
+            ${escapeHtmlAttr(setName ? planSetLabel(setName) : 'งานแทรก')}
             ${dot ? `<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:800;padding:2px 9px;border-radius:99px;
                    background:${dot};color:${rollColorTextOn(dot)};box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);">${escapeHtmlAttr(colorName)}</span>` : ''}
           </div>
@@ -23210,17 +23213,26 @@ function renderHistoryCalendar(records, fromIso, toIso, typeKey) {
           <span style="margin-left:auto;flex-shrink:0;font-weight:800;color:${meta.color};">${g.items.length}</span>
         </div>`;
       }
-      const dot = g.set && g.colorKey ? inUseColorDot(g.set, g.colorKey) : null;
-      const colorName = g.set && g.colorKey ? rollColorLabelFor(g.set, g.colorKey) : '';
+      // Roll SQ เก็บชื่อชุดเป็นคีย์ภายใน (SQ:SQS-…) — หาชุดจริงในทะเบียนมาแสดง: ขนาด + ชุดที่ N + สีของชุด
+      // ใบเลื่อย/มีดสลิตเตอร์ ไม่มีชุด — ใช้ชื่อประเภทแทนคีย์ (SAW:all)
+      const sqHead = g.set && isSqPlanSet(g.set) ? (toolingData.sq || []).find(r => sqSetKey(r) === sqPlanSetKeyOf(g.set)) || null : null;
+      const codeSet = g.set && (isSawPlanSet(g.set) || isSlitterPlanSet(g.set));
+      const sqCm = sqHead ? sqColorMeta(sqHead.color) : null;
+      const dot = sqCm ? sqCm.dot : (g.set && g.colorKey && !codeSet && !isSqPlanSet(g.set) ? inUseColorDot(g.set, g.colorKey) : null);
+      const colorName = sqCm ? sqCm.label : (g.set && g.colorKey && !codeSet && !isSqPlanSet(g.set) ? rollColorLabelFor(g.set, g.colorKey) : '');
       // ชื่อชุดเต็มคือ 'GI 4"x4" (100x100) Forming' ซึ่งยาวเกินช่องวันมาก โดนตัดเหลือ 'GI 4"x4" (100x1…'
       // จึงตัดขนาดมิลออก (อยู่ในทูลทิปแล้ว) และย่อหมวดเป็นป้าย F/S/T แบบเดียวกับปฏิทินชุด Roll ที่ใช้งาน
-      const setShort = g.set ? inUseCalSizeShort(rollSetGroupDisplayName(g.set)) : 'งานแทรก';
-      const cat = g.set ? (parseSizeRollName(g.set).category || '') : '';
+      const setShort = !g.set ? 'งานแทรก'
+        : isSqPlanSet(g.set) ? (sqHead ? inUseCalSizeShort(String(sqHead.sizeSq || '').trim()) + ' ' + sqSetOrdinalLabel(sqHead) : 'ชุดที่ถูกลบไปแล้ว')
+        : isSawPlanSet(g.set) ? 'ใบเลื่อย'
+        : isSlitterPlanSet(g.set) ? 'มีดสลิตเตอร์'
+        : inUseCalSizeShort(rollSetGroupDisplayName(g.set));
+      const cat = g.set && !isSqPlanSet(g.set) && !codeSet ? (parseSizeRollName(g.set).category || '') : '';
       const n = g.items.length;
       const notDone = g.items.filter(x => x.result !== 'สำเร็จ');
       const hrs = g.items.reduce((s, x) => s + (x.hours || 0), 0);
       const who = [...new Set(g.items.map(x => x.who).filter(x => x && x !== '—'))];
-      const tips = [meta.label + ' · ' + (g.set || 'งานแทรก') + (colorName ? ' · ' + colorName : ''),
+      const tips = [meta.label + ' · ' + (g.set ? planSetLabel(g.set) : 'งานแทรก') + (colorName && !sqHead ? ' · ' + colorName : ''),
         n + ' ชิ้น' + (hrs ? ' · ' + (Math.round(hrs * 10) / 10).toLocaleString() + ' ชม.' : '')];
       if (who.length) tips.push('ผู้ดำเนินการ ' + who.join(', '));
       // สรุปผลที่ไม่ใช่ "สำเร็จ" ไว้ในทูลทิป (พักงาน/ย้ายวัน/ไม่ได้ปิดงาน) — ในช่องวันมีที่แค่จุดเตือน
