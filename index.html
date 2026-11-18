@@ -2463,7 +2463,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.27';
+const APP_BUILD = '2026-11-18.28';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -9535,6 +9535,10 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason, flat) {
           // ทั้งสองกะจึงกดปุ่มเดียวกันได้ ไม่ต้องมีปุ่ม "ทำต่อ" แยกอีกปุ่ม
           inner = `<button class="btn btn-ghost btn-sm daily-act daily-act-start" ${lockReason ? `disabled title="${lockReason} — เริ่มงานนี้ไม่ได้"` : ''} onclick="startDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ ${DL().start}</button>`;
         }
+        // ใบเลื่อย: ปุ่มตรวจก่อนลับ/หลังลับ ใต้ปุ่มเริ่ม/จบงาน (เฉพาะแถวที่ถือปุ่มของใบนั้น)
+        if (originTask.workType === 'saw' && !prevShownToday) {
+          inner += sawInspectButtonsHtml(originTask.id, rollIdx, pieceStatus, t.workerId || '', lockReason);
+        }
         actionCell = `<td onclick="event.stopPropagation();">${inner}</td>`;
       } else if (interactive) {
         // แถวพัก (พักเที่ยง/พัก OT) ก็ต้องมีช่องปุ่มว่างไว้ ไม่งั้นทั้งแถวเลื่อนไปซ้ายหนึ่งคอลัมน์ ไม่ตรงหัวตาราง
@@ -14632,6 +14636,8 @@ let sqExtraSizes = [];
 // ประวัติใบเลื่อยมีปัญหา — หนึ่งรายการ = หนึ่งครั้งที่ใบถูกตั้งเป็น "มีปัญหา" (จนกดแก้แล้ว) ดู sawProblemOpen
 // เก็บแยกจากทะเบียน ลบใบออกจากทะเบียนแล้วประวัติยังอยู่ · ประกาศตรงนี้เหตุผลเดียวกับด้านบน
 let sawProblemLog = [];
+// ผลตรวจใบเลื่อย ก่อนลับ/หลังลับ — คีย์ = "รหัสงาน|ลำดับใบในทะเบียน" · ค่า = { before: {...}, after: {...} } ดู openSawInspect
+let sawInspections = {};
 function rollColorStatusFor(setName, colorKey) { return rollColorStatus[setName + '|' + colorKey] || 'ready'; }
 function getRollColorStatus(colorKey) { return rollColorStatusFor(selectedRollSet, colorKey); }
 function setRollColorStatus(colorKey, status) {
@@ -15031,7 +15037,7 @@ function requestReloadAllDevices() {
 
 function buildStateSnapshot() {
   return {
-    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollSetNote, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec, sqSetStatus, sqSetMachine, sqSizeMachines, sqExtraSizes, sawProblemLog,
+    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollSetNote, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec, sqSetStatus, sqSetMachine, sqSizeMachines, sqExtraSizes, sawProblemLog, sawInspections,
     planTasks, planTaskSeq, companyHolidays, companyHolidaySeq, planDayEndTime, planDayWorker, teamMembers, teamSeq,
     dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
     dailyPieceStatus, rollSizeLog, rollSizeLogSeq, dailyPauseLog, dailyPauseLogSeq,
@@ -15314,6 +15320,7 @@ function applyState(saved) {
   if (saved.sqSizeMachines) sqSizeMachines = saved.sqSizeMachines;
   if (Array.isArray(saved.sqExtraSizes)) sqExtraSizes = saved.sqExtraSizes;
   if (Array.isArray(saved.sawProblemLog)) sawProblemLog = saved.sawProblemLog;
+  if (saved.sawInspections && typeof saved.sawInspections === 'object') sawInspections = saved.sawInspections;
   if (saved.rollColorActiveMachine) rollColorActiveMachine = saved.rollColorActiveMachine;
   if (saved.rollSetCategoryTemplates) rollSetCategoryTemplates = saved.rollSetCategoryTemplates;
   if (saved.rollLifeSpec) rollLifeSpec = saved.rollLifeSpec;
@@ -21816,6 +21823,161 @@ function applyMeasuredSizeToRegistry(roll, size, dateIso, bumpRegrind) {
 
 // fromTaskRow = กดจบจากแถวงานชิ้นเดียว (กดเริ่มที่แถวงาน) — เติมเวลาเริ่มของชิ้นจากเวลาเริ่มจริงของงาน
 // และบันทึกเวลาจบจริงระดับงานด้วย ให้แถวงานยังขึ้น "(จริง ...)" เหมือนเดิม
+// ─── ตรวจใบเลื่อยก่อนลับ / หลังลับ ───────────────────────────────────────────
+// ก่อนลับ: รอยร้าว · ฟันหัก · เช็คศูนย์ — หลังลับ: ความสูงฟัน · รอยไหม้ · ความโต · ความหนา
+// แต่ละข้อเลือก ผ่าน / ไม่ผ่าน (ต้องเลือกครบทุกข้อ) · ข้อที่เป็นขนาดกรอกค่าที่วัดได้ประกอบได้ (ไม่บังคับ)
+// ไม่บังคับก่อนเริ่ม/จบงาน และไม่แก้ทะเบียน — เป็นบันทึกผลตรวจของแต่ละรอบลับคม แก้ซ้ำได้ (ทับค่าเดิม)
+const SAW_INSPECT_STAGES = {
+  before: { label: 'ตรวจก่อนลับ', items: [
+    { k: 'crack', label: 'รอยร้าว' },
+    { k: 'tooth', label: 'ฟันหัก' },
+    { k: 'center', label: 'เช็คศูนย์' },
+  ] },
+  after: { label: 'ตรวจหลังลับ', items: [
+    { k: 'height', label: 'ความสูงฟัน', unit: 'mm' },
+    { k: 'burn', label: 'รอยไหม้' },
+    { k: 'od', label: 'ความโต (OD)', unit: 'mm' },
+    { k: 'thick', label: 'ความหนา', unit: 'mm' },
+  ] },
+};
+function sawInspectKey(taskId, rollIdx) { return String(taskId) + '|' + String(rollIdx); }
+function sawInspectionFor(taskId, rollIdx, stage) {
+  return ((sawInspections || {})[sawInspectKey(taskId, rollIdx)] || {})[stage] || null;
+}
+// ป้ายบนปุ่ม: ยังไม่ตรวจ = ปุ่มจาง · ผ่านครบ = เขียว · มีข้อไม่ผ่าน = แดงพร้อมจำนวนข้อ
+function sawInspectButtonsHtml(taskId, rollIdx, pieceStatus, workerId, lockReason) {
+  const btn = stage => {
+    const meta = SAW_INSPECT_STAGES[stage];
+    const rec = sawInspectionFor(taskId, rollIdx, stage);
+    const fails = rec ? meta.items.filter(it => (rec.items || {})[it.k] === 'ng') : [];
+    const look = !rec ? 'color:var(--text-2);border:1px dashed var(--border);background:transparent;'
+      : fails.length ? 'color:#fff;background:var(--red);border:1px solid var(--red);'
+      : 'color:#fff;background:var(--green);border:1px solid var(--green);';
+    const text = !rec ? '🔍 ' + meta.label
+      : fails.length ? '✗ ' + meta.label + ' (' + fails.length + ')' : '✓ ' + meta.label;
+    const tip = !rec ? 'ยังไม่ได้' + meta.label + ' — กดเพื่อบันทึกผลตรวจ'
+      : meta.label + ' ' + (rec.date ? fmtDateThaiShort(parseISODate(rec.date)) + ' ' : '') + (rec.time || '') + (rec.by ? ' · ' + rec.by : '')
+        + '\n' + meta.items.map(it => it.label + ': ' + ((rec.items || {})[it.k] === 'ng' ? 'ไม่ผ่าน' : 'ผ่าน')
+          + ((rec.values || {})[it.k] ? ' (' + rec.values[it.k] + (it.unit ? ' ' + it.unit : '') + ')' : '')).join('\n')
+        + (rec.note ? '\nหมายเหตุ: ' + rec.note : '') + '\nกดเพื่อดู/แก้ไข';
+    return `<button type="button" class="btn btn-sm" ${lockReason ? `disabled title="${escapeHtmlAttr(lockReason + ' — บันทึกผลตรวจไม่ได้')}"` : `title="${escapeHtmlAttr(tip)}"`}
+      style="font-size:11.5px;font-weight:800;padding:3px 9px;border-radius:7px;white-space:nowrap;${look}"
+      onclick="${jsCallAttr('openSawInspect', taskId, String(rollIdx), stage, workerId)}">${escapeHtmlAttr(text)}</button>`;
+  };
+  // หลังลับ — มีให้กดเมื่อเริ่มงานแล้ว (กำลังทำ/พัก/เสร็จ) · ก่อนลับกดได้ตลอด
+  const showAfter = pieceStatus !== 'pending' || !!sawInspectionFor(taskId, rollIdx, 'after');
+  return `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">${btn('before')}${showAfter ? btn('after') : ''}</div>`;
+}
+let sawInspectDraft = null;
+function openSawInspect(taskId, rollIdx, stage, workerId) {
+  if (!canActOnDailyItem(workerId)) return;
+  const meta = SAW_INSPECT_STAGES[stage];
+  const task = planTasks.find(t => t.id === taskId);
+  if (!meta || !task) return;
+  const roll = getMatchingRollsForPlan(task.rollSet, task.rollColor)[Number(rollIdx)];
+  const prev = sawInspectionFor(taskId, rollIdx, stage);
+  const entry = getDailyPieceEntry(taskId, rollIdx) || {};
+  sawInspectDraft = {
+    taskId, rollIdx: String(rollIdx), stage, workerId, sawId: roll ? String(roll.id || '') : '',
+    items: { ...((prev || {}).items || {}) },
+    // ความโตหลังลับ — ยังไม่เคยกรอก ให้ตั้งต้นจาก OD ที่บันทึกตอนจบงาน
+    values: { ...(stage === 'after' && !prev && entry.measuredSize ? { od: String(entry.measuredSize) } : {}), ...((prev || {}).values || {}) },
+    note: (prev || {}).note || '',
+  };
+  renderSawInspectDialog();
+}
+function renderSawInspectDialog() {
+  const d = sawInspectDraft;
+  if (!d) return;
+  const meta = SAW_INSPECT_STAGES[d.stage];
+  let box = document.getElementById('saw-inspect-dialog');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'saw-inspect-dialog';
+    box.style.cssText = 'position:fixed;inset:0;z-index:9500;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:16px;';
+    box.addEventListener('click', e => { if (e.target === box) closeSawInspect(); });
+    document.body.appendChild(box);
+  }
+  const choice = (k, v, label, color) => {
+    const on = d.items[k] === v;
+    return `<button type="button" onclick="${jsCallAttr('setSawInspectItem', k, v)}"
+      style="flex:1;min-width:0;padding:9px 6px;border-radius:8px;font-size:14px;font-weight:800;cursor:pointer;
+        border:2px solid ${on ? color : 'var(--border)'};background:${on ? color : 'var(--bg-panel)'};color:${on ? '#fff' : 'var(--text-2)'};">${label}</button>`;
+  };
+  box.innerHTML = `<div style="width:min(460px,100%);max-height:calc(100vh - 32px);overflow-y:auto;background:var(--bg-panel);
+      border-radius:14px;box-shadow:0 18px 48px rgba(0,0,0,.3);padding:18px 18px 14px;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+      <b style="font-size:17px;color:var(--text-1);flex:1;">🔍 ${escapeHtmlAttr(meta.label)}</b>
+      <button type="button" onclick="closeSawInspect()" style="border:none;background:none;font-size:22px;line-height:1;color:var(--text-3);cursor:pointer;">×</button>
+    </div>
+    <div style="font-size:13px;color:var(--text-2);margin-bottom:12px;">ใบเลื่อย รหัส <b>${escapeHtmlAttr(d.sawId || '—')}</b></div>
+    ${meta.items.map(it => `<div style="padding:10px 0;border-top:1px solid var(--border-light);">
+      <div style="font-size:14px;font-weight:800;color:var(--text-1);margin-bottom:7px;">${escapeHtmlAttr(it.label)}</div>
+      <div style="display:flex;gap:8px;">
+        ${choice(it.k, 'ok', '✓ ผ่าน', 'var(--green)')}
+        ${choice(it.k, 'ng', '✗ ไม่ผ่าน', 'var(--red)')}
+      </div>
+      ${it.unit ? `<div style="display:flex;align-items:center;gap:8px;margin-top:7px;">
+        <span style="font-size:12px;color:var(--text-3);white-space:nowrap;">ค่าที่วัดได้</span>
+        <input type="text" inputmode="decimal" value="${escapeHtmlAttr(d.values[it.k] || '')}" placeholder="ไม่บังคับ"
+          data-k="${escapeHtmlAttr(it.k)}" oninput="setSawInspectValue(this.dataset.k, this.value)"
+          style="flex:1;min-width:0;padding:7px 9px;border:1px solid var(--border);border-radius:7px;font-size:14px;background:var(--bg-surface);color:var(--text-1);">
+        <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr(it.unit)}</span>
+      </div>` : ''}
+    </div>`).join('')}
+    <div style="padding-top:10px;border-top:1px solid var(--border-light);">
+      <div style="font-size:12px;color:var(--text-3);margin-bottom:5px;">หมายเหตุ (ไม่บังคับ)</div>
+      <textarea id="saw-inspect-note" rows="2" oninput="sawInspectDraft && (sawInspectDraft.note = this.value)"
+        style="width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid var(--border);border-radius:7px;font-size:14px;background:var(--bg-surface);color:var(--text-1);resize:vertical;">${escapeHtmlAttr(d.note)}</textarea>
+    </div>
+    <div id="saw-inspect-warn" style="display:none;margin-top:8px;font-size:12.5px;font-weight:700;color:var(--red);"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+      <button type="button" class="btn btn-ghost" onclick="closeSawInspect()">ยกเลิก</button>
+      <button type="button" class="btn btn-primary" style="font-weight:800;" onclick="saveSawInspect()">บันทึกผลตรวจ</button>
+    </div>
+  </div>`;
+}
+function setSawInspectItem(k, v) {
+  if (!sawInspectDraft) return;
+  sawInspectDraft.items[k] = v;
+  renderSawInspectDialog();
+}
+function setSawInspectValue(k, v) {
+  if (!sawInspectDraft) return;
+  sawInspectDraft.values[k] = String(v || '').trim();
+}
+function closeSawInspect() {
+  sawInspectDraft = null;
+  const box = document.getElementById('saw-inspect-dialog');
+  if (box) box.remove();
+}
+function saveSawInspect() {
+  const d = sawInspectDraft;
+  if (!d) return;
+  const meta = SAW_INSPECT_STAGES[d.stage];
+  const missing = meta.items.filter(it => !d.items[it.k]);
+  if (missing.length) {
+    const w = document.getElementById('saw-inspect-warn');
+    if (w) { w.style.display = ''; w.textContent = 'ยังไม่ได้เลือกผล: ' + missing.map(it => it.label).join(', '); }
+    return;
+  }
+  const now = new Date();
+  const rec = {
+    sawId: d.sawId, items: { ...d.items },
+    values: Object.fromEntries(Object.entries(d.values).filter(([, v]) => String(v || '').trim())),
+    note: String(d.note || '').trim(),
+    at: now.toISOString(), date: dailyTodayIso(now), time: nowHHMM(), by: sawProblemWho(),
+  };
+  const key = sawInspectKey(d.taskId, d.rollIdx), stage = d.stage;
+  closeSawInspect();
+  withCloudRetry(() => {
+    const cur = sawInspections[key] || (sawInspections[key] = {});
+    cur[stage] = rec;
+    persistState();
+    renderDailyTasks();
+  });
+}
+
 async function finishDailyPiece(taskId, rollIdx, workerId, fromTaskRow) {
   if (!canActOnDailyItem(workerId)) return;
   const task = planTasks.find(t => t.id === taskId);
