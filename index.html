@@ -2466,7 +2466,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.17';
+const APP_BUILD = '2026-11-18.18';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -7607,18 +7607,21 @@ function sawReadyListHtml(list) {
   const reg = (toolingData || {}).saw || [];
   const rows = list.slice().sort((a, b) => String(a.machine || '~').localeCompare(String(b.machine || '~'))
     || String(a.id).localeCompare(String(b.id), undefined, { numeric: true }));
-  return `<div style="padding:10px 14px;max-height:520px;overflow-y:auto;">${rows.map(it => {
+  // การ์ดใบเลื่อยหนึ่งใบ — กะทัดรัดลงคอลัมน์เครื่อง (แบบเดียวกับการ์ดใบเลื่อยกำลังใช้งาน)
+  const cardHtml = it => {
     const r = reg.find(x => x.id === it.id) || it;
     const u = typeof sawUsageInfo === 'function' ? sawUsageInfo(r) : null;
     const mc = it.machine && it.machine !== '—' ? it.machine : '—';
+    const od = sawOdLabel(it);
     return `<div onclick="${jsCallAttr('goToSawBlade', it.id)}"
-      style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;margin-bottom:6px;cursor:pointer;
+      style="padding:8px 12px;border-radius:8px;margin-bottom:6px;cursor:pointer;
              background:var(--green-dim);border:1px solid var(--border-light);"
       title="${escapeHtmlAttr('พร้อมใช้งาน — เครื่องผลิต ' + mc + (u && u.lastGrind ? ' · ลับคมล่าสุด ' + fmtIsoDateThai(u.lastGrind) : ''))}">
-      <span style="font-size:14px;font-weight:800;color:#fff;background:var(--green);padding:3px 11px;border-radius:6px;min-width:34px;text-align:center;">${escapeHtmlAttr(mc)}</span>
-      <b style="font-size:13.5px;color:var(--text-1);">รหัส ${escapeHtmlAttr(it.id || '—')}</b>
-      <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr([sawOdLabel(it), mc !== '—' ? mc : ''].filter(Boolean).join(' · '))}</span>
-      ${u && u.lastGrind ? `<span style="font-size:12px;color:var(--text-2);">ลับคมล่าสุด ${escapeHtmlAttr(fmtIsoDateThai(u.lastGrind))}</span>` : ''}
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span style="font-size:14px;font-weight:800;color:#fff;background:var(--green);padding:3px 11px;border-radius:6px;">รหัส ${escapeHtmlAttr(it.id || '—')}</span>
+      ${od && od !== '—' ? `<span style="flex-shrink:0;font-size:11.5px;font-weight:800;padding:1px 8px;border-radius:99px;
+          background:var(--bg-panel);color:var(--text-2);box-shadow:inset 0 0 0 1px var(--border-light);">${escapeHtmlAttr(od)}</span>` : ''}
+      <span style="margin-left:auto;"></span>
       ${(() => {
         // ป้ายสถานะ ต่อท้าย "ลับคมล่าสุด" (ตำแหน่งเดียวกับการ์ดรอลับคม) — Admin/หัวหน้ากดเปลี่ยนสถานะได้ (เมนูเดียวกับทะเบียนใบเลื่อย ครบทุกสถานะ) แบบเดียวกับการ์ด Roll SQ
         const sIdx = reg.indexOf(r);
@@ -7628,11 +7631,31 @@ function sawReadyListHtml(list) {
               chip}<span style="font-size:9px;color:var(--text-3);margin-left:3px;">▾</span></span>`
           : `<span style="flex:0 0 auto;">${chip}</span>`;
       })()}
-      <span style="margin-left:auto;"></span>
-      ${u && u.p ? (u.sinceGrind != null ? sawTonsPcsHtml('หลังลับคม', u.sinceGrind, u.sinceGrindPcs) + '<span style="color:var(--border);">|</span>' : '')
-        + sawTonsPcsHtml('สะสม', u.total, u.p.pcs) : ''}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:2px;margin-top:6px;font-size:12px;">
+        ${u && u.lastGrind ? `<div style="color:var(--text-2);">ลับคมล่าสุด <b>${escapeHtmlAttr(fmtIsoDateThai(u.lastGrind))}</b></div>` : ''}
+        ${u && u.p && u.sinceGrind != null ? `<div>${sawTonsPcsHtml('หลังลับคม', u.sinceGrind, u.sinceGrindPcs)}</div>` : ''}
+        ${u && u.p ? `<div>${sawTonsPcsHtml('สะสม', u.total, u.p.pcs)}</div>` : ''}
+      </div>
     </div>`;
-  }).join('')}</div>`;
+  };
+  // แบ่งคอลัมน์ตามเครื่องผลิต — ชุดเครื่องเดียวกับการ์ดกำลังใช้งาน · ใบที่ไม่ระบุเครื่องอยู่คอลัมน์ "ไม่ระบุ" ท้ายสุด
+  const mOf = it => { const m = String(it.machine || '').trim(); return m && m !== '—' ? m : 'ไม่ระบุ'; };
+  const machines = [...new Set(reg.map(x => String(x.machine || '').trim()).filter(m => m && m !== '—'))]
+    .sort((a, b) => (/^P/i.test(b) - /^P/i.test(a)) || a.localeCompare(b, undefined, { numeric: true }));
+  rows.forEach(it => { const m = mOf(it); if (m !== 'ไม่ระบุ' && !machines.includes(m)) machines.push(m); });
+  if (rows.some(it => mOf(it) === 'ไม่ระบุ')) machines.push('ไม่ระบุ');
+  return `<div style="padding:10px 14px;">
+    <div class="dash-rollinuse-grid" style="display:grid;grid-template-columns:repeat(${machines.length},1fr);gap:16px;">
+    ${machines.map(m => {
+      const col = rows.filter(it => mOf(it) === m);
+      return `<div>
+        ${rollSetSectionHeaderHtml(m === 'ไม่ระบุ' ? 'ไม่ระบุเครื่อง' : 'เครื่อง ' + m, col.length, C_BLUE)}
+        ${col.length ? col.map(cardHtml).join('') : '<div style="padding:4px;color:var(--text-3);font-size:12px;">ไม่มี</div>'}
+      </div>`;
+    }).join('')}
+    </div>
+  </div>`;
 }
 
 // วาดเฉพาะแผงที่กำลังเปิดอยู่ (แท็บ Roll ใช้ตัวเรนเดอร์เดิมของมันเอง ไม่ต้องทำอะไรที่นี่)
