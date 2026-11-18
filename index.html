@@ -2437,7 +2437,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.9';
+const APP_BUILD = '2026-11-18.10';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -21534,7 +21534,9 @@ function applyMeasuredSizeToRegistry(roll, size, dateIso, bumpRegrind) {
   return true;
 }
 
-async function finishDailyPiece(taskId, rollIdx, workerId) {
+// fromTaskRow = กดจบจากแถวงานชิ้นเดียว (กดเริ่มที่แถวงาน) — เติมเวลาเริ่มของชิ้นจากเวลาเริ่มจริงของงาน
+// และบันทึกเวลาจบจริงระดับงานด้วย ให้แถวงานยังขึ้น "(จริง ...)" เหมือนเดิม
+async function finishDailyPiece(taskId, rollIdx, workerId, fromTaskRow) {
   if (!canActOnDailyItem(workerId)) return;
   const task = planTasks.find(t => t.id === taskId);
   if (!task) return;
@@ -21578,10 +21580,18 @@ async function finishDailyPiece(taskId, rollIdx, workerId) {
     const pausedMin = (parseFloat(cur.pausedMin) || 0)
       + (cur.status === 'paused' ? pauseGapMinutes(cur.pausedAt, endAt) : 0);
     // ชิ้นที่ถูกตัดข้ามกะ = งานชิ้นเดียว กดจบที่แถวไหนก็จบทุกส่วน
-    setPieceStatusForChain(taskId, rollIdx, needsMeasuredSize
-      ? { status: 'done', endTime: endAt, pausedAt: null, pausedMin, measuredSize: size,
-          registryDiameter: pieceCurrentOdOf(roll2) || null, odStandard: pieceStdOdOf(roll2) || null }
-      : { status: 'done', endTime: endAt, pausedAt: null, pausedMin });
+    const rowStart = fromTaskRow && !cur.startTime ? (getDailyActualTimes(taskId).startTime || null) : null;
+    setPieceStatusForChain(taskId, rollIdx, {
+      ...(needsMeasuredSize
+        ? { status: 'done', endTime: endAt, pausedAt: null, pausedMin, measuredSize: size,
+            registryDiameter: pieceCurrentOdOf(roll2) || null, odStandard: pieceStdOdOf(roll2) || null }
+        : { status: 'done', endTime: endAt, pausedAt: null, pausedMin }),
+      ...(rowStart ? { startTime: rowStart } : {}),
+    });
+    if (fromTaskRow) {
+      const timesMap = dailyActualTimes[dailyStatusDateFor(taskId)] || (dailyActualTimes[dailyStatusDateFor(taskId)] = {});
+      timesMap[taskId] = { ...(timesMap[taskId] || {}), endTime: endAt };
+    }
     if (needsMeasuredSize) {
       rollSizeLogSeq++;
       rollSizeLog.push({
@@ -21938,7 +21948,15 @@ function renderDailyTasks() {
     } else if (status === 'pending') {
       actions = `<button class="btn btn-ghost btn-sm daily-act daily-act-start" ${blockReason ? `disabled title="${blockReason} — เริ่มงานนี้ไม่ได้"` : ''} onclick="startDailyTask('${item.key}','${item.workerId || ''}')">▶ ${DL().start}</button>`;
     } else if (status === 'in_progress') {
-      actions = `<button class="btn btn-ghost btn-sm daily-act daily-act-finish" style="color:var(--accent);" ${blockReason ? `disabled title="${blockReason} — จบงานนี้ไม่ได้"` : ''} onclick="finishDailyTask('${item.key}','${item.workerId || ''}')">■ ${DL().finish}</button>`;
+      // งานชิ้นเดียว (เช่น ลับคมใบเลื่อย 1 ใบ / แต่ง Roll 1 ชิ้น) ไม่มีตารางรายชิ้น ปุ่มจบงานอยู่ที่แถวนี้
+      // เดิมจบระดับงานตรงๆ จึงไม่เด้งถามขนาด OD (เคสใบเลื่อยรหัส 193 วันที่ 18 พ.ย. 69) — ส่งไปจบรายชิ้นแทน
+      // จะได้ถาม OD บันทึกล็อกขนาด และอัปเดตทะเบียนเหมือนงานหลายชิ้น
+      const onlyPiece = item.raw && (item.raw.rollIds || []).length === 1 && workTypeMeasuresOd(item.raw.workType)
+        ? item.raw.rollIds[0] : null;
+      const finishCall = onlyPiece != null
+        ? `finishDailyPiece('${item.key}','${onlyPiece}','${item.workerId || ''}',true)`
+        : `finishDailyTask('${item.key}','${item.workerId || ''}')`;
+      actions = `<button class="btn btn-ghost btn-sm daily-act daily-act-finish" style="color:var(--accent);" ${blockReason ? `disabled title="${blockReason} — จบงานนี้ไม่ได้"` : ''} onclick="${finishCall}">■ ${DL().finish}</button>`;
     } else {
       actions = '';
     }
