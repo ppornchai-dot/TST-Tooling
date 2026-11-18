@@ -2466,7 +2466,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.24';
+const APP_BUILD = '2026-11-18.25';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6757,6 +6757,31 @@ function sawProblemCardHtml() {
   </div>`;
 }
 
+// กดการ์ดใบเลื่อยรอลับคม → ไปหน้าวางแผน แท็บลับคมใบเลื่อย
+//   วางแผนไว้แล้ว = ไปที่งานนั้น (วันของงาน + ไฮไลต์) · ยังไม่ได้วางแผน = เปิดฟอร์มเพิ่มงาน ติ๊กใบนี้ไว้ให้เลย
+//   (ผู้ที่วางแผนไม่ได้ ไปหน้าวางแผนเฉยๆ)
+function goToSawGrindPlan(sawId) {
+  const reg = (toolingData || {}).saw || [];
+  const idx = reg.findIndex(x => sawCodeKey(x.id) === sawCodeKey(sawId));
+  const task = idx < 0 ? null : (planTasks || []).filter(t => t && t.workType === 'saw' && !t.otherWork
+      && (t.rollIds || []).map(Number).includes(idx)
+      && (dailyStatusByDate[taskDisplayDate(t)] || {})[t.id] !== 'done'
+      && pieceEntryFor(taskDisplayDate(t), t.id, idx).status !== 'done')
+    .sort((a, b) => taskDisplayDate(a).localeCompare(taskDisplayDate(b)))[0];
+  if (task) { goToPlanTask(task.id, taskDisplayDate(task), 'saw'); return; }
+  showPage('plan');
+  if (!forcedWorkTypeForRole()) currentWorkTypeTab = 'saw';
+  if (currentPlanWorkType !== 'saw') switchPlanWorkType('saw');
+  renderCurrentPlanView();
+  if (idx < 0 || !canEditPlan()) return;
+  openPlanTaskModal('add', null, dailyTodayIso());
+  // ติ๊กใบนี้ในรายการให้เลย — ผ่าน toggleRollOption ตัวเดียวกับที่ผู้ใช้ติ๊กเอง (คิดเวลา/วันจบให้ครบ)
+  setTimeout(() => {
+    const cb = document.querySelector('#pf-rollids-panel input[type="checkbox"][value="' + idx + '"]');
+    if (cb && !cb.checked) { cb.checked = true; toggleRollOption(cb); }
+  }, 0);
+}
+
 function prodSawWaitingCardHtml() {
   const s = prodSawLive.status;
   if (s === 'noproxy') return '';
@@ -6765,10 +6790,10 @@ function prodSawWaitingCardHtml() {
   const cardHtml = ({ r, idx, u, plannedAt }) => {
     const od = sawOdLabel(r);
     return `
-    <div onclick="${jsCallAttr('goToSawBlade', r.id)}"
+    <div onclick="${jsCallAttr('goToSawGrindPlan', r.id)}"
       style="padding:8px 12px;border-radius:8px;margin-bottom:6px;cursor:pointer;
              background:var(--red-dim);border:1px solid var(--border-light);"
-      title="${escapeHtmlAttr('ถอดจากเครื่อง ' + u.last.machine + ' เมื่อ ' + prodSqFmtTime(u.removedAt)
+      title="${escapeHtmlAttr((plannedAt ? 'กดเพื่อไปที่งานลับคมใบนี้ในหน้าวางแผน' : 'กดเพื่อวางแผนลับคมใบนี้') + ' · ถอดจากเครื่อง ' + u.last.machine + ' เมื่อ ' + prodSqFmtTime(u.removedAt)
         + ' · รอบสุดท้าย ' + fmtTons2(u.last.kg / 1000) + ' ตัน (' + u.last.pcs.toLocaleString() + ' เส้น)'
         + (u.lastGrind ? ' · ลับคมล่าสุด ' + fmtIsoDateThai(u.lastGrind) : ' · ยังไม่มีวันลับคมล่าสุดที่ใช้ได้ในทะเบียน'))}">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
