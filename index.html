@@ -2463,7 +2463,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.30';
+const APP_BUILD = '2026-11-18.31';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -21831,7 +21831,7 @@ const SAW_INSPECT_STAGES = {
   before: { label: 'ตรวจก่อนลับ', items: [
     { k: 'crack', label: 'รอยร้าว' },
     { k: 'tooth', label: 'ฟันหัก' },
-    { k: 'center', label: 'เช็คศูนย์', unit: 'mm', num: true },
+    { k: 'center', label: 'เช็คศูนย์', unit: 'mm', num: true, max: 1 },   // เกณฑ์หน้างาน: ไม่เกิน 1 mm
   ] },
   after: { label: 'ตรวจหลังลับ', items: [
     { k: 'height', label: 'ความสูงฟัน', unit: 'mm', num: true },
@@ -21840,6 +21840,13 @@ const SAW_INSPECT_STAGES = {
     { k: 'thick', label: 'ความหนา', unit: 'mm', num: true },
   ] },
 };
+// ข้อตัวเลขที่มีเกณฑ์ (max) — คืน 'ok' / 'ng' · ไม่มีเกณฑ์หรือยังไม่กรอก = null
+function sawInspectJudge(it, v) {
+  if (!it || it.max == null) return null;
+  const n = parseFloat(String(v == null ? '' : v).replace(/,/g, ''));
+  if (!isFinite(n)) return null;
+  return n <= it.max ? 'ok' : 'ng';
+}
 function sawInspectKey(taskId, rollIdx) { return String(taskId) + '|' + String(rollIdx); }
 function sawInspectionFor(taskId, rollIdx, stage) {
   return ((sawInspections || {})[sawInspectKey(taskId, rollIdx)] || {})[stage] || null;
@@ -21858,7 +21865,8 @@ function sawInspectButtonsHtml(taskId, rollIdx, pieceStatus, workerId, lockReaso
     const tip = !rec ? 'ยังไม่ได้' + meta.label + ' — กดเพื่อบันทึกผลตรวจ'
       : meta.label + ' ' + (rec.date ? fmtDateThaiShort(parseISODate(rec.date)) + ' ' : '') + (rec.time || '') + (rec.by ? ' · ' + rec.by : '')
         + '\n' + meta.items.map(it => it.label + ': ' + (it.num
-          ? ((rec.values || {})[it.k] ? rec.values[it.k] + (it.unit ? ' ' + it.unit : '') : '—')
+          ? ((rec.values || {})[it.k] ? rec.values[it.k] + (it.unit ? ' ' + it.unit : '')
+              + ((rec.items || {})[it.k] === 'ng' ? ' (ไม่ผ่าน — เกิน ' + it.max + ' ' + (it.unit || '') + ')' : '') : '—')
           : ((rec.items || {})[it.k] === 'ng' ? 'ไม่ผ่าน' : 'ผ่าน'))).join('\n')
         + (rec.note ? '\nหมายเหตุ: ' + rec.note : '') + '\nกดเพื่อดู/แก้ไข';
     return `<button type="button" class="btn btn-sm" ${lockReason ? `disabled title="${escapeHtmlAttr(lockReason + ' — บันทึกผลตรวจไม่ได้')}"` : `title="${escapeHtmlAttr(tip)}"`}
@@ -21918,6 +21926,13 @@ function renderSawInspectDialog() {
         ${choice(it.k, 'ok', '✓ ผ่าน', 'var(--green)')}
         ${choice(it.k, 'ng', '✗ ไม่ผ่าน', 'var(--red)')}
       </div>`}
+      ${it.num && it.max != null ? (() => {
+        const j = sawInspectJudge(it, d.values[it.k]);
+        return `<div style="display:flex;align-items:center;gap:8px;margin:-2px 0 7px;font-size:12px;color:var(--text-3);">
+          เกณฑ์: ไม่เกิน ${escapeHtmlAttr(String(it.max))} ${escapeHtmlAttr(it.unit || '')}
+          <span id="saw-insp-judge-${escapeHtmlAttr(it.k)}" style="margin-left:auto;font-weight:800;font-size:12.5px;color:${j === 'ng' ? 'var(--red)' : 'var(--green)'};">${
+            j === 'ok' ? '✓ ผ่าน' : j === 'ng' ? '✗ ไม่ผ่าน' : ''}</span></div>`;
+      })() : ''}
       ${it.num ? `<div style="display:flex;align-items:center;gap:8px;">
         <input type="text" inputmode="decimal" value="${escapeHtmlAttr(d.values[it.k] || '')}" placeholder="กรอกตัวเลข"
           data-k="${escapeHtmlAttr(it.k)}" oninput="setSawInspectValue(this.dataset.k, this.value)"
@@ -21945,6 +21960,14 @@ function setSawInspectItem(k, v) {
 function setSawInspectValue(k, v) {
   if (!sawInspectDraft) return;
   sawInspectDraft.values[k] = String(v || '').trim();
+  // ข้อที่มีเกณฑ์ — อัปเดตผ่าน/ไม่ผ่านตามที่พิมพ์ (ไม่วาดฟอร์มใหม่ ไม่งั้นช่องที่กำลังพิมพ์หลุดโฟกัส)
+  const it = SAW_INSPECT_STAGES[sawInspectDraft.stage].items.find(x => x.k === k);
+  const el = document.getElementById('saw-insp-judge-' + k);
+  if (el && it) {
+    const j = sawInspectJudge(it, v);
+    el.textContent = j === 'ok' ? '✓ ผ่าน' : j === 'ng' ? '✗ ไม่ผ่าน' : '';
+    el.style.color = j === 'ng' ? 'var(--red)' : 'var(--green)';
+  }
 }
 function closeSawInspect() {
   sawInspectDraft = null;
@@ -21976,7 +21999,9 @@ function saveSawInspect() {
   const now = new Date();
   const rec = {
     sawId: d.sawId,
-    items: Object.fromEntries(meta.items.filter(it => !it.num).map(it => [it.k, d.items[it.k]])),
+    // ข้อตัวเลขที่มีเกณฑ์ ลงผลผ่าน/ไม่ผ่านไว้ด้วย (ปุ่มนับข้อไม่ผ่านจาก items ชุดเดียวกัน)
+    items: Object.fromEntries(meta.items.filter(it => !it.num || it.max != null)
+      .map(it => [it.k, it.num ? sawInspectJudge(it, d.values[it.k]) : d.items[it.k]])),
     values: Object.fromEntries(meta.items.filter(it => it.num).map(it => [it.k, String(d.values[it.k]).trim().replace(/,/g, '')])),
     note: String(d.note || '').trim(),
     at: now.toISOString(), date: dailyTodayIso(now), time: nowHHMM(), by: sawProblemWho(),
