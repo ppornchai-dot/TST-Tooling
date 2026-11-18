@@ -2466,7 +2466,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.15';
+const APP_BUILD = '2026-11-18.16';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6739,25 +6739,44 @@ function prodSawInUseCardHtml() {
       : 'ระบบผลิต · อัปเดต ' + new Date(prodSawLive.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }))}
     <button class="btn btn-ghost btn-sm" style="font-size:12px;font-weight:700;padding:3px 9px;"
       onclick="loadProdSawUsage(true)" ${s === 'loading' ? 'disabled' : ''} title="ดึงยอดใบเลื่อยจากระบบผลิตใหม่">↻</button></span>`;
-  const rows = open.map(o => {
+  // การ์ดใบเลื่อยหนึ่งใบ — กะทัดรัดให้ลงคอลัมน์เครื่องได้ (แบบเดียวกับการ์ดชุด Roll SQ กำลังใช้งาน)
+  const cardHtml = o => {
     const r = byKey.get(sawCodeKey(o.code));
     const u = r ? sawUsageInfo(r) : null;
-    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;margin-bottom:6px;
+    const od = r ? sawOdLabel(r) : '';
+    return `<div style="padding:8px 12px;border-radius:8px;margin-bottom:6px;
         background:var(--inuse-dim);border:2px solid var(--inuse-neon);box-shadow:var(--inuse-neon-glow);${r ? 'cursor:pointer;' : ''}"
       data-saw-inuse="${escapeHtmlAttr(sawCodeKey(o.code))}"
       ${r ? `onclick="${jsCallAttr('goToSawInUse', r.id)}"` : ''}
       title="${escapeHtmlAttr('ใส่เมื่อ ' + prodSqFmtTime(o.startedAt) + (o.productName ? ' · ' + o.productName : '')
         + ' · รอบนี้ ' + fmtTons2(o.kg / 1000) + ' ตัน (' + o.pcs.toLocaleString() + ' เส้น)')}">
-      <span style="font-size:14px;font-weight:800;color:#fff;background:var(--inuse);padding:3px 11px;border-radius:6px;">${escapeHtmlAttr(o.machine)}</span>
-      <b style="font-size:13.5px;color:var(--text-1);">รหัส ${escapeHtmlAttr(o.code)}</b>
-      ${r ? `<span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr([sawOdLabel(r), r.machine].filter(x => x && x !== '—').join(' · '))}</span>`
-        : '<span class="chip chip-amber">ไม่พบในทะเบียน</span>'}
-      <span style="font-size:12px;color:var(--text-2);">ใส่ ${escapeHtmlAttr(prodSqFmtTime(o.startedAt))}</span>
-      <span style="margin-left:auto;"></span>
-      ${sawTonsPcsHtml('รอบนี้', o.kg / 1000, o.pcs)}
-      ${u ? `<span style="color:var(--border);">|</span>${sawTonsPcsHtml('สะสม', u.total, u.p ? u.p.pcs : null)}` : ''}
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span style="font-size:14px;font-weight:800;color:#fff;background:var(--inuse);padding:3px 11px;border-radius:6px;">${escapeHtmlAttr(o.machine)}</span>
+        <b style="font-size:13.5px;color:var(--text-1);">รหัส ${escapeHtmlAttr(o.code)}</b>
+        ${od && od !== '—' ? `<span style="flex-shrink:0;font-size:11.5px;font-weight:800;padding:1px 8px;border-radius:99px;
+            background:var(--bg-panel);color:var(--text-2);box-shadow:inset 0 0 0 1px var(--border-light);">${escapeHtmlAttr(od)}</span>` : ''}
+        ${r ? '' : '<span class="chip chip-amber">ไม่พบในทะเบียน</span>'}
+        <span style="font-size:11.5px;color:var(--text-3);margin-left:auto;">ใส่ ${escapeHtmlAttr(prodSqFmtTime(o.startedAt))}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:2px;margin-top:6px;font-size:12px;">
+        <div>${sawTonsPcsHtml('รอบนี้', o.kg / 1000, o.pcs)}</div>
+        ${u ? `<div>${sawTonsPcsHtml('สะสม', u.total, u.p ? u.p.pcs : null)}</div>` : ''}
+      </div>
     </div>`;
-  }).join('');
+  };
+  // แบ่งคอลัมน์ตามเครื่อง — เครื่องจากทะเบียนใบเลื่อย + เครื่องที่ระบบผลิตมีใบใส่อยู่ (P ก่อน แล้วเครื่องอื่น)
+  const machines = [...new Set(reg.map(x => String(x.machine || '').trim()).filter(m => m && m !== '—')
+    .concat(open.map(o => String(o.machine || '').trim()).filter(Boolean)))]
+    .sort((a, b) => (/^P/i.test(b) - /^P/i.test(a)) || a.localeCompare(b, undefined, { numeric: true }));
+  const rows = !open.length ? '' : `<div class="dash-rollinuse-grid" style="display:grid;grid-template-columns:repeat(${machines.length},1fr);gap:16px;">
+    ${machines.map(m => {
+      const col = open.filter(o => String(o.machine || '').trim() === m);
+      return `<div>
+        ${rollSetSectionHeaderHtml('เครื่อง ' + m, col.length, C_BLUE)}
+        ${col.length ? col.map(cardHtml).join('') : '<div style="padding:4px;color:var(--text-3);font-size:12px;">ไม่มี</div>'}
+      </div>`;
+    }).join('')}
+  </div>`;
   const orphan = prodSawLive.orphan || [];
   return `<div class="card" style="margin-bottom:18px;">
     <div class="card-header">
