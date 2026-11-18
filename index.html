@@ -34,6 +34,8 @@
      การ์ด Dashboard และหน้าอายุ Tooling เพื่อให้สีของสถานะเดียวกันตรงกันทุกที่ */
   --inuse:#4F7A00;              /* ใช้งาน — เขียวอมเหลือง (คนละเฉดกับ --green ของ "พร้อมใช้งาน") */
   --inuse-dim:rgba(79,122,0,0.14);
+  --inuse-neon:#39FF14;         /* ขอบการ์ด Tooling กำลังใช้งาน — เขียวสะท้อนแสง */
+  --inuse-neon-glow:0 0 0 1px rgba(57,255,20,.35), 0 0 8px rgba(57,255,20,.55);
   --st-waitpolish:#9A8500;      /* รอขัด — เหลือง */
   --st-waitpolish-dim:rgba(226,196,0,0.22);
   --st-incomplete:#9C7A57;      /* ไม่ครบ — น้ำตาลอ่อน */
@@ -2464,7 +2466,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.13';
+const APP_BUILD = '2026-11-18.14';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -2840,7 +2842,7 @@ function dashRollInUseChipHtml(e, badgeColor, rowBg, plannedWorkType) {
   const finishHtml = rollFinishTagHtml(e, plannedWorkType);
   return `<div onclick="${jsCallAttr('openRollStatusQuickPick', e.set, e.colorKey)}"
     style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;cursor:pointer;
-           border:${rowBg === 'var(--inuse-dim)' ? '2px solid var(--inuse)' : '1px solid var(--border-light)'};background:${rowBg || 'var(--accent-glow)'};transition:filter .12s;margin-bottom:6px;"
+           border:${rowBg === 'var(--inuse-dim)' ? '2px solid var(--inuse-neon);box-shadow:var(--inuse-neon-glow)' : '1px solid var(--border-light)'};background:${rowBg || 'var(--accent-glow)'};transition:filter .12s;margin-bottom:6px;"
     onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
     title="กดเพื่อเลือกสถานะของชุดนี้ (หรือเปิดดูในทะเบียน Tooling)">
     <span style="font-size:15px;font-weight:800;color:#fff;background:${badgeColor || 'var(--accent)'};padding:3px 11px;border-radius:6px;flex-shrink:0;letter-spacing:.02em;">${escapeHtmlAttr(machineLabel)}</span>
@@ -5795,7 +5797,7 @@ function dashSqSetRowHtml(set, badgeColor, rowBg, hideSize) {
     : `<span style="margin-left:auto;"></span>`;
   return `<div onclick="${jsCallAttr('goToSqSet', sqSetKey(head))}"
     style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;cursor:pointer;
-           border:${rowBg === 'var(--inuse-dim)' ? '2px solid var(--inuse)' : '1px solid var(--border-light)'};background:${rowBg || 'var(--accent-glow)'};transition:filter .12s;margin-bottom:6px;"
+           border:${rowBg === 'var(--inuse-dim)' ? '2px solid var(--inuse-neon);box-shadow:var(--inuse-neon-glow)' : '1px solid var(--border-light)'};background:${rowBg || 'var(--accent-glow)'};transition:filter .12s;margin-bottom:6px;"
     onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
     title="${escapeHtmlAttr(sqSetFullLabel(head) + ' · Roll ' + set.length + ' ชิ้น'
       + (String(head.thickness || '').trim() ? ' · ความหนา ' + String(head.thickness).trim() : '')
@@ -6741,7 +6743,7 @@ function prodSawInUseCardHtml() {
     const r = byKey.get(sawCodeKey(o.code));
     const u = r ? sawUsageInfo(r) : null;
     return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;margin-bottom:6px;
-        background:var(--inuse-dim);border:2px solid var(--inuse);${r ? 'cursor:pointer;' : ''}"
+        background:var(--inuse-dim);border:2px solid var(--inuse-neon);box-shadow:var(--inuse-neon-glow);${r ? 'cursor:pointer;' : ''}"
       data-saw-inuse="${escapeHtmlAttr(sawCodeKey(o.code))}"
       ${r ? `onclick="${jsCallAttr('goToSawInUse', r.id)}"` : ''}
       title="${escapeHtmlAttr('ใส่เมื่อ ' + prodSqFmtTime(o.startedAt) + (o.productName ? ' · ' + o.productName : '')
