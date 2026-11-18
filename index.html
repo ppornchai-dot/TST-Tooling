@@ -2463,7 +2463,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.32';
+const APP_BUILD = '2026-11-18.33';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -21914,6 +21914,62 @@ function removeSawPieceFromPlan(taskId, rollIdx) {
   mergeAdjacentPlanTasks();
   if (typeof sawGrindPlanMemo !== 'undefined') sawGrindPlanMemo = null;
 }
+// ─── ป็อปอัพมุมขวาล่าง: ใบเลื่อยตรวจไม่ผ่าน → มีปัญหา ─────────────────────────────
+// ทุกเครื่องเห็น (ข้อมูลซิงก์มาทางคลาวด์) · แต่ละรายการเด้งครั้งเดียวต่อเครื่อง (จำ id ที่เห็นแล้วใน localStorage)
+// เครื่องที่เปิดครั้งแรก (ยังไม่เคยจำ) = จำของเดิมทั้งหมดไว้เงียบๆ ไม่เด้งของเก่าย้อนหลัง
+// ยังไม่ล็อกอิน = ยังไม่เด้ง (และยังไม่นับว่าเห็น) รอรอบถัดไป
+const SAW_PROB_SEEN_KEY = 'tst-tooling-sawprob-seen';
+const SAW_PROB_PAGE_OPENED_AT = new Date().toISOString();
+function checkSawInspectProblemPopups() {
+  if (typeof currentUser === 'undefined' || !currentUser) return;
+  let seen = null;
+  try { seen = JSON.parse(localStorage.getItem(SAW_PROB_SEEN_KEY) || 'null'); } catch (e) { seen = null; }
+  const list = (sawProblemLog || []).filter(e => e && e.source === 'inspect');
+  const save = ids => { try { localStorage.setItem(SAW_PROB_SEEN_KEY, JSON.stringify(ids.slice(-300))); } catch (e) { /* จำไม่ได้ก็อาจเด้งซ้ำ */ } };
+  // ยังไม่เคยจำ = ถือว่าเห็นของที่เกิดก่อนเปิดหน้านี้แล้ว · ที่เกิดหลังเปิดหน้า (เช่นเพิ่งตรวจไม่ผ่าน) ยังเด้งตามปกติ
+  if (!Array.isArray(seen)) seen = list.filter(e => String(e.at || '') < SAW_PROB_PAGE_OPENED_AT).map(e => e.id);
+  const fresh = list.filter(e => !e.fixedAt && !seen.includes(e.id));
+  if (!fresh.length) return;
+  save(seen.concat(fresh.map(e => e.id)));
+  showSawProblemPopup(fresh);
+}
+function showSawProblemPopup(entries) {
+  let box = document.getElementById('prod-change-popups');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'prod-change-popups';
+    box.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:9000;display:flex;flex-direction:column;gap:10px;align-items:flex-end;max-width:min(420px,calc(100vw - 36px));';
+    document.body.appendChild(box);
+  }
+  const el = document.createElement('div');
+  el.style.cssText = 'width:100%;background:var(--bg-panel);border:1px solid var(--border-light);border-left:5px solid var(--amber);'
+    + 'border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:12px 14px;cursor:pointer;';
+  el.title = 'กดเพื่อดูการ์ดใบเลื่อยมีปัญหาที่ Dashboard แท็บใบเลื่อย';
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <span style="font-size:18px;">⚠️</span>
+      <b style="font-size:14px;color:var(--amber);flex:1;">ใบเลื่อยตรวจไม่ผ่าน — ย้ายไปใบเลื่อยมีปัญหา</b>
+      <button type="button" data-close style="border:none;background:none;font-size:18px;line-height:1;color:var(--text-3);cursor:pointer;padding:0 2px;" title="ปิด">×</button>
+    </div>
+    ${entries.slice(-6).map(e => `<div style="font-size:12.5px;padding:4px 0;color:var(--text-2);border-top:1px solid var(--border-light);">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="flex-shrink:0;font-size:12px;font-weight:800;color:#fff;background:var(--amber);border-radius:5px;padding:1px 8px;">รหัส ${escapeHtmlAttr(e.sawId || '—')}</span>
+        ${e.machine ? `<span style="font-size:11.5px;color:var(--text-3);">${escapeHtmlAttr(e.machine)}</span>` : ''}
+        <span style="margin-left:auto;flex-shrink:0;font-size:11px;color:var(--text-3);">${escapeHtmlAttr((e.date ? fmtDateThaiShort(parseISODate(e.date)) + ' ' : '') + (e.time || ''))}${e.by && e.by !== '—' ? ' · ' + escapeHtmlAttr(e.by) : ''}</span>
+      </div>
+      <div style="margin-top:3px;font-weight:700;color:var(--red);">${escapeHtmlAttr(e.note || 'ตรวจไม่ผ่าน')}</div>
+    </div>`).join('')}`;
+  el.addEventListener('click', ev => {
+    el.remove();
+    if (ev.target.closest('[data-close]')) return;
+    showPage('dashboard');
+    switchDashTab('saw');
+    setTimeout(() => {
+      const h = [...document.querySelectorAll('.card-title')].find(x => x.textContent.includes('ใบเลื่อยมีปัญหา'));
+      if (h) h.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }, 50);
+  });
+  box.appendChild(el);
+}
 let sawInspectDraft = null;
 function openSawInspect(taskId, rollIdx, stage, workerId) {
   if (!canActOnDailyItem(workerId)) return;
@@ -22065,6 +22121,9 @@ function saveSawInspect() {
         reg.status = 'มีปัญหา';
         reg.problemNote = problemNote;
         sawProblemOpen(reg, problemNote);
+        // ติดป้ายว่ามาจากการตรวจ — ใช้เด้งป็อปอัพแจ้งเตือนทุกเครื่อง (ดู checkSawInspectProblemPopups)
+        const open = sawProblemLog.find(e => e.sawId === String(reg.id || '').trim() && !e.fixedAt);
+        if (open) { open.source = 'inspect'; open.stage = stage; }
       }
       if (!pieceDone) removeSawPieceFromPlan(taskId, rollIdx);
     }
@@ -22093,11 +22152,8 @@ function saveSawInspect() {
     renderDailyTasks();
     if ((odNew || failed.length) && typeof refreshSawViewsAfterStatusChange === 'function') refreshSawViewsAfterStatusChange();
   });
-  if (failed.length) {
-    alert('ย้ายใบเลื่อย รหัส ' + (d.sawId || '—') + ' ไปที่ "ใบเลื่อยมีปัญหา" แล้ว'
-      + (pieceDone ? '' : '\nและข้ามออกจากแผนงานลับคมแล้ว') + '\n\nอาการ: ' + problemNote
-      + '\n\nแก้ปัญหาแล้ว กด "✓ แก้แล้ว" ที่การ์ดใบเลื่อยมีปัญหาบน Dashboard (แท็บใบเลื่อย)');
-  }
+  // แจ้งเตือนเป็นป็อปอัพมุมขวาล่าง (ตัวเดียวกับที่เครื่องอื่นเห็นตอนข้อมูลซิงก์มา)
+  if (failed.length) checkSawInspectProblemPopups();
 }
 
 async function finishDailyPiece(taskId, rollIdx, workerId, fromTaskRow) {
@@ -24680,6 +24736,7 @@ renderDailyTasks(); // ต้องเรียกหลัง initAuth() เส
 // ทำงานเสริมหลังบูตแอปด้วย localStorage ตามปกติแล้วเท่านั้น (ไม่แก้ลำดับโหลดหน้าเดิม) เพื่อให้ทุกเครื่อง/บัญชีเห็นข้อมูลชุดเดียวกัน
 // ถ้าออฟไลน์หรือ Supabase ใช้งานไม่ได้ แอปยังทำงานได้ปกติด้วยข้อมูล localStorage ในเครื่องนี้
 function refreshAfterCloudUpdate() {
+  try { checkSawInspectProblemPopups(); } catch (e) { /* ป็อปอัพแจ้งเตือนพังก็ไม่ให้กระทบการวาดหน้า */ }
   renderTeamGrid();
   renderProdBlock();
   showPage(currentPage);
