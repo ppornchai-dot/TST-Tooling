@@ -2466,7 +2466,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.19';
+const APP_BUILD = '2026-11-18.20';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6138,6 +6138,70 @@ function sqSetPlanState(setKeyStr) {
   return st;
 }
 
+// ─── ป็อปอัพแจ้งเตือนมุมขวาล่าง: ฝ่ายผลิตถอด/ใส่ Roll SQ หรือใบเลื่อย ───────────────────
+// ไม่ได้ดึงเพิ่ม — เช็กจากข้อมูลที่ดึงอยู่แล้วตอนเปิดใช้งานจริง (ตามข้อตกลงกับฝ่ายผลิต ห้ามดึงถี่อัตโนมัติ)
+// จำ "เวลาล่าสุดที่เห็นแล้ว" ของแต่ละประเภทไว้ในเครื่อง (localStorage) — รอบที่ใส่/ถอดหลังเวลานั้น = ของใหม่ แจ้งครั้งเดียว
+// ยึดเวลาในข้อมูลเอง (ไม่ใช่เวลาที่ดึง) เพราะตัวกลางแคช 5 นาที ข้อมูลอาจมาช้ากว่าเวลาที่ดึง
+// เปิดครั้งแรกในเครื่องนั้น (ยังไม่มีเวลาที่จำไว้) = ตั้งต้นเงียบๆ ไม่แจ้งของเก่าย้อนหลัง
+const PROD_SEEN_STORAGE_KEY = 'tst-tooling-prod-seen';
+function prodChangeNotify(kind, rows, labelOf) {
+  let seen = {};
+  try { seen = JSON.parse(localStorage.getItem(PROD_SEEN_STORAGE_KEY) || '{}') || {}; } catch (e) { seen = {}; }
+  const since = seen[kind] || '';
+  const events = [];
+  let mark = since;
+  const ts = v => { const t = Date.parse(v || ''); return isNaN(t) ? '' : new Date(t).toISOString(); };
+  (rows || []).forEach(r => {
+    if (!r || !r.machine_id) return;
+    const st = ts(r.started_at), en = r.is_open ? '' : ts(r.ended_at);
+    if (st > mark) mark = st;
+    if (en > mark) mark = en;
+    if (!since) return;
+    if (en && en > since) events.push({ type: 'out', at: en, machine: String(r.machine_id), label: labelOf(r) });
+    if (st && st > since) events.push({ type: 'in', at: st, machine: String(r.machine_id), label: labelOf(r) });
+  });
+  if (mark && mark !== since) {
+    seen[kind] = mark;
+    try { localStorage.setItem(PROD_SEEN_STORAGE_KEY, JSON.stringify(seen)); } catch (e) { /* จำไม่ได้ก็แค่อาจแจ้งซ้ำ */ }
+  }
+  if (events.length) showProdChangePopup(kind, events.sort((a, b) => a.at.localeCompare(b.at)));
+}
+function showProdChangePopup(kind, events) {
+  let box = document.getElementById('prod-change-popups');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'prod-change-popups';
+    box.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:9000;display:flex;flex-direction:column;gap:10px;align-items:flex-end;max-width:min(420px,calc(100vw - 36px));';
+    document.body.appendChild(box);
+  }
+  const name = kind === 'saw' ? 'ใบเลื่อย' : ' Roll SQ';   // เว้นวรรคหน้าคำอังกฤษ
+  const outs = events.filter(e => e.type === 'out').length;
+  const title = outs && outs < events.length ? 'ฝ่ายผลิตเปลี่ยน' + name : outs ? 'ฝ่ายผลิตถอด' + name : 'ฝ่ายผลิตใส่' + name;
+  const shown = events.slice(-8);
+  const el = document.createElement('div');
+  el.style.cssText = 'width:100%;background:var(--bg-panel);border:1px solid var(--border-light);border-left:5px solid '
+    + (outs ? 'var(--red)' : 'var(--inuse)') + ';border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:12px 14px;cursor:pointer;';
+  el.title = 'กดเพื่อดูที่ Dashboard แท็บ' + name;
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <span style="font-size:18px;">🔔</span>
+      <b style="font-size:14px;color:var(--text-1);flex:1;">${escapeHtmlAttr(title)}</b>
+      <button type="button" data-close style="border:none;background:none;font-size:18px;line-height:1;color:var(--text-3);cursor:pointer;padding:0 2px;" title="ปิด">×</button>
+    </div>
+    ${shown.map(e => `<div style="display:flex;align-items:center;gap:8px;font-size:12.5px;padding:3px 0;color:var(--text-2);">
+      <span style="flex-shrink:0;font-size:11px;font-weight:800;color:#fff;border-radius:5px;padding:1px 7px;background:${e.type === 'out' ? 'var(--red)' : 'var(--inuse)'};">${e.type === 'out' ? 'ถอด' : 'ใส่'}</span>
+      <span style="flex:1;min-width:0;"><b style="color:var(--text-1);">${escapeHtmlAttr(e.label)}</b> ${e.type === 'out' ? 'ออกจาก' : 'เข้า'}เครื่อง <b>${escapeHtmlAttr(e.machine)}</b></span>
+      <span style="flex-shrink:0;font-size:11px;color:var(--text-3);">${escapeHtmlAttr(prodSqFmtTime(e.at))}</span>
+    </div>`).join('')}
+    ${events.length > shown.length ? `<div style="font-size:11px;color:var(--text-3);margin-top:2px;">และอีก ${events.length - shown.length} รายการก่อนหน้า</div>` : ''}`;
+  el.addEventListener('click', ev => {
+    el.remove();
+    if (ev.target.closest('[data-close]')) return;
+    showPage('dashboard');
+    switchDashTab(kind);
+  });
+  box.appendChild(el);
+}
+
 function loadProdSqInUse(force) {
   if (!PROD_SQ_PROXY_URL) { prodSqLive.status = 'noproxy'; return; }
   if (prodSqLoading) return;
@@ -6207,6 +6271,13 @@ function loadProdSqInUse(force) {
           kg: Number(r.kg) || 0, pcs: Number(r.pcs) || 0 };
       });
       prodSqLive = { status: 'ok', at: Date.now(), rounds, byKey, removed, error: null };
+      // แจ้งเตือนมุมขวาล่างถ้าฝ่ายผลิตถอด/ใส่ชุดใหม่ตั้งแต่ครั้งก่อนที่เห็น
+      prodChangeNotify('sq', json.rows || [], r => {
+        const sk = apiSizeKey(r);
+        const cands = !sk ? [] : heads.filter(h => rollSetFgKey(h.sizeSq) === sk && h.color === r.color && sqSetMatchesProdCode(h, r.code));
+        if (cands.length === 1) return String(cands[0].sizeSq || '').trim() + ' ' + sqColorMeta(cands[0].color).label + ' ' + sqSetOrdinalLabel(cands[0]);
+        return 'ชุดรหัส ' + String(r.code || '—') + (r.product_name ? ' (' + String(r.product_name) + ')' : '');
+      });
     } catch (e) {
       // ดึงไม่ได้ก็ยังโชว์ผลรอบก่อน (ถ้ามี) — แค่บอกว่ารอบล่าสุดล้มเหลว
       prodSqLive = { ...prodSqLive, status: 'error', at: Date.now(), error: String((e && e.message) || e) };
@@ -6316,6 +6387,7 @@ function loadProdSawUsage(force) {
       const known = new Set(((toolingData || {}).saw || []).map(x => sawCodeKey(x.id)));
       const orphan = Object.keys(byCode).filter(k => !known.has(k));
       prodSawLive = { status: 'ok', at: Date.now(), byCode, open, orphan, error: null };
+      prodChangeNotify('saw', json.rows || [], r => 'ใบเลื่อย รหัส ' + String(r.code == null ? '—' : r.code).trim());
     } catch (e) {
       prodSawLive = { ...prodSawLive, status: 'error', at: Date.now(), error: String((e && e.message) || e) };
     } finally {
