@@ -2416,6 +2416,33 @@ function rollStatusBar(items) {
 // ─── NAVIGATION ───────────────────────────────────────────────────────────────
 let currentPage = 'dashboard';
 const CURRENT_PAGE_STORAGE_KEY = 'tst-tooling-current-page'; // จำหน้าล่าสุดไว้ใน localStorage เพื่อกลับมาหน้าเดิมได้เมื่อรีเฟรช (ไม่ใช่กลับไป Dashboard ทุกครั้ง)
+// จำแท็บย่อยในแต่ละหน้าด้วย (เช่น แต่ง Roll / ลับคมใบเลื่อย) — รีเฟรชแล้วอยู่แท็บเดิม ไม่เด้งกลับแท็บแรก
+// เก็บในเครื่องนั้นเอง (localStorage) ไม่ขึ้นคลาวด์ ไม่กระทบเครื่องอื่น
+const SUBTAB_STORAGE_KEY = 'tst-tooling-subtabs';
+function rememberSubTab(name, key) {
+  try {
+    const m = JSON.parse(localStorage.getItem(SUBTAB_STORAGE_KEY) || '{}') || {};
+    m[name] = key;
+    localStorage.setItem(SUBTAB_STORAGE_KEY, JSON.stringify(m));
+  } catch (e) { /* จำไม่ได้ก็แค่กลับแท็บแรก */ }
+}
+function savedSubTab(name) {
+  try { return (JSON.parse(localStorage.getItem(SUBTAB_STORAGE_KEY) || '{}') || {})[name] || null; } catch (e) { return null; }
+}
+// เรียกหลังเปิดหน้าตอนรีเฟรช — สลับไปแท็บที่จำไว้ของหน้านั้น
+function restoreSubTabFor(page) {
+  const map = {
+    daily: ['work', switchWorkTypeTab], plan: ['work', switchWorkTypeTab],
+    registry: ['reg', switchRegTab], dashboard: ['dash', switchDashTab],
+    prodWeight: ['pw', switchProdWeightTab], rollLife: ['rl', switchRollLifeTab],
+    inuse: ['iu', switchInUseTab], pending: ['pd', switchPendingTab],
+  };
+  const e = map[page];
+  if (!e) return;
+  const k = savedSubTab(e[0]);
+  if (!k) return;
+  try { e[1](k); } catch (err) { /* แท็บที่จำไว้ใช้ไม่ได้แล้ว — อยู่แท็บแรกตามเดิม */ }
+}
 // ชื่อหน้าที่แสดงบนหัวกระดาษ (แถบด้านบน) — ไม่มีคำอธิบายแล้ว เก็บไว้แต่ชื่อ
 const PAGE_META = {
   dashboard:  { title: 'Dashboard' },
@@ -2437,7 +2464,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.11';
+const APP_BUILD = '2026-11-18.12';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -3924,6 +3951,7 @@ function renderInUsePage() {
 // var ไม่ใช่ let — renderInUsePage ถูกเรียกตอนบูตก่อนบรรทัดนี้จะรัน (let จะชน TDZ)
 var inUseTab = 'roll';
 function switchInUseTab(key) {
+  rememberSubTab('iu', key);
   inUseTab = key;
   document.querySelectorAll('#iu-tab-bar .reg-tab').forEach(t =>
     t.classList.toggle('active', (t.getAttribute('onclick') || '').includes("'" + key + "'")));
@@ -5662,6 +5690,7 @@ function renderToolingStatusDetail(catKey, items) {
 // จำกัดขอบเขตไว้ที่หน้าทะเบียนเท่านั้น — Dashboard ใช้แท็บหน้าตาเดียวกัน (.reg-tab) แล้ว
 // ถ้ากวาดทั้งหน้าเหมือนเดิม การสลับแท็บในทะเบียนจะไปลบไฮไลต์แท็บของ Dashboard ไปด้วย
 function switchRegTab(key) {
+  rememberSubTab('reg', key);
   const scope = document.getElementById('page-registry');
   if (!scope) return;
   scope.querySelectorAll('.reg-tab').forEach(t => t.classList.remove('active'));
@@ -5681,6 +5710,7 @@ function switchRegTab(key) {
 // (หมวดพวกนี้ไม่มีงานตามแผน/รอบการแต่งเหมือน Roll จึงสรุปจากทะเบียนเป็นหลัก)
 let dashTab = 'roll';
 function switchDashTab(key) {
+  rememberSubTab('dash', key);
   dashTab = key;
   const bar = document.getElementById('dash-tab-bar');
   if (bar) bar.querySelectorAll('.reg-tab').forEach(t => {
@@ -6753,6 +6783,7 @@ function prodSawInUseCardHtml() {
 var prodWeightTab = 'roll';
 var prodToolingRangeCache = new Map();   // 'kind|from|to' → { at, rows }
 function switchProdWeightTab(key) {
+  rememberSubTab('pw', key);
   prodWeightTab = key;
   document.querySelectorAll('#pw-tab-bar .reg-tab').forEach(t =>
     t.classList.toggle('active', (t.getAttribute('onclick') || '').includes("'" + key + "'")));
@@ -6971,6 +7002,7 @@ async function renderProdWeightTooling(force) {
 // มีดสลิตเตอร์ = ระบบผลิตยังไม่มีข้อมูล
 var rollLifeTab = 'roll';
 function switchRollLifeTab(key) {
+  rememberSubTab('rl', key);
   rollLifeTab = key;
   document.querySelectorAll('#rl-tab-bar .reg-tab').forEach(t =>
     t.classList.toggle('active', (t.getAttribute('onclick') || '').includes("'" + key + "'")));
@@ -9501,6 +9533,7 @@ function activeWorkTypeTab() {
 function switchWorkTypeTab(key) {
   if (!PLAN_DAY_SECTIONS.some(x => x.key === key)) return;
   currentWorkTypeTab = key;
+  rememberSubTab('work', key);
   renderWorkTypeTabs();
   if (currentPage === 'plan' && typeof renderCurrentPlanView === 'function') renderCurrentPlanView();
   if (currentPage === 'daily' && typeof renderDailyTasks === 'function') renderDailyTasks();
@@ -22853,6 +22886,7 @@ function updatePendingBadge() {
 var pendingTab = 'roll';
 var PENDING_TAB_SECTIONS = { roll: ['cnc', 'polish'], sq: ['sq'], saw: ['saw'], slitter: ['slitter'] };
 function switchPendingTab(key) {
+  rememberSubTab('pd', key);
   pendingTab = key;
   document.querySelectorAll('#pd-tab-bar .reg-tab').forEach(t =>
     t.classList.toggle('active', (t.getAttribute('onclick') || '').includes("'" + key + "'")));
@@ -24094,6 +24128,8 @@ function initAuth() {
       const navBtn = document.querySelector('.nav-item[onclick*="\'' + savedPage + '\'"]');
       if (!navBtn || navBtn.style.display !== 'none') showPage(savedPage);
     }
+    // แท็บย่อยของหน้าที่เปิดอยู่ (รวม Dashboard) — กลับไปแท็บเดิมที่ดูค้างไว้
+    restoreSubTabFor(currentPage);
   } else {
     renderLoginOptions();
     document.getElementById('login-overlay').classList.remove('hidden');
