@@ -2466,7 +2466,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.21';
+const APP_BUILD = '2026-11-18.22';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -7579,10 +7579,18 @@ function renderDashboardSqPanel() {
   const bySize = new Map();
   sets.forEach(s => {
     const size = (s[0] || {}).sizeSq || 'ไม่ระบุขนาด';
-    if (!bySize.has(size)) bySize.set(size, { size, sets: 0, pieces: 0, expired: 0, unmeasured: 0 });
+    if (!bySize.has(size)) bySize.set(size, { size, sets: 0, pieces: 0, expired: 0, unmeasured: 0, byColor: new Map() });
     const g = bySize.get(size);
-    g.sets++;
-    s.forEach(r => { g.pieces++; if (sqOdExpired(r)) g.expired++; if (!sqHasCurrentOd(r)) g.unmeasured++; });
+    // แยกย่อยตามชุดสีด้วย (ผู้ใช้ขอ) — ตัวนับเดียวกับแถวขนาด ผลรวมของสีจึงเท่ากับแถวขนาดเสมอ
+    const ck = String((s[0] || {}).color || '');
+    if (!g.byColor.has(ck)) g.byColor.set(ck, { color: ck, sets: 0, pieces: 0, expired: 0, unmeasured: 0 });
+    const c = g.byColor.get(ck);
+    g.sets++; c.sets++;
+    s.forEach(r => {
+      g.pieces++; c.pieces++;
+      if (sqOdExpired(r)) { g.expired++; c.expired++; }
+      if (!sqHasCurrentOd(r)) { g.unmeasured++; c.unmeasured++; }
+    });
   });
   const sizeRows = [...bySize.values()].sort((a, b) => (b.expired - a.expired) || String(a.size).localeCompare(String(b.size), 'th'));
 
@@ -7636,18 +7644,28 @@ function renderDashboardSqPanel() {
     ${dashSqWaitDressCardHtml(sets)}
 
     <div class="card">
-      <div class="card-header"><span class="card-title" style="font-size:16px;">สรุปตามขนาด Size SQ</span></div>
+      <div class="card-header"><span class="card-title" style="font-size:16px;">สรุปตามขนาด Size SQ และชุดสี</span></div>
       <div style="padding:0;overflow-x:auto;">
         <table>
           <thead><tr><th>ขนาด Size SQ</th><th style="text-align:right;">ชุด</th><th style="text-align:right;">ชิ้น</th>
             <th style="text-align:right;">ยังไม่วัด OD</th><th style="text-align:right;">ถึงอายุ</th></tr></thead>
-          <tbody>${sizeRows.map(g => `<tr>
-            <td style="font-weight:600;">${escapeHtmlAttr(g.size)}</td>
-            <td style="text-align:right;font-variant-numeric:tabular-nums;">${g.sets.toLocaleString()}</td>
-            <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--text-2);">${g.pieces.toLocaleString()}</td>
-            <td style="text-align:right;font-variant-numeric:tabular-nums;color:${g.unmeasured ? 'var(--amber)' : 'var(--text-3)'};">${g.unmeasured.toLocaleString()}</td>
-            <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:${g.expired ? 800 : 400};color:${g.expired ? 'var(--red)' : 'var(--text-3)'};">${g.expired.toLocaleString()}</td>
-          </tr>`).join('')}</tbody>
+          <tbody>${sizeRows.map(g => {
+            const nums = (x, strong) => `
+            <td style="text-align:right;font-variant-numeric:tabular-nums;${strong ? 'font-weight:700;' : ''}">${x.sets.toLocaleString()}</td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--text-2);${strong ? 'font-weight:700;' : ''}">${x.pieces.toLocaleString()}</td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums;color:${x.unmeasured ? 'var(--amber)' : 'var(--text-3)'};">${x.unmeasured.toLocaleString()}</td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:${x.expired ? 800 : 400};color:${x.expired ? 'var(--red)' : 'var(--text-3)'};">${x.expired.toLocaleString()}</td>`;
+            // แถวขนาด (พื้นอ่อน ตัวหนา) แล้วตามด้วยแถวชุดสีของขนาดนั้น — สีที่มีชิ้นถึงอายุขึ้นก่อน
+            const colors = [...g.byColor.values()].sort((a, b) => (b.expired - a.expired)
+              || sqColorMeta(a.color).label.localeCompare(sqColorMeta(b.color).label, 'th'));
+            return `<tr style="background:var(--bg-surface);">
+              <td style="font-weight:800;">${escapeHtmlAttr(g.size)}
+                <span style="font-weight:600;font-size:11.5px;color:var(--text-3);margin-left:6px;">${colors.length} สี</span></td>${nums(g, true)}
+            </tr>${colors.map(c => {
+              const cm = sqColorMeta(c.color);
+              return `<tr><td style="padding-left:30px;">${rollColorPillHtml(cm.dot, cm.label)}</td>${nums(c, false)}</tr>`;
+            }).join('')}`;
+          }).join('')}</tbody>
         </table>
       </div>
     </div>`;
