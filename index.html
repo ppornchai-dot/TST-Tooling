@@ -2074,12 +2074,9 @@ canvas{display:block;}
     <div class="page" id="page-history">
 
       <!-- แยกดูตามประเภทงาน — ปุ่มแท็บชุดเดียวกับหน้าทะเบียน/วางแผน/งานประจำวัน
-           หน้านี้มี "ทั้งหมด" เพิ่มมาด้วย เพราะประวัติมักต้องไล่ดูรวมทุกประเภท -->
+           เอาแท็บ "ทั้งหมด" ออกแล้ว (ผู้ใช้ขอ 18 พ.ย. 69) — ดูทีละประเภทงานเท่านั้น -->
       <div class="reg-tab-bar">
-        <button class="reg-tab history-type-btn active" data-histtype="" aria-pressed="true" onclick="switchHistoryType('')">
-          <span class="reg-tab-icon" style="background:var(--bg-hover);color:var(--text-2);">≡</span>
-          ทั้งหมด <span class="reg-tab-count history-type-count" data-count-for=""></span></button>
-        <button class="reg-tab history-type-btn" data-histtype="cnc" aria-pressed="false" onclick="switchHistoryType('cnc')">
+        <button class="reg-tab history-type-btn active" data-histtype="cnc" aria-pressed="true" onclick="switchHistoryType('cnc')">
           <span class="reg-tab-icon" style="background:var(--accent-glow);color:var(--accent);">⚙</span>
           แต่ง Roll (CNC) <span class="reg-tab-count history-type-count" data-count-for="cnc"></span></button>
         <button class="reg-tab history-type-btn" data-histtype="polish" aria-pressed="false" onclick="switchHistoryType('polish')">
@@ -2466,7 +2463,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.25';
+const APP_BUILD = '2026-11-18.26';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -22582,8 +22579,14 @@ function collectHistoryRecords() {
   return records;
 }
 
-// แท็บแยกประเภทงานในหน้าประวัติ — '' = ทั้งหมด
-let currentHistoryType = '';
+// แท็บแยกประเภทงานในหน้าประวัติ — ไม่มี "ทั้งหมด" แล้ว เริ่มที่แท็บที่ดูค้างไว้ (ไม่มี = แต่ง Roll CNC)
+const HISTORY_TYPE_KEYS = ['cnc', 'polish', 'sq', 'saw', 'slitter'];
+let currentHistoryType = (() => {
+  try {
+    const k = (JSON.parse(localStorage.getItem('tst-tooling-subtabs') || '{}') || {}).hist;
+    return HISTORY_TYPE_KEYS.includes(k) ? k : 'cnc';
+  } catch (e) { return 'cnc'; }
+})();
 function historyTypeMatches(r, filter) {
   if (!filter) return true;
   // ใบเลื่อยมีปัญหาอยู่ในแท็บ "ลับคมใบเลื่อย" (ช่างลับคมใบเลื่อยก็เห็น)
@@ -22610,7 +22613,9 @@ function refreshHistoryTypeButtons() {
 }
 function switchHistoryType(key) {
   if (forcedHistoryTypeForRole()) return; // ถูกล็อกตามบทบาทอยู่ กดสลับไม่ได้
-  currentHistoryType = key || '';
+  if (!HISTORY_TYPE_KEYS.includes(key)) return;
+  currentHistoryType = key;
+  rememberSubTab('hist', key);
   refreshHistoryTypeButtons();
   renderHistory();
 }
