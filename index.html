@@ -2463,7 +2463,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.31';
+const APP_BUILD = '2026-11-18.32';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -21877,6 +21877,43 @@ function sawInspectButtonsHtml(taskId, rollIdx, pieceStatus, workerId, lockReaso
   const showAfter = pieceStatus !== 'pending' || !!sawInspectionFor(taskId, rollIdx, 'after');
   return `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">${btn('before')}${showAfter ? btn('after') : ''}</div>`;
 }
+// ข้ามใบเลื่อยออกจากแผนงานลับคม (ตรวจไม่ผ่าน) — เอาชิ้นนั้นออกจากทุกใบงานที่มีส่วนของชิ้นนั้น
+// ใบที่มีชิ้นเดียว = ลบใบงานทิ้ง · ใบที่มีหลายชิ้น = เหลือชิ้นอื่น คิดเวลาจบใหม่ (วิธีเดียวกับ splitPlanTaskAtDone)
+// แล้วจัดคิวใหม่ทั้งแผน งานถัดไปจึงเลื่อนขึ้นมาแทนช่วงเวลาที่ว่าง
+function removeSawPieceFromPlan(taskId, rollIdx) {
+  const idx = Number(rollIdx);
+  pieceChainIdsFor(taskId, idx).forEach(id => {
+    const t = planTasks.find(x => x.id === id);
+    if (!t) return;
+    const ids = (t.rollIds || []).map(Number);
+    if (!ids.includes(idx)) return;
+    const d = dailyStatusDateFor(id);
+    if (((dailyPieceStatus[d] || {})[id] || {})[idx]) delete dailyPieceStatus[d][id][idx];
+    const rest = ids.filter(i => i !== idx);
+    if (!rest.length) { planTasks = planTasks.filter(x => x.id !== id); return; }
+    const scoped = getMatchingRollsForPlan(t.rollSet, t.rollColor);
+    // คิดนาทีก่อนแก้ใบ — pieceMinutesOfTask อ่าน override ของใบนี้อยู่
+    const override = {};
+    rest.forEach(i => { override[i] = pieceMinutesOfTask(t, i, scoped); });
+    t.rollIds = rest;
+    t.rollId = rest.length + ' Roll';
+    t.rollName = rest.map(i => (scoped[i] || {}).name).filter(Boolean).join(', ');
+    t.totalTime = rest.reduce((sum, i) => sum + override[i], 0);
+    t.rollMinutesOverride = override;
+    const end = computePlanEnd(t.date, t.startTime, t.totalTime, planTaskSchedShift(t), t.otCapMinutesByShift || {});
+    t.endTime = end.time;
+    t.endDate = end.date || t.date;
+    t.otMinutes = end.otMinutes || 0;
+    t.otMinutesByShift = end.otMinutesByShift || {};
+    // ชิ้นที่เหลือทำเสร็จหมดแล้ว = ใบงานนี้จบ
+    if (rest.every(i => getDailyPieceEntry(id, i).status === 'done')) {
+      (dailyStatusByDate[d] || (dailyStatusByDate[d] = {}))[id] = 'done';
+    }
+  });
+  autoFixPlanSequencing();
+  mergeAdjacentPlanTasks();
+  if (typeof sawGrindPlanMemo !== 'undefined') sawGrindPlanMemo = null;
+}
 let sawInspectDraft = null;
 function openSawInspect(taskId, rollIdx, stage, workerId) {
   if (!canActOnDailyItem(workerId)) return;
@@ -22009,10 +22046,28 @@ function saveSawInspect() {
   const key = sawInspectKey(d.taskId, d.rollIdx), stage = d.stage;
   const taskId = d.taskId, rollIdx = d.rollIdx;
   const odNew = stage === 'after' ? String(rec.values.od || '') : '';
+  // ตรวจไม่ผ่าน → ใบนี้ไปอยู่ "ใบเลื่อยมีปัญหา" + ข้ามออกจากแผนงาน (ชิ้นที่ยังไม่เสร็จ) — ถามยืนยันก่อน กันกดพลาด
+  const failed = meta.items.filter(it => rec.items[it.k] === 'ng');
+  const failText = failed.map(it => it.label + (it.num && rec.values[it.k] ? ' ' + rec.values[it.k] + ' ' + (it.unit || '') : '')).join(', ');
+  const pieceDone = (getDailyPieceEntry(taskId, rollIdx) || {}).status === 'done';
+  if (failed.length && !confirm('ใบเลื่อย รหัส ' + (d.sawId || '—') + ' ' + meta.label + 'ไม่ผ่าน: ' + failText
+      + '\n\nใบนี้จะถูกตั้งเป็น "มีปัญหา" (ขึ้นในการ์ดใบเลื่อยมีปัญหา)'
+      + (pieceDone ? '' : '\nและข้ามออกจากแผนงานลับคม (เอาใบนี้ออกจากแผน)')
+      + '\n\nยืนยันหรือไม่?')) return;   // ยกเลิก = กลับไปแก้ในฟอร์ม (ยังไม่บันทึกอะไร)
+  const problemNote = meta.label + 'ไม่ผ่าน: ' + failText + (rec.note ? ' · ' + rec.note : '');
   closeSawInspect();
   withCloudRetry(() => {
     const cur = sawInspections[key] || (sawInspections[key] = {});
     cur[stage] = rec;
+    if (failed.length) {
+      const reg = (toolingData.saw || [])[Number(rollIdx)];
+      if (reg) {
+        reg.status = 'มีปัญหา';
+        reg.problemNote = problemNote;
+        sawProblemOpen(reg, problemNote);
+      }
+      if (!pieceDone) removeSawPieceFromPlan(taskId, rollIdx);
+    }
     // ความโต (OD) หลังลับ = OD ใบเลื่อยปัจจุบัน — ลงชิ้นงาน (เทียบกับทะเบียนในตาราง) + ล็อกขนาด + ทะเบียนใบเลื่อย
     // ค่าเดิมไม่บันทึกซ้ำ · ค่าเปลี่ยน = แก้ค่า (เก็บค่าเดิมไว้ในล็อก)
     const prev = getDailyPieceEntry(taskId, rollIdx) || {};
@@ -22036,8 +22091,13 @@ function saveSawInspect() {
     }
     persistState();
     renderDailyTasks();
-    if (odNew && typeof refreshSawViewsAfterStatusChange === 'function') refreshSawViewsAfterStatusChange();
+    if ((odNew || failed.length) && typeof refreshSawViewsAfterStatusChange === 'function') refreshSawViewsAfterStatusChange();
   });
+  if (failed.length) {
+    alert('ย้ายใบเลื่อย รหัส ' + (d.sawId || '—') + ' ไปที่ "ใบเลื่อยมีปัญหา" แล้ว'
+      + (pieceDone ? '' : '\nและข้ามออกจากแผนงานลับคมแล้ว') + '\n\nอาการ: ' + problemNote
+      + '\n\nแก้ปัญหาแล้ว กด "✓ แก้แล้ว" ที่การ์ดใบเลื่อยมีปัญหาบน Dashboard (แท็บใบเลื่อย)');
+  }
 }
 
 async function finishDailyPiece(taskId, rollIdx, workerId, fromTaskRow) {
