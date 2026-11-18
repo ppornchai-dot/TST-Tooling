@@ -2466,7 +2466,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.16';
+const APP_BUILD = '2026-11-18.17';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6655,16 +6655,23 @@ function prodSawWaitingCardHtml() {
   const s = prodSawLive.status;
   if (s === 'noproxy') return '';
   const list = s === 'ok' || prodSawLive.at ? prodSawWaitingList() : [];
-  const rows = list.map(({ r, idx, u, plannedAt }) => `
+  // การ์ดใบเลื่อยหนึ่งใบ — กะทัดรัดลงคอลัมน์เครื่อง (แบบเดียวกับการ์ดใบเลื่อยกำลังใช้งาน)
+  const cardHtml = ({ r, idx, u, plannedAt }) => {
+    const od = sawOdLabel(r);
+    return `
     <div onclick="${jsCallAttr('goToSawBlade', r.id)}"
-      style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;margin-bottom:6px;cursor:pointer;
+      style="padding:8px 12px;border-radius:8px;margin-bottom:6px;cursor:pointer;
              background:var(--red-dim);border:1px solid var(--border-light);"
       title="${escapeHtmlAttr('ถอดจากเครื่อง ' + u.last.machine + ' เมื่อ ' + prodSqFmtTime(u.removedAt)
         + ' · รอบสุดท้าย ' + fmtTons2(u.last.kg / 1000) + ' ตัน (' + u.last.pcs.toLocaleString() + ' เส้น)'
         + (u.lastGrind ? ' · ลับคมล่าสุด ' + fmtIsoDateThai(u.lastGrind) : ' · ยังไม่มีวันลับคมล่าสุดที่ใช้ได้ในทะเบียน'))}">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <span style="font-size:14px;font-weight:800;color:#fff;background:var(--red);padding:3px 11px;border-radius:6px;">รหัส ${escapeHtmlAttr(r.id)}</span>
-      <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr([sawOdLabel(r), r.machine].filter(x => x && x !== '—').join(' · '))}</span>
-      <span style="font-size:12px;color:var(--text-2);">ถอดจาก ${escapeHtmlAttr(u.last.machine)} · ${escapeHtmlAttr(prodSqFmtTime(u.removedAt))}</span>
+      ${od && od !== '—' ? `<span style="flex-shrink:0;font-size:11.5px;font-weight:800;padding:1px 8px;border-radius:99px;
+          background:var(--bg-panel);color:var(--text-2);box-shadow:inset 0 0 0 1px var(--border-light);">${escapeHtmlAttr(od)}</span>` : ''}
+      <span style="font-size:11.5px;color:var(--text-3);margin-left:auto;">ถอด ${escapeHtmlAttr(prodSqFmtTime(u.removedAt))}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;">
       <!-- ป้ายแผน — รูปแบบเดียวกับ "แต่ง/ขัดเสร็จ …" / "ยังไม่ได้วางแผน" ของการ์ด Roll (rollFinishTagHtml):
            ตัวหนังสือหนาเล็ก ไม่มีพื้น · วางแผนแล้ว = น้ำเงิน · ยังไม่วางแผน = เทา -->
       <span style="flex:0 0 auto;font-size:11.5px;font-weight:700;color:${plannedAt ? 'var(--accent)' : 'var(--text-3)'};"
@@ -6676,12 +6683,29 @@ function prodSawWaitingCardHtml() {
         ? `<span onclick="openSawStatusMenu(event, ${idx}, true)" title="กดเพื่อเปลี่ยนเป็นพร้อมใช้ (ลับคมแล้ว)" style="flex:0 0 auto;cursor:pointer;white-space:nowrap;">${
             statusChip(sawEffectiveStatus(r).status)}<span style="font-size:9px;color:var(--text-3);margin-left:3px;">▾</span></span>`
         : `<span style="flex:0 0 auto;">${statusChip(sawEffectiveStatus(r).status)}</span>`}
-      <span style="margin-left:auto;"></span>
-      ${u.sinceGrind != null ? sawTonsPcsHtml('หลังลับคม', u.sinceGrind, u.sinceGrindPcs)
-        : sawTonsPcsHtml('รอบสุดท้าย', u.last.kg / 1000, u.last.pcs)}
-      <span style="color:var(--border);">|</span>
-      ${sawTonsPcsHtml('สะสม', u.total, u.p.pcs)}
-    </div>`).join('');
+      </div>
+      <div style="display:flex;flex-direction:column;gap:2px;margin-top:6px;font-size:12px;">
+        <div>${u.sinceGrind != null ? sawTonsPcsHtml('หลังลับคม', u.sinceGrind, u.sinceGrindPcs)
+          : sawTonsPcsHtml('รอบสุดท้าย', u.last.kg / 1000, u.last.pcs)}</div>
+        <div>${sawTonsPcsHtml('สะสม', u.total, u.p.pcs)}</div>
+      </div>
+    </div>`;
+  };
+  // แบ่งคอลัมน์ตามเครื่องที่ถอดออกมา — ชุดเครื่องเดียวกับการ์ดกำลังใช้งาน (ทะเบียน + เครื่องที่ระบบผลิตบันทึก)
+  const reg = (toolingData || {}).saw || [];
+  const mOf = x => String(x.u.last.machine || '').trim();
+  const machines = [...new Set(reg.map(x => String(x.machine || '').trim()).filter(m => m && m !== '—')
+    .concat(list.map(mOf).filter(Boolean)))]
+    .sort((a, b) => (/^P/i.test(b) - /^P/i.test(a)) || a.localeCompare(b, undefined, { numeric: true }));
+  const rows = !list.length ? '' : `<div class="dash-rollinuse-grid" style="display:grid;grid-template-columns:repeat(${machines.length},1fr);gap:16px;">
+    ${machines.map(m => {
+      const col = list.filter(x => mOf(x) === m);
+      return `<div>
+        ${rollSetSectionHeaderHtml('ถอดจาก ' + m, col.length, C_BLUE)}
+        ${col.length ? col.map(cardHtml).join('') : '<div style="padding:4px;color:var(--text-3);font-size:12px;">ไม่มี</div>'}
+      </div>`;
+    }).join('')}
+  </div>`;
   return `<div class="card" style="margin-bottom:18px;">
     <div class="card-header">
       <span class="card-title" style="font-size:17px;color:var(--red);display:inline-flex;align-items:center;gap:8px;">
