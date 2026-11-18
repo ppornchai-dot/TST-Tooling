@@ -2466,7 +2466,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.23';
+const APP_BUILD = '2026-11-18.24';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -7657,7 +7657,7 @@ function renderDashboardSqPanel() {
           <thead><tr><th>ขนาด Size SQ</th><th style="text-align:right;">ชุด</th>
             <th style="text-align:right;">OD ปัจจุบัน</th><th style="text-align:right;">OD หมดอายุ</th>
             <th style="text-align:right;" title="OD ปัจจุบัน − OD หมดอายุ ของลูกที่ใกล้หมดอายุที่สุดในกลุ่ม">เหลือก่อนหมดอายุ (ต่ำสุด)</th>
-            <th style="text-align:right;">ยังไม่วัด OD</th><th style="text-align:right;">ถึงอายุ</th></tr></thead>
+            <th style="text-align:right;">ถึงอายุ</th></tr></thead>
           <tbody>${sizeRows.map(g => {
             const odFmt = v => v.toLocaleString(undefined, { maximumFractionDigits: 2 });
             const range = arr => !arr.length ? '<span style="color:var(--text-3);">—</span>'
@@ -7674,7 +7674,6 @@ function renderDashboardSqPanel() {
             <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--text-1);white-space:nowrap;">${range(x.curs)}</td>
             <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--text-2);white-space:nowrap;">${range(x.mins)}</td>
             <td style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;">${marginHtml(x)}</td>
-            <td style="text-align:right;font-variant-numeric:tabular-nums;color:${x.unmeasured ? 'var(--amber)' : 'var(--text-3)'};">${x.unmeasured.toLocaleString()}</td>
             <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:${x.expired ? 800 : 400};color:${x.expired ? 'var(--red)' : 'var(--text-3)'};">${x.expired.toLocaleString()}</td>`;
             // แถวขนาด (พื้นอ่อน ตัวหนา) แล้วตามด้วยแถวชุดสีของขนาดนั้น — สีที่มีชิ้นถึงอายุขึ้นก่อน
             const colors = [...g.byColor.values()].sort((a, b) => (b.expired - a.expired)
