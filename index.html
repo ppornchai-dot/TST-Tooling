@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.3';
+const APP_BUILD = '2026-11-18.4';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -7532,11 +7532,8 @@ function sawReadyListHtml(list) {
       <b style="font-size:13.5px;color:var(--text-1);">รหัส ${escapeHtmlAttr(it.id || '—')}</b>
       <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr([sawOdLabel(it), mc !== '—' ? mc : ''].filter(Boolean).join(' · '))}</span>
       ${u && u.lastGrind ? `<span style="font-size:12px;color:var(--text-2);">ลับคมล่าสุด ${escapeHtmlAttr(fmtIsoDateThai(u.lastGrind))}</span>` : ''}
-      <span style="margin-left:auto;"></span>
-      ${u && u.p ? (u.sinceGrind != null ? sawTonsPcsHtml('หลังลับคม', u.sinceGrind, u.sinceGrindPcs) + '<span style="color:var(--border);">|</span>' : '')
-        + sawTonsPcsHtml('สะสม', u.total, u.p.pcs) : ''}
       ${(() => {
-        // ป้ายสถานะท้ายแถว — Admin/หัวหน้ากดเปลี่ยนสถานะได้ (เมนูเดียวกับทะเบียนใบเลื่อย ครบทุกสถานะ) แบบเดียวกับการ์ด Roll SQ
+        // ป้ายสถานะ ต่อท้าย "ลับคมล่าสุด" (ตำแหน่งเดียวกับการ์ดรอลับคม) — Admin/หัวหน้ากดเปลี่ยนสถานะได้ (เมนูเดียวกับทะเบียนใบเลื่อย ครบทุกสถานะ) แบบเดียวกับการ์ด Roll SQ
         const sIdx = reg.indexOf(r);
         const chip = statusChip(sawEffectiveStatus(r).status);
         return canEditPlan() && sIdx >= 0
@@ -7544,6 +7541,9 @@ function sawReadyListHtml(list) {
               chip}<span style="font-size:9px;color:var(--text-3);margin-left:3px;">▾</span></span>`
           : `<span style="flex:0 0 auto;">${chip}</span>`;
       })()}
+      <span style="margin-left:auto;"></span>
+      ${u && u.p ? (u.sinceGrind != null ? sawTonsPcsHtml('หลังลับคม', u.sinceGrind, u.sinceGrindPcs) + '<span style="color:var(--border);">|</span>' : '')
+        + sawTonsPcsHtml('สะสม', u.total, u.p.pcs) : ''}
     </div>`;
   }).join('')}</div>`;
 }
