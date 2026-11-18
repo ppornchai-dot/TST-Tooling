@@ -2437,7 +2437,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.10';
+const APP_BUILD = '2026-11-18.11';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -9167,14 +9167,26 @@ const PLAN_BREAK_TYPES = ['lunch', 'lunch_night', 'otbreak', 'shiftgap'];
 
 // แต่ละชิ้นอาจใช้เวลาคาบเกี่ยวมากกว่า 1 กะ/1 ประเภทเวลา (เช่น ทำต่อจากปกติเข้า OT หรือข้ามจากกะเช้าไปกะดึก) — แตกเป็นแถวย่อยตามช่วงเวลาจริงของชิ้นนั้น
 // รวมถึงช่วงพักเที่ยง/พักก่อน OT ที่แทรกอยู่ระหว่างกลาง ให้เห็นเป็นแถวของตัวเองชัดเจน แยกจากแถวเวลาทำงานจริง
-function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
+// flat = { startNo } — หน้างานประจำวันของงานลับคม (ใบเลื่อย/มีดสลิตเตอร์): คืนเฉพาะแถวรายใบ ไม่มีตารางครอบ
+// ผู้เรียกเอาแถวของทุกงานมาต่อกันในตารางเดียว เลขลำดับนับต่อจากงานก่อนหน้า (startNo) ไม่แยกเป็นหัวข้องาน 1, 2
+function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason, flat) {
   colspan = colspan || 9;
+  const startNo = flat ? (flat.startNo || 0) : 0;
   const pieces = planTaskPieceBreakdown(t);
+  const singlePiece = (t.rollIds || []).length === 1;
   const body = pieces.map((p, i) => {
     const rollIdx = t.rollIds[i];
     // อ่านสถานะจริงของชิ้นนั้นทั้งสองหน้า — หน้าแผนงานก็ต้องเห็นว่าชิ้นไหนทำไปแล้ว
     // (getDailyPieceEntry อ่านจาก "วันทำงาน" ของใบงานนั้นเอง ไม่ใช่วันที่กำลังดู จึงถูกทั้งงานที่คาบข้ามวัน)
-    const pieceEntry = getDailyPieceEntry(t.id, rollIdx);
+    let pieceEntry = getDailyPieceEntry(t.id, rollIdx);
+    // งานชิ้นเดียวที่เคยกดเริ่ม/จบที่แถวงาน (ก่อนเปลี่ยนเป็นรายการรายใบ) — สถานะ/เวลาจริงอยู่ระดับงาน ไม่ใช่รายชิ้น
+    if (interactive && singlePiece && (!pieceEntry.status || pieceEntry.status === 'pending')) {
+      const ts = getDailyStatus(t.id);
+      if (ts === 'done' || ts === 'in_progress') {
+        const at = getDailyActualTimes(t.id);
+        pieceEntry = { ...pieceEntry, status: ts, startTime: at.startTime || null, endTime: ts === 'done' ? (at.endTime || null) : null };
+      }
+    }
     const segs = (p.range.segments && p.range.segments.length)
       ? p.range.segments
       : [{ shiftKey: null, type: null, startDate: p.range.startDate, startTime: p.range.startTime, endDate: p.range.endDate, endTime: p.range.endTime, minutes: p.minutes }];
@@ -9194,7 +9206,7 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
       const shiftChip = s.shiftKey ? `<span class="chip ${shiftChipClass(s.shiftKey)}">${SHIFTS[s.shiftKey].label}</span>` : '—';
       const typeMeta = s.type ? PLAN_TIME_TYPE_META[s.type] : null;
       const typeChip = typeMeta ? `<span class="chip ${typeMeta.chip}">${typeMeta.icon}${typeMeta.label}</span>` : '—';
-      const groupBorder = (si === 0 && i > 0) ? 'border-top:2px solid var(--border);' : '';
+      const groupBorder = (si === 0 && (i > 0 || startNo > 0)) ? 'border-top:2px solid var(--border);' : '';
       const breakStyle = isBreak ? 'background:var(--bg-hover);font-style:italic;' : '';
       const continuedBadge = p.continued ? ' <span class="muted" style="font-weight:400;font-style:italic;">(ต่อ)</span>' : '';
       // ชิ้นที่ทำต่อกะ/ต่อวัน — ใต้ชื่อ Roll บอกว่า "งานนี้ทำได้กี่ชิ้น" จากทั้งชิ้น
@@ -9249,7 +9261,7 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
           inner = `<span class="chip chip-amber">⏸ ${DL().paused}</span> <button class="btn btn-ghost btn-sm daily-act daily-act-resume" style="color:var(--purple);" ${lockReason ? `disabled title="${lockReason} — ทำต่อไม่ได้"` : ''} onclick="resumeDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ ${DL().resume}</button>`;
         } else if (pieceStatus === 'in_progress') {
           inner = `<div class="daily-act-wrap" style="display:flex;gap:4px;">
-            <button class="btn btn-ghost btn-sm daily-act daily-act-finish" style="color:var(--accent);" ${lockReason ? `disabled title="${lockReason} — จบงานนี้ไม่ได้"` : ''} onclick="finishDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">■ ${DL().finish}</button>
+            <button class="btn btn-ghost btn-sm daily-act daily-act-finish" style="color:var(--accent);" ${lockReason ? `disabled title="${lockReason} — จบงานนี้ไม่ได้"` : ''} onclick="finishDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}'${singlePiece ? ',true' : ''})">■ ${DL().finish}</button>
             <button class="btn btn-ghost btn-sm daily-act daily-act-pause" ${lockReason ? `disabled title="${lockReason} — พักงานนี้ไม่ได้"` : ''} onclick="pauseDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">⏸ ${DL().pause}</button>
           </div>`;
         } else {
@@ -9274,7 +9286,7 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
       const actualStartSuffix = (isFirstRow && !isBreak && pieceEntry.startTime) ? ` <span class="muted" style="font-size:11px;">(จริง ${escapeHtmlAttr(pieceEntry.startTime)})</span>` : '';
       const actualEndSuffix = (isLastRow && !isBreak && pieceEntry.endTime) ? ` <span class="muted" style="font-size:11px;">(จริง ${escapeHtmlAttr(pieceEntry.endTime)})</span>` : '';
       return `<tr style="${groupBorder}${breakStyle}">
-        <td class="muted" style="padding-left:36px;">${isFirstRow ? i + 1 : ''}</td>
+        <td class="muted" style="padding-left:36px;">${isFirstRow ? startNo + i + 1 : ''}</td>
         ${actionCell}
         ${rollCell}
         <td>${shiftChip}</td>
@@ -9295,6 +9307,7 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
       </tr>`;
     }).join('');
   }).join('');
+  if (flat) return body;
   return `<tr><td colspan="${colspan}" style="padding:0;background:var(--bg-panel);">
     <table>
       <thead><tr>
@@ -21630,7 +21643,9 @@ async function editDailyPieceSize(taskId, rollIdx, workerId) {
   const task = planTasks.find(t => t.id === taskId);
   if (!task || !workTypeMeasuresOd(task.workType)) return;
   const prevEntry = getDailyPieceEntry(taskId, rollIdx);
-  if (prevEntry.status !== 'done') return;
+  // งานชิ้นเดียวที่จบที่แถวงาน — ไม่มีบันทึกรายชิ้น แต่ทั้งงานจบแล้ว ให้ใส่ OD ย้อนหลังได้
+  const taskLevelDone = prevEntry.status !== 'done' && (task.rollIds || []).length === 1 && getDailyStatus(taskId) === 'done';
+  if (prevEntry.status !== 'done' && !taskLevelDone) return;
   const scoped = getMatchingRollsForPlan(task.rollSet, task.rollColor);
   const roll = scoped[rollIdx];
   const label = roll ? (task.workType === 'saw' ? 'ใบเลื่อย รหัส ' + roll.id : roll.name) : 'ชิ้นนี้';
@@ -21648,7 +21663,11 @@ async function editDailyPieceSize(taskId, rollIdx, workerId) {
     const prev2 = getDailyPieceEntry(taskId, rollIdx);
     const dateMap = dailyPieceStatus[dailyStatusDateFor(taskId)] || (dailyPieceStatus[dailyStatusDateFor(taskId)] = {});
     const taskMap = dateMap[taskId] || (dateMap[taskId] = {});
-    taskMap[rollIdx] = { ...prev2, measuredSize: String(size).trim(),
+    const tAt = taskLevelDone ? getDailyActualTimes(taskId) : {};
+    taskMap[rollIdx] = { ...prev2,
+      ...(taskLevelDone ? { status: 'done', startTime: prev2.startTime || tAt.startTime || null, endTime: prev2.endTime || tAt.endTime || null,
+                            registryDiameter: prev2.registryDiameter || (roll2 ? pieceCurrentOdOf(roll2) || null : null) } : {}),
+      measuredSize: String(size).trim(),
       odStandard: prev2.odStandard
         || (roll2 ? (String(roll2.diameterStd || '').trim() || String(roll2.diameter || '').trim() || null) : null) };
     rollSizeLogSeq++;
@@ -22024,6 +22043,8 @@ function renderDailyTasks() {
     const donePieces = items.reduce((s, it) => {
       const ids = (it.raw || {}).rollIds || [];
       if (!ids.length) return s + (getDailyStatus(it.key) === 'done' ? 1 : 0);
+      // งานชิ้นเดียวที่จบที่แถวงาน (ไม่มีบันทึกรายชิ้น) — นับตามสถานะงาน
+      if (ids.length === 1 && getDailyStatus(it.key) === 'done') return s + 1;
       return s + ids.filter(idx => getDailyPieceEntry(it.key, idx).status === 'done').length;
     }, 0);
     return `<tr data-daily-section="${escapeHtmlAttr(meta.key)}"><td colspan="12" style="background:${meta.bg};padding:9px 12px;border-left:4px solid ${meta.color};border-top:2px solid ${meta.color};">
@@ -22031,10 +22052,35 @@ function renderDailyTasks() {
         <span aria-hidden="true">${meta.icon}</span>${escapeHtmlAttr(meta.label)}
       </span>
       <span style="float:right;font-size:12px;font-weight:700;color:${meta.color};opacity:.9;">${
-        items.length ? items.length + ' รายการ · ' + donePieces + '/' + pieces + ' ชิ้น' : 'ไม่มีงาน'}</span>
+        !items.length ? 'ไม่มีงาน'
+          : isCodeWorkType(meta.key) ? 'เสร็จ ' + donePieces + '/' + pieces + (meta.key === 'saw' ? ' ใบ' : ' รายการ')
+          : items.length + ' รายการ · ' + donePieces + '/' + pieces + ' ชิ้น'}</span>
     </td></tr>`;
   };
   const emptyRow = text => `<tr><td colspan="12" style="padding:14px;text-align:center;color:var(--text-3);font-size:12.5px;">${escapeHtmlAttr(text)}</td></tr>`;
+  // รายใบของทุกงานในหัวข้อลับคม ต่อกันในตารางเดียว (หัวคอลัมน์ชุดเดียว) — เลขลำดับนับต่อเนื่องข้ามงาน
+  const flatCodeRows = (s, items) => {
+    let no = 0;
+    const rows = items.map(item => {
+      const t = item.raw;
+      if (!t) return '';
+      // เกณฑ์ล็อกปุ่มเดียวกับแถวงาน (rowHtmlFor)
+      const isMine = !restrictWorkerId || item.workerId == null || item.workerId === restrictWorkerId;
+      const blockReason = !isMine ? 'งานของช่างคนอื่น'
+        : (!canActOnDailyDate() ? 'กดได้เฉพาะวันทำงานก่อน / วันนี้ / วันทำงานถัดไป' : '');
+      const html = renderPlanDayTaskDetailRow(t, 12, true, blockReason, { startNo: no });
+      no += (t.rollIds || []).length;
+      return html;
+    }).join('');
+    return `<tr><td colspan="12" style="padding:0;background:var(--bg-panel);">
+      <table>
+        <thead><tr>
+          <th style="padding-left:36px;">ลำดับ</th><th></th><th>รหัส</th><th>${s.key === 'saw' ? 'ใบเลื่อย' : 'มีด'}</th><th>กะ</th><th>ช่วงเวลา</th><th style="text-align:right;">นาที</th><th>เริ่มงาน</th><th>จบงาน</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </td></tr>`;
+  };
   // ปุ่มเพิ่มงานแทรกวางเป็นแถวใต้รายการของหัวข้อนั้น ชิดซ้าย ตัวใหญ่ — แบบเดียวกับหน้าวางแผน
   // แยกปุ่มตามประเภทงาน จะได้ไม่ต้องเดาว่ากำลังเพิ่มงานแทรกของงานไหน
   const addChecklistRow = s => `<tr><td colspan="12" style="padding:10px 12px;border-bottom:2px solid ${s.color};">
@@ -22068,6 +22114,9 @@ function renderDailyTasks() {
     return s.key === tabType;
   }).map(s => {
     const items = allItems.filter(it => it.section === s.key);
+    // งานลับคม (ใบเลื่อย/มีดสลิตเตอร์): ไม่ว่าวางแผนกี่รายการต่อครั้ง ให้เรียงรายใบต่อกันเลย นับ 1, 2, 3 …
+    // ไม่แยกเป็นหัวข้องาน 1 / 2 (ผู้ใช้ขอ 18 พ.ย. 69) — ปุ่มเริ่ม/พัก/จบ/แก้ไข OD อยู่ที่แถวของแต่ละใบ
+    if (items.length && isCodeWorkType(s.key)) return sectionHeader(s, items) + flatCodeRows(s, items);
     return sectionHeader(s, items) + (items.length ? items.map(rowHtmlFor).join('') : emptyRow(s.empty))
       + (s.addType ? addChecklistRow(s) : '');
   }).join('');
