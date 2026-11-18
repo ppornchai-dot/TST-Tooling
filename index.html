@@ -2463,7 +2463,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.29';
+const APP_BUILD = '2026-11-18.30';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -9521,7 +9521,7 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason, flat) {
             title="${escapeHtmlAttr('Roll ลูกเดียวกับที่อยู่' + where + (prevPart ? ' (' + prevPart.startTime + '–' + prevPart.endTime + ')' : '') + ' — ถูกตัดเวลามาทำสองช่วง กดปุ่มที่แถวนั้นได้เลย มีผลกับทั้งชิ้น')}">ชิ้นเดียวกับ${where}</span>`;
         } else if (pieceStatus === 'done') {
           // งานแต่ง Roll (CNC) แก้ขนาด OD ที่บันทึกไปแล้วได้ — งานขัด Roll ไม่ได้บันทึกขนาดจึงไม่มีปุ่มนี้
-          const canEditOD = workTypeMeasuresOd(t.workType);
+          const canEditOD = workTypeMeasuresOd(t.workType) && (t.__origin || t).workType !== 'saw';   // ใบเลื่อยแก้ OD ที่ "ตรวจหลังลับ"
           inner = `<span class="chip chip-green">✓ เสร็จ</span>${canEditOD ? ` <button class="btn btn-ghost btn-sm" ${lockReason ? `disabled title="${lockReason} — แก้ขนาดไม่ได้"` : 'title="แก้ขนาด OD ที่บันทึกไปแล้ว"'} onclick="editDailyPieceSize('${t.id}','${rollIdx}','${t.workerId || ''}')">✎ แก้ไข OD</button>` : ''}`;
         } else if (pieceStatus === 'paused') {
           inner = `<span class="chip chip-amber">⏸ ${DL().paused}</span> <button class="btn btn-ghost btn-sm daily-act daily-act-resume" style="color:var(--purple);" ${lockReason ? `disabled title="${lockReason} — ทำต่อไม่ได้"` : ''} onclick="resumeDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ ${DL().resume}</button>`;
@@ -21956,6 +21956,12 @@ function saveSawInspect() {
   if (!d) return;
   const meta = SAW_INSPECT_STAGES[d.stage];
   const isNum = v => /^\d+(\.\d+)?$/.test(String(v || '').trim().replace(/,/g, ''));
+  // ความโต (OD) ต้องเป็นค่าที่ใช้ลงทะเบียนได้ — เกณฑ์เดียวกับตอนเคยถามตอนจบงาน (parseMeasuredSawOd)
+  if (d.stage === 'after' && isNum(d.values.od) && parseMeasuredSawOd(String(d.values.od).replace(/,/g, '')) == null) {
+    const w = document.getElementById('saw-inspect-warn');
+    if (w) { w.style.display = ''; w.textContent = 'ความโต (OD) ' + d.values.od + ' ดูไม่ถูกต้อง — ควรอยู่ราว 100–2,000 มม.'; }
+    return;
+  }
   const missing = meta.items.filter(it => it.num ? !String(d.values[it.k] || '').trim() : !d.items[it.k]);
   const badNum = meta.items.filter(it => it.num && String(d.values[it.k] || '').trim() && !isNum(d.values[it.k]));
   if (missing.length || badNum.length) {
@@ -21976,12 +21982,36 @@ function saveSawInspect() {
     at: now.toISOString(), date: dailyTodayIso(now), time: nowHHMM(), by: sawProblemWho(),
   };
   const key = sawInspectKey(d.taskId, d.rollIdx), stage = d.stage;
+  const taskId = d.taskId, rollIdx = d.rollIdx;
+  const odNew = stage === 'after' ? String(rec.values.od || '') : '';
   closeSawInspect();
   withCloudRetry(() => {
     const cur = sawInspections[key] || (sawInspections[key] = {});
     cur[stage] = rec;
+    // ความโต (OD) หลังลับ = OD ใบเลื่อยปัจจุบัน — ลงชิ้นงาน (เทียบกับทะเบียนในตาราง) + ล็อกขนาด + ทะเบียนใบเลื่อย
+    // ค่าเดิมไม่บันทึกซ้ำ · ค่าเปลี่ยน = แก้ค่า (เก็บค่าเดิมไว้ในล็อก)
+    const prev = getDailyPieceEntry(taskId, rollIdx) || {};
+    if (odNew && String(prev.measuredSize || '').trim() !== odNew) {
+      const t2 = planTasks.find(x => x.id === taskId);
+      const roll2 = t2 ? getMatchingRollsForPlan(t2.rollSet, t2.rollColor)[Number(rollIdx)] : null;
+      setPieceStatusForChain(taskId, rollIdx, {
+        measuredSize: odNew,
+        registryDiameter: prev.registryDiameter || (roll2 ? pieceCurrentOdOf(roll2) || null : null),
+        odStandard: prev.odStandard || (roll2 ? pieceStdOdOf(roll2) || null : null),
+      });
+      rollSizeLogSeq++;
+      rollSizeLog.push({
+        id: 'RSL-' + String(rollSizeLogSeq).padStart(4, '0'),
+        taskId, rollIdx: Number(rollIdx), rollId: roll2 ? roll2.id : null, rollName: roll2 ? roll2.name : '—',
+        date: dailyViewDate, measuredSize: odNew, registryDiameter: roll2 ? pieceCurrentOdOf(roll2) || null : null,
+        ...(prev.measuredSize ? { correctedFrom: String(prev.measuredSize), correctedBy: effectiveUserName(), correctedAt: rec.time } : {}),
+        source: 'sawInspect',
+      });
+      applyMeasuredSawOd(rollIdx, odNew, dailyViewDate);
+    }
     persistState();
     renderDailyTasks();
+    if (odNew && typeof refreshSawViewsAfterStatusChange === 'function') refreshSawViewsAfterStatusChange();
   });
 }
 
@@ -21991,7 +22021,8 @@ async function finishDailyPiece(taskId, rollIdx, workerId, fromTaskRow) {
   if (!task) return;
   const scoped = getMatchingRollsForPlan(task.rollSet, task.rollColor);
   const roll = scoped[rollIdx];
-  const needsMeasuredSize = workTypeMeasuresOd(task.workType);
+  // ใบเลื่อยไม่ถาม OD ตอนจบงานแล้ว — กรอก "ความโต (OD)" ในรายการตรวจหลังลับแทน (ดู saveSawInspect)
+  const needsMeasuredSize = workTypeMeasuresOd(task.workType) && task.workType !== 'saw';
   let size = null;
   if (needsMeasuredSize) {
     const curOd = pieceCurrentOdOf(roll);
@@ -22041,6 +22072,8 @@ async function finishDailyPiece(taskId, rollIdx, workerId, fromTaskRow) {
       const timesMap = dailyActualTimes[dailyStatusDateFor(taskId)] || (dailyActualTimes[dailyStatusDateFor(taskId)] = {});
       timesMap[taskId] = { ...(timesMap[taskId] || {}), endTime: endAt };
     }
+    // ใบเลื่อย: จบงานลับคม = ลงวันลับคมล่าสุดในทะเบียน (เดิมลงพร้อม OD ตอนจบงาน — OD ย้ายไปอยู่ในรายการตรวจแล้ว)
+    if (t2.workType === 'saw') { const rec = sawRecordForPiece(rollIdx); if (rec) rec.lastService = dailyViewDate; }
     if (needsMeasuredSize) {
       rollSizeLogSeq++;
       rollSizeLog.push({
