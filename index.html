@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.4';
+const APP_BUILD = '2026-11-18.5';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -3790,7 +3790,7 @@ function renderInUseCalendar() {
     const groups = beforeStart ? [] : inUseDayRunGroups(iso, running);
     const holidayName = companyHolidays.find(x => x.date === iso)?.name || null;
     const isOff = new Date(year, month, d).getDay() === 0 || holidayName;
-    const isToday = iso === today;
+    const isToday = iso === toISODate(new Date());   // ป้ายวันนี้ = วันที่ตามปฏิทินจริง
     if (iso <= today && !beforeStart) needMachine.push(iso);
     const rows = groups.map(([sizeLabel, list]) => {
       // เรียงหมวดให้คงที่ Forming → Sizing → TH
@@ -10447,7 +10447,7 @@ function renderPlanWeek() {
 
   const todayIso = dailyTodayIso();
   document.getElementById('plan-week-thead-row').innerHTML = days.map(d => {
-    const isToday = toISODate(d) === todayIso;
+    const isToday = toISODate(d) === toISODate(new Date());   // ป้ายวันนี้ = วันที่ตามปฏิทินจริง (ไม่ใช่วันทำงานที่ค้างอยู่ตอนกะดึกต่อ OT)
     return `<th class="${isToday ? 'today-head' : ''}">${THAI_WEEKDAYS_MON_FIRST[(d.getDay()+6)%7]}${isToday ? ' · วันนี้' : ''}<br><span class="muted" style="font-weight:400;">${fmtDateThaiShort(d)}</span></th>`;
   }).join('');
 
@@ -10465,7 +10465,7 @@ function renderPlanWeek() {
           .map(g => planCalendarChipForGroup(g, iso, editable, true)).join('');
         // งานแทรกของวันนั้น (หมวดเดียวกัน) — ต่อท้ายชิปงานตามแผน
         const inserts = planInsertTasksFor(iso, s.key, null).map(t => planInsertChipHtml(iso, t)).join('');
-        return `<td onclick="planOpenDayFromCell(event, '${iso}')" class="${iso === todayIso ? 'today-ring' : ''}" style="min-width:110px;cursor:pointer;"
+        return `<td onclick="planOpenDayFromCell(event, '${iso}')" class="${iso === toISODate(new Date()) ? 'today-ring' : ''}" style="min-width:110px;cursor:pointer;"
           title="${escapeHtmlAttr('กดที่ช่องนี้เพื่อเปิดแผนของวัน ' + fmtDateThaiShort(d))}">
           <div class="plan-drop-zone" data-day="${iso}" style="display:flex;flex-direction:column;gap:4px;min-height:30px;">
             ${items || (inserts ? '' : '<span class="muted">—</span>')}${inserts}
@@ -10526,7 +10526,7 @@ function renderPlanMonth() {
       const chips = planChipGroups(tasks)
           .map(g => planCalendarChipForGroup(g, iso, editable, false)).join('')
         + planInsertTasksFor(iso, s.key, null).map(t => planInsertChipHtml(iso, t)).join('');
-      const isToday = iso === todayIso;
+      const isToday = iso === toISODate(new Date());   // ป้ายวันนี้ = วันที่ตามปฏิทินจริง
       html += `<div onclick="planOpenDayFromCell(event, '${iso}')" class="${isToday ? 'today-ring' : ''}"
         style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;cursor:pointer;${dayOffBg || (isToday ? 'background:var(--accent-glow);' : '')}${offLabel ? 'display:flex;flex-direction:column;' : ''}"
         title="${escapeHtmlAttr((isToday ? 'วันนี้ · ' : '') + (offLabel ? 'วันหยุด: ' + offLabel + ' · ' : '') + 'กดที่ช่องนี้เพื่อเปิดแผนของวันนี้')}">
@@ -22471,7 +22471,7 @@ function renderHistoryCalendar(records, fromIso, toIso) {
     const list = byDate[iso] || [];
     const holidayName = (companyHolidays.find(x => x.date === iso) || {}).name || null;
     const isOff = new Date(year, month, d).getDay() === 0 || holidayName;
-    const isToday = iso === today;
+    const isToday = iso === toISODate(new Date());   // ป้ายวันนี้ = วันที่ตามปฏิทินจริง
     const picked = !!fromIso && fromIso === iso && toIso === iso;
     // อยู่ในช่วงวันที่ที่กรองตารางอยู่ (กรองเป็นช่วง ไม่ใช่วันเดียว) — ทำเส้นใต้บางๆ ให้รู้ว่าตารางนับวันนี้ด้วย
     const inRange = (!fromIso || iso >= fromIso) && (!toIso || iso <= toIso) && (!!fromIso || !!toIso);
