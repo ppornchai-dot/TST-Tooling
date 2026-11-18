@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.5';
+const APP_BUILD = '2026-11-18.6';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -9284,7 +9284,7 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
   return `<tr><td colspan="${colspan}" style="padding:0;background:var(--bg-panel);">
     <table>
       <thead><tr>
-        <th style="padding-left:36px;">ลำดับ</th>${interactive ? '<th></th>' : '<th>สถานะ</th>'}<th>รหัส</th><th>ชื่อ Roll</th><th>กะ</th><th>ช่วงเวลา</th><th style="text-align:right;">นาที</th><th>เริ่มงาน</th><th>จบงาน</th>
+        <th style="padding-left:36px;">ลำดับ</th>${interactive ? '<th></th>' : '<th>สถานะ</th>'}<th>รหัส</th><th>${((t.__origin || t).workType === 'saw') ? 'ใบเลื่อย' : 'ชื่อ Roll'}</th><th>กะ</th><th>ช่วงเวลา</th><th style="text-align:right;">นาที</th><th>เริ่มงาน</th><th>จบงาน</th>
       </tr></thead>
       <tbody>${body}</tbody>
     </table>
