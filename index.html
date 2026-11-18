@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.2';
+const APP_BUILD = '2026-11-18.3';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6629,16 +6629,16 @@ function prodSawWaitingCardHtml() {
         title="${escapeHtmlAttr(plannedAt ? 'ตามแผนจะลับคมวันที่ ' + fmtDateThai(parseISODate(plannedAt))
           : 'ยังไม่ได้วางแผนลับคมใบนี้ — วางแผนได้ที่หน้าวางแผน แท็บลับคมใบเลื่อย')}">${plannedAt
         ? 'แผนลับคม ' + escapeHtmlAttr(fmtDateThaiShort(parseISODate(plannedAt))) : 'ยังไม่ได้วางแผน'}</span>
+      <!-- ป้ายสถานะ ต่อท้ายป้ายแผนลับคม — Admin/หัวหน้ากดเปลี่ยนสถานะได้ตรงนี้เลย (เมนูเดียวกับทะเบียนใบเลื่อย) -->
+      ${canEditPlan()
+        ? `<span onclick="openSawStatusMenu(event, ${idx}, true)" title="กดเพื่อเปลี่ยนเป็นพร้อมใช้ (ลับคมแล้ว)" style="flex:0 0 auto;cursor:pointer;white-space:nowrap;">${
+            statusChip(sawEffectiveStatus(r).status)}<span style="font-size:9px;color:var(--text-3);margin-left:3px;">▾</span></span>`
+        : `<span style="flex:0 0 auto;">${statusChip(sawEffectiveStatus(r).status)}</span>`}
       <span style="margin-left:auto;"></span>
       ${u.sinceGrind != null ? sawTonsPcsHtml('หลังลับคม', u.sinceGrind, u.sinceGrindPcs)
         : sawTonsPcsHtml('รอบสุดท้าย', u.last.kg / 1000, u.last.pcs)}
       <span style="color:var(--border);">|</span>
       ${sawTonsPcsHtml('สะสม', u.total, u.p.pcs)}
-      <!-- ป้ายสถานะท้ายแถว (ตำแหน่งเดียวกับการ์ดพร้อมใช้งาน) — Admin/หัวหน้ากดเปลี่ยนสถานะได้ตรงนี้เลย (เมนูเดียวกับทะเบียนใบเลื่อย) -->
-      ${canEditPlan()
-        ? `<span onclick="openSawStatusMenu(event, ${idx}, true)" title="กดเพื่อเปลี่ยนเป็นพร้อมใช้ (ลับคมแล้ว)" style="flex:0 0 auto;cursor:pointer;white-space:nowrap;">${
-            statusChip(sawEffectiveStatus(r).status)}<span style="font-size:9px;color:var(--text-3);margin-left:3px;">▾</span></span>`
-        : `<span style="flex:0 0 auto;">${statusChip(sawEffectiveStatus(r).status)}</span>`}
     </div>`).join('');
   return `<div class="card" style="margin-bottom:18px;">
     <div class="card-header">
