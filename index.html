@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.6';
+const APP_BUILD = '2026-11-18.7';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -9202,7 +9202,10 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
         ? `<div class="muted" style="font-size:11px;font-weight:400;color:var(--amber);">⏸ พักงาน: ${escapeHtmlAttr(pieceEntry.pauseReason)}${pieceEntry.pausedAt ? ` (${escapeHtmlAttr(pieceEntry.pausedAt)})` : ''}</div>` : '';
       const rollCell = isBreak
         ? `<td colspan="2" class="muted" style="${breakStyle}">${escapeHtmlAttr(typeMeta.label)}</td>`
-        : `<td class="muted">${isFirstRow ? escapeHtmlAttr(pieceCodeOf(p.roll, (t.__origin || t).workType)) : ''}</td><td><strong>${isFirstRow ? escapeHtmlAttr(pieceNameOf(p.roll, (t.__origin || t).workType)) : ''}</strong>${isFirstRow ? continuedBadge + contPieceLine : ''}${measuredSizeLine}${pauseReasonLine}</td>`;
+        : `<td class="muted">${isFirstRow ? escapeHtmlAttr(pieceCodeOf(p.roll, (t.__origin || t).workType)) : ''}</td><td><strong>${isFirstRow ? escapeHtmlAttr(pieceNameOf(p.roll, (t.__origin || t).workType)) : ''}</strong>${
+          // ใบเลื่อย: บอกเครื่องผลิตของใบนั้น (ตามทะเบียน) ต่อท้ายรหัส
+          isFirstRow && (t.__origin || t).workType === 'saw' && p.roll && String(p.roll.machine || '').trim() && String(p.roll.machine).trim() !== '—'
+            ? ` <span class="chip chip-blue" style="font-size:10.5px;margin-left:4px;" title="เครื่องผลิตของใบนี้ (ตามทะเบียนใบเลื่อย)">${escapeHtmlAttr(String(p.roll.machine).trim())}</span>` : ''}${isFirstRow ? continuedBadge + contPieceLine : ''}${measuredSizeLine}${pauseReasonLine}</td>`;
       // ปุ่ม "เริ่มงาน/จบงาน/พักงาน" แยกทีละชิ้น Roll (เฉพาะโหมด interactive จากหน้างานประจำวัน) — โชว์แค่แถวแรกของชิ้นนั้น กด "จบงาน" แล้วบันทึกขนาดที่วัดได้เป็นล็อกแยก
       let actionCell = '';
       if (interactive && !isBreak && isFirstRow) {
