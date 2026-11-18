@@ -2120,7 +2120,7 @@ canvas{display:block;}
            ใช้ตัวกรองประเภทงาน/คำค้นหาชุดเดียวกับตาราง ตัวเลขจึงตรงกันเสมอ -->
       <div class="card" style="margin-bottom:16px;" id="history-cal-card">
         <div class="card-header" style="flex-wrap:wrap;row-gap:8px;">
-          <span class="card-title" style="font-size:17px;white-space:nowrap;">ปฏิทินการแต่ง Roll / ขัด Roll</span>
+          <span class="card-title" id="history-cal-title" style="font-size:17px;white-space:nowrap;">ปฏิทินการแต่ง Roll / ขัด Roll</span>
           <span style="margin-left:auto;display:inline-flex;align-items:center;gap:8px;">
             <button class="btn btn-ghost btn-sm" onclick="historyCalNav(-1)" title="เดือนก่อนหน้า">‹</button>
             <span id="history-cal-label" style="font-size:14px;font-weight:800;min-width:120px;text-align:center;"></span>
@@ -2463,7 +2463,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.26';
+const APP_BUILD = '2026-11-18.27';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -22772,9 +22772,14 @@ function openHistoryCalDetail(iso, typeKey, setName, colorKey) {
 }
 
 // records = บันทึกที่กรองประเภทงาน/คำค้นหาแล้ว แต่ยังไม่กรองช่วงวันที่ (ปฏิทินต้องเห็นทั้งเดือน)
-function renderHistoryCalendar(records, fromIso, toIso) {
+function renderHistoryCalendar(records, fromIso, toIso, typeKey) {
   const el = document.getElementById('history-cal-body');
   if (!el) return;
+  // หน้าประวัติดูทีละประเภทงาน — หัวปฏิทินและแถบสรุปบอกเฉพาะงานของแท็บนั้น (ไม่ขึ้นงานประเภทอื่นเป็น 0)
+  const typeLabel = { cnc: 'แต่ง Roll', polish: 'ขัด Roll', sq: 'แต่ง Roll SQ', saw: 'ลับคมใบเลื่อย', slitter: 'ลับคมมีดสลิตเตอร์' }[typeKey] || 'แต่ง Roll / ขัด Roll';
+  const calTitle = document.getElementById('history-cal-title');
+  if (calTitle) calTitle.textContent = 'ปฏิทินการ' + typeLabel;
+  const showType = k => !typeKey || k === typeKey || (typeKey === 'saw' && k === 'sawprob');
   const m = historyCalMonthDate();
   const year = m.getFullYear(), month = m.getMonth();
   const label = document.getElementById('history-cal-label');
@@ -22790,7 +22795,7 @@ function renderHistoryCalendar(records, fromIso, toIso) {
     toggle.style.background = 'var(--accent)';
     toggle.style.color = '#fff';
     toggle.title = historyCalOpen
-      ? 'กำลังแสดงปฏิทินการแต่ง Roll / ขัด Roll — กดเพื่อซ่อนแล้วดูเฉพาะตาราง'
+      ? 'กำลังแสดงปฏิทินการ' + typeLabel + ' — กดเพื่อซ่อนแล้วดูเฉพาะตาราง'
       : 'กดเพื่อดูงานทั้งเดือนเป็นปฏิทิน ว่าวันไหนแต่ง/ขัดชุดไหนไปบ้าง';
   }
   if (!historyCalOpen) return;   // ปิดอยู่ — ไม่ต้องเสียเวลาวาด
@@ -22818,7 +22823,7 @@ function renderHistoryCalendar(records, fromIso, toIso) {
   const leading = new Date(year, month, 1).getDay();   // 0 = อาทิตย์
   const today = dailyTodayIso();
   const dayNames = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
-  const monthTotal = { cnc: 0, polish: 0, sq: 0, saw: 0, sawprob: 0, days: 0, hours: 0 };
+  const monthTotal = { cnc: 0, polish: 0, sq: 0, saw: 0, slitter: 0, sawprob: 0, days: 0, hours: 0 };
 
   let cells = '';
   for (let i = 0; i < leading; i++) cells += '<div style="min-height:74px;"></div>';
@@ -22906,19 +22911,21 @@ function renderHistoryCalendar(records, fromIso, toIso) {
   }
 
   const sum = `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:11.5px;margin-bottom:9px;">
-      <span style="display:inline-flex;align-items:center;gap:5px;font-weight:800;color:var(--accent);">
+      ${showType('cnc') ? `<span style="display:inline-flex;align-items:center;gap:5px;font-weight:800;color:var(--accent);">
         <span style="font-size:9px;padding:0 4px;border-radius:3px;line-height:1.6;background:var(--accent);color:#fff;">⚙</span>
-        แต่ง Roll ${monthTotal.cnc.toLocaleString()} ชิ้น</span>
-      <span style="display:inline-flex;align-items:center;gap:5px;font-weight:800;color:var(--purple);">
+        แต่ง Roll ${monthTotal.cnc.toLocaleString()} ชิ้น</span>` : ''}
+      ${showType('polish') ? `<span style="display:inline-flex;align-items:center;gap:5px;font-weight:800;color:var(--purple);">
         <span style="font-size:9px;padding:0 4px;border-radius:3px;line-height:1.6;background:var(--purple);color:#fff;">✦</span>
-        ขัด Roll ${monthTotal.polish.toLocaleString()} ชิ้น</span>
-      ${monthTotal.sq ? `<span style="display:inline-flex;align-items:center;gap:5px;font-weight:800;color:var(--amber);">
+        ขัด Roll ${monthTotal.polish.toLocaleString()} ชิ้น</span>` : ''}
+      ${typeKey === 'slitter' ? `<span style="display:inline-flex;align-items:center;gap:5px;font-weight:800;color:var(--text-2);">
+        ลับคมมีดสลิตเตอร์ ${monthTotal.slitter.toLocaleString()} รายการ</span>` : ''}
+      ${showType('sq') && (typeKey === 'sq' || monthTotal.sq) ? `<span style="display:inline-flex;align-items:center;gap:5px;font-weight:800;color:var(--amber);">
         <span style="font-size:9px;padding:0 4px;border-radius:3px;line-height:1.6;background:var(--amber);color:#fff;">◆</span>
         แต่ง Roll SQ ${monthTotal.sq.toLocaleString()} ชิ้น</span>` : ''}
-      ${monthTotal.saw ? `<span style="display:inline-flex;align-items:center;gap:5px;font-weight:800;color:var(--green);">
+      ${showType('saw') && (typeKey === 'saw' || monthTotal.saw) ? `<span style="display:inline-flex;align-items:center;gap:5px;font-weight:800;color:var(--green);">
         <span style="font-size:9px;padding:0 4px;border-radius:3px;line-height:1.6;background:var(--green);color:#fff;">✧</span>
         ลับคมใบเลื่อย ${monthTotal.saw.toLocaleString()} ใบ</span>` : ''}
-      ${monthTotal.sawprob ? `<span style="display:inline-flex;align-items:center;gap:5px;font-weight:800;color:var(--amber);">
+      ${showType('sawprob') && monthTotal.sawprob ? `<span style="display:inline-flex;align-items:center;gap:5px;font-weight:800;color:var(--amber);">
         <span style="font-size:9px;padding:0 4px;border-radius:3px;line-height:1.6;background:var(--amber);color:#fff;">⚠</span>
         ใบเลื่อยมีปัญหา/แก้แล้ว ${monthTotal.sawprob.toLocaleString()} รายการ</span>` : ''}
       <span style="color:var(--text-3);">มีงาน ${monthTotal.days} วัน${
@@ -22965,7 +22972,7 @@ function renderHistory() {
   // ปฏิทินใช้ตัวกรองประเภทงาน/คำค้นหาเดียวกับตาราง แต่ไม่กรองช่วงวันที่ — มันมีปุ่มเลือกเดือนของตัวเอง
   // ถ้ากรองด้วย ตอนกดเลือกวันเดียวปฏิทินจะว่างทั้งเดือนเหลือวันเดียว กดวันอื่นต่อไม่ได้
   renderHistoryCalendar(all.filter(r => historyTypeMatches(r, typeFilter)
-    && (!search || `${r.wo} ${r.tooling} ${r.detail} ${r.who}`.toLowerCase().includes(search))), fromIso, toIso);
+    && (!search || `${r.wo} ${r.tooling} ${r.detail} ${r.who}`.toLowerCase().includes(search))), fromIso, toIso, typeFilter);
 
   const records = all.filter(r => {
     if (fromIso && r.date < fromIso) return false;
