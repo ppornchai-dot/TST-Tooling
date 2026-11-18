@@ -2466,7 +2466,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.22';
+const APP_BUILD = '2026-11-18.23';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -7579,17 +7579,24 @@ function renderDashboardSqPanel() {
   const bySize = new Map();
   sets.forEach(s => {
     const size = (s[0] || {}).sizeSq || 'ไม่ระบุขนาด';
-    if (!bySize.has(size)) bySize.set(size, { size, sets: 0, pieces: 0, expired: 0, unmeasured: 0, byColor: new Map() });
+    if (!bySize.has(size)) bySize.set(size, { size, sets: 0, pieces: 0, expired: 0, unmeasured: 0, curs: [], mins: [], margins: [], byColor: new Map() });
     const g = bySize.get(size);
     // แยกย่อยตามชุดสีด้วย (ผู้ใช้ขอ) — ตัวนับเดียวกับแถวขนาด ผลรวมของสีจึงเท่ากับแถวขนาดเสมอ
     const ck = String((s[0] || {}).color || '');
-    if (!g.byColor.has(ck)) g.byColor.set(ck, { color: ck, sets: 0, pieces: 0, expired: 0, unmeasured: 0 });
+    if (!g.byColor.has(ck)) g.byColor.set(ck, { color: ck, sets: 0, pieces: 0, expired: 0, unmeasured: 0, curs: [], mins: [], margins: [] });
     const c = g.byColor.get(ck);
     g.sets++; c.sets++;
     s.forEach(r => {
       g.pieces++; c.pieces++;
       if (sqOdExpired(r)) { g.expired++; c.expired++; }
       if (!sqHasCurrentOd(r)) { g.unmeasured++; c.unmeasured++; }
+      // เทียบ OD ปัจจุบันกับ OD หมดอายุ — เก็บช่วงของทั้งสองค่า และระยะที่เหลือก่อนถึงอายุของแต่ละลูก
+      const cur = sqNum(r.odCur), min = sqNum(r.odMin);
+      [g, c].forEach(x => {
+        if (cur != null) x.curs.push(cur);
+        if (min != null) x.mins.push(min);
+        if (cur != null && min != null) x.margins.push(Math.round((cur - min) * 100) / 100);
+      });
     });
   });
   const sizeRows = [...bySize.values()].sort((a, b) => (b.expired - a.expired) || String(a.size).localeCompare(String(b.size), 'th'));
@@ -7647,12 +7654,26 @@ function renderDashboardSqPanel() {
       <div class="card-header"><span class="card-title" style="font-size:16px;">สรุปตามขนาด Size SQ และชุดสี</span></div>
       <div style="padding:0;overflow-x:auto;">
         <table>
-          <thead><tr><th>ขนาด Size SQ</th><th style="text-align:right;">ชุด</th><th style="text-align:right;">ชิ้น</th>
+          <thead><tr><th>ขนาด Size SQ</th><th style="text-align:right;">ชุด</th>
+            <th style="text-align:right;">OD ปัจจุบัน</th><th style="text-align:right;">OD หมดอายุ</th>
+            <th style="text-align:right;" title="OD ปัจจุบัน − OD หมดอายุ ของลูกที่ใกล้หมดอายุที่สุดในกลุ่ม">เหลือก่อนหมดอายุ (ต่ำสุด)</th>
             <th style="text-align:right;">ยังไม่วัด OD</th><th style="text-align:right;">ถึงอายุ</th></tr></thead>
           <tbody>${sizeRows.map(g => {
+            const odFmt = v => v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+            const range = arr => !arr.length ? '<span style="color:var(--text-3);">—</span>'
+              : Math.min(...arr) === Math.max(...arr) ? odFmt(arr[0]) : odFmt(Math.min(...arr)) + ' – ' + odFmt(Math.max(...arr));
+            const marginHtml = x => {
+              if (!x.margins.length) return '<span style="color:var(--text-3);">—</span>';
+              const m = Math.min(...x.margins);
+              // ถึงอายุแล้ว = แดง · เหลือไม่เกิน 1 mm = ส้ม (ใกล้ถึงอายุ) · ที่เหลือ = เขียว
+              const col = m <= 0 ? 'var(--red)' : m <= 1 ? 'var(--amber)' : 'var(--green)';
+              return `<b style="color:${col};">${m > 0 ? '+' : ''}${odFmt(m)} mm</b>`;
+            };
             const nums = (x, strong) => `
             <td style="text-align:right;font-variant-numeric:tabular-nums;${strong ? 'font-weight:700;' : ''}">${x.sets.toLocaleString()}</td>
-            <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--text-2);${strong ? 'font-weight:700;' : ''}">${x.pieces.toLocaleString()}</td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--text-1);white-space:nowrap;">${range(x.curs)}</td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--text-2);white-space:nowrap;">${range(x.mins)}</td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;">${marginHtml(x)}</td>
             <td style="text-align:right;font-variant-numeric:tabular-nums;color:${x.unmeasured ? 'var(--amber)' : 'var(--text-3)'};">${x.unmeasured.toLocaleString()}</td>
             <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:${x.expired ? 800 : 400};color:${x.expired ? 'var(--red)' : 'var(--text-3)'};">${x.expired.toLocaleString()}</td>`;
             // แถวขนาด (พื้นอ่อน ตัวหนา) แล้วตามด้วยแถวชุดสีของขนาดนั้น — สีที่มีชิ้นถึงอายุขึ้นก่อน
