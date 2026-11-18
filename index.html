@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.7';
+const APP_BUILD = '2026-11-18.8';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -9248,8 +9248,9 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason) {
           inner = `<button class="btn btn-ghost btn-sm daily-act daily-act-start" ${lockReason ? `disabled title="${lockReason} — เริ่มงานนี้ไม่ได้"` : ''} onclick="startDailyPiece('${t.id}','${rollIdx}','${t.workerId || ''}')">▶ ${DL().start}</button>`;
         }
         actionCell = `<td onclick="event.stopPropagation();">${inner}</td>`;
-      } else if (interactive && !isBreak) {
-        actionCell = '<td></td>';
+      } else if (interactive) {
+        // แถวพัก (พักเที่ยง/พัก OT) ก็ต้องมีช่องปุ่มว่างไว้ ไม่งั้นทั้งแถวเลื่อนไปซ้ายหนึ่งคอลัมน์ ไม่ตรงหัวตาราง
+        actionCell = `<td${isBreak ? ` style="${breakStyle}"` : ''}></td>`;
       } else if (!interactive) {
         // หน้าแผนงาน: ช่องเดียวกันใช้บอกสถานะของชิ้นนั้นแทนปุ่ม — เห็นได้ทันทีว่าชิ้นไหนทำไปแล้ว
         // ชิ้นที่ยังไม่เริ่มปล่อยว่างไว้ ไม่ต้องใส่ป้าย "รอทำ" ให้รก (ส่วนใหญ่ของตารางคือชิ้นที่ยังไม่เริ่ม)
