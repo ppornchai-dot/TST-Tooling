@@ -970,7 +970,7 @@ canvas{display:block;}
   <div class="nav">
     <div class="nav-section">
       <div class="nav-label">ภาพรวม</div>
-      <button class="nav-item active" data-roles="admin,lead,operator,saw" onclick="showPage('dashboard')">
+      <button class="nav-item active" data-roles="admin,lead,operator" onclick="showPage('dashboard')">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
         Dashboard
       </button>
@@ -981,7 +981,7 @@ canvas{display:block;}
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         ทะเบียน Tooling
       </button>
-      <button class="nav-item" data-roles="admin,lead,operator,saw" onclick="showPage('standard')">
+      <button class="nav-item" data-roles="admin,lead,operator" onclick="showPage('standard')">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="4" x2="8" y2="20"/></svg>
         Production Block
       </button>
@@ -1029,7 +1029,8 @@ canvas{display:block;}
          ปุ่มนำเข้ามีเฉพาะผู้ที่แก้ข้อมูลได้ เพราะเป็นการเขียนทับข้อมูลทั้งก้อน -->
     <div class="nav-section">
       <div class="nav-label">ข้อมูล</div>
-      <button class="nav-item" onclick="showPage('backup')">
+      <!-- ช่าง CNC/ขัด Roll/แต่ง Roll SQ/ลับคมใบเลื่อย ไม่เห็นหน้านี้ (ผู้ใช้กำหนด 18 พ.ย. 69 — ช่างเห็นแค่ 4 หน้าปฏิบัติงาน) -->
+      <button class="nav-item" data-roles="admin,lead,operator" onclick="showPage('backup')">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         สำรองข้อมูล
         <span class="nav-badge" id="backup-badge" style="display:none;background:var(--red);">!</span>
@@ -2436,7 +2437,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.8';
+const APP_BUILD = '2026-11-18.9';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -2462,7 +2463,16 @@ function closeMobileSidebar() {
   document.getElementById('sidebar-backdrop').classList.remove('open');
 }
 
+// ช่าง 4 กลุ่มเปิดได้เฉพาะหน้าปฏิบัติงาน — หน้าอื่นพาไปงานประจำวันแทน
+// (รายการอยู่ในฟังก์ชัน + try/catch — showPage อาจถูกเรียกตอนบูตก่อน currentUser ถูกประกาศ จะได้ไม่ชน TDZ)
+function techPageAllowed(id) {
+  try {
+    if (!currentUser) return true;
+    return !['cnc', 'polish', 'sq', 'saw'].includes(effectiveRole()) || ['daily', 'plan', 'history', 'pending'].includes(id);
+  } catch (e) { return true; }
+}
 function showPage(id) {
+  if (!techPageAllowed(id)) id = 'daily';
   // หน้าที่อยู่ก่อนหน้านี้ — ต้องเก็บไว้ก่อน เพราะ currentPage ถูกทับด้านล่าง
   // ใช้แยกว่า "ผู้ใช้เปลี่ยนหน้ามาจริง" หรือ "แค่วาดหน้าเดิมใหม่" (ดูบล็อกของหน้างานประจำวัน)
   const cameFrom = currentPage;
