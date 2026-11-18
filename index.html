@@ -2436,7 +2436,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.1';
+const APP_BUILD = '2026-11-18.2';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6621,11 +6621,6 @@ function prodSawWaitingCardHtml() {
         + ' · รอบสุดท้าย ' + fmtTons2(u.last.kg / 1000) + ' ตัน (' + u.last.pcs.toLocaleString() + ' เส้น)'
         + (u.lastGrind ? ' · ลับคมล่าสุด ' + fmtIsoDateThai(u.lastGrind) : ' · ยังไม่มีวันลับคมล่าสุดที่ใช้ได้ในทะเบียน'))}">
       <span style="font-size:14px;font-weight:800;color:#fff;background:var(--red);padding:3px 11px;border-radius:6px;">รหัส ${escapeHtmlAttr(r.id)}</span>
-      <!-- ป้ายสถานะ — Admin/หัวหน้ากดเปลี่ยนสถานะได้ตรงนี้เลย (เมนูเดียวกับทะเบียนใบเลื่อย) -->
-      ${canEditPlan()
-        ? `<span onclick="openSawStatusMenu(event, ${idx}, true)" title="กดเพื่อเปลี่ยนเป็นพร้อมใช้ (ลับคมแล้ว)" style="flex:0 0 auto;cursor:pointer;white-space:nowrap;">${
-            statusChip(sawEffectiveStatus(r).status)}<span style="font-size:9px;color:var(--text-3);margin-left:3px;">▾</span></span>`
-        : `<span style="flex:0 0 auto;">${statusChip(sawEffectiveStatus(r).status)}</span>`}
       <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr([sawOdLabel(r), r.machine].filter(x => x && x !== '—').join(' · '))}</span>
       <span style="font-size:12px;color:var(--text-2);">ถอดจาก ${escapeHtmlAttr(u.last.machine)} · ${escapeHtmlAttr(prodSqFmtTime(u.removedAt))}</span>
       <!-- ป้ายแผน — รูปแบบเดียวกับ "แต่ง/ขัดเสร็จ …" / "ยังไม่ได้วางแผน" ของการ์ด Roll (rollFinishTagHtml):
@@ -6639,6 +6634,11 @@ function prodSawWaitingCardHtml() {
         : sawTonsPcsHtml('รอบสุดท้าย', u.last.kg / 1000, u.last.pcs)}
       <span style="color:var(--border);">|</span>
       ${sawTonsPcsHtml('สะสม', u.total, u.p.pcs)}
+      <!-- ป้ายสถานะท้ายแถว (ตำแหน่งเดียวกับการ์ดพร้อมใช้งาน) — Admin/หัวหน้ากดเปลี่ยนสถานะได้ตรงนี้เลย (เมนูเดียวกับทะเบียนใบเลื่อย) -->
+      ${canEditPlan()
+        ? `<span onclick="openSawStatusMenu(event, ${idx}, true)" title="กดเพื่อเปลี่ยนเป็นพร้อมใช้ (ลับคมแล้ว)" style="flex:0 0 auto;cursor:pointer;white-space:nowrap;">${
+            statusChip(sawEffectiveStatus(r).status)}<span style="font-size:9px;color:var(--text-3);margin-left:3px;">▾</span></span>`
+        : `<span style="flex:0 0 auto;">${statusChip(sawEffectiveStatus(r).status)}</span>`}
     </div>`).join('');
   return `<div class="card" style="margin-bottom:18px;">
     <div class="card-header">
