@@ -2463,7 +2463,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.28';
+const APP_BUILD = '2026-11-18.29';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -21825,19 +21825,19 @@ function applyMeasuredSizeToRegistry(roll, size, dateIso, bumpRegrind) {
 // และบันทึกเวลาจบจริงระดับงานด้วย ให้แถวงานยังขึ้น "(จริง ...)" เหมือนเดิม
 // ─── ตรวจใบเลื่อยก่อนลับ / หลังลับ ───────────────────────────────────────────
 // ก่อนลับ: รอยร้าว · ฟันหัก · เช็คศูนย์ — หลังลับ: ความสูงฟัน · รอยไหม้ · ความโต · ความหนา
-// แต่ละข้อเลือก ผ่าน / ไม่ผ่าน (ต้องเลือกครบทุกข้อ) · ข้อที่เป็นขนาดกรอกค่าที่วัดได้ประกอบได้ (ไม่บังคับ)
+// ข้อแบบดูด้วยตา (รอยร้าว/ฟันหัก/รอยไหม้) เลือก ผ่าน / ไม่ผ่าน · ข้อที่วัดได้ (num) กรอกเป็นตัวเลข — ต้องกรอกครบทุกข้อ
 // ไม่บังคับก่อนเริ่ม/จบงาน และไม่แก้ทะเบียน — เป็นบันทึกผลตรวจของแต่ละรอบลับคม แก้ซ้ำได้ (ทับค่าเดิม)
 const SAW_INSPECT_STAGES = {
   before: { label: 'ตรวจก่อนลับ', items: [
     { k: 'crack', label: 'รอยร้าว' },
     { k: 'tooth', label: 'ฟันหัก' },
-    { k: 'center', label: 'เช็คศูนย์' },
+    { k: 'center', label: 'เช็คศูนย์', unit: 'mm', num: true },
   ] },
   after: { label: 'ตรวจหลังลับ', items: [
-    { k: 'height', label: 'ความสูงฟัน', unit: 'mm' },
+    { k: 'height', label: 'ความสูงฟัน', unit: 'mm', num: true },
     { k: 'burn', label: 'รอยไหม้' },
-    { k: 'od', label: 'ความโต (OD)', unit: 'mm' },
-    { k: 'thick', label: 'ความหนา', unit: 'mm' },
+    { k: 'od', label: 'ความโต (OD)', unit: 'mm', num: true },
+    { k: 'thick', label: 'ความหนา', unit: 'mm', num: true },
   ] },
 };
 function sawInspectKey(taskId, rollIdx) { return String(taskId) + '|' + String(rollIdx); }
@@ -21857,8 +21857,9 @@ function sawInspectButtonsHtml(taskId, rollIdx, pieceStatus, workerId, lockReaso
       : fails.length ? '✗ ' + meta.label + ' (' + fails.length + ')' : '✓ ' + meta.label;
     const tip = !rec ? 'ยังไม่ได้' + meta.label + ' — กดเพื่อบันทึกผลตรวจ'
       : meta.label + ' ' + (rec.date ? fmtDateThaiShort(parseISODate(rec.date)) + ' ' : '') + (rec.time || '') + (rec.by ? ' · ' + rec.by : '')
-        + '\n' + meta.items.map(it => it.label + ': ' + ((rec.items || {})[it.k] === 'ng' ? 'ไม่ผ่าน' : 'ผ่าน')
-          + ((rec.values || {})[it.k] ? ' (' + rec.values[it.k] + (it.unit ? ' ' + it.unit : '') + ')' : '')).join('\n')
+        + '\n' + meta.items.map(it => it.label + ': ' + (it.num
+          ? ((rec.values || {})[it.k] ? rec.values[it.k] + (it.unit ? ' ' + it.unit : '') : '—')
+          : ((rec.items || {})[it.k] === 'ng' ? 'ไม่ผ่าน' : 'ผ่าน'))).join('\n')
         + (rec.note ? '\nหมายเหตุ: ' + rec.note : '') + '\nกดเพื่อดู/แก้ไข';
     return `<button type="button" class="btn btn-sm" ${lockReason ? `disabled title="${escapeHtmlAttr(lockReason + ' — บันทึกผลตรวจไม่ได้')}"` : `title="${escapeHtmlAttr(tip)}"`}
       style="font-size:11.5px;font-weight:800;padding:3px 9px;border-radius:7px;white-space:nowrap;${look}"
@@ -21913,15 +21914,14 @@ function renderSawInspectDialog() {
     <div style="font-size:13px;color:var(--text-2);margin-bottom:12px;">ใบเลื่อย รหัส <b>${escapeHtmlAttr(d.sawId || '—')}</b></div>
     ${meta.items.map(it => `<div style="padding:10px 0;border-top:1px solid var(--border-light);">
       <div style="font-size:14px;font-weight:800;color:var(--text-1);margin-bottom:7px;">${escapeHtmlAttr(it.label)}</div>
-      <div style="display:flex;gap:8px;">
+      ${it.num ? '' : `<div style="display:flex;gap:8px;">
         ${choice(it.k, 'ok', '✓ ผ่าน', 'var(--green)')}
         ${choice(it.k, 'ng', '✗ ไม่ผ่าน', 'var(--red)')}
-      </div>
-      ${it.unit ? `<div style="display:flex;align-items:center;gap:8px;margin-top:7px;">
-        <span style="font-size:12px;color:var(--text-3);white-space:nowrap;">ค่าที่วัดได้</span>
-        <input type="text" inputmode="decimal" value="${escapeHtmlAttr(d.values[it.k] || '')}" placeholder="ไม่บังคับ"
+      </div>`}
+      ${it.num ? `<div style="display:flex;align-items:center;gap:8px;">
+        <input type="text" inputmode="decimal" value="${escapeHtmlAttr(d.values[it.k] || '')}" placeholder="กรอกตัวเลข"
           data-k="${escapeHtmlAttr(it.k)}" oninput="setSawInspectValue(this.dataset.k, this.value)"
-          style="flex:1;min-width:0;padding:7px 9px;border:1px solid var(--border);border-radius:7px;font-size:14px;background:var(--bg-surface);color:var(--text-1);">
+          style="flex:1;min-width:0;padding:9px 10px;border:1px solid var(--border);border-radius:8px;font-size:15px;font-weight:700;background:var(--bg-surface);color:var(--text-1);">
         <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr(it.unit)}</span>
       </div>` : ''}
     </div>`).join('')}
@@ -21955,16 +21955,23 @@ function saveSawInspect() {
   const d = sawInspectDraft;
   if (!d) return;
   const meta = SAW_INSPECT_STAGES[d.stage];
-  const missing = meta.items.filter(it => !d.items[it.k]);
-  if (missing.length) {
+  const isNum = v => /^\d+(\.\d+)?$/.test(String(v || '').trim().replace(/,/g, ''));
+  const missing = meta.items.filter(it => it.num ? !String(d.values[it.k] || '').trim() : !d.items[it.k]);
+  const badNum = meta.items.filter(it => it.num && String(d.values[it.k] || '').trim() && !isNum(d.values[it.k]));
+  if (missing.length || badNum.length) {
     const w = document.getElementById('saw-inspect-warn');
-    if (w) { w.style.display = ''; w.textContent = 'ยังไม่ได้เลือกผล: ' + missing.map(it => it.label).join(', '); }
+    if (w) {
+      w.style.display = '';
+      w.textContent = [missing.length ? 'ยังไม่ได้กรอก/เลือก: ' + missing.map(it => it.label).join(', ') : '',
+        badNum.length ? 'ต้องเป็นตัวเลข: ' + badNum.map(it => it.label).join(', ') : ''].filter(Boolean).join(' · ');
+    }
     return;
   }
   const now = new Date();
   const rec = {
-    sawId: d.sawId, items: { ...d.items },
-    values: Object.fromEntries(Object.entries(d.values).filter(([, v]) => String(v || '').trim())),
+    sawId: d.sawId,
+    items: Object.fromEntries(meta.items.filter(it => !it.num).map(it => [it.k, d.items[it.k]])),
+    values: Object.fromEntries(meta.items.filter(it => it.num).map(it => [it.k, String(d.values[it.k]).trim().replace(/,/g, '')])),
     note: String(d.note || '').trim(),
     at: now.toISOString(), date: dailyTodayIso(now), time: nowHHMM(), by: sawProblemWho(),
   };
