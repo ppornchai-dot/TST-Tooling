@@ -2463,7 +2463,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.36';
+const APP_BUILD = '2026-11-18.37';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -21591,9 +21591,22 @@ function setPieceStatusForChain(taskId, rollIdx, patch) {
     if (patch.status === 'in_progress' && (dayMap[id] || 'pending') === 'pending') dayMap[id] = 'in_progress';
     if (patch.status === 'done') {
       const t = planTasks.find(x => x.id === id);
-      if (t && (t.rollIds || []).every(i => getDailyPieceEntry(id, i).status === 'done')) dayMap[id] = 'done';
+      if (t && (t.rollIds || []).every(i => getDailyPieceEntry(id, i).status === 'done')) {
+        dayMap[id] = 'done';
+        sqSetReadyAfterDressDone(t);
+      }
     }
   });
+}
+// แต่ง Roll SQ เสร็จครบทุกชิ้นของชุด → สถานะชุดในทะเบียน "รอแต่ง/กำลังแต่ง" กลับเป็นพร้อมใช้งานเอง
+// (เดิมค้าง "รอแต่ง" ต้องไปเปลี่ยนเองทีละชุด — ชุดที่แต่งเสร็จแล้วจึงยังขึ้นในการ์ดรอแต่ง)
+// ยังมีงานแต่งชุดนี้ค้างอยู่ในแผนอีกใบ = ยังไม่ปลด · สถานะอื่น (กำลังใช้งาน/ไม่พร้อมใช้) ไม่แตะ
+function sqSetReadyAfterDressDone(t) {
+  if (!t || t.workType !== 'sq' || t.otherWork || !isSqPlanSet(t.rollSet)) return;
+  const k = sqPlanSetKeyOf(t.rollSet);
+  if (!['waitdress', 'dressing'].includes(sqSetStatusFor(k))) return;
+  if (sqSetPlanState(k)) return;
+  delete sqSetStatus[k];
 }
 // ─── กล่องกรอกข้อความพร้อมปุ่มพูดแทนพิมพ์ (ใช้แทน prompt เดิม) ─────────────────
 // กดปุ่มไมค์แล้วพูด ระบบถอดเสียงเป็นข้อความภาษาไทยพิมพ์ลงช่องให้ (Web Speech API)
