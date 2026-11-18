@@ -2466,7 +2466,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.18';
+const APP_BUILD = '2026-11-18.19';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5326,10 +5326,13 @@ function getWorkingRollEntries(workType) {
         colorLabel: colorMeta ? colorMeta.label : 'ไม่ระบุสี',
         dot: colorMeta ? colorMeta.dot : '#9CA3AF',
         doing: 0, done: 0, total: 0, remainAmt: 0, dates: new Set(), tasks: [], ids: new Set(), doneIds: new Set(),
+        active: false,
       });
     }
     const e = byKey.get(key);
     e.doing += doing; e.remainAmt += remainAmt;
+    // งานค้างที่ช่างกำลังทำอยู่ตอนนี้ (มีชิ้นกดเริ่มค้างไว้ หรือทั้งใบกดเริ่มไว้) — ขึ้นป้าย "กำลังทำ" ด้วย
+    if (doing || dayStatus === 'in_progress') e.active = true;
     rollIds.forEach(idx => {
       e.ids.add(idx);
       if ((pieces[idx] || {}).status === 'done') e.doneIds.add(idx);
@@ -5354,7 +5357,7 @@ function getWorkingRollEntries(workType) {
     inserts.push({
       set: t.task || 'งานแทรก', colorKey: NO_COLOR_KEY, cat,
       colorLabel: 'งานแทรก', dot: 'var(--text-3)',
-      doing: started ? 1 : 0, done: 0, total: 1,
+      doing: started ? 1 : 0, done: 0, total: 1, active: started,
       firstDate: d, dayCount: 1,
       insert: true, taskId: t.id, taskDate: d, workType: wt,
       detailNote: t.who ? String(t.who) : 'ยังไม่ระบุผู้รับผิดชอบ',
@@ -5411,6 +5414,8 @@ function dashRollWorkingChipHtml(e, accentVar, bgVar) {
       <span style="display:block;font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(e.set)}</span>
       <span style="display:block;font-size:11px;color:var(--text-3);">${escapeHtmlAttr(e.colorLabel)}${e.colorLabel ? ' · ' : ''}${detail}${dateNote}</span>
     </span>
+    ${e.cat === 'late' && e.active ? `<span title="งานค้างนี้กำลังทำอยู่ — กดเริ่มไว้แล้วแต่ยังไม่จบ"
+      style="font-size:11.5px;font-weight:800;color:${accentVar};background:${bgVar};border:1px solid ${accentVar};border-radius:99px;padding:1px 8px;flex-shrink:0;white-space:nowrap;">● ${escapeHtmlAttr(e.activeLabel || 'กำลังทำ')}</span>` : ''}
     <span style="font-size:${e.cat === 'doing' ? '12px' : '10px'};font-weight:${e.cat === 'doing' ? 800 : 700};color:${style.badgeColor};flex-shrink:0;white-space:nowrap;
       ${e.cat === 'doing' ? '' : `border:1px solid ${e.cat === 'late' ? 'var(--red)' : 'var(--border)'};border-radius:99px;padding:1px 7px;`}">${style.badge}</span>
   </div>`;
@@ -6486,6 +6491,7 @@ function sawWorkingCardHtml() {
       colorLabel: [sawOdLabel(e.r), e.r.machine].filter(x => x && x !== '—').join(' · '),
       dot: toolCalSawColor(e.r.id), cat: e.cat, unit: 'ใบ',
       done: 0, total: 1, remainAmt: 1, doing: e.cat === 'doing' ? 1 : 0,
+      active: e.entry.status === 'in_progress', activeLabel: 'กำลังลับ',
       firstDate: e.date, dayCount: 1, taskId: e.task.id, taskDate: e.date, workType: 'saw',
       badge: e.cat === 'doing' ? (paused ? '⏸ พักงาน' : 'กำลังลับ') : (e.cat === 'late' ? 'ค้าง' : 'รอทำ'),
       detailNote: [e.cat === 'doing' && e.entry.startTime ? 'เริ่ม ' + e.entry.startTime : (e.task.startTime ? 'แผน ' + e.task.startTime : ''),
