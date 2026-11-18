@@ -2466,7 +2466,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.20';
+const APP_BUILD = '2026-11-18.21';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5801,7 +5801,7 @@ function dashSqSetRowHtml(set, badgeColor, rowBg, hideSize) {
     // ไม่แสดงเดือน/ปีที่ผลิต (ผู้ใช้ขอเอาออก) — เหลือช่องว่างไว้ดันป้ายสถานะไปชิดขวาเหมือนเดิม
     : `<span style="margin-left:auto;"></span>`;
   return `<div onclick="${jsCallAttr('goToSqSet', sqSetKey(head))}"
-    style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;cursor:pointer;
+    style="display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;padding:8px 12px;border-radius:8px;cursor:pointer;
            border:${rowBg === 'var(--inuse-dim)' ? '2px solid var(--inuse-neon);box-shadow:var(--inuse-neon-glow)' : '1px solid var(--border-light)'};background:${rowBg || 'var(--accent-glow)'};transition:filter .12s;margin-bottom:6px;"
     onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
     title="${escapeHtmlAttr(sqSetFullLabel(head) + ' · Roll ' + set.length + ' ชิ้น'
@@ -5829,8 +5829,15 @@ function dashSqSetRowHtml(set, badgeColor, rowBg, hideSize) {
         title="${escapeHtmlAttr('จากระบบผลิต · ถอดจากเครื่อง ' + w.machine + ' เมื่อ ' + prodSqFmtTime(w.endedAt)
           + ' · รอบนั้นผลิต ' + prodSqTons(w.kg) + ' ตัน (' + w.pcs.toLocaleString() + ' เส้น)')}">ถอดจาก ${escapeHtmlAttr(w.machine)} · ${escapeHtmlAttr(prodSqFmtTime(w.endedAt))}</span>`;
     })()}
-    ${tag}
-    ${sqSetStatusChipHtml(sqSetKey(head))}
+    ${(() => {
+      // วางแผนแต่งไว้แล้ว — ป้ายแบบเดียวกับ "แผนลับคม …" ของการ์ดใบเลื่อยรอลับคม
+      if (live) return '';
+      const pd = sqSetPlanDate(sqSetKey(head));
+      return pd ? `<span style="flex:0 0 auto;font-size:11.5px;font-weight:700;color:var(--accent);white-space:nowrap;"
+        title="${escapeHtmlAttr('วางแผนแต่งไว้แล้ว — ตามแผนวันที่ ' + fmtDateThai(parseISODate(pd)))}">แผนแต่ง ${escapeHtmlAttr(fmtDateThaiShort(parseISODate(pd)))}</span>` : '';
+    })()}
+    <!-- ป้ายท้ายแถวรวมกล่องเดียว ชิดขวาเสมอ — ถ้าแถวแคบจนต้องขึ้นบรรทัดใหม่ ก็ยังชิดขวาของบรรทัดนั้น -->
+    <span style="margin-left:auto;display:inline-flex;align-items:center;gap:8px;flex-shrink:0;">${tag}${sqSetStatusChipHtml(sqSetKey(head))}</span>
   </div>`;
 }
 // ป้ายสถานะชุดบนแถวของ Dashboard — Admin/หัวหน้ากดเปลี่ยนสถานะได้ตรงนี้ (ตัวเดียวกับคอลัมน์ "สถานะชุด" ในทะเบียน)
@@ -6050,6 +6057,7 @@ function dashSqWaitDressCardHtml(sets) {
     title: 'ชุด Roll SQ รอแต่ง', color: 'var(--red)',
     emptyText: 'ยังไม่มีชุด Roll SQ ที่รอแต่ง',
     groups: [{ key: 'waitdress', label: 'รอแต่ง', color: 'var(--red)', bg: 'var(--red-dim)' }],
+    keyOf: s => dashSqBaseStatus(sqSetKey(s[0])),
   });
 }
 
@@ -6094,6 +6102,12 @@ function prodSqLiveFor(setKeyStr) {
 function dashSqEffectiveStatus(setKeyStr) {
   if (prodSqLiveFor(setKeyStr)) return 'inuse';
   if (sqSetPlanState(setKeyStr)) return 'dressing';
+  return dashSqBaseStatus(setKeyStr);
+}
+// สถานะโดยไม่นับแผนแต่ง — การ์ด "รอแต่ง" ใช้ตัวนี้ ชุดที่วางแผนแต่งไว้แล้วแต่ยังแต่งไม่เสร็จจึงยังขึ้นในการ์ดรอแต่ง
+// (พร้อมป้ายวันแผนแต่ง แบบเดียวกับใบเลื่อยรอลับคมที่วางแผนแล้ว) · แต่งเสร็จ = ลง lastService แล้วหายจากรอแต่งเอง
+function dashSqBaseStatus(setKeyStr) {
+  if (prodSqLiveFor(setKeyStr)) return 'inuse';
   const st = sqSetStatusFor(setKeyStr);
   // ตั้งเองว่า กำลังแต่ง / ไม่พร้อมใช้ ไว้ — เชื่อที่ตั้งเอง
   if (st === 'dressing' || st === 'not-ready') return st;
@@ -6118,6 +6132,20 @@ function sqProdWaitInfo(setKeyStr) {
 }
 // สถานะแผนแต่งของชุดหนึ่ง — 'doing' (กดเริ่มชิ้นไหนแล้ว) / 'late' (วันของงานผ่านไปแล้วยังไม่เสร็จ) / 'wait' (รอทำ) / null (ไม่มีแผนค้าง)
 // งานที่กดเสร็จทั้งใบ หรือทุกชิ้นเสร็จแล้ว ไม่นับ · เกณฑ์งานค้างเดียวกับการ์ดชุด Roll กำลังแต่ง (taskRemainderScheduledAhead)
+function sqSetPlanDate(setKeyStr) {
+  const name = SQ_PLAN_PREFIX + setKeyStr;
+  let best = '';
+  (planTasks || []).forEach(t => {
+    if (!t || t.workType !== 'sq' || t.otherWork || t.rollSet !== name) return;
+    const d = taskDisplayDate(t);
+    if ((dailyStatusByDate[d] || {})[t.id] === 'done') return;
+    const pieces = (dailyPieceStatus[d] || {})[t.id] || {};
+    const ids = t.rollIds || [];
+    if (ids.length && ids.every(i => (pieces[i] || {}).status === 'done')) return;
+    if (!best || d < best) best = d;
+  });
+  return best;
+}
 function sqSetPlanState(setKeyStr) {
   const name = SQ_PLAN_PREFIX + setKeyStr;
   const today = dailyTodayIso();
