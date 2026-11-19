@@ -2463,7 +2463,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-19.05';
+const APP_BUILD = '2026-11-19.06';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -20808,8 +20808,6 @@ function renderSawMachineList() {
     return;
   }
   // ปุ่มเพิ่มใบเลื่อยท้ายรายการของเครื่องที่เปิดอยู่ — เพิ่มแล้วช่อง "เครื่องผลิต" กรอกเครื่องนั้นให้เลย (openAddSaw)
-  // ยังไม่ได้เปิดเครื่องไหน = ปุ่มเดียวท้ายรายการทั้งหมด
-  const anyActive = groups.some(([mc]) => selectedSawMachine === mc);
   el.innerHTML = groups.map(([mc, blades]) => {
     const active = selectedSawMachine === mc;
     const inuse = blades.filter(r => sawEffectiveStatus(r).status === 'กำลังใช้งาน').length;
@@ -20840,7 +20838,7 @@ function renderSawMachineList() {
           ${canEditPlan() ? `onclick="openSawStatusMenu(event, ${idx})" title="กดเพื่อเปลี่ยนสถานะ"` : ''}>${statusChip(st)}${canEditPlan() ? '<span style="font-size:9px;color:var(--text-3);margin-left:2px;">▾</span>' : ''}</span>
       </div>`;
     }).join('') + sawAddBtnHtml(mc);
-  }).join('') + (anyActive ? '' : sawAddBtnHtml(null));
+  }).join('');   // ไม่ได้เปิดเครื่องไหน = ไม่มีปุ่มเพิ่ม (ผู้ใช้ขอเอาออก — เพิ่มจากท้ายรายการของเครื่องที่เปิดเท่านั้น)
 }
 function sawAddBtnHtml(mc) {
   const label = mc ? '+ เพิ่มใบเลื่อย เครื่อง ' + mc : '+ เพิ่มใบเลื่อย';
