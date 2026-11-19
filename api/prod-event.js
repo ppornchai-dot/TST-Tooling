@@ -84,7 +84,8 @@ export default async function handler(req, res) {
       method: 'POST',
       headers: {
         apikey: serviceKey,
-        Authorization: 'Bearer ' + serviceKey,
+        // คีย์แบบใหม่ (sb_secret_…) ไม่ใช่ JWT — ส่งแค่ apikey ก็พอ · คีย์แบบเก่า (service_role JWT) ต้องมี Authorization ด้วย
+        ...(String(serviceKey).startsWith('sb_') ? {} : { Authorization: 'Bearer ' + serviceKey }),
         'Content-Type': 'application/json',
         Prefer: 'resolution=ignore-duplicates,return=minimal',
       },
