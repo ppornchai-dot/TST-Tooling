@@ -2465,7 +2465,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-19.15';
+const APP_BUILD = '2026-11-19.16';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5799,14 +5799,16 @@ function dashSqSetRowHtml(set, badgeColor, rowBg, hideSize) {
          title="${escapeHtmlAttr('ยังไม่ได้วัด OD ปัจจุบัน ' + unmeasured + ' ชิ้น')}">ยังไม่วัด OD ${unmeasured}</span>`
     // ไม่แสดงเดือน/ปีที่ผลิต (ผู้ใช้ขอเอาออก) — เหลือช่องว่างไว้ดันป้ายสถานะไปชิดขวาเหมือนเดิม
     : `<span style="margin-left:auto;"></span>`;
-  return `<div onclick="${jsCallAttr('goToSqSet', sqSetKey(head))}"
+  const toPlan = sqSetGoesToPlan(sqSetKey(head));
+  return `<div onclick="${jsCallAttr(toPlan ? 'goToSqDressPlan' : 'goToSqSet', sqSetKey(head))}"
     style="display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;padding:8px 12px;border-radius:8px;cursor:pointer;
            border:${rowBg === 'var(--inuse-dim)' ? '2px solid var(--inuse-neon);box-shadow:var(--inuse-neon-glow)' : '1px solid var(--border-light)'};background:${rowBg || 'var(--accent-glow)'};transition:filter .12s;margin-bottom:6px;"
     onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
     title="${escapeHtmlAttr(sqSetFullLabel(head) + ' · Roll ' + set.length + ' ชิ้น'
       + (String(head.thickness || '').trim() ? ' · ความหนา ' + String(head.thickness).trim() : '')
       + (String(head.filmFace || '').trim() ? ' · หน้าฟิล์ม ' + String(head.filmFace).trim() : '')
-      + ' — กดเพื่อเปิดชุดนี้ในทะเบียน Roll SQ')}">
+      + (toPlan ? (sqSetPlanDate(sqSetKey(head)) ? ' — กดเพื่อไปที่งานแต่งชุดนี้ในหน้าวางแผน' : ' — กดเพื่อวางแผนแต่งชุดนี้')
+        : ' — กดเพื่อเปิดชุดนี้ในทะเบียน Roll SQ'))}">
     <span style="font-size:15px;font-weight:800;color:#fff;background:${badgeColor || 'var(--accent)'};
                  padding:3px 11px;border-radius:6px;flex-shrink:0;letter-spacing:.02em;"
       title="${escapeHtmlAttr(mc ? 'เครื่องที่ใส่อยู่' : 'ลำดับชุดของขนาด+สีนี้ (ยังไม่ได้ใส่เครื่อง)')}">${
@@ -7681,6 +7683,39 @@ function dashSqReadyCardHtml(sets) {
 }
 
 // เปิดชุดนั้นในหน้าทะเบียน Roll SQ เลย — กดจาก Dashboard แล้วไปจัดการต่อได้ทันที
+// ชุดที่ควรพาไปหน้าวางแผน = มีงานแต่งค้างอยู่ หรือสถานะรอแต่ง (รวมชุดที่ระบบผลิตบอกว่าถอดแล้ว)
+function sqSetGoesToPlan(setKeyStr) {
+  return !!sqSetPlanDate(setKeyStr) || dashSqEffectiveStatus(setKeyStr) === 'waitdress';
+}
+// กดการ์ดชุด Roll SQ รอแต่ง → หน้าวางแผน แท็บแต่ง Roll SQ (แบบเดียวกับ goToSawGrindPlan)
+//   วางแผนไว้แล้ว = ไปที่งานนั้น (วันของงาน + ไฮไลต์) · ยังไม่ได้วางแผน = เปิดฟอร์มเพิ่มงาน เลือกชุดนี้ + ติ๊กทุกชิ้นให้เลย
+//   (ผู้ที่วางแผนไม่ได้ ไปหน้าวางแผนเฉยๆ)
+function goToSqDressPlan(setKeyStr) {
+  const name = SQ_PLAN_PREFIX + setKeyStr;
+  const task = (planTasks || []).filter(t => {
+    if (!t || t.workType !== 'sq' || t.otherWork || t.rollSet !== name) return false;
+    const d = taskDisplayDate(t);
+    if ((dailyStatusByDate[d] || {})[t.id] === 'done') return false;
+    const ids = t.rollIds || [];
+    return !(ids.length && ids.every(i => pieceEntryFor(d, t.id, i).status === 'done'));
+  }).sort((a, b) => taskDisplayDate(a).localeCompare(taskDisplayDate(b)))[0];
+  if (task) { goToPlanTask(task.id, taskDisplayDate(task), 'sq'); return; }
+  showPage('plan');
+  if (!forcedWorkTypeForRole()) currentWorkTypeTab = 'sq';
+  if (currentPlanWorkType !== 'sq') switchPlanWorkType('sq');
+  renderCurrentPlanView();
+  if (!canEditPlan()) return;
+  openPlanTaskModal('add', null, dailyTodayIso());
+  const sel = document.getElementById('pf-rollset');
+  if (!sel || ![...sel.options].some(o => o.value === name)) return;   // ชุดนี้วางแผนไม่ได้ (ไม่ใช่รอแต่งแล้ว) — เปิดฟอร์มเปล่าไว้
+  sel.value = name;
+  onPlanRollSetChange();
+  // ติ๊กทุกชิ้นของชุดให้เลย — ผ่านช่อง "เลือกทั้งหมด" ตัวเดียวกับที่ผู้ใช้กดเอง (คิดเวลา/วันจบให้ครบ)
+  setTimeout(() => {
+    const all = document.getElementById('pf-rollids-all');
+    if (all && !all.checked) { all.checked = true; toggleAllRollOptions(all); }
+  }, 0);
+}
 function goToSqSet(setKeyStr) {
   showPage('registry');
   switchRegTab('sq');
