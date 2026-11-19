@@ -327,6 +327,8 @@ th.today-head .muted{color:#fff !important;opacity:.9;}
 /* แบนเนอร์หัวข้อกลุ่มขนาดกินทั้งแถว — ตรึงเฉพาะตัวชื่อขนาดไว้ ไม่ให้เลื่อนหายตอนดูวันท้ายๆ */
 .table-wrap-sticky .pw-group-label{position:sticky;left:12px;z-index:1;}
 table{width:100%;border-collapse:collapse;font-size:13px;}
+/* กลุ่มแถวของเครื่องหนึ่งเครื่อง (หน้าประวัติการใช้งาน / อายุ Tooling ใบเลื่อย) — กรอบเทาเข้มแยกเครื่องให้เห็นชัด */
+tbody.mc-box{border:2px solid var(--text-2);}
 thead th{
   padding:10px 14px;
   background:var(--bg-panel);
@@ -2463,7 +2465,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-19.14';
+const APP_BUILD = '2026-11-19.15';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -7248,14 +7250,14 @@ async function renderProdWeightTooling(force) {
         <span style="font-size:12px;color:var(--text-2);text-align:left;line-height:1.35;"><b>${escapeHtmlAttr(fmtTons2(x.kg / 1000))}</b> ตัน
           <span style="color:var(--text-3);">· ${x.gs.length} ${unit} · ${x.rounds} รอบ</span></span>
       </button>`).join('')}</div>`;
-    tableRows = mcList.map((x, i) => `${i ? '<tr><td colspan="7" style="padding:0;height:10px;background:var(--bg-surface);border:none;"></td></tr>' : ''}
+    tableRows = mcList.map((x, i) => `${i ? '<tbody><tr><td colspan="7" style="padding:0;height:10px;background:var(--bg-surface);border:none;"></td></tr></tbody>' : ''}<tbody class="mc-box">
         <tr id="${mcAnchor(x.mc)}" style="scroll-margin-top:42px;"><td colspan="7" style="background:var(--bg-panel);padding:9px 14px;border:none;border-left:4px solid var(--accent);border-bottom:1px solid var(--border-light);">
           <span style="display:inline-flex;align-items:baseline;gap:8px;color:var(--text-1);">
             <span style="font-size:11.5px;font-weight:700;color:var(--text-3);">เครื่อง</span>
             <span style="font-size:16px;font-weight:800;letter-spacing:.3px;">${escapeHtmlAttr(x.mc)}</span></span>
           <span style="float:right;font-size:12.5px;font-weight:600;color:var(--text-2);line-height:24px;">${x.gs.length} ${unit} · ${x.rounds} รอบ ·
             ${escapeHtmlAttr(fmtTons2(x.kg / 1000))} ตัน · ${escapeHtmlAttr(x.pcs.toLocaleString())} เส้น</span>
-        </td></tr>` + x.gs.map(g => groupHtml(g, x.mc)).join('')).join('');
+        </td></tr>` + x.gs.map(g => groupHtml(g, x.mc)).join('') + '</tbody>').join('');
   } else {
     tableRows = list.map(g => groupHtml(g)).join('');
   }
@@ -7278,7 +7280,8 @@ async function renderProdWeightTooling(force) {
           <th>${kind === 'saw' || kind === 'sq' ? 'รอบ' : 'เครื่อง'}</th><th>ใส่เครื่อง</th><th>ถอด</th><th>สินค้าที่ผลิต</th>
           <th style="text-align:right;">ตัน</th><th style="text-align:right;">เส้น</th><th style="text-align:right;">A / BC</th>
         </tr></thead>
-        <tbody>${tableRows || `<tr><td colspan="7">${msg('ไม่มีรอบการใช้' + (kind === 'sq' ? 'ชุด Roll SQ' : 'ใบเลื่อย') + 'ในช่วงวันที่นี้')}</td></tr>`}</tbody>
+        ${/^\s*<tbody/.test(tableRows || '') ? tableRows
+          : `<tbody>${tableRows || `<tr><td colspan="7">${msg('ไม่มีรอบการใช้' + (kind === 'sq' ? 'ชุด Roll SQ' : 'ใบเลื่อย') + 'ในช่วงวันที่นี้')}</td></tr>`}</tbody>`}
       </table>
     </div>`;
 }
@@ -7498,7 +7501,7 @@ function renderToolingLife() {
         <tbody>${mcOrder.map(([mc, xs], gi) => {
           const e = xs.filter(x => x.left != null && x.left <= 0).length;
           const w = xs.filter(x => x.left != null && x.left > 0 && x.left <= SAW_OD_WARN_MM).length;
-          return (gi ? '<tr><td colspan="10" style="padding:0;height:10px;background:var(--bg-surface);border:none;"></td></tr>' : '')
+          return (gi ? '</tbody><tbody><tr><td colspan="10" style="padding:0;height:10px;background:var(--bg-surface);border:none;"></td></tr>' : '') + '</tbody><tbody class="mc-box">'
           + `<tr><td colspan="10" style="background:var(--bg-panel);padding:9px 14px;border:none;border-left:4px solid var(--accent);border-bottom:1px solid var(--border-light);">
             <span style="display:inline-flex;align-items:baseline;gap:8px;color:var(--text-1);">
               <span style="font-size:11.5px;font-weight:700;color:var(--text-3);">เครื่อง</span>
