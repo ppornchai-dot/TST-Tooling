@@ -2463,7 +2463,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-19.11';
+const APP_BUILD = '2026-11-19.12';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -21548,10 +21548,15 @@ function startDailyTask(idx, workerId) {
     const dayMap = dailyStatusByDate[dailyStatusDateFor(idx)] || (dailyStatusByDate[dailyStatusDateFor(idx)] = {});
     dayMap[idx] = 'in_progress';
     const timesMap = dailyActualTimes[dailyStatusDateFor(idx)] || (dailyActualTimes[dailyStatusDateFor(idx)] = {});
-    timesMap[idx] = { ...(timesMap[idx] || {}), startTime: at };
+    timesMap[idx] = { ...(timesMap[idx] || {}), startTime: at, ...dailyActorPatch('startBy') };
     persistState();
     renderDailyTasks();
   });
+}
+// ชื่อคนที่กด — เก็บคู่กับเวลาจริง ใช้แสดงเป็นผู้ดำเนินการในหน้าประวัติ
+function dailyActorPatch(field) {
+  const n = effectiveUserName();
+  return n && n !== '—' ? { [field]: n } : {};
 }
 function finishDailyTask(idx, workerId) {
   if (!canActOnDailyItem(workerId)) return;
@@ -21560,7 +21565,7 @@ function finishDailyTask(idx, workerId) {
     const dayMap = dailyStatusByDate[dailyStatusDateFor(idx)] || (dailyStatusByDate[dailyStatusDateFor(idx)] = {});
     dayMap[idx] = 'done';
     const timesMap = dailyActualTimes[dailyStatusDateFor(idx)] || (dailyActualTimes[dailyStatusDateFor(idx)] = {});
-    timesMap[idx] = { ...(timesMap[idx] || {}), endTime: at };
+    timesMap[idx] = { ...(timesMap[idx] || {}), endTime: at, ...dailyActorPatch('endBy') };
     maybeAutoContinueDailyPlan(dailyViewDate);
     persistState();
     renderDailyTasks();
@@ -21849,10 +21854,14 @@ function pieceButtonOwnerId(task, rollIdx) {
 
 // เขียนสถานะรายชิ้นให้ "ทุกส่วน" ของชิ้นนั้น — ใช้ร่วมกันทุกปุ่ม (เริ่ม/พัก/ทำต่อ/จบ)
 function setPieceStatusForChain(taskId, rollIdx, patch) {
+  // ผู้ดำเนินการในหน้าประวัติ = คนที่กดจริง ไม่ใช่ผู้ปฏิบัติงานที่วางแผนไว้ (ซึ่งมักเว้นว่าง "—") (ผู้ใช้ขอ 19 พ.ย. 69)
+  // กดเริ่ม (มีเวลาเริ่มใหม่) = startBy · กดจบ = doneBy · ชื่อตามมุมมองที่ใช้อยู่ (effectiveUserName)
+  const actor = (patch.status === 'in_progress' && patch.startTime) || patch.status === 'done' ? effectiveUserName() : '';
+  const who = actor && actor !== '—' ? (patch.status === 'done' ? { doneBy: actor } : { startBy: actor }) : {};
   pieceChainIdsFor(taskId, rollIdx).forEach(id => {
     const dMap = dailyPieceStatus[dailyStatusDateFor(id)] || (dailyPieceStatus[dailyStatusDateFor(id)] = {});
     const tMap = dMap[id] || (dMap[id] = {});
-    tMap[rollIdx] = { ...(tMap[rollIdx] || {}), ...patch };
+    tMap[rollIdx] = { ...(tMap[rollIdx] || {}), ...patch, ...who };
     const dayMap = dailyStatusByDate[dailyStatusDateFor(id)] || (dailyStatusByDate[dailyStatusDateFor(id)] = {});
     if (patch.status === 'in_progress' && (dayMap[id] || 'pending') === 'pending') dayMap[id] = 'in_progress';
     if (patch.status === 'done') {
@@ -23109,7 +23118,7 @@ function collectHistoryRecords() {
         date: dateIso, wo: t.id, typeKey: wt,
         typeLabel: planWorkTypeShortLabel(wt) + ' · งานแทรก',
         tooling: 'งานแทรก' + (t.ref && t.ref !== '—' ? ' · ' + t.ref : ''),
-        detail: insertTaskLabel(t), who: t.who || '—',
+        detail: insertTaskLabel(t), who: historyActorsText([actual.startBy, actual.endBy], t.who),
         // งานแทรกไม่มีเวลาตามแผน จึงไม่มี Standard — เห็นเวลาที่ใช้จริงจากบรรทัด "ทำจริง"
         hours: null, minutes: null,
         startTime: startAt || t.time || null, endTime: endAt,
@@ -23124,6 +23133,12 @@ function collectHistoryRecords() {
     });
   });
 
+  // ผู้ดำเนินการ = คนที่กดเริ่ม/จบจริง (คนละคนกันโชว์ทั้งคู่ "เริ่มโดย → จบโดย")
+  // บันทึกเก่าก่อน 19 พ.ย. 69 ไม่ได้เก็บชื่อคนกด — ใช้ชื่อเดิม (ผู้ปฏิบัติงานตามแผน / ผู้แทรกงาน)
+  function historyActorsText(names, fallback) {
+    const list = [...new Set(names.map(x => String(x || '').trim()).filter(x => x && x !== '—'))];
+    return list.length ? list.join(' → ') : (fallback || '—');
+  }
   // งานตามแผน (CNC/ขัด Roll) บันทึกประวัติ "ทีละชิ้น Roll" ตั้งแต่กดเริ่มงาน ไม่ต้องรอให้จบครบทั้งชุด
   // (เดิมรอ dailyStatusByDate ของงานเป็น 'done' คือครบทุกชิ้นก่อน ทำให้ระหว่างทำงานยังไม่เห็นอะไรเลย)
   const PIECE_RESULT_META = {
@@ -23168,7 +23183,7 @@ function collectHistoryRecords() {
           rollSetName: t.rollSet || null,
           // คีย์ชุดสีดิบ — ปฏิทินหน้านี้ใช้หาสีจริงของชุด (rollColorLabelFor/inUseColorDot ต้องใช้คีย์ ไม่ใช่ชื่อไทย)
           rollColorKey: t.rollColor || null,
-          who: workerName(t.workerId),
+          who: historyActorsText([entry.startBy, entry.doneBy], workerName(t.workerId)),
           // บันทึกที่ถูกย้ายวันไปแล้วไม่นับชั่วโมง — ชิ้นเดียวกันถูกนับอีกครั้งในวันที่ย้ายไป
           // ถ้านับทั้งสองที่ ยอด "ชม." ของวันเดิมจะบวมขึ้นจากงานที่ไม่ได้ทำในวันนั้น
           hours: (outcome.key === 'moved' || !minutes) ? null : Math.round((minutes / 60) * 10) / 10,
