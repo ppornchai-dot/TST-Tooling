@@ -1504,7 +1504,7 @@ canvas{display:block;}
                 <span style="font-size:13px;font-weight:700;" id="saw-detail-title">ใบเลื่อยทั้งหมด</span>
                 <span style="font-size:11px;color:var(--text-3);" id="saw-detail-count"></span>
               </div>
-              <button class="btn btn-primary btn-sm" onclick="openAddSaw()">+ เพิ่มใบเลื่อย</button>
+              <!-- ปุ่ม "+ เพิ่มใบเลื่อย" ย้ายไปอยู่ท้ายรายการใบเลื่อยของแต่ละเครื่องในคอลัมน์ซ้ายแล้ว (ผู้ใช้ขอ 19 พ.ย. 69) -->
             </div>
             <div class="table-wrap" style="overflow-x:auto;">
               <table>
@@ -2463,7 +2463,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-19.04';
+const APP_BUILD = '2026-11-19.05';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -20804,9 +20804,12 @@ function renderSawMachineList() {
   const groups = sawMachineGroups();
   if (!groups.length) {
     el.innerHTML = `<div style="padding:18px 8px;color:var(--text-3);font-size:12.5px;line-height:1.6;">
-      ยังไม่มีใบเลื่อย<br>กด "+ เพิ่มใบเลื่อย" เพื่อเริ่มลงทะเบียน</div>`;
+      ยังไม่มีใบเลื่อย<br>กด "+ เพิ่มใบเลื่อย" เพื่อเริ่มลงทะเบียน</div>` + sawAddBtnHtml(null);
     return;
   }
+  // ปุ่มเพิ่มใบเลื่อยท้ายรายการของเครื่องที่เปิดอยู่ — เพิ่มแล้วช่อง "เครื่องผลิต" กรอกเครื่องนั้นให้เลย (openAddSaw)
+  // ยังไม่ได้เปิดเครื่องไหน = ปุ่มเดียวท้ายรายการทั้งหมด
+  const anyActive = groups.some(([mc]) => selectedSawMachine === mc);
   el.innerHTML = groups.map(([mc, blades]) => {
     const active = selectedSawMachine === mc;
     const inuse = blades.filter(r => sawEffectiveStatus(r).status === 'กำลังใช้งาน').length;
@@ -20836,8 +20839,13 @@ function renderSawMachineList() {
         <span style="flex-shrink:0;transform:scale(.9);transform-origin:right center;${canEditPlan() ? 'cursor:pointer;' : ''}"
           ${canEditPlan() ? `onclick="openSawStatusMenu(event, ${idx})" title="กดเพื่อเปลี่ยนสถานะ"` : ''}>${statusChip(st)}${canEditPlan() ? '<span style="font-size:9px;color:var(--text-3);margin-left:2px;">▾</span>' : ''}</span>
       </div>`;
-    }).join('');
-  }).join('');
+    }).join('') + sawAddBtnHtml(mc);
+  }).join('') + (anyActive ? '' : sawAddBtnHtml(null));
+}
+function sawAddBtnHtml(mc) {
+  const label = mc ? '+ เพิ่มใบเลื่อย เครื่อง ' + mc : '+ เพิ่มใบเลื่อย';
+  return `<button type="button" class="btn btn-primary btn-sm" onclick="openAddSaw()"
+    style="display:block;width:100%;margin:6px 0 10px;font-weight:800;">${escapeHtmlAttr(label)}</button>`;
 }
 
 function renderSawTable(page) {
