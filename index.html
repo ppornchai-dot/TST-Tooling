@@ -2463,7 +2463,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-19.01';
+const APP_BUILD = '2026-11-19.02';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -10642,6 +10642,14 @@ function planTaskProgressState(t) {
   return started ? 'doing' : 'wait';
 }
 
+// หน่วยนับชิ้นของงานในปฏิทินแผน — ใบเลื่อย = ใบ · มีดสลิตเตอร์/งานอื่นๆ = รายการ · ที่เหลือ = Roll
+function planPieceUnit(t) {
+  if (!t) return 'Roll';
+  if (t.otherWork) return 'รายการ';
+  if (t.workType === 'saw') return 'ใบ';
+  if (t.workType === 'slitter') return 'รายการ';
+  return 'Roll';
+}
 function planCalendarChip(t, editable, extraStyle) {
   const prog = PLAN_PROGRESS_META[planTaskProgressState(t)] || PLAN_PROGRESS_META.wait;
   const color = planRollColorLabel(t);
@@ -10650,7 +10658,7 @@ function planCalendarChip(t, editable, extraStyle) {
   const partTag = t.__partCount > 1 ? ` (${t.__partIndex + 1}/${t.__partCount})` : '';
   // นับเป็นสัดส่วนของเวลาต่อชิ้น — ชิ้นที่ทำได้ไม่เต็มในส่วนนี้ขึ้นเป็นทศนิยม (ดู planPartRollAmount)
   const carriedCount = ((t.__carryPieces) || []).length;
-  const rollText = fmtRollAmount(planPartRollAmount(t)) + ' Roll';
+  const rollText = fmtRollAmount(planPartRollAmount(t)) + ' ' + planPieceUnit(t);
   const sub = (hasColor ? color + ' · ' : '') + rollText + partTag;
   // เวลาเริ่ม–จบของงานชิ้นนั้น (งานที่ถูกตัดข้ามวัน = เวลาของส่วนที่อยู่ในวันนั้น)
   // ต่อท้าย (+N วัน) เมื่อเวลาจบเลยรอบกะของวันนั้นไปจริง เกณฑ์เดียวกับป้ายในตารางรายวัน
@@ -10661,7 +10669,7 @@ function planCalendarChip(t, editable, extraStyle) {
   // ปฏิทินรวมทั้ง CNC และขัด Roll ไว้ด้วยกันแล้ว ติดไอคอนประเภทงานไว้หน้าชื่อชุดให้แยกออกด้วยตาเปล่า
   const typeIcon = t.workType === 'polish' ? '✦ ' : '⚙ ';
   const typeLabel = (PLAN_WORKTYPE_META[t.workType] || {}).label || '';
-  const fullTitle = `[${prog.label}] ${typeLabel} · ${SHIFTS[t.shift]?.label || ''} — ${t.rollSet}${hasColor ? ' · ' + color : ''} — ${rollText} — ${t.rollName}`
+  const fullTitle = `[${prog.label}] ${typeLabel} · ${SHIFTS[t.shift]?.label || ''} — ${planSetLabel(t.rollSet)}${hasColor ? ' · ' + color : ''} — ${rollText} — ${t.rollName}`
     + (partTag ? ` — ส่วนที่ ${t.__partIndex + 1}/${t.__partCount} ของงานที่ทำข้ามวัน (${t.startTime}–${t.endTime})` : '')
     + (carriedCount ? `\nมีอีก ${carriedCount} ชิ้นที่เริ่มไว้แล้วแต่ไปทำจบในช่วงถัดไป — ช่วงนี้จึงนับเป็นสัดส่วนของเวลาที่ทำได้จริง` : '');
   // โหมดลบ: คลิกที่งานคือติ๊กเลือก/ยกเลิกเลือก (ไม่เปิดฟอร์มแก้ไข) และมีเครื่องหมายบอกว่าเลือกอยู่
@@ -10719,25 +10727,27 @@ function planMergedCalendarChip(group, editable, extraStyle) {
   const hasColor = color && color !== '—';
   // นับเป็นสัดส่วนของเวลาต่อชิ้น ชิ้นที่ถูกตัดคาบเกี่ยวจึงไม่ถูกนับเต็มซ้ำทั้งสองฝั่ง
   const total = fmtRollAmount(group.reduce((n, t) => n + planPartRollAmount(t), 0));
-  const sub = (hasColor ? color + ' · ' : '') + total + ' Roll';
+  const unit = planPieceUnit(first);
+  const sub = (hasColor ? color + ' · ' : '') + total + ' ' + unit;
   const dayOff = endDayOffset(taskSessionShiftKey(last), last.date, last.startTime, last.endDate || last.date, last.endTime, last.workType);
   const timeText = first.startTime + '–' + last.endTime + (dayOff > 0 ? ' (+' + dayOff + ' วัน)' : '');
   const typeIcon = first.workType === 'polish' ? '✦ ' : '⚙ ';
   const typeLabel = (PLAN_WORKTYPE_META[first.workType] || {}).label || '';
-  const detail = group.map(t => '· ' + t.startTime + '–' + t.endTime + '  ' + fmtRollAmount(planPartRollAmount(t)) + ' Roll').join('\n');
-  const fullTitle = `[${prog.label}] ${typeLabel} · ${SHIFTS[first.shift]?.label || ''} — ${first.rollSet}`
-    + `${hasColor ? ' · ' + color : ''} — รวม ${group.length} รายการที่เดินต่อกัน ${total} Roll\n${detail}`;
+  const detail = group.map(t => '· ' + t.startTime + '–' + t.endTime + '  ' + fmtRollAmount(planPartRollAmount(t)) + ' ' + unit).join('\n');
+  // ใบเลื่อย/Roll SQ เก็บชื่อชุดเป็นคีย์ภายใน (SAW:all / SQ:…) — แสดงชื่อที่อ่านได้ (planSetLabel)
+  const fullTitle = `[${prog.label}] ${typeLabel} · ${SHIFTS[first.shift]?.label || ''} — ${planSetLabel(first.rollSet)}`
+    + `${hasColor ? ' · ' + color : ''} — รวม ${group.length} รายการที่เดินต่อกัน ${total} ${unit}\n${detail}`;
   const ids = group.map(t => t.id);
   if (planDeleteMode) {
     // ยุบอยู่ = ติ๊กทีเดียวได้ทั้งกลุ่ม (ถือว่าเลือกอยู่เมื่อถูกเลือกครบทุกใบ)
     const picked = ids.every(id => planDeleteSelected.has(id));
     return `<span class="chip plan-cal-chip ${prog.chip}${picked ? ' pcc-picked' : ' pcc-pickable'}" style="${extraStyle || ''}cursor:pointer;"
       onclick="${jsCallAttr('togglePlanDeleteSelectGroup', ids.join(','))}"
-      title="${escapeHtmlAttr((picked ? 'เลือกอยู่ทั้งกลุ่ม — คลิกเพื่อยกเลิก' : 'คลิกเพื่อเลือกลบทั้งกลุ่ม') + ' · ' + fullTitle)}"><span class="pcc-set">${picked ? '☑ ' : '☐ '}${typeIcon}${escapeHtmlAttr(first.rollSet)}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span><span class="pcc-time">${escapeHtmlAttr(timeText)}</span></span>`;
+      title="${escapeHtmlAttr((picked ? 'เลือกอยู่ทั้งกลุ่ม — คลิกเพื่อยกเลิก' : 'คลิกเพื่อเลือกลบทั้งกลุ่ม') + ' · ' + fullTitle)}"><span class="pcc-set">${picked ? '☑ ' : '☐ '}${typeIcon}${escapeHtmlAttr(planSetLabel(first.rollSet))}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span><span class="pcc-time">${escapeHtmlAttr(timeText)}</span></span>`;
   }
   return `<span class="chip plan-cal-chip ${prog.chip}" style="${extraStyle || ''}cursor:pointer;"
     onclick="${jsCallAttr('planOpenDay', first.date)}"
-    title="${escapeHtmlAttr(fullTitle + '\n\nคลิกเพื่อเปิดแผนของวันนี้ (แก้ไข/ลบรายรายการได้ที่นั่น)')}"><span class="pcc-set">${typeIcon}${escapeHtmlAttr(first.rollSet)}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}<span style="opacity:.75;"> ×${group.length}</span></span><span class="pcc-time">${escapeHtmlAttr(timeText)}</span></span>`;
+    title="${escapeHtmlAttr(fullTitle + '\n\nคลิกเพื่อเปิดแผนของวันนี้ (แก้ไข/ลบรายรายการได้ที่นั่น)')}"><span class="pcc-set">${typeIcon}${escapeHtmlAttr(planSetLabel(first.rollSet))}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}<span style="opacity:.75;"> ×${group.length}</span></span><span class="pcc-time">${escapeHtmlAttr(timeText)}</span></span>`;
 }
 
 function togglePlanDeleteSelectGroup(idsCsv) {
