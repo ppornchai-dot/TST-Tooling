@@ -2463,7 +2463,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-19.02';
+const APP_BUILD = '2026-11-19.03';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6814,12 +6814,15 @@ function prodSawWaitingCardHtml() {
     return `
     <div onclick="${jsCallAttr('goToSawGrindPlan', r.id)}"
       style="padding:8px 12px;border-radius:8px;margin-bottom:6px;cursor:pointer;
-             background:var(--red-dim);border:1px solid var(--border-light);"
+             ${plannedAt
+               // วางแผนแล้ว = โทนน้ำเงิน ขอบประ (มีคิวแล้ว รอถึงวัน) · ยังไม่วางแผน = โทนแดง ขอบทึบหนา (ต้องจัดการ)
+               ? 'background:var(--accent-glow);border:2px dashed var(--accent);'
+               : 'background:var(--red-dim);border:2px solid var(--red);'}"
       title="${escapeHtmlAttr((plannedAt ? 'กดเพื่อไปที่งานลับคมใบนี้ในหน้าวางแผน' : 'กดเพื่อวางแผนลับคมใบนี้') + ' · ถอดจากเครื่อง ' + u.last.machine + ' เมื่อ ' + prodSqFmtTime(u.removedAt)
         + ' · รอบสุดท้าย ' + fmtTons2(u.last.kg / 1000) + ' ตัน (' + u.last.pcs.toLocaleString() + ' เส้น)'
         + (u.lastGrind ? ' · ลับคมล่าสุด ' + fmtIsoDateThai(u.lastGrind) : ' · ยังไม่มีวันลับคมล่าสุดที่ใช้ได้ในทะเบียน'))}">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      <span style="font-size:14px;font-weight:800;color:#fff;background:var(--red);padding:3px 11px;border-radius:6px;">รหัส ${escapeHtmlAttr(r.id)}</span>
+      <span style="font-size:14px;font-weight:800;color:#fff;background:${plannedAt ? 'var(--accent)' : 'var(--red)'};padding:3px 11px;border-radius:6px;">รหัส ${escapeHtmlAttr(r.id)}</span>
       ${od && od !== '—' ? `<span style="flex-shrink:0;font-size:11.5px;font-weight:800;padding:1px 8px;border-radius:99px;
           background:var(--bg-panel);color:var(--text-2);box-shadow:inset 0 0 0 1px var(--border-light);">${escapeHtmlAttr(od)}</span>` : ''}
       <span style="font-size:11.5px;color:var(--text-3);margin-left:auto;">ถอด ${escapeHtmlAttr(prodSqFmtTime(u.removedAt))}</span>
@@ -6827,10 +6830,11 @@ function prodSawWaitingCardHtml() {
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;">
       <!-- ป้ายแผน — รูปแบบเดียวกับ "แต่ง/ขัดเสร็จ …" / "ยังไม่ได้วางแผน" ของการ์ด Roll (rollFinishTagHtml):
            ตัวหนังสือหนาเล็ก ไม่มีพื้น · วางแผนแล้ว = น้ำเงิน · ยังไม่วางแผน = เทา -->
-      <span style="flex:0 0 auto;font-size:11.5px;font-weight:700;color:${plannedAt ? 'var(--accent)' : 'var(--text-3)'};"
+      <span style="flex:0 0 auto;font-size:12px;font-weight:800;padding:2px 9px;border-radius:99px;${plannedAt
+          ? 'color:#fff;background:var(--accent);' : 'color:var(--red);background:var(--bg-panel);box-shadow:inset 0 0 0 1.5px var(--red);'}"
         title="${escapeHtmlAttr(plannedAt ? 'ตามแผนจะลับคมวันที่ ' + fmtDateThai(parseISODate(plannedAt))
           : 'ยังไม่ได้วางแผนลับคมใบนี้ — วางแผนได้ที่หน้าวางแผน แท็บลับคมใบเลื่อย')}">${plannedAt
-        ? 'แผนลับคม ' + escapeHtmlAttr(fmtDateThaiShort(parseISODate(plannedAt))) : 'ยังไม่ได้วางแผน'}</span>
+        ? '📅 แผนลับคม ' + escapeHtmlAttr(fmtDateThaiShort(parseISODate(plannedAt))) : '⚠ ยังไม่ได้วางแผน'}</span>
       <!-- ป้ายสถานะ ต่อท้ายป้ายแผนลับคม — Admin/หัวหน้ากดเปลี่ยนสถานะได้ตรงนี้เลย (เมนูเดียวกับทะเบียนใบเลื่อย) -->
       ${canEditPlan()
         ? `<span onclick="openSawStatusMenu(event, ${idx}, true)" title="กดเพื่อเปลี่ยนเป็นพร้อมใช้ (ลับคมแล้ว)" style="flex:0 0 auto;cursor:pointer;white-space:nowrap;">${
