@@ -2463,7 +2463,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-19.10';
+const APP_BUILD = '2026-11-19.11';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6186,14 +6186,99 @@ function prodChangeNotify(kind, rows, labelOf) {
     if (st > mark) mark = st;
     if (en > mark) mark = en;
     if (!since) return;
-    if (en && en > since) events.push({ type: 'out', at: en, machine: String(r.machine_id), label: labelOf(r) });
-    if (st && st > since) events.push({ type: 'in', at: st, machine: String(r.machine_id), label: labelOf(r) });
+    if (en && en > since) events.push({ type: 'out', at: en, machine: String(r.machine_id), code: r.code, label: labelOf(r) });
+    if (st && st > since) events.push({ type: 'in', at: st, machine: String(r.machine_id), code: r.code, label: labelOf(r) });
   });
   if (mark && mark !== since) {
     seen[kind] = mark;
     try { localStorage.setItem(PROD_SEEN_STORAGE_KEY, JSON.stringify(seen)); } catch (e) { /* จำไม่ได้ก็แค่อาจแจ้งซ้ำ */ }
   }
-  if (events.length) showProdChangePopup(kind, events.sort((a, b) => a.at.localeCompare(b.at)));
+  // รายการที่ webhook แจ้งไปแล้วตอนหน้างานกดบันทึก ไม่ต้องแจ้งซ้ำตอนดึงข้อมูล
+  const fresh = prodFilterNotified(kind, events);
+  if (fresh.length) showProdChangePopup(kind, fresh.sort((a, b) => a.at.localeCompare(b.at)));
+}
+
+// ─── แจ้งเตือนทันทีจากระบบผลิต (webhook → ตาราง prod_events ใน Supabase ของเรา) ─────────────
+// หน้างานกดบันทึกถอด/ใส่ → ระบบผลิตส่งมาที่ api/prod-event.js → บันทึกลง prod_events → แอปฟัง realtime อยู่ เด้งทันที
+// ไม่ได้ดึงจากระบบผลิตเพิ่มเลย — อ่านแค่ตารางของเราเอง (ตกลงกับฝ่ายผลิต 19 พ.ย. 69)
+// กันแจ้งซ้ำ: จำรายการที่แจ้งแล้วไว้ในเครื่อง (ชนิด|ถอด/ใส่|เครื่อง|รหัส + เวลา) ใช้ร่วมกับการแจ้งแบบดึงด้านบน
+const PROD_NOTIFIED_KEY = 'tst-tooling-prod-notified';
+const PROD_NOTIFY_SAME_MS = 15 * 60 * 1000;   // รายการเดียวกันห่างกันไม่เกิน 15 นาที = ครั้งเดียวกัน (เวลาสองทางอาจไม่ตรงกันเป๊ะ)
+function prodEventKey(kind, e) {
+  const code = String(e.code == null ? '' : e.code).trim().toUpperCase().replace(/^0+(?=\d)/, '');
+  return kind + '|' + e.type + '|' + String(e.machine || '').trim().toUpperCase() + '|' + code;
+}
+function prodFilterNotified(kind, events, silent) {
+  let map = null;
+  try { map = JSON.parse(localStorage.getItem(PROD_NOTIFIED_KEY) || 'null'); } catch (e) { map = null; }
+  const firstRun = !map;
+  map = map || {};
+  const fresh = [];
+  (events || []).forEach(e => {
+    const k = prodEventKey(kind, e), t = Date.parse(e.at);
+    const prev = (map[k] || []).some(x => Math.abs(Date.parse(x) - t) <= PROD_NOTIFY_SAME_MS);
+    if (!prev && !silent) fresh.push(e);
+    if (!prev) (map[k] = map[k] || []).push(new Date(t).toISOString());
+  });
+  // ทิ้งของเก่ากว่า 3 วัน — กันที่เก็บโตไม่หยุด
+  const cut = Date.now() - 3 * 86400000;
+  Object.keys(map).forEach(k => { map[k] = map[k].filter(x => Date.parse(x) >= cut); if (!map[k].length) delete map[k]; });
+  try { localStorage.setItem(PROD_NOTIFIED_KEY, JSON.stringify(map)); } catch (e) { /* จำไม่ได้ก็แค่อาจแจ้งซ้ำ */ }
+  return fresh;
+}
+function prodEventLabel(kind, code, color) {
+  const c = String(code == null ? '—' : code).trim();
+  if (kind === 'saw') return 'ใบเลื่อย รหัส ' + c;
+  const heads = sqSets().map(x => x[0]).filter(Boolean)
+    .filter(h => (!color || h.color === color) && sqSetMatchesProdCode(h, c));
+  if (heads.length === 1) return String(heads[0].sizeSq || '').trim() + ' ' + sqColorMeta(heads[0].color).label + ' ' + sqSetOrdinalLabel(heads[0]);
+  return 'Roll SQ รหัส ' + c + (color ? ' ' + sqColorMeta(color).label : '');
+}
+// rows = แถวจากตาราง prod_events · silent = จำไว้เฉยๆ ไม่เด้ง (เปิดเครื่องนี้ครั้งแรก ไม่ไล่แจ้งของเก่า)
+function handleProdEventRows(rows, silent) {
+  const byKind = { saw: [], sq: [] };
+  (rows || []).forEach(r => {
+    if (!r || !byKind[r.kind]) return;
+    const t = Date.parse(r.recorded_at || '');
+    if (isNaN(t)) return;
+    const at = new Date(t).toISOString(), machine = String(r.machine_id || '');
+    if (r.code_out) byKind[r.kind].push({ type: 'out', at, machine, code: r.code_out, label: prodEventLabel(r.kind, r.code_out, r.color) });
+    if (r.code_in) byKind[r.kind].push({ type: 'in', at, machine, code: r.code_in, label: prodEventLabel(r.kind, r.code_in, r.color) });
+  });
+  Object.entries(byKind).forEach(([kind, evs]) => {
+    if (!evs.length) return;
+    const fresh = prodFilterNotified(kind, evs, silent);
+    if (fresh.length) showProdChangePopup(kind, fresh.sort((a, b) => a.at.localeCompare(b.at)));
+    // ข้อมูลระบบผลิตที่แอปถืออยู่เก่าแล้ว — เปิดหน้าใบเลื่อย/SQ ครั้งถัดไปให้ดึงใหม่ (ไม่ดึงเองตรงนี้)
+    if (kind === 'saw') prodSawLive.at = 0; else prodSqLive.at = 0;
+  });
+}
+// ตามเก็บรายการที่เข้ามาตอนเครื่องนี้ปิดแอป/พักจอ (realtime หลุด) — อ่านจากตารางของเราเอง ไม่ใช่ระบบผลิต
+let prodEventsCatchAt = 0;
+async function catchUpProdEvents() {
+  if (!supabaseClient || !cloudSyncReady) return;
+  if (Date.now() - prodEventsCatchAt < 20000) return;
+  prodEventsCatchAt = Date.now();
+  let firstRun = false;
+  try { firstRun = !localStorage.getItem(PROD_NOTIFIED_KEY); } catch (e) { /* ไม่มีที่จำ = ถือว่าไม่ใช่ครั้งแรก */ }
+  try {
+    const since = new Date(Date.now() - 12 * 3600000).toISOString();
+    const { data, error } = await supabaseClient.from('prod_events').select('*')
+      .gte('recorded_at', since).order('recorded_at', { ascending: true }).limit(200);
+    if (error || !data) return;   // ยังไม่ได้สร้างตาราง / เชื่อมไม่ได้ — ข้ามไป
+    handleProdEventRows(data, firstRun);
+  } catch (e) { /* ข้ามไป */ }
+}
+function subscribeProdEvents() {
+  if (!supabaseClient) return;
+  supabaseClient
+    .channel('prod_events_ins')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'prod_events' }, payload => {
+      try { handleProdEventRows([payload.new]); } catch (e) { /* ป็อปอัพพังไม่ให้กระทบส่วนอื่น */ }
+    })
+    .subscribe();
+  catchUpProdEvents();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) catchUpProdEvents(); });
 }
 function showProdChangePopup(kind, events) {
   let box = document.getElementById('prod-change-popups');
@@ -25037,6 +25122,7 @@ async function initCloudSync() {
         refreshAfterCloudUpdate();
       })
       .subscribe();
+    subscribeProdEvents();
   } catch (e) {
     // ดึงครั้งแรกไม่สำเร็จ (เน็ตมือถือสะดุด, เบราว์เซอร์ใน LINE, Supabase ตอบช้า)
     // ถ้าไม่ลองใหม่ หน้าจอจะค้างอยู่กับข้อมูลตั้งต้นจนกว่าผู้ใช้จะรีเฟรชเอง — ดูเหมือนข้อมูลหาย
