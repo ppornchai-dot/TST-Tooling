@@ -2463,7 +2463,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-18.37';
+const APP_BUILD = '2026-11-19.01';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5352,7 +5352,7 @@ function getWorkingRollEntries(workType) {
     const started = st === 'in_progress';
     const cat = (d < today) ? 'late' : (started ? 'doing' : 'wait');
     inserts.push({
-      set: t.task || 'งานแทรก', colorKey: NO_COLOR_KEY, cat,
+      set: insertTaskLabel(t) || 'งานแทรก', colorKey: NO_COLOR_KEY, cat,
       colorLabel: 'งานแทรก', dot: 'var(--text-3)',
       doing: started ? 1 : 0, done: 0, total: 1, active: started,
       firstDate: d, dayCount: 1,
@@ -10282,7 +10282,33 @@ function addPlanTaskOnDate(dateIso, workType, shiftKey) {
 // ใช้ร่วมกันทุกที่ ไม่งั้นแต่ละหน้าจะเช็กกันเองแล้วหลุดประเภทใหม่ไปทีละจุด
 function insertTaskWorkType(t) {
   const wt = (t || {}).workType;
-  return PLAN_DAY_SECTIONS.some(x => x.key === wt) ? wt : 'cnc';
+  const sec = PLAN_DAY_SECTIONS.some(x => x.key === wt) ? wt : 'cnc';
+  // งานแทรกเป็นงานของคนที่แทรก — ช่างที่ถูกล็อกประเภทงาน (เช่นช่างแต่ง Roll SQ) แทรกงานประเภทอื่น (เช่นใบเลื่อย)
+  // ยังอยู่หัวข้อของตัวเอง ไม่เด้งไปหัวข้ออื่นที่ตัวเองมองไม่เห็น (ผู้ใช้ขอ 19 พ.ย. 69)
+  // ของใหม่บันทึกหัวข้อไว้ที่ workType + ประเภทงานจริงที่ jobType · ของเก่า (ไม่มี jobType) ดูจากบทบาทของผู้แทรก
+  if (t && !t.jobType) {
+    const owner = insertOwnerSection(t.who);
+    if (owner && owner !== sec && !(['cnc', 'polish'].includes(owner) && ['cnc', 'polish'].includes(sec))) return owner;
+  }
+  return sec;
+}
+// หัวข้องานของผู้แทรก ตามบทบาทในทีม (ช่าง CNC/ขัด Roll ช่วยงานกันได้ จึงไม่ย้ายข้ามสองหัวข้อนี้ — ดูที่เรียกใช้)
+function insertOwnerSection(who) {
+  const name = String(who || '').trim();
+  if (!name || name === '—') return null;
+  const m = (teamMembers || []).find(x => String(x.name || '').trim() === name);
+  return m && PLAN_DAY_SECTIONS.some(x => x.key === m.role) ? m.role : null;
+}
+// ประเภทงานจริงของงานแทรก (ที่เลือกในฟอร์ม) — อาจต่างจากหัวข้อที่แสดง
+function insertJobType(t) {
+  if (!t) return 'cnc';
+  if (t.jobType && PLAN_DAY_SECTIONS.some(x => x.key === t.jobType)) return t.jobType;
+  return PLAN_DAY_SECTIONS.some(x => x.key === t.workType) ? t.workType : insertTaskWorkType(t);
+}
+// ชื่องานแทรกที่แสดง — งานคนละประเภทกับหัวข้อ ต่อท้ายด้วยประเภทงานจริง เช่น "ใบเลื่อย192 (งานลับคมใบเลื่อย)"
+function insertTaskLabel(t) {
+  const job = insertJobType(t), sec = insertTaskWorkType(t);
+  return String((t || {}).task || '') + (job !== sec ? ' (งาน' + planWorkTypeShortLabel(job) + ')' : '');
 }
 
 function planInsertTasksFor(iso, sectionKey, shiftKey) {
@@ -22538,7 +22564,7 @@ function renderDailyTasks() {
     .filter(t => !t.date || t.date === dailyViewDate)
     .map(t => ({
       key: t.id, date: t.date || dailyViewDate, startTime: t.time || '—', endTimeHtml: '—', duration: '—',
-      rollSet: '—', rollColor: '—', rollId: t.ref || '—', task: t.task,
+      rollSet: '—', rollColor: '—', rollId: t.ref || '—', task: insertTaskLabel(t),
       who: t.who, workerId: null, editable: true, expandable: false,
       // งานแทรกแยกหัวข้อตามประเภทงานเหมือนงานตามแผน — ของเก่าที่ยังไม่ระบุประเภท
       // ถือเป็นงานแต่ง Roll (CNC) ตามที่เจอในทางปฏิบัติ แก้ประเภทได้จากปุ่มแก้ไข
@@ -22843,7 +22869,7 @@ function collectHistoryRecords() {
         date: dateIso, wo: t.id, typeKey: wt,
         typeLabel: planWorkTypeShortLabel(wt) + ' · งานแทรก',
         tooling: 'งานแทรก' + (t.ref && t.ref !== '—' ? ' · ' + t.ref : ''),
-        detail: t.task, who: t.who || '—',
+        detail: insertTaskLabel(t), who: t.who || '—',
         // งานแทรกไม่มีเวลาตามแผน จึงไม่มี Standard — เห็นเวลาที่ใช้จริงจากบรรทัด "ทำจริง"
         hours: null, minutes: null,
         startTime: startAt || t.time || null, endTime: endAt,
@@ -23598,17 +23624,21 @@ function openDailyChecklistModal(mode, taskId, workType) {
   document.getElementById('modal-body').innerHTML = dailyChecklistFormFields(mode);
   document.getElementById('dcf-task').value = task ? task.task : '';
   const wtSel = document.getElementById('dcf-worktype');
-  if (wtSel) wtSel.value = insertTaskWorkType({ workType: task ? task.workType : workType });
+  if (wtSel) wtSel.value = task ? insertJobType(task) : insertTaskWorkType({ workType });
   document.getElementById('modal-overlay').classList.add('open');
 
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
     const taskName = document.getElementById('dcf-task').value.trim();
     if (!taskName) { alert('กรุณากรอกชื่องาน'); return; }
     // แก้ไข: เปลี่ยนแค่ชื่องาน ค่าอื่นที่บันทึกไว้เดิม (เวลา/ผู้รับผิดชอบ/ประเภท) คงไว้ ไม่ทับทิ้ง
-    const wt = insertTaskWorkType({ workType: (document.getElementById('dcf-worktype') || {}).value });
+    const job = insertTaskWorkType({ workType: (document.getElementById('dcf-worktype') || {}).value });
+    // หัวข้อที่งานไปอยู่: ช่างที่ถูกล็อกประเภทงาน = หัวข้อของตัวเองเสมอ (คนแทรกเป็นคนทำเอง)
+    // Admin/หัวหน้า = ตามประเภทที่เลือก (วางงานให้หัวข้อไหนก็ได้) · แก้ไขงานของช่างคงหัวข้อเดิมไว้
+    const forced = forcedWorkTypeForRole();
+    const section = forced || (mode === 'edit' && task && task.jobType ? insertTaskWorkType(task) : job);
     const data = mode === 'edit'
-      ? { task: taskName, workType: wt }
-      : { task: taskName, workType: wt, time: nowHHMM(), type: '—', who: effectiveUserName(), ref: '—', date: dailyViewDate };
+      ? { task: taskName, workType: section, jobType: job }
+      : { task: taskName, workType: section, jobType: job, time: nowHHMM(), type: '—', who: effectiveUserName(), ref: '—', date: dailyViewDate };
     if (mode === 'edit') {
       Object.assign(task, data);
     } else {
