@@ -2463,7 +2463,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-19.08';
+const APP_BUILD = '2026-11-19.09';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6365,6 +6365,16 @@ var prodSawLoading = false;
 
 // ขนาดใบเลื่อยพร้อมคำนำหน้า "OD" ให้รู้ว่าเลขนั้นคืออะไร (ทะเบียนเก็บเป็นเลขล้วน เช่น 710) — ว่าง/ขีด = ''
 // ป้าย "OD …" บนการ์ด/รายการ = OD ปัจจุบัน (ยังไม่เคยวัดใช้ OD เริ่มต้น)
+// ความหนาใบ (ช่อง kerf ในทะเบียน) — ป้ายเล็กแบบเดียวกับป้าย OD · ไม่ได้กรอกไว้ก็ไม่ขึ้น (ผู้ใช้ขอ 19 พ.ย. 69)
+function sawThickLabel(r) {
+  const k = String((r || {}).kerf == null ? '' : r.kerf).trim().replace(/\s*mm\.?$/i, '');
+  return k && k !== '—' ? 'หนา ' + k : '';
+}
+function sawThickPillHtml(r) {
+  const t = sawThickLabel(r);
+  return t ? `<span style="flex-shrink:0;font-size:11.5px;font-weight:800;padding:1px 8px;border-radius:99px;
+    background:var(--bg-panel);color:var(--text-2);box-shadow:inset 0 0 0 1px var(--border-light);" title="ความหนาใบเลื่อย (mm)">${escapeHtmlAttr(t)}</span>` : '';
+}
 function sawOdLabel(r) {
   const c = String((r || {}).odCur == null ? '' : r.odCur).trim();
   const d = (c && c !== '—' ? c : String((r || {}).diameter || '').trim()).replace(/^(OD|Ø)\s*/i, '');
@@ -6750,7 +6760,7 @@ function sawProblemCardHtml() {
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <span style="font-size:14px;font-weight:800;color:#fff;background:var(--amber);padding:3px 11px;border-radius:6px;">รหัส ${escapeHtmlAttr(r.id || '—')}</span>
         ${od && od !== '—' ? `<span style="flex-shrink:0;font-size:11.5px;font-weight:800;padding:1px 8px;border-radius:99px;
-            background:var(--bg-panel);color:var(--text-2);box-shadow:inset 0 0 0 1px var(--border-light);">${escapeHtmlAttr(od)}</span>` : ''}
+            background:var(--bg-panel);color:var(--text-2);box-shadow:inset 0 0 0 1px var(--border-light);">${escapeHtmlAttr(od)}</span>` : ''}${sawThickPillHtml(r)}
         <span style="margin-left:auto;"></span>
         ${canEditPlan() ? `<button class="btn btn-ghost btn-sm" style="font-size:11.5px;font-weight:700;color:var(--green);padding:2px 8px;"
           onclick="event.stopPropagation();${jsCallAttr('clearSawProblem', r.id)}" title="แก้ปัญหาแล้ว — กลับเป็นพร้อมใช้">✓ แก้แล้ว</button>` : ''}
@@ -6828,7 +6838,7 @@ function prodSawWaitingCardHtml() {
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <span style="font-size:14px;font-weight:800;color:#fff;background:${plannedAt ? 'var(--accent)' : 'var(--red)'};padding:3px 11px;border-radius:6px;">รหัส ${escapeHtmlAttr(r.id)}</span>
       ${od && od !== '—' ? `<span style="flex-shrink:0;font-size:11.5px;font-weight:800;padding:1px 8px;border-radius:99px;
-          background:var(--bg-panel);color:var(--text-2);box-shadow:inset 0 0 0 1px var(--border-light);">${escapeHtmlAttr(od)}</span>` : ''}
+          background:var(--bg-panel);color:var(--text-2);box-shadow:inset 0 0 0 1px var(--border-light);">${escapeHtmlAttr(od)}</span>` : ''}${sawThickPillHtml(r)}
       <span style="font-size:11.5px;color:var(--text-3);margin-left:auto;">ถอด ${escapeHtmlAttr(prodSqFmtTime(u.removedAt))}</span>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;">
@@ -6926,7 +6936,7 @@ function prodSawInUseCardHtml() {
         <span style="font-size:14px;font-weight:800;color:#fff;background:var(--inuse);padding:3px 11px;border-radius:6px;">${escapeHtmlAttr(o.machine)}</span>
         <b style="font-size:13.5px;color:var(--text-1);">รหัส ${escapeHtmlAttr(o.code)}</b>
         ${od && od !== '—' ? `<span style="flex-shrink:0;font-size:11.5px;font-weight:800;padding:1px 8px;border-radius:99px;
-            background:var(--bg-panel);color:var(--text-2);box-shadow:inset 0 0 0 1px var(--border-light);">${escapeHtmlAttr(od)}</span>` : ''}
+            background:var(--bg-panel);color:var(--text-2);box-shadow:inset 0 0 0 1px var(--border-light);">${escapeHtmlAttr(od)}</span>` : ''}${sawThickPillHtml(r)}
         ${r ? '' : '<span class="chip chip-amber">ไม่พบในทะเบียน</span>'}
         <span style="font-size:11.5px;color:var(--text-3);margin-left:auto;">ใส่ ${escapeHtmlAttr(prodSqFmtTime(o.startedAt))}</span>
       </div>
@@ -7806,7 +7816,7 @@ function sawReadyListHtml(list) {
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <span style="font-size:14px;font-weight:800;color:#fff;background:var(--green);padding:3px 11px;border-radius:6px;">รหัส ${escapeHtmlAttr(it.id || '—')}</span>
       ${od && od !== '—' ? `<span style="flex-shrink:0;font-size:11.5px;font-weight:800;padding:1px 8px;border-radius:99px;
-          background:var(--bg-panel);color:var(--text-2);box-shadow:inset 0 0 0 1px var(--border-light);">${escapeHtmlAttr(od)}</span>` : ''}
+          background:var(--bg-panel);color:var(--text-2);box-shadow:inset 0 0 0 1px var(--border-light);">${escapeHtmlAttr(od)}</span>` : ''}${sawThickPillHtml(it)}
       <span style="margin-left:auto;"></span>
       ${(() => {
         // ป้ายสถานะ ต่อท้าย "ลับคมล่าสุด" (ตำแหน่งเดียวกับการ์ดรอลับคม) — Admin/หัวหน้ากดเปลี่ยนสถานะได้ (เมนูเดียวกับทะเบียนใบเลื่อย ครบทุกสถานะ) แบบเดียวกับการ์ด Roll SQ
