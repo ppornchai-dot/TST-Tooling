@@ -2463,7 +2463,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-19.06';
+const APP_BUILD = '2026-11-19.07';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5930,6 +5930,7 @@ function dashSqSetSortCmp(a, b) {
 //      (คอลัมน์เครื่องต้องตอบให้ได้ว่า "เครื่องนี้มีชุดอะไรให้ใช้บ้าง" ถ้าเลือกแค่เครื่องแรก
 //       เครื่องที่เหลือจะขึ้น 0 ทั้งที่มีชุดใช้ได้จริง)
 //   3) ไม่มีทั้งคู่ → คอลัมน์ "ยังไม่ระบุเครื่อง"
+//   ระบบผลิตบอกว่าถอดจากเครื่องไหน (ยังไม่ได้แต่งหลังถอด) → ขึ้นเฉพาะเครื่องนั้น (ผู้ใช้ขอ 19 พ.ย. 69)
 const SQ_NO_MACHINE_COL = 'ยังไม่ระบุเครื่อง';
 function dashSqColumnsFor(set) {
   const head = set[0] || {};
@@ -5937,6 +5938,9 @@ function dashSqColumnsFor(set) {
   if (live) return [live.machine];
   const mounted = sqSetMachineFor(sqSetKey(head));
   if (mounted) return [mounted];
+  const removed = sqProdWaitInfo(sqSetKey(head));
+  const rmMc = removed && String(removed.machine || '').trim().toUpperCase();
+  if (rmMc && ROLL_MACHINES.includes(rmMc)) return [rmMc];
   const bound = sqSizeMachinesFor(String(head.sizeSq || '').trim());
   return bound.length ? bound : [SQ_NO_MACHINE_COL];
 }
