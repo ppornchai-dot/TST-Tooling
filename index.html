@@ -2463,7 +2463,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-19.03';
+const APP_BUILD = '2026-11-19.04';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -20831,6 +20831,8 @@ function renderSawMachineList() {
         <b style="font-size:12.5px;min-width:34px;color:${on ? 'var(--accent)' : 'var(--text-1)'};">${escapeHtmlAttr(r.id || '—')}</b>
         <span style="flex:1;min-width:0;font-size:12px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${
           dia && dia !== '—' ? 'Ø' + escapeHtmlAttr(dia) : ''}</span>
+        ${canEditPlan() ? `<button type="button" class="btn btn-ghost btn-sm" onclick="openSawMoveMenu(event, ${idx})"
+          title="ย้ายใบนี้ไปเครื่องอื่น" style="flex-shrink:0;font-size:11px;font-weight:800;padding:2px 7px;color:var(--accent);">⇄ ย้าย</button>` : ''}
         <span style="flex-shrink:0;transform:scale(.9);transform-origin:right center;${canEditPlan() ? 'cursor:pointer;' : ''}"
           ${canEditPlan() ? `onclick="openSawStatusMenu(event, ${idx})" title="กดเพื่อเปลี่ยนสถานะ"` : ''}>${statusChip(st)}${canEditPlan() ? '<span style="font-size:9px;color:var(--text-3);margin-left:2px;">▾</span>' : ''}</span>
       </div>`;
@@ -20979,6 +20981,75 @@ function openSawStatusMenu(ev, idx, readyOnly) {
     document.addEventListener('keydown', sawStatusMenuEsc);
     window.addEventListener('scroll', closeSawStatusMenu, true);
   }, 0);
+}
+// ─── ย้ายใบเลื่อยไปเครื่องอื่น (ช่อง "เครื่องผลิต" ในทะเบียน) ──────────────────────
+// เมนูใช้ id เดียวกับเมนูสถานะ (saw-status-menu) — ปิดด้วยตัวปิดเดียวกัน เปิดได้ทีละเมนู
+function openSawMoveMenu(ev, idx) {
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  closeSawStatusMenu();
+  if (!canEditPlan()) return;
+  const reg = (toolingData || {}).saw || [];
+  const r = reg[idx];
+  if (!r) return;
+  const cur = sawMachineOf(r);
+  const machines = [...new Set(reg.map(sawMachineOf).filter(Boolean))]
+    .sort((a, b) => (/^P/i.test(b) - /^P/i.test(a)) || a.localeCompare(b, undefined, { numeric: true }));
+  const anchor = ev && ev.currentTarget ? ev.currentTarget.getBoundingClientRect() : { left: 100, right: 100, bottom: 100, top: 100 };
+  const el = document.createElement('div');
+  el.id = 'saw-status-menu';
+  el.onclick = e => e.stopPropagation();
+  el.style.cssText = 'position:fixed;z-index:1300;background:var(--bg-surface);border:1px solid var(--border);border-radius:10px;'
+    + 'box-shadow:0 10px 28px rgba(0,0,0,.2);padding:6px;min-width:200px;max-width:260px;';
+  const row = (mc, label) => `<div onclick="${jsCallAttr('moveSawMachine', idx, mc)}"
+      onmouseover="this.style.background='var(--bg-panel)'" onmouseout="this.style.background='transparent'"
+      style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;
+        color:${mc === cur ? 'var(--text-3)' : 'var(--text-1)'};">${escapeHtmlAttr(label)}<span style="margin-left:auto;font-weight:800;color:var(--accent);">${mc === cur ? '✓ อยู่ที่นี่' : ''}</span></div>`;
+  el.innerHTML = `<div style="font-size:11.5px;font-weight:800;color:var(--text-2);padding:4px 8px 6px;">ใบเลื่อย ${escapeHtmlAttr(r.id || '—')} · ย้ายไปเครื่อง</div>`
+    + machines.map(m => row(m, 'เครื่อง ' + m)).join('')
+    + row('', 'ยังไม่ระบุเครื่อง')
+    + `<div onclick="${jsCallAttr('moveSawMachineOther', idx)}"
+        onmouseover="this.style.background='var(--bg-panel)'" onmouseout="this.style.background='transparent'"
+        style="padding:7px 9px;border-radius:6px;cursor:pointer;font-size:12.5px;font-weight:700;color:var(--accent);border-top:1px solid var(--border-light);margin-top:4px;">＋ เครื่องอื่น (พิมพ์ชื่อเครื่อง)</div>`;
+  document.body.appendChild(el);
+  const w = el.offsetWidth, h = el.offsetHeight;
+  let left = Math.min(Math.max(8, anchor.right - w), window.innerWidth - w - 8);
+  let top = anchor.bottom + 4;
+  if (top + h > window.innerHeight - 8) top = Math.max(8, anchor.top - h - 4);
+  el.style.left = left + 'px';
+  el.style.top = top + 'px';
+  setTimeout(() => {
+    document.addEventListener('click', closeSawStatusMenu);
+    document.addEventListener('keydown', sawStatusMenuEsc);
+    window.addEventListener('scroll', closeSawStatusMenu, true);
+  }, 0);
+}
+function moveSawMachineOther(idx) {
+  closeSawStatusMenu();
+  const v = prompt('ย้ายไปเครื่อง (พิมพ์ชื่อเครื่อง เช่น P5):', '');
+  if (v === null) return;
+  const mc = String(v).trim().toUpperCase();
+  if (!mc) return;
+  moveSawMachine(idx, mc);
+}
+function moveSawMachine(idx, mc) {
+  closeSawStatusMenu();
+  if (!canEditPlan()) return;
+  const r0 = ((toolingData || {}).saw || [])[idx];
+  if (!r0) return;
+  const id = r0.id, target = String(mc || '').trim();
+  if (sawMachineOf(r0) === target) return;
+  withCloudRetry(() => {
+    // หาใบใหม่ด้วยรหัสทุกครั้งที่ทำซ้ำ (ข้อมูลอาจถูกแทนทั้งชุดตอนเขียนชน)
+    const r = ((toolingData || {}).saw || []).find(x => x.id === id);
+    if (!r) return;
+    r.machine = target || '—';
+    persistState();
+    // ไปที่เครื่องปลายทาง เลือกใบนี้ไว้ จะได้เห็นว่าย้ายไปแล้ว
+    selectedSawMachine = target;
+    selectedSawBlade = r;
+    renderSawTable(pageState.saw = 1);
+    refreshSawViewsAfterStatusChange();
+  });
 }
 // note: undefined = ยังไม่ได้ถามอาการ (ตั้ง "มีปัญหา" จะเปิดหน้าต่างกลางจอให้กรอกก่อน)
 function setSawStatus(idx, st, note) {
