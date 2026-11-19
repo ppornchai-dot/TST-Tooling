@@ -2463,7 +2463,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-19.07';
+const APP_BUILD = '2026-11-19.08';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -15301,16 +15301,20 @@ async function flushCloudWrite() {
       let q = supabaseClient.from('app_state').update({ data: snapshot, updated_at: stamp }).eq('id', 'main');
       q = cloudUpdatedAt ? q.eq('updated_at', cloudUpdatedAt) : q.is('updated_at', null);
       const { data, error } = await q.select('updated_at');
-      if (error) break; // ออฟไลน์/เชื่อมต่อไม่ได้ — ข้อมูลใน localStorage ปลอดภัย จะลองใหม่ตอนแก้ไขครั้งถัดไป
+      // ออฟไลน์/เน็ตมือถือหลุด — เดิมเลิกเงียบๆ แล้วรอการแก้ไขครั้งถัดไป ถ้าช่างกดจบงานแล้วไม่ได้กดอะไรอีก
+      // ของที่กดไว้จะไม่เคยขึ้น cloud และพอเปิดหน้าใหม่ก็ถูกข้อมูลเก่าจาก cloud ทับ (เคสงานแทรก DC-0077 วันที่ 19 พ.ย. 69
+      // ช่างกดจบงานบนมือถือแล้วแต่ระบบยังเป็น "กำลังทำ") — ตอนนี้เก็บไว้ส่งซ้ำเองเรื่อยๆ และขึ้นแถบเตือนจนกว่าจะส่งได้
+      if (error) { cloudWritePending = true; scheduleCloudWriteRetry(); break; }
       if (data && data.length) {
         cloudUpdatedAt = data[0].updated_at;
         cloudReapply = null; cloudReapplyTries = 0;   // เขียนผ่านแล้ว ไม่ต้องทำซ้ำอีก
+        cloudWriteSucceeded();
         continue;
       }
 
       // อัปเดตไม่โดนแถวไหนเลย — ต้องแยกว่าเพราะยังไม่มีแถว หรือเพราะมีเครื่องอื่นเขียนแทรกไปแล้ว
       const { data: cur, error: readErr } = await supabaseClient.from('app_state').select('data,updated_at').eq('id', 'main').maybeSingle();
-      if (readErr) break;
+      if (readErr) { cloudWritePending = true; scheduleCloudWriteRetry(); break; }
       if (!cur) {
         const ins = await supabaseClient.from('app_state').insert({ id: 'main', data: snapshot, updated_at: stamp }).select('updated_at');
         if (ins.data && ins.data.length) cloudUpdatedAt = ins.data[0].updated_at;
@@ -15336,6 +15340,40 @@ async function flushCloudWrite() {
   }
 }
 
+// ส่งข้อมูลขึ้น cloud ไม่สำเร็จเพราะเน็ต — ลองส่งซ้ำเอง (3 → 6 → 12 … สูงสุด 60 วินาที) และทันทีที่เน็ตกลับมา
+// นี่คือการส่งของที่ผู้ใช้กดไว้แล้วให้ถึง ไม่ใช่การดึงข้อมูลถี่ๆ — หยุดเองเมื่อส่งได้
+let cloudWriteRetryTimer = null, cloudWriteRetryDelay = 0;
+function scheduleCloudWriteRetry() {
+  showCloudOfflineNotice();
+  if (cloudWriteRetryTimer) return;
+  cloudWriteRetryDelay = Math.min(60000, cloudWriteRetryDelay ? cloudWriteRetryDelay * 2 : 3000);
+  cloudWriteRetryTimer = setTimeout(retryCloudWriteNow, cloudWriteRetryDelay);
+}
+function retryCloudWriteNow() {
+  if (cloudWriteRetryTimer) { clearTimeout(cloudWriteRetryTimer); cloudWriteRetryTimer = null; }
+  if (supabaseClient && cloudSyncReady && cloudWritePending && !cloudWriteInFlight) flushCloudWrite();
+}
+function cloudWriteSucceeded() {
+  if (cloudWriteRetryTimer) { clearTimeout(cloudWriteRetryTimer); cloudWriteRetryTimer = null; }
+  cloudWriteRetryDelay = 0;
+  const el = document.getElementById('cloud-offline-notice');
+  if (el) el.remove();
+}
+window.addEventListener('online', retryCloudWriteNow);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) retryCloudWriteNow(); });
+function showCloudOfflineNotice() {
+  if (document.getElementById('cloud-offline-notice')) return;
+  const el = document.createElement('div');
+  el.id = 'cloud-offline-notice';
+  el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);top:12px;z-index:9999;max-width:min(92vw,460px);' +
+    'padding:10px 14px;border-radius:10px;border:1px solid var(--red);background:#FFECEC;color:#8A1F1F;' +
+    'font-size:13px;line-height:1.5;box-shadow:0 6px 24px rgba(0,0,0,.16);cursor:pointer;';
+  el.onclick = retryCloudWriteNow;
+  el.innerHTML = '<b>⚠ ยังส่งข้อมูลขึ้นระบบไม่ได้ (เน็ตหลุด)</b><br>'
+    + 'สิ่งที่กดไว้ยังอยู่ในเครื่องนี้ ระบบกำลังลองส่งให้เอง — <b>อย่าเพิ่งปิด/รีเฟรชหน้า</b> จนกว่าแถบนี้จะหายไป '
+    + '<span style="opacity:.7;">(แตะเพื่อลองส่งทันที)</span>';
+  document.body.appendChild(el);
+}
 // แจ้งเตือนแบบไม่ขัดจังหวะ — ผู้ใช้ต้องรู้ว่าที่เพิ่งกดไปไม่ได้ถูกบันทึก ไม่ใช่ปล่อยให้เข้าใจผิดว่าบันทึกแล้ว
 function showCloudConflictNotice() {
   let el = document.getElementById('cloud-conflict-notice');
