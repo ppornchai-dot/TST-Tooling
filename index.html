@@ -2463,7 +2463,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-19.09';
+const APP_BUILD = '2026-11-19.10';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -15277,8 +15277,12 @@ const CLOUD_REAPPLY_MAX = 5;
 function withCloudRetry(fn) {
   cloudReapply = fn;
   cloudReapplyTries = 0;
+  // ยังเชื่อม cloud ไม่ได้ (ดึงข้อมูลครั้งแรกไม่สำเร็จ) — ที่กดนี้ลงแค่ในเครื่อง พอเชื่อมได้ ข้อมูลจาก cloud จะทับทิ้ง
+  // จำไว้ทำซ้ำบนข้อมูลจริงทันทีที่เชื่อมได้ (initCloudSync) แล้วค่อยส่งขึ้น
+  if (supabaseClient && !cloudSyncReady) { cloudPreSyncAction = fn; showCloudOfflineNotice(); }
   fn();
 }
+let cloudPreSyncAction = null;
 
 // เก็บลง localStorage อย่างเดียว ไม่ส่งขึ้น cloud — ใช้ตอนเพิ่งดึงข้อมูลจาก cloud ลงมา
 // เดิมหลัง applyState() จาก cloud ไม่มีใครเขียน localStorage เลย ทำให้ทุกครั้งที่เปิดหน้าใหม่
@@ -15361,6 +15365,7 @@ function scheduleCloudWriteRetry() {
 }
 function retryCloudWriteNow() {
   if (cloudWriteRetryTimer) { clearTimeout(cloudWriteRetryTimer); cloudWriteRetryTimer = null; }
+  if (supabaseClient && !cloudSyncReady) { initCloudSync(); return; }   // ยังเชื่อมครั้งแรกไม่ได้ — ลองเชื่อมใหม่ก่อน
   if (supabaseClient && cloudSyncReady && cloudWritePending && !cloudWriteInFlight) flushCloudWrite();
 }
 function cloudWriteSucceeded() {
@@ -15372,17 +15377,24 @@ function cloudWriteSucceeded() {
 window.addEventListener('online', retryCloudWriteNow);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) retryCloudWriteNow(); });
 function showCloudOfflineNotice() {
-  if (document.getElementById('cloud-offline-notice')) return;
-  const el = document.createElement('div');
+  let el = document.getElementById('cloud-offline-notice');
+  if (el) { el.innerHTML = cloudOfflineNoticeText(); return; }
+  el = document.createElement('div');
   el.id = 'cloud-offline-notice';
   el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);top:12px;z-index:9999;max-width:min(92vw,460px);' +
     'padding:10px 14px;border-radius:10px;border:1px solid var(--red);background:#FFECEC;color:#8A1F1F;' +
     'font-size:13px;line-height:1.5;box-shadow:0 6px 24px rgba(0,0,0,.16);cursor:pointer;';
   el.onclick = retryCloudWriteNow;
-  el.innerHTML = '<b>⚠ ยังส่งข้อมูลขึ้นระบบไม่ได้ (เน็ตหลุด)</b><br>'
+  el.innerHTML = cloudOfflineNoticeText();
+  document.body.appendChild(el);
+}
+function cloudOfflineNoticeText() {
+  if (!cloudSyncReady) return '<b>⚠ ยังเชื่อมต่อระบบไม่ได้ (เน็ตหลุด/ช้า)</b><br>'
+    + 'ข้อมูลบนจออาจไม่ใช่ล่าสุด และ<b>สิ่งที่กดตอนนี้ยังไม่ถูกบันทึกขึ้นระบบ</b> — ระบบกำลังลองเชื่อมต่อใหม่ให้เอง '
+    + 'ถ้าแถบนี้ไม่หายใน 1 นาที ให้เช็คเน็ตแล้วรีเฟรชหน้า <span style="opacity:.7;">(แตะเพื่อลองใหม่ทันที)</span>';
+  return '<b>⚠ ยังส่งข้อมูลขึ้นระบบไม่ได้ (เน็ตหลุด)</b><br>'
     + 'สิ่งที่กดไว้ยังอยู่ในเครื่องนี้ ระบบกำลังลองส่งให้เอง — <b>อย่าเพิ่งปิด/รีเฟรชหน้า</b> จนกว่าแถบนี้จะหายไป '
     + '<span style="opacity:.7;">(แตะเพื่อลองส่งทันที)</span>';
-  document.body.appendChild(el);
 }
 // แจ้งเตือนแบบไม่ขัดจังหวะ — ผู้ใช้ต้องรู้ว่าที่เพิ่งกดไปไม่ได้ถูกบันทึก ไม่ใช่ปล่อยให้เข้าใจผิดว่าบันทึกแล้ว
 function showCloudConflictNotice() {
@@ -24963,9 +24975,13 @@ function refreshAfterCloudUpdate() {
   if (currentUser) applyRoleUI();
 }
 
+let cloudInitInFlight = false, cloudInitTimer = null;
 async function initCloudSync() {
   if (!supabaseClient) return;
   if (cloudSyncReady) return; // สำเร็จไปแล้ว — กันรอบ retry มาสมัคร realtime ซ้ำ
+  if (cloudInitInFlight) return;
+  cloudInitInFlight = true;
+  if (cloudInitTimer) { clearTimeout(cloudInitTimer); cloudInitTimer = null; }
   try {
     // เข้าถึงตารางตรงด้วย anon key (ไม่ผ่าน Supabase Auth) — ความปลอดภัยของหน้าเว็บอยู่ที่หน้า login ของแอปเอง (username/รหัสผ่านพนักงาน) แยกกันคนละชั้น
     const { data: row, error: readError } = await supabaseClient.from('app_state').select('data,updated_at').eq('id', 'main').maybeSingle();
@@ -24985,6 +25001,13 @@ async function initCloudSync() {
       cloudUpdatedAt = (ins.data && ins.data.length) ? ins.data[0].updated_at : stamp;
     }
     cloudSyncReady = true; updateBackupBadge(); // เปิดให้ persistState() ส่งขึ้น cloud ได้ตั้งแต่ตอนนี้ — ก่อนหน้านี้ยังไม่รู้ว่าข้อมูลจริงบน cloud คืออะไร จึงห้ามส่งทับ
+    cloudSyncRetries = 0;
+    // มีรายการที่กดไว้ตอนยังเชื่อมไม่ได้ (ถูกข้อมูลจาก cloud ทับไปแล้วตอน applyState) — ทำซ้ำบนข้อมูลจริงแล้วส่งขึ้น
+    // (เคส 19 พ.ย. 69: มือถือช่างแต่ง Roll SQ กดเริ่ม/จบงานแล้ว แต่ระบบไม่เคยได้รับ)
+    const pre = cloudPreSyncAction;
+    cloudPreSyncAction = null;
+    if (pre) { try { withCloudRetry(pre); } catch (e) { /* ทำซ้ำไม่ได้ก็ปล่อย — ผู้ใช้เห็นสถานะจริงบนจอแล้ว */ } }
+    if (!cloudWritePending && !cloudWriteInFlight) cloudWriteSucceeded();   // เอาแถบเตือนออก (ถ้ามีของต้องส่ง รอบส่งจะเอาออกเอง)
     // ตัวเตือนงานค้างรอจนได้ข้อมูลจริงก่อนถึงจะทำงาน (ดู maybeOpenLeftoverPrompt)
     // refreshAfterCloudUpdate() ข้างบนรันก่อนบรรทัดนี้ จึงยังถูกกันไว้ — ต้องเรียกอีกทีตรงนี้
     refreshLeftoverWatch();
@@ -25018,10 +25041,13 @@ async function initCloudSync() {
     // ดึงครั้งแรกไม่สำเร็จ (เน็ตมือถือสะดุด, เบราว์เซอร์ใน LINE, Supabase ตอบช้า)
     // ถ้าไม่ลองใหม่ หน้าจอจะค้างอยู่กับข้อมูลตั้งต้นจนกว่าผู้ใช้จะรีเฟรชเอง — ดูเหมือนข้อมูลหาย
     updateBackupBadge();   // เชื่อมไม่ได้ — ขึ้นจุดแดงที่เมนูสำรองข้อมูลให้รู้ตัว
-    if (cloudSyncRetries < 5) {
-      cloudSyncRetries++;
-      setTimeout(initCloudSync, 2000 * cloudSyncRetries);
-    }
+    // เดิมลองแค่ 5 ครั้ง (~30 วิ) แล้วเลิก — หลังจากนั้นทุกอย่างที่กดลงแค่ในเครื่อง ไม่ขึ้น cloud และไม่มีอะไรเตือน
+    // ตอนนี้ลองต่อไปเรื่อยๆ (ห่างขึ้นถึงทุก 30 วิ) + ลองทันทีเมื่อเน็ตกลับมา/กลับมาเปิดหน้า และขึ้นแถบเตือนให้เห็น
+    cloudSyncRetries++;
+    if (cloudSyncRetries >= 2) showCloudOfflineNotice();
+    cloudInitTimer = setTimeout(initCloudSync, Math.min(30000, 2000 * cloudSyncRetries));
+  } finally {
+    cloudInitInFlight = false;
   }
 }
 let cloudSyncRetries = 0;
