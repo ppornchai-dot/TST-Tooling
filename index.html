@@ -2465,7 +2465,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-20.03';
+const APP_BUILD = '2026-11-20.04';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6184,13 +6184,19 @@ function prodChangeNotify(kind, rows, labelOf) {
   const events = [];
   let mark = since;
   const ts = v => { const t = Date.parse(v || ''); return isNaN(t) ? '' : new Date(t).toISOString(); };
+  // ระบบผลิตบันทึกซ้อนตอนหน้างานกดบันทึก: รอบสั้นๆ ของรหัสเดิมปิด แล้วเปิดรอบใหม่ของรหัสเดิมที่เครื่องเดิมทันที
+  // (เช่น 192 13:57:23–13:57:24 แล้ว 192 เริ่ม 13:57:24) — ของยังอยู่บนเครื่อง ไม่ใช่การถอด ไม่ต้องแจ้ง "ถอด"
+  const codeKey = c => String(c == null ? '' : c).trim().toUpperCase().replace(/^0+(?=\d)/, '');
+  const reinstalled = (r, en) => (rows || []).some(r2 => r2 && r2 !== r
+    && String(r2.machine_id) === String(r.machine_id) && codeKey(r2.code) === codeKey(r.code)
+    && Math.abs(Date.parse(r2.started_at || '') - Date.parse(en)) <= 2 * 60000);
   (rows || []).forEach(r => {
     if (!r || !r.machine_id) return;
     const st = ts(r.started_at), en = r.is_open ? '' : ts(r.ended_at);
     if (st > mark) mark = st;
     if (en > mark) mark = en;
     if (!since) return;
-    if (en && en > since) events.push({ type: 'out', at: en, machine: String(r.machine_id), code: r.code, label: labelOf(r) });
+    if (en && en > since && !reinstalled(r, en)) events.push({ type: 'out', at: en, machine: String(r.machine_id), code: r.code, label: labelOf(r) });
     if (st && st > since) events.push({ type: 'in', at: st, machine: String(r.machine_id), code: r.code, label: labelOf(r) });
   });
   if (mark && mark !== since) {
