@@ -2465,7 +2465,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-19.16';
+const APP_BUILD = '2026-11-20.01';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -22540,12 +22540,14 @@ async function finishDailyPiece(taskId, rollIdx, workerId, fromTaskRow) {
       + (cur.status === 'paused' ? pauseGapMinutes(cur.pausedAt, endAt) : 0);
     // ชิ้นที่ถูกตัดข้ามกะ = งานชิ้นเดียว กดจบที่แถวไหนก็จบทุกส่วน
     const rowStart = fromTaskRow && !cur.startTime ? (getDailyActualTimes(taskId).startTime || null) : null;
+    const rowStartBy = rowStart && !cur.startBy ? (getDailyActualTimes(taskId).startBy || null) : null;
     setPieceStatusForChain(taskId, rollIdx, {
       ...(needsMeasuredSize
         ? { status: 'done', endTime: endAt, pausedAt: null, pausedMin, measuredSize: size,
             registryDiameter: pieceCurrentOdOf(roll2) || null, odStandard: pieceStdOdOf(roll2) || null }
         : { status: 'done', endTime: endAt, pausedAt: null, pausedMin }),
       ...(rowStart ? { startTime: rowStart } : {}),
+      ...(rowStartBy ? { startBy: rowStartBy } : {}),
     });
     if (fromTaskRow) {
       const timesMap = dailyActualTimes[dailyStatusDateFor(taskId)] || (dailyActualTimes[dailyStatusDateFor(taskId)] = {});
@@ -23221,7 +23223,11 @@ function collectHistoryRecords() {
           rollSetName: t.rollSet || null,
           // คีย์ชุดสีดิบ — ปฏิทินหน้านี้ใช้หาสีจริงของชุด (rollColorLabelFor/inUseColorDot ต้องใช้คีย์ ไม่ใช่ชื่อไทย)
           rollColorKey: t.rollColor || null,
-          who: historyActorsText([entry.startBy, entry.doneBy], workerName(t.workerId)),
+          who: historyActorsText([entry.startBy, entry.doneBy], historyActorsText((() => {
+            // ชิ้นที่ไม่มีชื่อของตัวเอง (กดเริ่ม/จบทั้งใบที่แถวงาน) — ใช้ชื่อคนกดที่แถวงานนั้น
+            const a = (dailyActualTimes[dateIso] || {})[taskId] || {};
+            return [a.startBy, a.endBy];
+          })(), workerName(t.workerId))),
           // บันทึกที่ถูกย้ายวันไปแล้วไม่นับชั่วโมง — ชิ้นเดียวกันถูกนับอีกครั้งในวันที่ย้ายไป
           // ถ้านับทั้งสองที่ ยอด "ชม." ของวันเดิมจะบวมขึ้นจากงานที่ไม่ได้ทำในวันนั้น
           hours: (outcome.key === 'moved' || !minutes) ? null : Math.round((minutes / 60) * 10) / 10,
