@@ -2465,7 +2465,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-20.04';
+const APP_BUILD = '2026-11-20.05';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6245,14 +6245,23 @@ function prodSqNormRows(json) {
   (json && json.rows || []).forEach(r => { if (r && r.color != null) r.color = prodSqNormColor(r.color); });
   return json;
 }
-function prodEventLabel(kind, code, color) {
+// color = สีของชุดที่ "ใส่เข้า" (ระบบผลิตส่งสีมาสีเดียว) — ชุดที่ถอดออกต้องไม่ใช้สีนี้ (เจอจริง 20 พ.ย.: ถอด GI 2"x2" สีแดงชุด 2
+// แต่สีที่ส่งมาเป็นแดง+ทองของชุดใหม่ เลยไปจับได้ GI 3"x1-1/2" แดง+ทองชุด 2 ผิดชุด)
+// ชุดที่ถอด: ดูจากรอบที่ระบบผลิตบอกว่าอยู่บนเครื่องนั้น (ข้อมูลครั้งล่าสุดที่ดึงไว้) · ไม่รู้ = บอกแค่รหัส
+function prodEventLabel(kind, code, color, outMachine) {
   const c = String(code == null ? '—' : code).trim();
   if (kind === 'saw') return 'ใบเลื่อย รหัส ' + c;
-  color = prodSqNormColor(color);
   const all = sqSets().map(x => x[0]).filter(Boolean).filter(h => sqSetMatchesProdCode(h, c));
-  let heads = all.filter(h => !color || h.color === color);
-  // สีที่ส่งมาเป็นของชุดที่ใส่เข้า — ชุดที่ถอดออกอาจเป็นคนละสี ถ้าสีนี้หาไม่เจอ ลองทุกสี (เจอชุดเดียวก็ใช้)
-  if (!heads.length) heads = all;
+  let heads;
+  if (outMachine) {
+    const live = ((prodSqLive || {}).rounds || []).find(x => x && x.setKey && String(x.machine) === String(outMachine)
+      && sqSetMatchesProdCode(all.find(h => sqSetKey(h) === x.setKey) || {}, c));
+    heads = live ? all.filter(h => sqSetKey(h) === live.setKey) : [];
+    color = null;
+  } else {
+    color = prodSqNormColor(color);
+    heads = all.filter(h => !color || h.color === color);
+  }
   if (heads.length === 1) return String(heads[0].sizeSq || '').trim() + ' ' + sqColorMeta(heads[0].color).label + ' ' + sqSetOrdinalLabel(heads[0]);
   return 'Roll SQ รหัส ' + c + (color && sqColorMeta(color).key ? ' ' + sqColorMeta(color).label : '');
 }
@@ -6265,7 +6274,7 @@ function handleProdEventRows(rows, silent) {
     if (isNaN(t)) return;
     const at = new Date(t).toISOString(), machine = String(r.machine_id || '');
     if (r.code_out && r.code_in && String(r.code_out).trim() === String(r.code_in).trim()) return;
-    if (r.code_out) byKind[r.kind].push({ type: 'out', at, machine, code: r.code_out, label: prodEventLabel(r.kind, r.code_out, r.color) });
+    if (r.code_out) byKind[r.kind].push({ type: 'out', at, machine, code: r.code_out, label: prodEventLabel(r.kind, r.code_out, null, machine) });
     if (r.code_in) byKind[r.kind].push({ type: 'in', at, machine, code: r.code_in, label: prodEventLabel(r.kind, r.code_in, r.color) });
   });
   Object.entries(byKind).forEach(([kind, evs]) => {
