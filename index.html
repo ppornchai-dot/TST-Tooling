@@ -2465,7 +2465,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-20.02';
+const APP_BUILD = '2026-11-20.03';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6230,13 +6230,25 @@ function prodFilterNotified(kind, events, silent) {
   try { localStorage.setItem(PROD_NOTIFIED_KEY, JSON.stringify(map)); } catch (e) { /* จำไม่ได้ก็แค่อาจแจ้งซ้ำ */ }
   return fresh;
 }
+// สีชุด Roll SQ ที่ระบบผลิตส่งมา เขียนต่างจากของเรา (ระบบผลิต "red_gold" = "redgold") — แปลงเป็นคีย์ของเราก่อนเทียบเสมอ
+function prodSqNormColor(c) {
+  const k = String(c == null ? '' : c).toLowerCase().replace(/[^a-z]/g, '');
+  return k || null;
+}
+function prodSqNormRows(json) {
+  (json && json.rows || []).forEach(r => { if (r && r.color != null) r.color = prodSqNormColor(r.color); });
+  return json;
+}
 function prodEventLabel(kind, code, color) {
   const c = String(code == null ? '—' : code).trim();
   if (kind === 'saw') return 'ใบเลื่อย รหัส ' + c;
-  const heads = sqSets().map(x => x[0]).filter(Boolean)
-    .filter(h => (!color || h.color === color) && sqSetMatchesProdCode(h, c));
+  color = prodSqNormColor(color);
+  const all = sqSets().map(x => x[0]).filter(Boolean).filter(h => sqSetMatchesProdCode(h, c));
+  let heads = all.filter(h => !color || h.color === color);
+  // สีที่ส่งมาเป็นของชุดที่ใส่เข้า — ชุดที่ถอดออกอาจเป็นคนละสี ถ้าสีนี้หาไม่เจอ ลองทุกสี (เจอชุดเดียวก็ใช้)
+  if (!heads.length) heads = all;
   if (heads.length === 1) return String(heads[0].sizeSq || '').trim() + ' ' + sqColorMeta(heads[0].color).label + ' ' + sqSetOrdinalLabel(heads[0]);
-  return 'Roll SQ รหัส ' + c + (color ? ' ' + sqColorMeta(color).label : '');
+  return 'Roll SQ รหัส ' + c + (color && sqColorMeta(color).key ? ' ' + sqColorMeta(color).label : '');
 }
 // rows = แถวจากตาราง prod_events · silent = จำไว้เฉยๆ ไม่เด้ง (เปิดเครื่องนี้ครั้งแรก ไม่ไล่แจ้งของเก่า)
 function handleProdEventRows(rows, silent) {
@@ -6246,6 +6258,7 @@ function handleProdEventRows(rows, silent) {
     const t = Date.parse(r.recorded_at || '');
     if (isNaN(t)) return;
     const at = new Date(t).toISOString(), machine = String(r.machine_id || '');
+    if (r.code_out && r.code_in && String(r.code_out).trim() === String(r.code_in).trim()) return;
     if (r.code_out) byKind[r.kind].push({ type: 'out', at, machine, code: r.code_out, label: prodEventLabel(r.kind, r.code_out, r.color) });
     if (r.code_in) byKind[r.kind].push({ type: 'in', at, machine, code: r.code_in, label: prodEventLabel(r.kind, r.code_in, r.color) });
   });
@@ -6333,7 +6346,7 @@ function loadProdSqInUse(force) {
       // ระบบผลิตรับช่วงได้ไม่เกิน 1 ปี — รอบที่ยังเปิดอยู่ไม่น่าเก่ากว่านั้น
       const res = await fetch(PROD_SQ_PROXY_URL + '?kind=sq&from=' + addDaysIso(today, -364) + '&to=' + today);
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      const json = await res.json();
+      const json = prodSqNormRows(await res.json());
       const open = (json.rows || []).filter(r => r && r.is_open && r.machine_id);
       // ระบบผลิตส่ง product_code มากับแต่ละรอบแล้ว (สินค้าที่ผลิตมากที่สุดในรอบ · รอบที่ยังไม่มียอดใช้สินค้าของ MO)
       // ใช้ตัวนั้นก่อน — ยอด FG เป็นแค่ทางสำรองของรอบที่ไม่มี product_code (ไม่ต้องดึง FG ถ้าทุกรอบมีแล้ว)
@@ -7104,7 +7117,7 @@ async function fetchProdToolingRounds(kind, fromIso, toIso, force) {
   if (!force && hit && Date.now() - hit.at < PROD_SQ_MIN_AGE_MS) return { rows: hit.rows, from };
   const res = await fetch(PROD_SQ_PROXY_URL + '?kind=' + kind + '&from=' + from + '&to=' + toIso);
   if (!res.ok) throw new Error('HTTP ' + res.status);
-  const json = await res.json();
+  const json = prodSqNormRows(await res.json());
   const rows = (json.rows || []).filter(r => r && r.code != null && String(r.code).trim() !== '');
   prodToolingRangeCache.set(key, { at: Date.now(), rows });
   return { rows, from };
