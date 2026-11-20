@@ -2465,7 +2465,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-20.05';
+const APP_BUILD = '2026-11-20.06';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -2835,8 +2835,10 @@ function rollColorPillHtml(dot, label, opts) {
     title="${escapeHtmlAttr('ชุดสี ' + (label || ''))}">${escapeHtmlAttr(label || '')}</span>`;
 }
 
-function dashRollInUseChipHtml(e, badgeColor, rowBg, plannedWorkType) {
-  const machineLabel = e.machines.length ? e.machines.join('/') : '—';
+function dashRollInUseChipHtml(e, badgeColor, rowBg, plannedWorkType, opt) {
+  const machineLabel = opt && opt.badge ? opt.badge : (e.machines.length ? e.machines.join('/') : '—');
+  if (opt && opt.badgeColor) badgeColor = opt.badgeColor;
+  const nameText = opt && opt.name ? opt.name : e.set;
   // การ์ดรอแต่ง/รอขัด: บอกท้ายแถวว่าวางแผนไว้เสร็จวันไหน (หรือยังไม่ได้วางแผน)
   const finishHtml = rollFinishTagHtml(e, plannedWorkType);
   return `<div onclick="${jsCallAttr('openRollStatusQuickPick', e.set, e.colorKey)}"
@@ -2845,7 +2847,7 @@ function dashRollInUseChipHtml(e, badgeColor, rowBg, plannedWorkType) {
     onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
     title="กดเพื่อเลือกสถานะของชุดนี้ (หรือเปิดดูในทะเบียน Tooling)">
     <span style="font-size:15px;font-weight:800;color:#fff;background:${badgeColor || 'var(--accent)'};padding:3px 11px;border-radius:6px;flex-shrink:0;letter-spacing:.02em;">${escapeHtmlAttr(machineLabel)}</span>
-    <span style="font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(e.set)}</span>
+    <span style="font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(nameText)}</span>
     ${rollColorPillHtml(e.dot, e.colorLabel)}
     ${finishHtml}
   </div>`;
@@ -4238,6 +4240,32 @@ function renderDashboardRollStatusCard(listId, countId, status, emptyText, badge
     return;
   }
 
+  // ชุดกำลังใช้งาน: คอลัมน์ตามเครื่อง P1–P4 แบบเดียวกับการ์ด Roll SQ / ใบเลื่อย (ผู้ใช้ขอ 20 พ.ย. 69)
+  //   ในคอลัมน์เรียง Forming → Sizing → TH · ป้ายซ้ายเป็นหมวด (สีเดียวกับหัวคอลัมน์หมวดเดิม)
+  //   ชุดที่ไม่รู้เครื่องไปคอลัมน์ "ไม่ระบุเครื่อง" ท้ายสุด
+  if (status === 'inuse') {
+    const CAT_ORDER = ['Forming', 'Sizing', 'TH'];
+    const catOf = e => parseSizeRollName(e.set).category || '';
+    const catRank = e => { const i = CAT_ORDER.indexOf(catOf(e)); return i < 0 ? CAT_ORDER.length : i; };
+    const extra = [...new Set(entries.flatMap(e => e.machines || []).filter(m => !ROLL_MACHINES.includes(m)))].sort();
+    const cols = ROLL_MACHINES.concat(extra).map(m => [m, entries.filter(e => (e.machines || []).includes(m))]);
+    const none = entries.filter(e => !(e.machines || []).length);
+    if (none.length) cols.push(['', none]);
+    el.innerHTML = `<div class="dash-rollinuse-grid" style="display:grid;grid-template-columns:repeat(${cols.length},1fr);gap:16px;">
+      ${cols.map(([m, list]) => {
+        const sorted = list.slice().sort((a, b) => catRank(a) - catRank(b)
+          || String(a.set + a.colorLabel).localeCompare(String(b.set + b.colorLabel), 'th'));
+        return `<div>
+        ${rollSetSectionHeaderHtml(m ? 'เครื่อง ' + m : 'ไม่ระบุเครื่อง', list.length, m ? C_BLUE : C_SLATE)}
+        ${sorted.length ? sorted.map(e => dashRollInUseChipHtml(e, badgeColor, rowBg, plannedWorkType, {
+            badge: catOf(e) || 'อื่นๆ', badgeColor: ROLL_SET_SECTION_COLORS[catOf(e)] || C_SLATE,
+            name: catOf(e) ? stripSizeRollCategory(e.set) : e.set,
+          })).join('') : `<div style="padding:4px;color:var(--text-3);font-size:12px;">ไม่มี</div>`}
+      </div>`;
+      }).join('')}
+    </div>`;
+    return;
+  }
   // แบ่งเป็นคอลัมน์ตามหมวด Forming/Sizing/TH เหมือนหน้าทะเบียน Tooling — ชื่อที่พาร์สหมวดไม่ได้ตกไปอยู่คอลัมน์ "อื่นๆ" ท้ายสุด
   const buckets = { Forming: [], Sizing: [], TH: [], other: [] };
   entries.forEach(e => {
