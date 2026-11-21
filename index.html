@@ -2465,7 +2465,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-21.02';
+const APP_BUILD = '2026-11-21.03';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6694,8 +6694,14 @@ function prodSawWaitingList() {
     // ใบที่กดเริ่มลับแล้วย้ายไปการ์ด "กำลังลับคม" · ใบที่วางแผนแล้วแต่ยังไม่เริ่ม ยังแสดงที่นี่ (มีป้ายวันแผน)
     // ถอดจากเครื่องแล้วขึ้นรอลับคมเสมอ ไม่ว่าทะเบียนจะตั้งสถานะอะไรไว้ (หมดอายุ/มีปัญหา ก็ขึ้น) (ผู้ใช้ขอ 21 พ.ย. 69)
     //   เจอจริง: 135 ตั้งหมดอายุไว้ แต่ฝ่ายผลิตยังใช้ที่ P3 จนถอดเช้า 21 พ.ย. แล้วไม่ขึ้นในการ์ด
-    .filter(x => x.u.waiting && !info.working.has(x.idx))
-    .sort((a, b) => String(a.u.removedAt).localeCompare(String(b.u.removedAt)));
+    //   + ใบที่ตั้งสถานะ "รอลับคม" เองในทะเบียน (ระบบผลิตไม่ได้บอกว่าถอด เช่น ใบที่ไม่มีข้อมูลในระบบผลิต) (ผู้ใช้ขอ 21 พ.ย. 69)
+    //     ยกเว้นใบที่ระบบผลิตบอกว่ายังอยู่บนเครื่อง
+    .filter(x => (x.u.waiting || (sawManualStatus(x.r) === 'รอลับคม' && !x.u.open)) && !info.working.has(x.idx))
+    .map(x => ({ ...x, manual: !x.u.waiting,
+      // เครื่อง = เครื่องที่ถอดออกมา (ระบบผลิต) · ตั้งเอง = เครื่องในทะเบียน
+      machine: x.u.waiting ? x.u.last.machine : sawMachineOf(x.r) }))
+    // ถอดก่อนขึ้นก่อน · ใบที่ตั้งเอง (ไม่มีเวลาถอด) ไว้ท้าย
+    .sort((a, b) => String(a.u.waiting ? a.u.removedAt : '~').localeCompare(String(b.u.waiting ? b.u.removedAt : '~')));
 }
 
 // ใบเลื่อยกำลังลับคม — มาจากแผนงานลับคม (ระบบผลิตไม่มีข้อมูลการลับคม) เรียงตามเวลาเริ่ม
@@ -6969,8 +6975,11 @@ function prodSawWaitingCardHtml() {
   if (s === 'noproxy') return '';
   const list = s === 'ok' || prodSawLive.at ? prodSawWaitingList() : [];
   // การ์ดใบเลื่อยหนึ่งใบ — กะทัดรัดลงคอลัมน์เครื่อง (แบบเดียวกับการ์ดใบเลื่อยกำลังใช้งาน)
-  const cardHtml = ({ r, idx, u, plannedAt }) => {
+  const cardHtml = ({ r, idx, u, plannedAt, manual }) => {
     const od = sawOdLabel(r);
+    const whereText = manual ? 'ตั้งสถานะรอลับคมเองในทะเบียน (ระบบผลิตไม่ได้บันทึกการถอด)'
+      : 'ถอดจากเครื่อง ' + u.last.machine + ' เมื่อ ' + prodSqFmtTime(u.removedAt)
+        + ' · รอบสุดท้าย ' + fmtTons2(u.last.kg / 1000) + ' ตัน (' + u.last.pcs.toLocaleString() + ' เส้น)';
     return `
     <div onclick="${jsCallAttr('goToSawGrindPlan', r.id)}"
       style="padding:8px 12px;border-radius:8px;margin-bottom:6px;cursor:pointer;
@@ -6978,14 +6987,13 @@ function prodSawWaitingCardHtml() {
                // วางแผนแล้ว = โทนน้ำเงิน ขอบประ (มีคิวแล้ว รอถึงวัน) · ยังไม่วางแผน = โทนแดง ขอบทึบหนา (ต้องจัดการ)
                ? 'background:var(--accent-glow);border:2px dashed var(--accent);'
                : 'background:var(--red-dim);border:2px solid var(--red);'}"
-      title="${escapeHtmlAttr((plannedAt ? 'กดเพื่อไปที่งานลับคมใบนี้ในหน้าวางแผน' : 'กดเพื่อวางแผนลับคมใบนี้') + ' · ถอดจากเครื่อง ' + u.last.machine + ' เมื่อ ' + prodSqFmtTime(u.removedAt)
-        + ' · รอบสุดท้าย ' + fmtTons2(u.last.kg / 1000) + ' ตัน (' + u.last.pcs.toLocaleString() + ' เส้น)'
+      title="${escapeHtmlAttr((plannedAt ? 'กดเพื่อไปที่งานลับคมใบนี้ในหน้าวางแผน' : 'กดเพื่อวางแผนลับคมใบนี้') + ' · ' + whereText
         + (u.lastGrind ? ' · ลับคมล่าสุด ' + fmtIsoDateThai(u.lastGrind) : ' · ยังไม่มีวันลับคมล่าสุดที่ใช้ได้ในทะเบียน'))}">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <span style="font-size:14px;font-weight:800;color:#fff;background:${plannedAt ? 'var(--accent)' : 'var(--red)'};padding:3px 11px;border-radius:6px;">รหัส ${escapeHtmlAttr(r.id)}</span>
       ${od && od !== '—' ? `<span style="flex-shrink:0;font-size:11.5px;font-weight:800;padding:1px 8px;border-radius:99px;
           background:var(--bg-panel);color:var(--text-2);box-shadow:inset 0 0 0 1px var(--border-light);">${escapeHtmlAttr(od)}</span>` : ''}${sawThickPillHtml(r)}
-      <span style="font-size:11.5px;color:var(--text-3);margin-left:auto;">ถอด ${escapeHtmlAttr(prodSqFmtTime(u.removedAt))}</span>
+      <span style="font-size:11.5px;color:var(--text-3);margin-left:auto;">${manual ? 'ตั้งในทะเบียน' : 'ถอด ' + escapeHtmlAttr(prodSqFmtTime(u.removedAt))}</span>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;">
       <!-- ป้ายแผน — รูปแบบเดียวกับ "แต่ง/ขัดเสร็จ …" / "ยังไม่ได้วางแผน" ของการ์ด Roll (rollFinishTagHtml):
@@ -7002,14 +7010,14 @@ function prodSawWaitingCardHtml() {
         : `<span style="flex:0 0 auto;">${statusChip(sawEffectiveStatus(r).status)}</span>`}
       </div>
       <div style="display:flex;flex-direction:column;gap:2px;margin-top:6px;font-size:12px;">
-        <div>${u.sinceGrind != null ? sawTonsPcsHtml('หลังลับคม', u.sinceGrind, u.sinceGrindPcs)
-          : sawTonsPcsHtml('รอบสุดท้าย', u.last.kg / 1000, u.last.pcs)}</div>
-        <div>${sawTonsPcsHtml('สะสม', u.total, u.p.pcs)}</div>
+        ${u.sinceGrind != null ? `<div>${sawTonsPcsHtml('หลังลับคม', u.sinceGrind, u.sinceGrindPcs)}</div>`
+          : u.last ? `<div>${sawTonsPcsHtml('รอบสุดท้าย', u.last.kg / 1000, u.last.pcs)}</div>` : ''}
+        <div>${sawTonsPcsHtml('สะสม', u.total, u.p ? u.p.pcs : null)}</div>
       </div>
     </div>`;
   };
   // แบ่งคอลัมน์ตามเครื่องที่ถอดออกมา — ได้ข้อมูลแล้วแสดงคอลัมน์เสมอ (ว่างก็ขึ้น "ไม่มี" ทุกเครื่อง แบบการ์ดกำลังใช้งาน)
-  const rows = !list.length && s !== 'ok' ? '' : sawMachineColumnsHtml(list, x => x.u.last.machine, cardHtml, 'ถอดจาก ');
+  const rows = !list.length && s !== 'ok' ? '' : sawMachineColumnsHtml(list, x => x.machine, cardHtml, 'ถอดจาก ');
   return `<div class="card" style="margin-bottom:18px;">
     <div class="card-header">
       <span class="card-title" style="font-size:17px;color:var(--red);display:inline-flex;align-items:center;gap:8px;">
@@ -7021,7 +7029,7 @@ function prodSawWaitingCardHtml() {
         s === 'ok' ? 'ไม่มีใบเลื่อยที่ถอดออกมาแล้วรอลับคม' : s === 'error' ? 'ดึงจากระบบผลิตไม่สำเร็จ' : 'กำลังดึงจากระบบผลิต…'}</div>`}
       <div style="font-size:11px;color:var(--text-3);margin-top:6px;line-height:1.6;">
         รอลับคม = ระบบผลิตบันทึกว่าถอดออกจากเครื่องแล้ว และยังไม่มีการลับคมตั้งแต่วันที่ถอด
-        (ดูจาก "ลับคมล่าสุด" ในทะเบียน หรือการกดจบงานลับคมในแผนงาน) · ใส่กลับเข้าเครื่องเมื่อไร รายการนี้จะหายเอง</div>
+        (ดูจาก "ลับคมล่าสุด" ในทะเบียน หรือการกดจบงานลับคมในแผนงาน) หรือตั้งสถานะ "รอลับคม" เองในทะเบียน · ใส่กลับเข้าเครื่องเมื่อไร รายการนี้จะหายเอง</div>
     </div>
   </div>`;
 }
@@ -11755,7 +11763,8 @@ function renderRollOptionsPanel(rolls, selectedIndexes) {
     const info = reg ? [sawOdLabel(reg), reg.machine].filter(x => x && x !== '—').join(' · ') : '';
     const w = reg ? sawWait.get(((toolingData || {}).saw || []).indexOf(reg)) : null;
     return (info ? ` <span style="font-size:11px;color:var(--text-3);">${escapeHtmlAttr(info)}</span>` : '')
-      + (w ? ` <span style="font-size:11px;color:var(--text-2);margin-left:auto;">ถอดจาก ${escapeHtmlAttr(w.u.last.machine)} · ${escapeHtmlAttr(prodSqFmtTime(w.u.removedAt))}</span>` : '');
+      + (w ? ` <span style="font-size:11px;color:var(--text-2);margin-left:auto;">${w.manual ? 'รอลับคม (ตั้งในทะเบียน)'
+        : 'ถอดจาก ' + escapeHtmlAttr(w.u.last.machine) + ' · ' + escapeHtmlAttr(prodSqFmtTime(w.u.removedAt))}</span>` : '');
   };
   if (isSaw && !visible.length) {
     panel.innerHTML = `<div style="padding:10px 12px;font-size:12.5px;color:var(--text-3);">${escapeHtmlAttr(sawNote || 'ตอนนี้ไม่มีใบเลื่อยที่รอลับคม')}</div>`;
