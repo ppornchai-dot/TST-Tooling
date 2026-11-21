@@ -2465,7 +2465,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-20.06';
+const APP_BUILD = '2026-11-21.01';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6692,8 +6692,9 @@ function prodSawWaitingList() {
   // plannedAt = วันที่วางแผนลับไว้ (รวมงานค้างจากวันก่อน) — การ์ดรอลับคมขึ้นป้าย "แผนลับคม" ให้
   return reg.map((r, idx) => ({ r, idx, u: sawUsageInfo(r), plannedAt: (info.queued && info.queued.get(idx)) || info.planned.get(idx) || null }))
     // ใบที่กดเริ่มลับแล้วย้ายไปการ์ด "กำลังลับคม" · ใบที่วางแผนแล้วแต่ยังไม่เริ่ม ยังแสดงที่นี่ (มีป้ายวันแผน)
-    .filter(x => x.u.waiting && !info.working.has(x.idx)
-      && !['มีปัญหา', 'หมดอายุ'].includes(sawManualStatus(x.r)))
+    // ถอดจากเครื่องแล้วขึ้นรอลับคมเสมอ ไม่ว่าทะเบียนจะตั้งสถานะอะไรไว้ (หมดอายุ/มีปัญหา ก็ขึ้น) (ผู้ใช้ขอ 21 พ.ย. 69)
+    //   เจอจริง: 135 ตั้งหมดอายุไว้ แต่ฝ่ายผลิตยังใช้ที่ P3 จนถอดเช้า 21 พ.ย. แล้วไม่ขึ้นในการ์ด
+    .filter(x => x.u.waiting && !info.working.has(x.idx))
     .sort((a, b) => String(a.u.removedAt).localeCompare(String(b.u.removedAt)));
 }
 
