@@ -2465,7 +2465,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-21.01';
+const APP_BUILD = '2026-11-21.02';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -15473,6 +15473,9 @@ function cacheStateLocally() {
 }
 
 function persistState() {
+  // ข้อมูลเปลี่ยนแล้ว — ล้างค่าที่จำไว้ของงานลับคม ไม่งั้นการ์ดใบเลื่อยที่วาดภายใน 2 วินาทีถัดไปจะใช้ของเก่า
+  // (เจอจริง 21 พ.ย.: วางแผน/เริ่มลับ 169 แล้ว แต่ Dashboard ยังขึ้น "ยังไม่ได้วางแผน" ค้างอยู่)
+  sawGrindPlanMemo = null;
   const snapshot = buildStateSnapshot();
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot)); } catch (e) { /* localStorage unavailable — edits stay in-memory only */ }
   // ส่งขึ้น Supabase ด้วยทุกครั้งที่บันทึก เพื่อให้เครื่อง/บัญชีอื่นเห็นข้อมูลชุดเดียวกัน — ถ้าออฟไลน์ก็ข้ามไปเงียบๆ ข้อมูลใน localStorage ปลอดภัยอยู่แล้ว
@@ -15596,6 +15599,7 @@ function showCloudConflictNotice() {
 }
 
 function applyState(saved) {
+  sawGrindPlanMemo = null;   // ข้อมูลจากคลาวด์/เครื่องอื่น — คิดงานลับคมใหม่ (ดู persistState)
   if (saved.toolingData) {
     ['roll','sq','saw','slitter'].forEach(k => {
       if (Array.isArray(saved.toolingData[k])) toolingData[k] = saved.toolingData[k];
