@@ -2487,7 +2487,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-23.02';
+const APP_BUILD = '2026-11-23.03';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5877,8 +5877,9 @@ function dashSqSetRowHtml(set, badgeColor, rowBg, hideSize) {
       const w = sqProdWaitInfo(sqSetKey(head));
       return !w ? '' : `<span style="flex-shrink:0;font-size:11.5px;font-weight:800;padding:1px 8px;border-radius:99px;
           background:var(--red-dim);color:var(--red);box-shadow:inset 0 0 0 1px var(--red);"
-        title="${escapeHtmlAttr('จากระบบผลิต · ถอดจากเครื่อง ' + w.machine + ' เมื่อ ' + prodSqFmtTime(w.endedAt)
-          + ' · รอบนั้นผลิต ' + prodSqTons(w.kg) + ' ตัน (' + w.pcs.toLocaleString() + ' เส้น)')}">ถอดจาก ${escapeHtmlAttr(w.machine)} · ${escapeHtmlAttr(prodSqFmtTime(w.endedAt))}</span>`;
+        title="${escapeHtmlAttr('จากระบบผลิต · เครื่อง ' + w.machine + ' · ใส่เครื่องเมื่อ ' + prodSqFmtTime(w.startedAt)
+          + ' · ถอดเมื่อ ' + prodSqFmtTime(w.endedAt)
+          + ' · รอบนั้นผลิต ' + prodSqTons(w.kg) + ' ตัน (' + w.pcs.toLocaleString() + ' เส้น)')}">${escapeHtmlAttr(w.machine)} · ใส่ ${escapeHtmlAttr(prodSqFmtTime(w.startedAt))} → ถอด ${escapeHtmlAttr(prodSqFmtTime(w.endedAt))}</span>`;
     })()}
     ${(() => {
       // วางแผนแต่งไว้แล้ว — ป้ายแบบเดียวกับ "แผนลับคม …" ของการ์ดใบเลื่อยรอลับคม
@@ -6438,6 +6439,24 @@ function loadProdSqInUse(force) {
         fgRows = await fgFetchRowsRange(earliest > floor ? earliest : floor, today);
       }
       const heads = sqSets().map(s => s[0]).filter(Boolean);
+      const allRows = (json.rows || []).filter(Boolean);
+      const ownMatch = r => {
+        const sk = apiSizeKey(r);
+        const c = !sk ? [] : heads.filter(h => rollSetFgKey(h.sizeSq) === sk && h.color === r.color && sqSetMatchesProdCode(h, r.code));
+        return { n: c.length, key: c.length === 1 ? sqSetKey(c[0]) : null };
+      };
+      // รอบที่ขนาดสินค้าไม่ตรงชุดไหนในทะเบียน แต่ต่อจากรอบก่อนหน้าทันที (เครื่อง/รหัส/สีเดียวกัน ห่างไม่เกิน 2 นาที) = ชุดเดิมที่ยังอยู่บนเครื่อง
+      //   เช่น P4 13 พ.ย. 69: ใส่ชุดตอน MO เป็น GS 4"x2" (ระบบผลิตลงเป็นรอบ 0 วินาที) แล้วผลิตจริงเป็น GI 4"x2" ต่อทันที
+      //   เดิมรอบจริงหาชุดไม่เจอ ชุด GS 4"x2" เลยขึ้นว่าถอดแล้ว (รอแต่ง) ทั้งที่ยังอยู่บนเครื่อง
+      const prevRound = r => allRows.find(p => p !== r && p.ended_at
+        && String(p.machine_id || '') === String(r.machine_id || '') && String(p.code) === String(r.code) && p.color === r.color
+        && (g => g <= 120e3 && g >= -60e3)(Date.parse(r.started_at) - Date.parse(p.ended_at)));
+      const chainKey = (r, depth = 0) => {
+        const o = ownMatch(r);
+        if (o.n || depth > 5) return o.key;
+        const p = prevRound(r);
+        return p ? chainKey(p, depth + 1) : null;
+      };
       const rounds = open.map(r => {
         const t0 = Date.parse(r.started_at);
         const t1 = r.ended_at ? Date.parse(r.ended_at) : Date.now();
@@ -6452,33 +6471,40 @@ function loadProdSqInUse(force) {
         const sizeKey = apiSizeKey(r) || Object.keys(kgBy).sort((a, b) => kgBy[b] - kgBy[a])[0] || null;
         const cands = !sizeKey ? [] : heads.filter(h => rollSetFgKey(h.sizeSq) === sizeKey
           && h.color === r.color && sqSetMatchesProdCode(h, r.code));
+        const viaPrev = !cands.length && prevRound(r) ? chainKey(prevRound(r)) : null;
         return {
           machine: String(r.machine_id), code: String(r.code || ''), color: String(r.color || ''),
           startedAt: r.started_at, kg: Number(r.kg) || 0, pcs: Number(r.pcs) || 0,
           productName: String(r.product_name || ''), productSource: String(r.product_source || (apiSizeKey(r) ? '' : 'fg')),
-          sizeKey, candCount: cands.length, setKey: cands.length === 1 ? sqSetKey(cands[0]) : null,
+          sizeKey, candCount: viaPrev ? 1 : cands.length, setKey: cands.length === 1 ? sqSetKey(cands[0]) : viaPrev,
         };
       });
       const byKey = {};
       rounds.forEach(x => { if (x.setKey) byKey[x.setKey] = x; });
       // ชุดที่ฝ่ายผลิตถอดออกแล้ว = รอบล่าสุดของชุดนั้นปิดไปแล้ว (มีเวลาถอด) และตอนนี้ไม่ได้อยู่บนเครื่อง
       // ใช้ขนาดจาก product_code ของรอบ (รอบที่ปิดแล้วมียอดผลิต จึงมี product_code แทบทุกรอบ)
-      const latest = {};
-      (json.rows || []).forEach(r => {
-        if (!r) return;
-        const sk = apiSizeKey(r);
-        if (!sk) return;
-        const cands = heads.filter(h => rollSetFgKey(h.sizeSq) === sk && h.color === r.color && sqSetMatchesProdCode(h, r.code));
-        if (cands.length !== 1) return;
-        const k = sqSetKey(cands[0]);
+      const latest = {}, roundsOf = {};
+      allRows.forEach(r => {
+        const k = chainKey(r);
+        if (!k) return;
+        (roundsOf[k] = roundsOf[k] || []).push(r);
         if (!latest[k] || String(r.started_at) > String(latest[k].started_at)) latest[k] = r;
       });
       const removed = {};
       Object.keys(latest).forEach(k => {
         const r = latest[k];
         if (r.is_open || !r.ended_at || byKey[k]) return;
-        removed[k] = { machine: String(r.machine_id || ''), endedAt: r.ended_at, startedAt: r.started_at,
-          kg: Number(r.kg) || 0, pcs: Number(r.pcs) || 0 };
+        // ย้อนต่อรอบก่อนหน้าบนเครื่องเดียวกันที่จบห่างไม่เกิน 2 นาที = ใส่ต่อเนื่องครั้งเดียวกัน → ได้เวลาใส่เครื่องจริง + ยอดรวม
+        const list = (roundsOf[k] || []).filter(x => String(x.machine_id || '') === String(r.machine_id || ''))
+          .sort((a, b) => String(a.started_at).localeCompare(String(b.started_at)));
+        let i = list.indexOf(r), start = r.started_at, kg = Number(r.kg) || 0, pcs = Number(r.pcs) || 0;
+        while (i > 0) {
+          const p = list[i - 1];
+          const gap = Date.parse(list[i].started_at) - Date.parse(p.ended_at || '');
+          if (!(gap <= 2 * 60e3 && gap >= -60e3)) break;
+          start = p.started_at; kg += Number(p.kg) || 0; pcs += Number(p.pcs) || 0; i--;
+        }
+        removed[k] = { machine: String(r.machine_id || ''), endedAt: r.ended_at, startedAt: start, kg, pcs };
       });
       prodSqLive = { status: 'ok', at: Date.now(), rounds, byKey, removed, error: null };
       // แจ้งเตือนมุมขวาล่างถ้าฝ่ายผลิตถอด/ใส่ชุดใหม่ตั้งแต่ครั้งก่อนที่เห็น
