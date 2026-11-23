@@ -2487,7 +2487,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-23.04';
+const APP_BUILD = '2026-11-23.05';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6348,6 +6348,8 @@ function handleProdEventRows(rows, silent) {
     const viewing = !document.hidden && ((currentPage === 'dashboard' && dashTab === kind)
       || (currentPage === 'inuse' && typeof inUseTab !== 'undefined' && inUseTab === kind));
     if (viewing && !silent) { if (kind === 'saw') loadProdSawUsage(true); else loadProdSqInUse(true); }
+    // ถอดใบเลื่อย + เครื่องนี้วางแผนได้ — ดึงใหม่เพื่อวางแผนลับคมให้อัตโนมัติ แม้ไม่ได้เปิดดูการ์ดอยู่ (ดึงตามเหตุการณ์ ไม่ใช่ดึงถี่)
+    else if (kind === 'saw' && currentUser && canEditPlan() && evs.some(e => e.type === 'out')) loadProdSawUsage(true);
   });
 }
 // ตามเก็บรายการที่เข้ามาตอนเครื่องนี้ปิดแอป/พักจอ (realtime หลุด) — อ่านจากตารางของเราเอง ไม่ใช่ระบบผลิต
@@ -6634,6 +6636,7 @@ function loadProdSawUsage(force) {
       const orphan = Object.keys(byCode).filter(k => !known.has(k));
       prodSawLive = { status: 'ok', at: Date.now(), byCode, open, orphan, error: null };
       prodChangeNotify('saw', json.rows || [], r => 'ใบเลื่อย รหัส ' + String(r.code == null ? '—' : r.code).trim());
+      try { sawAutoPlanRemoved(); } catch (e2) { console.error('sawAutoPlanRemoved', e2); }
     } catch (e) {
       prodSawLive = { ...prodSawLive, status: 'error', at: Date.now(), error: String((e && e.message) || e) };
     } finally {
@@ -7031,6 +7034,124 @@ function goToSawGrindPlan(sawId) {
     const cb = document.querySelector('#pf-rollids-panel input[type="checkbox"][value="' + idx + '"]');
     if (cb && !cb.checked) { cb.checked = true; toggleRollOption(cb); }
   }, 0);
+}
+
+// ─── วางแผนลับคมอัตโนมัติ เมื่อระบบผลิตถอดใบเลื่อยออก (ผู้ใช้ขอ 23 พ.ย. 69) ───────────────
+// ทำบนเครื่องของ Admin/หัวหน้าที่เปิดแอปอยู่ (คนที่วางแผนได้) หลังดึงยอดใบเลื่อยจากระบบผลิตสำเร็จ
+// วางแบบเดียวกับกดการ์ดใบรอลับคมแล้วกดบันทึกเอง: ต่อท้ายคิวงานลับคมของวันนี้ · เวลาไม่พอ/วันหยุด เลื่อนวันให้ · ล้นกะ ตัดแบ่งวัน
+// ใบละ 1 ครั้งต่อการถอด 1 ครั้ง — จดเวลาถอดที่วางแผนแล้วไว้ที่ใบ (autoPlanFor) ลบงานทิ้งเองแล้วจะไม่สร้างซ้ำ
+// ทุกใบที่ถอด ไม่ว่าทะเบียนตั้งสถานะอะไร (ตามกติกาเดียวกับการ์ดรอลับคม — 21 พ.ย. 69)
+// ไม่วางให้: ใบที่ตั้งรอลับคมเอง (ไม่ได้มาจากระบบผลิต)
+// · ใบที่ไม่มีเวลาลับคม · การถอดก่อนเปิดใช้ความสามารถนี้ (SAW_AUTO_PLAN_FROM)
+const SAW_AUTO_PLAN_FROM = '2026-11-23T00:00:00Z';
+// เปิดแอป/ล็อกอิน โดยคนที่วางแผนได้ — มีข้อมูลระบบผลิตแล้วตรวจเลย · ยังไม่มีก็ดึง 1 ครั้ง (ไม่ดึงซ้ำถ้าเพิ่งดึงไป)
+function sawAutoPlanKick() {
+  if (!currentUser || !canEditPlan()) return;
+  if (prodSawLive && prodSawLive.status === 'ok') sawAutoPlanRemoved();
+  else loadProdSawUsage(false);
+}
+function sawAutoPlanCandidates() {
+  if (!prodSawLive || prodSawLive.status !== 'ok') return [];
+  sawGrindPlanMemo = null;
+  return prodSawWaitingList().filter(x => !x.manual && !x.plannedAt && x.u.removedAt
+    && Date.parse(x.u.removedAt) >= Date.parse(SAW_AUTO_PLAN_FROM)
+    && x.r.autoPlanFor !== x.u.removedAt
+    && (parseFloat(x.r.grindTime) || 0) > 0);
+}
+function sawAutoPlanRemoved() {
+  if (!currentUser || !canEditPlan() || typeof cloudSyncReady === 'undefined' || !cloudSyncReady) return;
+  if (!sawAutoPlanCandidates().length) return;
+  withCloudRetry(() => {
+    // คิดใหม่บนข้อมูลล่าสุดทุกครั้ง (รอบทำซ้ำหลังชนกับเครื่องอื่น อาจมีคนวางแผนไปแล้ว)
+    const list = sawAutoPlanCandidates();
+    if (!list.length) return;
+    const made = [];
+    list.forEach(x => {
+      const at = planSawGrindAuto(x.idx);
+      x.r.autoPlanFor = x.u.removedAt;   // จดไว้แม้วางไม่ได้ — ไม่ต้องลองซ้ำทุกครั้งที่ดึงข้อมูล
+      if (at) made.push({ id: x.r.id, ...at });
+    });
+    if (!made.length) { persistState(); return; }
+    autoFixPlanSequencing();
+    mergeAdjacentPlanTasks();
+    persistState();
+    if (currentPage === 'plan') renderCurrentPlanView();
+    rerenderProdSawViews();
+    showSawAutoPlanNotice(made);
+  });
+}
+// สร้างงานลับคม 1 ใบ — คืน { date, time } ที่วางไว้ หรือ null ถ้าวางไม่ได้
+function planSawGrindAuto(idx) {
+  const workType = 'saw';
+  const scoped = getMatchingRollsForPlan(SAW_PLAN_SET, null);
+  const roll = scoped[idx];
+  const minutes = parseFloat((roll || {}).grindTime) || 0;
+  if (!roll || !minutes) return null;
+  const capsFor = d => {
+    const caps = {};
+    ['morning', 'night'].forEach(k => {
+      const v = otMinutesFromDayEnd(planDayEndFor(d, workType, k), workType, k);
+      caps[k] = v != null ? v : 0;
+    });
+    return caps;
+  };
+  // จุดเริ่ม = ท้ายคิวของวันนี้ (ตัวเดียวกับฟอร์มเพิ่มงาน)
+  let shiftKey = planWorkTypeShifts(workType)[0] || 'morning';
+  const q = planQueueEndFor(workType, dailyTodayIso(), shiftKey);
+  let date = q.date, startTime = q.time;
+  if (planWorkTypeAllowsShift(workType, 'both') && shiftKey !== 'both') shiftKey = bothModeStartFieldKey(startTime);
+  const schedShift = planScheduleShiftFor(workType, shiftKey);
+  let caps = capsFor(date);
+  const base = () => ({ date, shift: schedShift, startTime, otCapMinutesByShift: caps, rollIds: [idx] });
+  // ตัดแบ่งวันไม่ได้ และวันนั้นไม่มีที่ว่าง / ทำไม่จบในวัน → ยกไปต่อท้ายคิววันทำงานถัดไปทั้งงาน (กฎเดียวกับฟอร์ม)
+  if (!splitPlanDataAcrossDays(base(), [roll], workType)) {
+    const workStart = advanceToShiftWindow(schedShift, date, startTime, caps, workType);
+    const cap = shiftDailyCapacityMin(shiftKey) + Math.max(0, caps[shiftKey === 'night' ? 'night' : 'morning'] || 0);
+    const overflow = minutes <= cap && (p => p.date && p.date !== date)(computePlanEnd(date, startTime, minutes, schedShift, caps));
+    if (workStart.date !== date || overflow) {
+      let nd = addDaysIso(date, 1), guard = 0;
+      while (isPlanDayOff(nd) && ++guard < 60) nd = addDaysIso(nd, 1);
+      const tail = planAppendStartOnDay(workType, nd, shiftKey, null);
+      const adv = advanceToShiftWindow(shiftKey, nd, tail, capsFor(nd), workType);
+      date = adv.date; startTime = adv.time; caps = capsFor(date);
+    }
+  }
+  const common = { workType, rollSet: SAW_PLAN_SET, rollColor: null, otCapMinutesByShift: caps, workerId: null, autoFromProd: true };
+  const groups = splitPlanDataAcrossDays(base(), [roll], workType);
+  if (groups) {
+    const gid = 'SG-' + String(planTaskSeq + 1).padStart(4, '0');
+    groups.forEach(g => {
+      planTaskSeq++;
+      planTasks.push({ ...common, id: 'PT-' + String(planTaskSeq).padStart(4, '0'), date: g.date,
+        rollIds: g.rollIds, rollId: g.rollId, rollName: g.rollName, totalTime: g.totalTime,
+        startTime: g.startTime, endTime: g.endTime, endDate: g.endDate, shift: g.shiftKey || shiftKey,
+        otMinutes: g.otMinutes, otMinutesByShift: g.otMinutesByShift, rollMinutesOverride: g.rollMinutesOverride, splitGroupId: gid });
+    });
+  } else {
+    const end = computePlanEnd(date, startTime, minutes, schedShift, caps);
+    planTaskSeq++;
+    planTasks.push({ ...common, id: 'PT-' + String(planTaskSeq).padStart(4, '0'), date,
+      rollIds: [idx], rollId: '1 Roll', rollName: roll.name, totalTime: minutes,
+      startTime: startTime || '—', endTime: end.time || '—', endDate: end.date || date,
+      shift: schedShift === 'both' && shiftKey !== 'both' ? bothModeStartFieldKey(startTime) : shiftKey,
+      otMinutes: end.otMinutes || 0, otMinutesByShift: end.otMinutesByShift || {}, splitGroupId: null });
+  }
+  return { date, time: startTime };
+}
+// แจ้งคนที่เปิดแอปอยู่ (เครื่องที่วางแผนให้) ว่าระบบวางแผนอะไรไปบ้าง — กดไปดูงานในหน้าวางแผนได้
+function showSawAutoPlanNotice(made) {
+  const old = document.getElementById('saw-autoplan-notice');
+  if (old) old.remove();
+  const el = document.createElement('div');
+  el.id = 'saw-autoplan-notice';
+  el.style.cssText = 'position:fixed;left:16px;bottom:16px;z-index:3000;max-width:min(380px,calc(100vw - 32px));background:var(--bg-surface);'
+    + 'border:2px solid var(--accent);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:12px 14px;font-size:13px;color:var(--text-1);';
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:8px;font-weight:800;color:var(--accent);margin-bottom:6px;">
+      วางแผนลับคมให้อัตโนมัติ<button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="this.closest('#saw-autoplan-notice').remove()">✕</button></div>
+    ${made.map(m => `<div onclick="${jsCallAttr('goToSawGrindPlan', m.id)};this.closest('#saw-autoplan-notice').remove()" style="cursor:pointer;padding:3px 0;">
+      ใบเลื่อย <b>${escapeHtmlAttr(m.id)}</b> — ${escapeHtmlAttr(fmtDateThaiShort(parseISODate(m.date)))} ${escapeHtmlAttr(m.time)}</div>`).join('')}
+    <div style="font-size:11px;color:var(--text-3);margin-top:4px;">ระบบผลิตถอดใบเหล่านี้ออกจากเครื่อง · กดที่รายการเพื่อดู/แก้ในหน้าวางแผน</div>`;
+  document.body.appendChild(el);
 }
 
 function prodSawWaitingCardHtml() {
@@ -25124,7 +25245,7 @@ function loginAs(user) {
   document.getElementById('login-overlay').classList.add('hidden');
   applyRoleUI();
   showPage(defaultPageForRole(effectiveRole()));
-  if (cloudSyncReady) sawFillDefaultGrindTimes();   // ล็อกอินหลังโหลดข้อมูลเสร็จ — เติมเวลาลับคมที่ว่างตอนนี้เลย
+  if (cloudSyncReady) { sawFillDefaultGrindTimes(); sawAutoPlanKick(); }   // ล็อกอินหลังโหลดข้อมูลเสร็จ — เติมเวลาลับคมที่ว่าง + วางแผนใบที่ถอดแล้วตอนนี้เลย
 }
 
 function logoutUser() {
@@ -25314,6 +25435,7 @@ async function initCloudSync() {
     // refreshAfterCloudUpdate() ข้างบนรันก่อนบรรทัดนี้ จึงยังถูกกันไว้ — ต้องเรียกอีกทีตรงนี้
     refreshLeftoverWatch();
     sawFillDefaultGrindTimes();
+    sawAutoPlanKick();
     supabaseClient
       .channel('app_state_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state', filter: 'id=eq.main' }, payload => {
