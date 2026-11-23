@@ -2487,7 +2487,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-23.05';
+const APP_BUILD = '2026-11-23.06';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6348,8 +6348,9 @@ function handleProdEventRows(rows, silent) {
     const viewing = !document.hidden && ((currentPage === 'dashboard' && dashTab === kind)
       || (currentPage === 'inuse' && typeof inUseTab !== 'undefined' && inUseTab === kind));
     if (viewing && !silent) { if (kind === 'saw') loadProdSawUsage(true); else loadProdSqInUse(true); }
-    // ถอดใบเลื่อย + เครื่องนี้วางแผนได้ — ดึงใหม่เพื่อวางแผนลับคมให้อัตโนมัติ แม้ไม่ได้เปิดดูการ์ดอยู่ (ดึงตามเหตุการณ์ ไม่ใช่ดึงถี่)
-    else if (kind === 'saw' && currentUser && canEditPlan() && evs.some(e => e.type === 'out')) loadProdSawUsage(true);
+    // ถอดใบเลื่อย — ดึงใหม่เพื่อวางแผนลับคมให้อัตโนมัติ แม้ไม่ได้เปิดดูการ์ดอยู่ (ดึงตามเหตุการณ์ ไม่ใช่ดึงถี่
+    // หลายเครื่องดึงพร้อมกันได้ URL เดียวกัน (&ev=) ตัวกลางแคชไว้ ยิงขึ้นระบบผลิตครั้งเดียว)
+    else if (kind === 'saw' && evs.some(e => e.type === 'out')) loadProdSawUsage(true);
   });
 }
 // ตามเก็บรายการที่เข้ามาตอนเครื่องนี้ปิดแอป/พักจอ (realtime หลุด) — อ่านจากตารางของเราเอง ไม่ใช่ระบบผลิต
@@ -7037,16 +7038,18 @@ function goToSawGrindPlan(sawId) {
 }
 
 // ─── วางแผนลับคมอัตโนมัติ เมื่อระบบผลิตถอดใบเลื่อยออก (ผู้ใช้ขอ 23 พ.ย. 69) ───────────────
-// ทำบนเครื่องของ Admin/หัวหน้าที่เปิดแอปอยู่ (คนที่วางแผนได้) หลังดึงยอดใบเลื่อยจากระบบผลิตสำเร็จ
+// ทำบนเครื่องไหนก็ได้ที่เปิดแอปอยู่ (ทุกบทบาท รวมจอที่ยังไม่ล็อกอิน — ผู้ใช้ขอ 23 พ.ย. 69 ไม่ต้องรอ Admin/หัวหน้าเปิด)
+// หลังดึงยอดใบเลื่อยจากระบบผลิตสำเร็จ · ไม่มีเครื่องไหนเปิดเลย = วางตอนมีเครื่องแรกเปิดแอป
+// หลายเครื่องเปิดพร้อมกัน: หน่วงแบบสุ่ม 0–5 วินาที เครื่องแรกวางแล้วเครื่องอื่นได้ข้อมูลใหม่ (realtime) ก่อนถึงคิวตัวเอง จึงไม่วางซ้ำ
+//   ถ้ายังชนกันได้ รอบทำซ้ำคิดใหม่บนข้อมูลล่าสุด เจอว่ามีคนวางแล้วก็จบเงียบๆ ('noop' — ไม่ขึ้นกล่องเตือนบันทึกชน)
 // วางแบบเดียวกับกดการ์ดใบรอลับคมแล้วกดบันทึกเอง: ต่อท้ายคิวงานลับคมของวันนี้ · เวลาไม่พอ/วันหยุด เลื่อนวันให้ · ล้นกะ ตัดแบ่งวัน
 // ใบละ 1 ครั้งต่อการถอด 1 ครั้ง — จดเวลาถอดที่วางแผนแล้วไว้ที่ใบ (autoPlanFor) ลบงานทิ้งเองแล้วจะไม่สร้างซ้ำ
 // ทุกใบที่ถอด ไม่ว่าทะเบียนตั้งสถานะอะไร (ตามกติกาเดียวกับการ์ดรอลับคม — 21 พ.ย. 69)
 // ไม่วางให้: ใบที่ตั้งรอลับคมเอง (ไม่ได้มาจากระบบผลิต)
 // · ใบที่ไม่มีเวลาลับคม · การถอดก่อนเปิดใช้ความสามารถนี้ (SAW_AUTO_PLAN_FROM)
 const SAW_AUTO_PLAN_FROM = '2026-11-23T00:00:00Z';
-// เปิดแอป/ล็อกอิน โดยคนที่วางแผนได้ — มีข้อมูลระบบผลิตแล้วตรวจเลย · ยังไม่มีก็ดึง 1 ครั้ง (ไม่ดึงซ้ำถ้าเพิ่งดึงไป)
+// เปิดแอป/ล็อกอิน — มีข้อมูลระบบผลิตแล้วตรวจเลย · ยังไม่มีก็ดึง 1 ครั้ง (ไม่ดึงซ้ำถ้าเพิ่งดึงไป)
 function sawAutoPlanKick() {
-  if (!currentUser || !canEditPlan()) return;
   if (prodSawLive && prodSawLive.status === 'ok') sawAutoPlanRemoved();
   else loadProdSawUsage(false);
 }
@@ -7058,13 +7061,21 @@ function sawAutoPlanCandidates() {
     && x.r.autoPlanFor !== x.u.removedAt
     && (parseFloat(x.r.grindTime) || 0) > 0);
 }
-function sawAutoPlanRemoved() {
-  if (!currentUser || !canEditPlan() || typeof cloudSyncReady === 'undefined' || !cloudSyncReady) return;
-  if (!sawAutoPlanCandidates().length) return;
+let sawAutoPlanTimer = null;
+function sawAutoPlanRemoved(delayMs) {
+  if (typeof cloudSyncReady === 'undefined' || !cloudSyncReady) return;
+  if (sawAutoPlanTimer || !sawAutoPlanCandidates().length) return;
+  const wait = delayMs != null ? delayMs : Math.floor(Math.random() * 5000);
+  sawAutoPlanTimer = setTimeout(() => { sawAutoPlanTimer = null; sawAutoPlanRunNow(); }, wait);
+}
+function sawAutoPlanRunNow() {
+  if (!cloudSyncReady || !sawAutoPlanCandidates().length) return;
+  // เครื่องนี้มีของที่ผู้ใช้กดค้างรอเขียน/กำลังแก้ชนอยู่ — ห้ามแย่งช่องทำซ้ำ (cloudReapply) ของผู้ใช้ไป รอแล้วค่อยลองใหม่
+  if (cloudWriteInFlight || cloudWritePending || cloudReapply) { sawAutoPlanRemoved(3000); return; }
   withCloudRetry(() => {
     // คิดใหม่บนข้อมูลล่าสุดทุกครั้ง (รอบทำซ้ำหลังชนกับเครื่องอื่น อาจมีคนวางแผนไปแล้ว)
     const list = sawAutoPlanCandidates();
-    if (!list.length) return;
+    if (!list.length) return 'noop';
     const made = [];
     list.forEach(x => {
       const at = planSawGrindAuto(x.idx);
@@ -15720,8 +15731,11 @@ async function flushCloudWrite() {
       // ถ้ารายการที่เพิ่งกดเป็นแบบ "ทำซ้ำได้" ให้ทำซ้ำบนข้อมูลใหม่แล้วเขียนอีกครั้ง (ไม่ต้องกวนผู้ใช้)
       if (cloudReapply && cloudReapplyTries < CLOUD_REAPPLY_MAX) {
         cloudReapplyTries++;
-        try { cloudReapply(); } catch (e) { cloudReapply = null; }
+        let res;
+        try { res = cloudReapply(); } catch (e) { cloudReapply = null; }
         if (cloudWritePending) continue;   // cloudReapply เรียก persistState เอง → มีของรอเขียนแล้ว
+        // ทำซ้ำแล้วพบว่าไม่มีอะไรต้องทำ (เช่น วางแผนลับคมอัตโนมัติ แต่เครื่องอื่นวางไปแล้ว) — ไม่ใช่การบันทึกที่หาย ไม่ต้องเตือน
+        if (res === 'noop') { cloudReapply = null; cloudReapplyTries = 0; break; }
       }
       showCloudConflictNotice();
       break;
