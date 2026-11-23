@@ -2465,7 +2465,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-21.04';
+const APP_BUILD = '2026-11-23.01';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6293,24 +6293,38 @@ function prodEventLabel(kind, code, color, outMachine) {
   if (heads.length === 1) return String(heads[0].sizeSq || '').trim() + ' ' + sqColorMeta(heads[0].color).label + ' ' + sqSetOrdinalLabel(heads[0]);
   return 'Roll SQ รหัส ' + c + (color && sqColorMeta(color).key ? ' ' + sqColorMeta(color).label : '');
 }
+// ตัวกลาง api/sq-usage แคชผลไว้ที่ขอบ 5 นาที (ฝ่ายผลิตขอไม่ให้ดึงถี่) — หลังมีการถอด/ใส่ แคชนั้นเก่าแล้ว
+// จำเวลาของรายการล่าสุดไว้ แล้วแนบไปกับ URL ตอนดึง (&ev=…) = ได้ข้อมูลใหม่หลังการเปลี่ยนแน่นอน
+// ทุกเครื่องใช้ค่าเดียวกัน → ขอบ Vercel ยิงขึ้นระบบผลิตแค่ครั้งเดียวต่อการเปลี่ยน 1 ครั้ง ไม่ได้ดึงถี่ขึ้น
+// (เจอจริง 23 พ.ย.: เด้งถอด 170 แล้ว แต่การ์ดรอลับคมยังว่าง เพราะได้ข้อมูลเก่าจากแคช)
+var prodBust = { saw: '', sq: '' };
+function prodBustQs(kind) { return prodBust[kind] ? '&ev=' + encodeURIComponent(prodBust[kind]) : ''; }
 // rows = แถวจากตาราง prod_events · silent = จำไว้เฉยๆ ไม่เด้ง (เปิดเครื่องนี้ครั้งแรก ไม่ไล่แจ้งของเก่า)
 function handleProdEventRows(rows, silent) {
   const byKind = { saw: [], sq: [] };
+  const latest = { saw: '', sq: '' };
   (rows || []).forEach(r => {
     if (!r || !byKind[r.kind]) return;
     const t = Date.parse(r.recorded_at || '');
     if (isNaN(t)) return;
+    const iso = new Date(t).toISOString();
+    if (iso > latest[r.kind]) latest[r.kind] = iso;
     const at = new Date(t).toISOString(), machine = String(r.machine_id || '');
     if (r.code_out && r.code_in && String(r.code_out).trim() === String(r.code_in).trim()) return;
     if (r.code_out) byKind[r.kind].push({ type: 'out', at, machine, code: r.code_out, label: prodEventLabel(r.kind, r.code_out, null, machine) });
     if (r.code_in) byKind[r.kind].push({ type: 'in', at, machine, code: r.code_in, label: prodEventLabel(r.kind, r.code_in, r.color) });
   });
   Object.entries(byKind).forEach(([kind, evs]) => {
+    if (latest[kind] > prodBust[kind]) prodBust[kind] = latest[kind];
     if (!evs.length) return;
     const fresh = prodFilterNotified(kind, evs, silent);
     if (fresh.length) showProdChangePopup(kind, fresh.sort((a, b) => a.at.localeCompare(b.at)));
-    // ข้อมูลระบบผลิตที่แอปถืออยู่เก่าแล้ว — เปิดหน้าใบเลื่อย/SQ ครั้งถัดไปให้ดึงใหม่ (ไม่ดึงเองตรงนี้)
+    // ข้อมูลระบบผลิตที่แอปถืออยู่เก่าแล้ว — เปิดหน้าใบเลื่อย/SQ ครั้งถัดไปให้ดึงใหม่
     if (kind === 'saw') prodSawLive.at = 0; else prodSqLive.at = 0;
+    // กำลังเปิดดูการ์ดของชนิดนั้นอยู่ (ใช้งานจริง) — ดึงใหม่ทันที ไม่ต้องรอเปลี่ยนหน้า
+    const viewing = !document.hidden && ((currentPage === 'dashboard' && dashTab === kind)
+      || (currentPage === 'inuse' && typeof inUseTab !== 'undefined' && inUseTab === kind));
+    if (viewing && !silent) { if (kind === 'saw') loadProdSawUsage(true); else loadProdSqInUse(true); }
   });
 }
 // ตามเก็บรายการที่เข้ามาตอนเครื่องนี้ปิดแอป/พักจอ (realtime หลุด) — อ่านจากตารางของเราเอง ไม่ใช่ระบบผลิต
@@ -6387,7 +6401,7 @@ function loadProdSqInUse(force) {
     try {
       const today = toISODate(new Date());
       // ระบบผลิตรับช่วงได้ไม่เกิน 1 ปี — รอบที่ยังเปิดอยู่ไม่น่าเก่ากว่านั้น
-      const res = await fetch(PROD_SQ_PROXY_URL + '?kind=sq&from=' + addDaysIso(today, -364) + '&to=' + today);
+      const res = await fetch(PROD_SQ_PROXY_URL + '?kind=sq&from=' + addDaysIso(today, -364) + '&to=' + today + prodBustQs('sq'));
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const json = prodSqNormRows(await res.json());
       const open = (json.rows || []).filter(r => r && r.is_open && r.machine_id);
@@ -6548,7 +6562,7 @@ function loadProdSawUsage(force) {
   (async () => {
     try {
       const today = toISODate(new Date());
-      const res = await fetch(PROD_SQ_PROXY_URL + '?kind=saw&from=' + PROD_SAW_FROM + '&to=' + today);
+      const res = await fetch(PROD_SQ_PROXY_URL + '?kind=saw&from=' + PROD_SAW_FROM + '&to=' + today + prodBustQs('saw'));
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const json = await res.json();
       const byCode = {};
