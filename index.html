@@ -243,6 +243,8 @@ th.today-head .muted{color:#fff !important;opacity:.9;}
 .plan-date-popup-legend span{width:4px;height:4px;border-radius:50%;background:var(--amber);display:inline-block;}
 
 .content{flex:1;padding:24px;}
+/* iPhone ขยายตัวหนังสือเองตอนหมุนจอ/บางหน้า ทำให้ล้นกรอบ — ใช้ขนาดตามที่กำหนดไว้ */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;}
 
 /* ─── PAGE SYSTEM ───────────────────────────── */
 .page{display:none;}
@@ -928,6 +930,26 @@ canvas{display:block;}
   thead th{font-size:12px;color:var(--text-2);letter-spacing:0;padding:9px 10px;}
   tbody td{padding:9px 10px;}
   .chip{font-size:12px;}
+
+  /* กันหน้าล้นจอด้านข้างบนมือถือ (ผู้ใช้ขอ 23 พ.ย. 69) — iPhone (Safari) คิดความกว้างขั้นต่ำของข้อความไทยที่ไม่มีเว้นวรรค
+     กว้างกว่า Chrome การ์ดในกริดจึงดันคอลัมน์จนเกินจอ (เห็นจริงที่ KPI หน้า Dashboard) — ให้ช่องกริดหดได้เต็มที่ แล้วข้อความตัดบรรทัดเอง */
+  .kpi-grid>*,.dash-rollinuse-grid>*,.main [style*="display:grid"]>*{min-width:0;}
+  .kpi-change{display:block;}
+  .kpi-label,.kpi-change,.card-title{overflow-wrap:anywhere;}
+  /* ด่านสุดท้าย: อะไรที่ยังล้น ไม่ให้ทั้งหน้าเลื่อนออกข้าง (clip ไม่ทำให้หัวหน้าที่ตรึงไว้หลุด) — ตาราง/ปฏิทินที่กว้างเลื่อนในกรอบของตัวเอง */
+  .main{min-width:0;overflow-x:clip;}
+  /* ปฏิทินรายเดือน 7 คอลัมน์ใส่จอโทรศัพท์ไม่พอ — ให้เลื่อนซ้าย-ขวาในการ์ด (ช่องละ ~120px อ่านงานได้) */
+  #plan-view-month>.card{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  #plan-month-grid,#plan-month-weekdays{min-width:840px;}
+}
+/* จอโทรศัพท์: ระยะขอบเล็กลง ปุ่มสูงพอให้นิ้วกดง่าย */
+@media (max-width:600px){
+  .content{padding:10px;}
+  .card-header{padding:12px 14px 10px;flex-wrap:wrap;row-gap:6px;}
+  .card-body{padding:12px 14px;}
+  .btn{min-height:36px;}
+  .btn-sm{min-height:32px;}
+  .kpi-change{font-size:12px;}
 }
 @media (max-width:480px){
   /* คง 2 คอลัมน์ไว้ (ไม่ยุบเหลือ 1) ไม่งั้นการ์ด KPI 4 อันจะยาวเต็มจอจนต้องเลื่อนหาตารางงาน */
@@ -2465,7 +2487,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-23.01';
+const APP_BUILD = '2026-11-23.02';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
