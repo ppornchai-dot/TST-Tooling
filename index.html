@@ -2487,7 +2487,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-23.03';
+const APP_BUILD = '2026-11-23.04';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -8628,6 +8628,7 @@ function saveModal() {
       else if (f === 'id') rec.id = v || 'SW-NEW';
       else rec[f] = v || '—';
     });
+    if (!rec.grindTime) rec.grindTime = sawDefaultGrindTime(rec);   // ไม่กรอกเวลาลับคม — ใช้ค่ามาตรฐานของเครื่อง
     toolingData.saw.push(rec);
     const lastPage = Math.ceil(toolingData.saw.length / PAGE_SIZE);
     pageState.saw = lastPage;
@@ -20871,6 +20872,27 @@ function renderSqRegistry(page) {
   renderSqTable(page || pageState.sq || 1);
 }
 
+// เวลาลับคมมาตรฐานตามเครื่องที่ใบเลื่อยใช้ (นาที) — ผู้ใช้กำหนด 23 พ.ย. 69
+// ใบที่ยังไม่กรอกเวลาลับคม ใช้ค่านี้ · ใบที่กรอกไว้แล้วไม่ถูกเขียนทับ
+const SAW_GRIND_MIN_BY_MACHINE = { C5: 45, P1: 50, P2: 40, P3: 40, P4: 55 };
+function sawDefaultGrindTime(r) {
+  const v = SAW_GRIND_MIN_BY_MACHINE[String((r || {}).machine || '').trim().toUpperCase()];
+  return v ? String(v) : '';
+}
+// เปิดแอป (ได้ข้อมูลจริงจาก cloud แล้ว) โดยคนที่แก้ทะเบียนได้ — เติมเวลาลับคมให้ใบที่ยังว่าง ครั้งเดียวต่อการเปิด
+// ไม่มีใบว่างก็ไม่เขียนอะไร
+function sawFillDefaultGrindTimes() {
+  if (!currentUser || !canEditPlan()) return;
+  const need = r => !String(r.grindTime == null ? '' : r.grindTime).trim() && sawDefaultGrindTime(r);
+  if (!(toolingData.saw || []).some(need)) return;
+  withCloudRetry(() => {
+    let n = 0;
+    (toolingData.saw || []).forEach(r => { if (need(r)) { r.grindTime = sawDefaultGrindTime(r); n++; } });
+    if (!n) return;
+    persistState();
+    if (document.getElementById('tbody-saw')) renderSawTable(pageState.saw || 1);
+  });
+}
 // ช่อง "เวลาลับคม (นาที)" ในตารางใบเลื่อย — แก้ในตารางได้เลย
 // ทะเบียนใบเลื่อยยังไม่มีฟอร์มแก้ไขรายตัว (ปุ่มท้ายแถวเป็น "ดู" ที่ยังไม่ได้ทำ)
 // ถ้าไม่ให้แก้ตรงนี้ ใบที่ลงทะเบียนไว้แล้วจะกรอกเวลาไม่ได้เลย แล้วเอาไปวางแผนไม่ได้
@@ -20988,7 +21010,7 @@ function editSaw(idx) {
         if (f === 'usage') cur.usage = (v || '—') + ' ตัน';
         else cur[f] = v || '—';
       });
-      cur.grindTime = ((document.getElementById('f-saw-grind') || {}).value || '').trim();
+      cur.grindTime = ((document.getElementById('f-saw-grind') || {}).value || '').trim() || sawDefaultGrindTime(cur);
       cur.odMin = ((document.getElementById('f-saw-odmin') || {}).value || '').trim();
       cur.odCur = ((document.getElementById('f-saw-odcur') || {}).value || '').trim();
       // ตั้ง/เลิก "มีปัญหา" จากปุ่ม ✏️ ก็ลงประวัติเหมือนกดจากการ์ดบน Dashboard
@@ -25102,6 +25124,7 @@ function loginAs(user) {
   document.getElementById('login-overlay').classList.add('hidden');
   applyRoleUI();
   showPage(defaultPageForRole(effectiveRole()));
+  if (cloudSyncReady) sawFillDefaultGrindTimes();   // ล็อกอินหลังโหลดข้อมูลเสร็จ — เติมเวลาลับคมที่ว่างตอนนี้เลย
 }
 
 function logoutUser() {
@@ -25290,6 +25313,7 @@ async function initCloudSync() {
     // ตัวเตือนงานค้างรอจนได้ข้อมูลจริงก่อนถึงจะทำงาน (ดู maybeOpenLeftoverPrompt)
     // refreshAfterCloudUpdate() ข้างบนรันก่อนบรรทัดนี้ จึงยังถูกกันไว้ — ต้องเรียกอีกทีตรงนี้
     refreshLeftoverWatch();
+    sawFillDefaultGrindTimes();
     supabaseClient
       .channel('app_state_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state', filter: 'id=eq.main' }, payload => {
