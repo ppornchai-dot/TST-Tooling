@@ -941,6 +941,17 @@ canvas{display:block;}
   /* ปฏิทินรายเดือน 7 คอลัมน์ใส่จอโทรศัพท์ไม่พอ — ให้เลื่อนซ้าย-ขวาในการ์ด (ช่องละ ~120px อ่านงานได้) */
   #plan-view-month>.card{overflow-x:auto;-webkit-overflow-scrolling:touch;}
   #plan-month-grid,#plan-month-weekdays{min-width:840px;}
+  /* ปุ่มเล็กในหน้าวางแผนกดยากบนมือถือ (ผู้ใช้ขอ 24 พ.ย. 69) — ปุ่มสลับมุมมอง / ปุ่ม + ในช่องวันของปฏิทิน */
+  .plan-view-btn{padding:9px 16px;font-size:13px;}
+  .plan-cell-add{min-width:34px;min-height:30px;font-size:14px!important;}
+}
+/* iPhone (Safari) ซูมหน้าเข้าเองทุกครั้งที่แตะช่องกรอก/ช่องเลือกที่ตัวอักษรเล็กกว่า 16px แล้วไม่ซูมกลับ
+   หน้าเลยค้างที่ ~130% ล้นจอด้านขวา กดอะไรก็ยาก (ผู้ใช้แจ้ง 24 พ.ย. 69 หลังกดวางแผน) — ช่องกรอกบน iPhone ใช้ 16px
+   ใส่เฉพาะ iOS (-webkit-touch-callout มีแต่ใน iOS) Android/คอมไม่ซูมแบบนี้ จึงไม่ต้องขยายตัวอักษรตาม */
+@supports (-webkit-touch-callout: none) {
+  @media (max-width:900px) {
+    input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]), select, textarea{font-size:16px!important;}
+  }
 }
 /* จอโทรศัพท์: ระยะขอบเล็กลง ปุ่มสูงพอให้นิ้วกดง่าย */
 @media (max-width:600px){
@@ -2487,7 +2498,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-24.06';
+const APP_BUILD = '2026-11-24.07';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -11399,7 +11410,7 @@ function renderPlanMonth() {
             ${planDayCellSettingsHtml(iso, s.key, s.color, s.bg, true)}
             <!-- ปุ่ม + ใช้หน้าตาเดียวกับปุ่ม ⏱/👤 (ดู chip() ใน planDayCellSettingsHtml)
                  เดิมเป็นตัว + เปล่าๆ ไม่มีกรอบ อยู่ติดกันแล้วดูไม่เป็นปุ่มเหมือนอีกสองอัน -->
-            ${editable ? `<button class="btn btn-ghost btn-sm" title="${escapeHtmlAttr('เพิ่มงาน' + s.label)}"
+            ${editable ? `<button class="btn btn-ghost btn-sm plan-cell-add" title="${escapeHtmlAttr('เพิ่มงาน' + s.label)}"
               onclick="${jsCallAttr('addPlanTaskOnDate', iso, s.key)}"
               style="font-size:11px;font-weight:700;padding:2px 6px;border-radius:6px;line-height:1.35;white-space:nowrap;
                      color:${s.color};border-color:${s.color};background:${s.bg};flex-shrink:0;">+</button>` : ''}
