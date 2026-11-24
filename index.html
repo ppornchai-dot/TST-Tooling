@@ -2556,7 +2556,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-24.11';
+const APP_BUILD = '2026-11-24.12';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6454,7 +6454,46 @@ function prodSqNormColor(c) {
 }
 function prodSqNormRows(json) {
   (json && json.rows || []).forEach(r => { if (r && r.color != null) r.color = prodSqNormColor(r.color); });
+  if (json && Array.isArray(json.rows)) json.rows = prodMergeReinstallRounds(json.rows);
   return json;
+}
+// หน้างานกดบันทึกซ้ำ / บันทึก "ถอด X ใส่ X" ตัวเดิม → ระบบผลิตปิดรอบแล้วเปิดรอบใหม่ของรหัสเดิมที่เครื่องเดิมทันที
+// (เจอจริง 24 พ.ย. 69: ใบ 166 เครื่อง P2 กดบันทึก 10:04:38, 10:04:40, 10:34:11, 10:34:12 → ขึ้น 4 รอบ ยอด 0 ซ้ำๆ)
+// ของไม่ได้ออกจากเครื่องจริง → รวมเป็นรอบเดียว: เริ่มตามรอบแรก จบ/ยังใช้อยู่ตามรอบหลัง ยอดผลิตรวมกัน
+// เกณฑ์เดียวกับ prodChangeNotify: รหัสเดิม เครื่องเดิม (SQ = สีเดิมด้วย) และรอบใหม่เริ่มห่างจากตอนจบรอบเดิมไม่เกิน 2 นาที
+function prodMergeReinstallRounds(rows) {
+  const codeKey = c => String(c == null ? '' : c).trim().toUpperCase().replace(/^0+(?=\d)/, '');
+  const t = v => Date.parse(v || '');
+  const groups = new Map();
+  const out = [];
+  rows.forEach(r => {
+    if (!r || r.code == null || !String(r.machine_id || '').trim() || isNaN(t(r.started_at))) { out.push(r); return; }
+    const k = codeKey(r.code) + '|' + String(r.machine_id).trim() + '|' + String(r.color || '');
+    (groups.get(k) || groups.set(k, []).get(k)).push(r);
+  });
+  groups.forEach(list => {
+    list.sort((a, b) => t(a.started_at) - t(b.started_at));
+    let cur = null;
+    list.forEach(r => {
+      const gap = cur && !cur.is_open ? t(r.started_at) - t(cur.ended_at) : NaN;
+      if (cur && gap >= -2 * 60000 && gap <= 2 * 60000) {
+        // สินค้าของรอบ = ของรอบที่ผลิตได้มากกว่า (รอบที่ซ้ำมักเป็น 0)
+        if ((Number(r.kg) || 0) > (Number(cur.kg) || 0)) {
+          ['product_name', 'product_code', 'product_source'].forEach(f => { if (f in r) cur[f] = r[f]; });
+        }
+        ['kg', 'pcs', 'a_pcs', 'bc_pcs'].forEach(f => {
+          if (f in cur || f in r) cur[f] = (Number(cur[f]) || 0) + (Number(r[f]) || 0);
+        });
+        cur.ended_at = r.ended_at || null;
+        cur.is_open = !!r.is_open;
+        cur.merged_rounds = (cur.merged_rounds || 1) + 1;
+        return;
+      }
+      cur = Object.assign({}, r);
+      out.push(cur);
+    });
+  });
+  return out;
 }
 // color = สีของชุดที่ "ใส่เข้า" (ระบบผลิตส่งสีมาสีเดียว) — ชุดที่ถอดออกต้องไม่ใช้สีนี้ (เจอจริง 20 พ.ย.: ถอด GI 2"x2" สีแดงชุด 2
 // แต่สีที่ส่งมาเป็นแดง+ทองของชุดใหม่ เลยไปจับได้ GI 3"x1-1/2" แดง+ทองชุด 2 ผิดชุด)
@@ -6779,7 +6818,7 @@ function loadProdSawUsage(force) {
       const today = toISODate(new Date());
       const res = await fetch(PROD_SQ_PROXY_URL + '?kind=saw&from=' + PROD_SAW_FROM + '&to=' + today + prodBustQs('saw'));
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      const json = await res.json();
+      const json = prodSqNormRows(await res.json());
       const byCode = {};
       const open = [];
       (json.rows || []).forEach(r => {
