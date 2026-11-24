@@ -2556,7 +2556,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-24.10';
+const APP_BUILD = '2026-11-24.11';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -8409,11 +8409,13 @@ function sawThickGroupsHtml(col, cardHtml) {
     groups.get(k).push(it);
   });
   return [...groups.entries()].sort((a, b) => num(a[0]) - num(b[0]))
-    .map(([t, list]) => `<div style="display:flex;align-items:center;gap:8px;margin:10px 2px 6px;">
+    // กรอบรอบแต่ละกลุ่มความหนา ให้เห็นชัดว่ากลุ่มไหนจบตรงไหน (ผู้ใช้ขอ 24 พ.ย. 69)
+    .map(([t, list]) => `<div style="border:1.5px solid var(--border);border-radius:10px;padding:2px 8px 2px;margin:10px 0;background:var(--bg-surface);">
+      <div style="display:flex;align-items:center;gap:8px;margin:8px 2px 6px;">
         <b style="font-size:15px;font-weight:800;color:var(--text-1);white-space:nowrap;">${escapeHtmlAttr(t ? 'หนา ' + t + ' mm' : 'ไม่ระบุความหนา')}</b>
         <span style="flex:1;height:1px;background:var(--border-light);"></span>
         <span style="font-size:12px;font-weight:700;color:var(--text-3);white-space:nowrap;">${list.length} ใบ</span>
-      </div>` + list.map(it => cardHtml(it, true)).join('')).join('');
+      </div>` + list.map(it => cardHtml(it, true)).join('') + `</div>`).join('');
 }
 
 // วาดเฉพาะแผงที่กำลังเปิดอยู่ (แท็บ Roll ใช้ตัวเรนเดอร์เดิมของมันเอง ไม่ต้องทำอะไรที่นี่)
