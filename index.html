@@ -2487,7 +2487,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-24.04';
+const APP_BUILD = '2026-11-24.05';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5895,6 +5895,69 @@ function dashSqSetRowHtml(set, badgeColor, rowBg, hideSize) {
     <span style="margin-left:auto;display:inline-flex;align-items:center;gap:8px;flex-shrink:0;">${tag}${sqSetStatusChipHtml(sqSetKey(head))}</span>
   </div>`;
 }
+// ยอดผลิตของชุดจากระบบผลิต — หลังแต่งล่าสุด (lastService) และสะสม (ข้อมูลย้อนหลังที่ดึงได้ สูงสุด 1 ปี)
+function sqSetProdUsage(setKeyStr) {
+  const list = (prodSqLive && prodSqLive.usage && prodSqLive.usage[setKeyStr]) || null;
+  if (!list) return null;
+  const last = ((toolingData || {}).sq || []).filter(x => sqSetKey(x) === setKeyStr)
+    .map(x => String(x.lastService || '')).filter(v => /^\d{4}-\d{2}-\d{2}$/.test(v)).sort().pop() || '';
+  const sum = arr => arr.reduce((a, r) => ({ kg: a.kg + r.kg, pcs: a.pcs + r.pcs }), { kg: 0, pcs: 0 });
+  return { total: sum(list), lastService: last,
+    since: last ? sum(list.filter(r => toISODate(new Date(r.startedAt)) >= last)) : null };
+}
+// การ์ดชุดรอแต่ง — รูปแบบเดียวกับการ์ดใบเลื่อยรอลับคม (prodSawWaitingCardHtml)
+//   ยังไม่วางแผน = แดง ขอบทึบ · วางแผนแล้ว = น้ำเงิน ขอบประ
+//   บรรทัด 1: เลขชุด สี รหัส หน้าฟิล์ม · เวลาถอด  บรรทัด 2: ป้ายแผนแต่ง + สถานะ  บรรทัด 3: เครื่อง ใส่→ถอด + ยอดผลิต
+function dashSqWaitRowHtml(set) {
+  const head = set[0] || {};
+  const key = sqSetKey(head);
+  const cm = sqColorMeta(head.color);
+  const w = sqProdWaitInfo(key);
+  const pd = sqSetPlanDate(key);
+  const u = sqSetProdUsage(key);
+  const film = String(head.filmFace || '').trim();
+  const code = sqSetCodeBase(set);
+  const expired = set.filter(sqOdExpired).length;
+  const unmeasured = set.filter(r => !sqHasCurrentOd(r)).length;
+  const pill = txt => `<span style="flex-shrink:0;font-size:11.5px;font-weight:800;padding:1px 8px;border-radius:99px;
+      background:var(--bg-panel);color:var(--text-2);box-shadow:inset 0 0 0 1px var(--border-light);">${escapeHtmlAttr(txt)}</span>`;
+  const tons = (label, kg, pcs) => sawTonsPcsHtml(label, (Number(kg) || 0) / 1000, pcs);
+  const whereText = w ? 'ถอดจากเครื่อง ' + w.machine + ' เมื่อ ' + prodSqFmtTime(w.endedAt)
+    + ' (ใส่เมื่อ ' + prodSqFmtTime(w.startedAt) + ') · รอบสุดท้าย ' + prodSqTons(w.kg) + ' ตัน (' + w.pcs.toLocaleString() + ' เส้น)'
+    : 'ตั้งสถานะรอแต่งเองในทะเบียน (ระบบผลิตไม่ได้บันทึกการถอด)';
+  return `<div onclick="${jsCallAttr('goToSqDressPlan', key)}"
+    style="padding:8px 12px;border-radius:8px;margin-bottom:6px;cursor:pointer;
+           ${pd ? 'background:var(--accent-glow);border:2px dashed var(--accent);' : 'background:var(--red-dim);border:2px solid var(--red);'}"
+    title="${escapeHtmlAttr(sqSetFullLabel(head) + ' · Roll ' + set.length + ' ชิ้น · '
+      + (pd ? 'กดเพื่อไปที่งานแต่งชุดนี้ในหน้าวางแผน' : 'กดเพื่อวางแผนแต่งชุดนี้') + ' · ' + whereText
+      + (u && u.lastService ? ' · แต่งล่าสุด ' + fmtIsoDateThai(u.lastService) : ''))}">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span style="font-size:15px;font-weight:800;color:#fff;background:${pd ? 'var(--accent)' : 'var(--red)'};
+                   padding:3px 11px;border-radius:6px;flex-shrink:0;" title="ลำดับชุดของขนาด+สีนี้">${escapeHtmlAttr(String(sqSetOrdinalInfo(head).no))}</span>
+      ${rollColorPillHtml(cm.dot, cm.label)}
+      ${code ? `<span style="flex-shrink:0;font-size:11.5px;font-weight:600;color:var(--text-3);white-space:nowrap;" title="รหัส SQ">รหัส <b
+        style="font-size:12.5px;font-weight:800;color:var(--accent);">${escapeHtmlAttr(code)}</b></span>` : ''}
+      ${film ? pill('หน้าฟิล์ม ' + film) : ''}
+      <span style="font-size:11.5px;color:var(--text-3);margin-left:auto;">${w ? 'ถอด ' + escapeHtmlAttr(prodSqFmtTime(w.endedAt)) : 'ตั้งในทะเบียน'}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;">
+      <span style="flex:0 0 auto;font-size:12px;font-weight:800;padding:2px 9px;border-radius:99px;${pd
+          ? 'color:#fff;background:var(--accent);' : 'color:var(--red);background:var(--bg-panel);box-shadow:inset 0 0 0 1.5px var(--red);'}"
+        title="${escapeHtmlAttr(pd ? 'ตามแผนจะแต่งวันที่ ' + fmtDateThai(parseISODate(pd))
+          : 'ยังไม่ได้วางแผนแต่งชุดนี้ — วางแผนได้ที่หน้าวางแผน แท็บแต่ง Roll SQ')}">${pd
+        ? '📅 แผนแต่ง ' + escapeHtmlAttr(fmtDateThaiShort(parseISODate(pd))) : '⚠ ยังไม่ได้วางแผน'}</span>
+      ${sqSetStatusChipHtml(key)}
+      ${expired ? `<span class="chip chip-red" title="${escapeHtmlAttr('มี Roll ถึง OD หมดอายุแล้ว ' + expired + ' ชิ้น')}">ถึงอายุ ${expired}</span>`
+        : unmeasured ? `<span style="font-size:11px;color:var(--text-3);" title="${escapeHtmlAttr('ยังไม่ได้วัด OD ปัจจุบัน ' + unmeasured + ' ชิ้น')}">ยังไม่วัด OD ${unmeasured}</span>` : ''}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;margin-top:6px;font-size:12px;">
+      ${w ? `<div style="font-size:12px;color:var(--text-2);white-space:nowrap;">${escapeHtmlAttr(w.machine)} · ใส่ <b>${escapeHtmlAttr(prodSqFmtTime(w.startedAt))}</b> → ถอด <b>${escapeHtmlAttr(prodSqFmtTime(w.endedAt))}</b></div>
+        <div>${tons('รอบสุดท้าย', w.kg, w.pcs)}</div>` : ''}
+      ${u && u.since ? `<div title="${escapeHtmlAttr('ผลิตตั้งแต่แต่งล่าสุด ' + fmtIsoDateThai(u.lastService))}">${tons('หลังแต่ง', u.since.kg, u.since.pcs)}</div>` : ''}
+      ${u ? `<div title="ยอดรวมจากระบบผลิต (ข้อมูลย้อนหลังสูงสุด 1 ปี)">${tons('สะสม', u.total.kg, u.total.pcs)}</div>` : ''}
+    </div>
+  </div>`;
+}
 // ป้ายสถานะชุดบนแถวของ Dashboard — Admin/หัวหน้ากดเปลี่ยนสถานะได้ตรงนี้ (ตัวเดียวกับคอลัมน์ "สถานะชุด" ในทะเบียน)
 // แสดงสถานะที่ใช้จริง (ระบบผลิต/แผนแต่ง) · เมนูติ๊กที่ค่าในทะเบียน
 function sqSetStatusChipHtml(setKeyStr) {
@@ -6003,7 +6066,7 @@ function dashSqColumnsFor(set) {
   return bound.length ? bound : [SQ_NO_MACHINE_COL];
 }
 // แบ่งเป็นคอลัมน์ตามเครื่อง แบบเดียวกับที่การ์ดของชุด Roll แบ่งเป็นคอลัมน์
-function dashSqMachineGridHtml(list, badgeColor, rowBg, inUseSizes) {
+function dashSqMachineGridHtml(list, badgeColor, rowBg, inUseSizes, rowFn) {
   const columns = ROLL_MACHINES.map(m => [m, list.filter(s => dashSqColumnsFor(s).includes(m))]);
   const rest = list.filter(s => dashSqColumnsFor(s).includes(SQ_NO_MACHINE_COL));
   if (rest.length) columns.push([SQ_NO_MACHINE_COL, rest]);
@@ -6015,7 +6078,7 @@ function dashSqMachineGridHtml(list, badgeColor, rowBg, inUseSizes) {
     ${columns.map(([label, col]) => `<div>
       ${rollSetSectionHeaderHtml(label === SQ_NO_MACHINE_COL ? label : 'เครื่อง ' + label,
         col.length, label === SQ_NO_MACHINE_COL ? C_SLATE : C_BLUE)}
-      ${col.length ? dashSqSizeGroupsHtml(col, badgeColor, rowBg, inUseSizes && inUseSizes[label])
+      ${col.length ? dashSqSizeGroupsHtml(col, badgeColor, rowBg, inUseSizes && inUseSizes[label], rowFn)
         : '<div style="padding:4px;color:var(--text-3);font-size:12px;">ไม่มี</div>'}
     </div>`).join('')}
   </div>${sum > list.length ? `<div style="font-size:11px;color:var(--text-3);margin:8px 2px 0;">
@@ -6024,7 +6087,7 @@ function dashSqMachineGridHtml(list, badgeColor, rowBg, inUseSizes) {
 }
 
 // แบ่งชุดในคอลัมน์ออกเป็นกลุ่มตาม Size SQ — เรียงตามชื่อขนาด แล้วในกลุ่มเรียงตามสี/ลำดับชุด
-function dashSqSizeGroupsHtml(list, badgeColor, rowBg, inUseSet) {
+function dashSqSizeGroupsHtml(list, badgeColor, rowBg, inUseSet, rowFn) {
   const bySize = new Map();
   list.slice().sort(dashSqSetSortCmp).forEach(s => {
     const size = (s[0] || {}).sizeSq || 'ไม่ระบุขนาด';
@@ -6033,7 +6096,7 @@ function dashSqSizeGroupsHtml(list, badgeColor, rowBg, inUseSet) {
   });
   return [...bySize.entries()].map(([size, group]) => {
     const inner = dashSqSizeHeadHtml(size, group.length)
-      + group.map(s => dashSqSetRowHtml(s, badgeColor, rowBg, true)).join('');
+      + group.map(s => (rowFn || dashSqSetRowHtml)(s, badgeColor, rowBg, true)).join('');
     if (!inUseSet || !inUseSet.has(String(size).trim())) return inner;
     return `<div title="ขนาดนี้กำลังใช้งานอยู่บนเครื่องนี้"
       style="border:2px solid var(--inuse-neon);box-shadow:var(--inuse-neon-glow);border-radius:10px;padding:0 8px 2px;margin:8px 0 10px;">
@@ -6075,7 +6138,7 @@ function dashSqStatusCardHtml(sets, { title, color, groups, emptyText, maxHeight
           // การ์ดที่รายการยาว (เช่น "พร้อมใช้งาน" ที่ปกติมีเกือบทุกชุด) ให้เลื่อนในกล่องตัวเอง
           // ไม่งั้นการ์ดเดียวยาวจนดันการ์ดอื่นหลุดจอ
           maxHeight ? `max-height:${maxHeight}px;overflow-y:auto;` : ''}">
-          ${dashSqMachineGridHtml(g.list, g.color, g.bg, inUseSizes)}
+          ${dashSqMachineGridHtml(g.list, g.color, g.bg, inUseSizes, g.row)}
         </div>`).join(''));
   return `<div class="card" style="margin-bottom:18px;">
     <div class="card-header">
@@ -6129,7 +6192,7 @@ function dashSqWaitDressCardHtml(sets) {
   return dashSqStatusCardHtml(sets, {
     title: 'ชุด Roll SQ รอแต่ง', color: 'var(--red)',
     emptyText: 'ยังไม่มีชุด Roll SQ ที่รอแต่ง',
-    groups: [{ key: 'waitdress', label: 'รอแต่ง', color: 'var(--red)', bg: 'var(--red-dim)' }],
+    groups: [{ key: 'waitdress', label: 'รอแต่ง', color: 'var(--red)', bg: 'var(--red-dim)', row: dashSqWaitRowHtml }],
     keyOf: s => dashSqBaseStatus(sqSetKey(s[0])),
   });
 }
@@ -6526,7 +6589,11 @@ function loadProdSqInUse(force) {
         }
         removed[k] = { machine: String(r.machine_id || ''), endedAt: r.ended_at, startedAt: start, kg, pcs };
       });
-      prodSqLive = { status: 'ok', at: Date.now(), rounds, byKey, removed, error: null };
+      const usage = {};
+      Object.keys(roundsOf).forEach(k => {
+        usage[k] = roundsOf[k].map(r => ({ startedAt: r.started_at, kg: Number(r.kg) || 0, pcs: Number(r.pcs) || 0 }));
+      });
+      prodSqLive = { status: 'ok', at: Date.now(), rounds, byKey, removed, usage, error: null };
       // แจ้งเตือนมุมขวาล่างถ้าฝ่ายผลิตถอด/ใส่ชุดใหม่ตั้งแต่ครั้งก่อนที่เห็น
       prodChangeNotify('sq', json.rows || [], r => {
         const sk = apiSizeKey(r);
