@@ -2556,7 +2556,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-24.12';
+const APP_BUILD = '2026-11-24.13';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -7710,9 +7710,10 @@ async function renderProdWeightTooling(force) {
     sawMcStrip = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px;">${mcList.map(x => `
       <button onclick="document.getElementById('${mcAnchor(x.mc)}').scrollIntoView({behavior:'smooth',block:'start'})"
         style="cursor:pointer;display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:10px;
-               border:1px solid var(--accent);background:var(--bg-surface);color:var(--text-1);">
+               border:1px solid var(--accent);background:var(--bg-surface);color:var(--text-1);"
+        title="${escapeHtmlAttr('เครื่อง ' + x.mc + ' · ' + x.pcs.toLocaleString() + ' เส้น · ' + fmtTons2(x.kg / 1000) + ' ตัน')}">
         <span style="background:var(--accent);color:#fff;font-weight:800;font-size:13px;padding:2px 9px;border-radius:6px;">${escapeHtmlAttr(x.mc)}</span>
-        <span style="font-size:12px;color:var(--text-2);text-align:left;line-height:1.35;"><b>${escapeHtmlAttr(fmtTons2(x.kg / 1000))}</b> ตัน
+        <span style="font-size:12px;color:var(--text-2);text-align:left;line-height:1.35;"><b>${escapeHtmlAttr(x.pcs.toLocaleString())}</b> เส้น
           <span style="color:var(--text-3);">· ${x.gs.length} ${unit} · ${x.rounds} รอบ</span></span>
       </button>`).join('')}</div>`;
     tableRows = mcList.map((x, i) => `${i ? '<tbody><tr><td colspan="7" style="padding:0;height:10px;background:var(--bg-surface);border:none;"></td></tr></tbody>' : ''}<tbody class="mc-box">
