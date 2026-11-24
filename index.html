@@ -2487,7 +2487,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-24.03';
+const APP_BUILD = '2026-11-24.04';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6003,7 +6003,7 @@ function dashSqColumnsFor(set) {
   return bound.length ? bound : [SQ_NO_MACHINE_COL];
 }
 // แบ่งเป็นคอลัมน์ตามเครื่อง แบบเดียวกับที่การ์ดของชุด Roll แบ่งเป็นคอลัมน์
-function dashSqMachineGridHtml(list, badgeColor, rowBg) {
+function dashSqMachineGridHtml(list, badgeColor, rowBg, inUseSizes) {
   const columns = ROLL_MACHINES.map(m => [m, list.filter(s => dashSqColumnsFor(s).includes(m))]);
   const rest = list.filter(s => dashSqColumnsFor(s).includes(SQ_NO_MACHINE_COL));
   if (rest.length) columns.push([SQ_NO_MACHINE_COL, rest]);
@@ -6015,7 +6015,7 @@ function dashSqMachineGridHtml(list, badgeColor, rowBg) {
     ${columns.map(([label, col]) => `<div>
       ${rollSetSectionHeaderHtml(label === SQ_NO_MACHINE_COL ? label : 'เครื่อง ' + label,
         col.length, label === SQ_NO_MACHINE_COL ? C_SLATE : C_BLUE)}
-      ${col.length ? dashSqSizeGroupsHtml(col, badgeColor, rowBg)
+      ${col.length ? dashSqSizeGroupsHtml(col, badgeColor, rowBg, inUseSizes && inUseSizes[label])
         : '<div style="padding:4px;color:var(--text-3);font-size:12px;">ไม่มี</div>'}
     </div>`).join('')}
   </div>${sum > list.length ? `<div style="font-size:11px;color:var(--text-3);margin:8px 2px 0;">
@@ -6024,24 +6024,38 @@ function dashSqMachineGridHtml(list, badgeColor, rowBg) {
 }
 
 // แบ่งชุดในคอลัมน์ออกเป็นกลุ่มตาม Size SQ — เรียงตามชื่อขนาด แล้วในกลุ่มเรียงตามสี/ลำดับชุด
-function dashSqSizeGroupsHtml(list, badgeColor, rowBg) {
+function dashSqSizeGroupsHtml(list, badgeColor, rowBg, inUseSet) {
   const bySize = new Map();
   list.slice().sort(dashSqSetSortCmp).forEach(s => {
     const size = (s[0] || {}).sizeSq || 'ไม่ระบุขนาด';
     if (!bySize.has(size)) bySize.set(size, []);
     bySize.get(size).push(s);
   });
-  return [...bySize.entries()].map(([size, group]) =>
-    dashSqSizeHeadHtml(size, group.length)
-    + group.map(s => dashSqSetRowHtml(s, badgeColor, rowBg, true)).join('')).join('');
+  return [...bySize.entries()].map(([size, group]) => {
+    const inner = dashSqSizeHeadHtml(size, group.length)
+      + group.map(s => dashSqSetRowHtml(s, badgeColor, rowBg, true)).join('');
+    if (!inUseSet || !inUseSet.has(String(size).trim())) return inner;
+    return `<div title="ขนาดนี้กำลังใช้งานอยู่บนเครื่องนี้"
+      style="border:2px solid var(--inuse-neon);box-shadow:var(--inuse-neon-glow);border-radius:10px;padding:0 8px 2px;margin:8px 0 10px;">
+      ${inner}</div>`;
+  }).join('');
 }
 
 // การ์ดรวมชุดตามสถานะ — รูปแบบเดียวกับการ์ดของชุด Roll
 // การ์ดที่มีสถานะเดียว (กำลังใช้งาน/พร้อมใช้งาน) แสดงเป็นตารางคอลัมน์ GS/GI ตรงๆ
 // การ์ดที่มีหลายสถานะ (กำลังแต่ง/รอแต่ง) คั่นด้วยแถบสีของแต่ละสถานะก่อน แล้วค่อยแบ่งคอลัมน์ข้างใน
 // (เกณฑ์เดียวกับการ์ด "ชุด Roll กำลังแต่ง" ที่คั่นเป็น งานค้าง/กำลังทำ/รอทำ)
-function dashSqStatusCardHtml(sets, { title, color, groups, emptyText, maxHeight, action, extra, keyOf }) {
+function dashSqStatusCardHtml(sets, { title, color, groups, emptyText, maxHeight, action, extra, keyOf, highlightInUse }) {
   const keyFn = keyOf || (s => dashSqEffectiveStatus(sqSetKey(s[0])));
+  let inUseSizes = null;
+  if (highlightInUse) {
+    inUseSizes = {};
+    (sets || []).forEach(st => {
+      if (!st[0] || dashSqEffectiveStatus(sqSetKey(st[0])) !== 'inuse') return;
+      const size = String(st[0].sizeSq || '').trim();
+      if (size) dashSqColumnsFor(st).forEach(m => (inUseSizes[m] = inUseSizes[m] || new Set()).add(size));
+    });
+  }
   const byGroup = groups.map(g => ({ ...g, list: sets.filter(s => keyFn(s) === g.key) }));
   const total = byGroup.reduce((n, g) => n + g.list.length, 0);
   const sub = groups.length > 1 ? byGroup.filter(g => g.list.length).map(g => g.label + ' ' + g.list.length).join(' · ') : '';
@@ -6061,7 +6075,7 @@ function dashSqStatusCardHtml(sets, { title, color, groups, emptyText, maxHeight
           // การ์ดที่รายการยาว (เช่น "พร้อมใช้งาน" ที่ปกติมีเกือบทุกชุด) ให้เลื่อนในกล่องตัวเอง
           // ไม่งั้นการ์ดเดียวยาวจนดันการ์ดอื่นหลุดจอ
           maxHeight ? `max-height:${maxHeight}px;overflow-y:auto;` : ''}">
-          ${dashSqMachineGridHtml(g.list, g.color, g.bg)}
+          ${dashSqMachineGridHtml(g.list, g.color, g.bg, inUseSizes)}
         </div>`).join(''));
   return `<div class="card" style="margin-bottom:18px;">
     <div class="card-header">
@@ -7942,6 +7956,7 @@ function dashSqReadyCardHtml(sets) {
     emptyText: 'ยังไม่มีชุด Roll SQ ที่พร้อมใช้งาน',
     groups: [{ key: 'ready', label: 'พร้อมใช้งาน', color: 'var(--green)', bg: 'var(--green-dim)' }],
     maxHeight: 420,
+    highlightInUse: true,
   });
 }
 
