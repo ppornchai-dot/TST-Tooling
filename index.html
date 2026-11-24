@@ -958,6 +958,51 @@ canvas{display:block;}
   .plan-view-btn{padding:9px 16px;font-size:13px;}
   .plan-cell-add{min-width:34px;min-height:30px;font-size:14px!important;}
 }
+/* ปฏิทินรายเดือนบนจอโทรศัพท์ (ผู้ใช้ขอ 24 พ.ย. 69 "ปุ่มดูงง") — เดิมกว้าง 840px เลื่อนซ้าย-ขวา ปุ่ม OT/👤/+ ซ้อนกัน
+   และแถบชื่อวันที่ตรึงไว้ไปลอยกลางปฏิทิน (sticky ใช้ไม่ได้ในกล่องที่เลื่อนข้าง)
+   → 7 คอลัมน์พอดีจอ ในช่องเหลือแค่วันที่ + จำนวนงาน · แตะช่องวัน = เปิดรายวันของวันนั้น (มีปุ่มเพิ่มงาน/OT/คนครบ) */
+@media (max-width:700px){
+  /* แถบหัวหน้าวางแผน (ปุ่มประเภทงาน+คำอธิบายสี+เดือน) สูงเกือบครึ่งจอโทรศัพท์ — ไม่ตรึง ให้เลื่อนไปกับหน้า
+     แถวชื่อวันของปฏิทินจึงตรึงใต้ topbar อย่างเดียว */
+  #plan-sticky-head{position:static;box-shadow:none;}
+  #plan-month-weekdays{top:var(--plan-head-top,var(--topbar-h));}
+  #plan-view-month>.card{overflow-x:visible;}
+  #plan-month-grid,#plan-month-weekdays{min-width:0!important;gap:3px!important;padding-left:6px!important;padding-right:6px!important;}
+  .plan-wd{font-size:11px;letter-spacing:0;padding:5px 0;}
+  .plan-mcell{padding:4px 2px!important;min-height:54px!important;min-width:0;align-items:center;text-align:center;
+    display:flex!important;flex-direction:column;gap:3px;}
+  .plan-mcell-blank{min-height:54px!important;padding:0!important;}
+  .plan-mcell-head{justify-content:center!important;}
+  .plan-mcell-head strong{font-size:14px!important;}
+  .plan-mcell-tools,.plan-mcell .plan-drop-zone,.plan-mcell .today-badge{display:none!important;}
+  .plan-mcell-off{font-size:10px!important;font-weight:700!important;min-height:0!important;padding:0!important;line-height:1.2!important;}
+  .plan-mcell-sum{display:inline-block!important;}
+
+  /* ตารางรายวันบนจอโทรศัพท์ — เดิมกว้าง ~700px ต้องเลื่อนซ้าย-ขวา → แต่ละงานเป็นการ์ดเรียงลงมา พอดีจอ
+     บรรทัดแรก: ลำดับ + ชื่อ Roll · ถัดมา: ขนาด/ชุดสี/จำนวนชิ้น · เวลาเริ่ม-จบ/นาที · ปุ่มจัดการชิดขวา */
+  #plan-view-day .table-wrap{overflow-x:visible;}
+  #plan-view-day table,#plan-view-day tbody{display:block;width:100%;}
+  #plan-view-day thead{display:none;}
+  #plan-day-tbody>tr{display:block;}
+  #plan-day-tbody>tr>td[colspan]{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  #plan-day-tbody>tr[data-taskid]{display:flex;flex-wrap:wrap;align-items:center;gap:5px 10px;
+    padding:10px 12px;border-bottom:1px solid var(--border-light);}
+  #plan-day-tbody>tr[data-taskid]>td{display:block;padding:0!important;border:none!important;font-size:13px;}
+  #plan-day-tbody>tr[data-taskid]>td:nth-child(1){order:1;}
+  #plan-day-tbody>tr[data-taskid]>td:nth-child(5){order:2;flex:1 1 70%;font-size:15px;}
+  #plan-day-tbody>tr[data-taskid]>td:nth-child(2){order:3;font-weight:700;color:var(--text-1);}
+  #plan-day-tbody>tr[data-taskid]>td:nth-child(3){order:4;}
+  #plan-day-tbody>tr[data-taskid]>td:nth-child(4){order:5;}
+  #plan-day-tbody>tr[data-taskid]>td:nth-child(7){order:6;}
+  #plan-day-tbody>tr[data-taskid]>td:nth-child(7)::before{content:'เริ่ม ';}
+  #plan-day-tbody>tr[data-taskid]>td:nth-child(8){order:7;}
+  #plan-day-tbody>tr[data-taskid]>td:nth-child(8)::before{content:'→ จบ ';}
+  #plan-day-tbody>tr[data-taskid]>td:nth-child(6){order:8;text-align:left!important;}
+  #plan-day-tbody>tr[data-taskid]>td:nth-child(6)::before{content:'· ';}
+  #plan-day-tbody>tr[data-taskid]>td:nth-child(6)::after{content:' นาที';}
+  #plan-day-tbody>tr[data-taskid]>td:nth-child(9){order:9;flex:1 1 100%;display:flex!important;justify-content:flex-end;gap:8px!important;}
+  #plan-day-tbody>tr[data-taskid]>td:nth-child(9) .btn{min-height:34px;padding:6px 16px;font-size:13px;}
+}
 /* iPhone (Safari) ซูมหน้าเข้าเองทุกครั้งที่แตะช่องกรอก/ช่องเลือกที่ตัวอักษรเล็กกว่า 16px แล้วไม่ซูมกลับ
    หน้าเลยค้างที่ ~130% ล้นจอด้านขวา กดอะไรก็ยาก (ผู้ใช้แจ้ง 24 พ.ย. 69 หลังกดวางแผน) — ช่องกรอกบน iPhone ใช้ 16px
    ใส่เฉพาะ iOS (-webkit-touch-callout มีแต่ใน iOS) Android/คอมไม่ซูมแบบนี้ จึงไม่ต้องขยายตัวอักษรตาม */
@@ -2511,7 +2556,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-24.08';
+const APP_BUILD = '2026-11-24.09';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -11395,7 +11440,7 @@ function renderPlanMonth() {
       </span>
     </div>`;
     for (let i = 0; i < leadingBlanks; i++) {
-      html += `<div style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"></div>`;
+      html += `<div class="plan-mcell-blank" style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;"></div>`;
     }
     for (let day = 1; day <= daysInMonth; day++) {
       const d = new Date(year, month, day);
@@ -11413,13 +11458,15 @@ function renderPlanMonth() {
           .map(g => planCalendarChipForGroup(g, iso, editable, false)).join('')
         + planInsertTasksFor(iso, s.key, null).map(t => planInsertChipHtml(iso, t)).join('');
       const isToday = iso === toISODate(new Date());   // ป้ายวันนี้ = วันที่ตามปฏิทินจริง
-      html += `<div onclick="planOpenDayFromCell(event, '${iso}')" class="${isToday ? 'today-ring' : ''}"
+      // จำนวนงานของวัน (นับตามชิปที่แสดง) — ใช้บนจอโทรศัพท์ที่ซ่อนชิปไว้
+      const nJobs = planChipGroups(tasks).length + planInsertTasksFor(iso, s.key, null).length;
+      html += `<div onclick="planOpenDayFromCell(event, '${iso}')" class="plan-mcell${isToday ? ' today-ring' : ''}"
         style="padding:8px;border:1px solid var(--border-light);border-radius:6px;min-height:70px;cursor:pointer;${dayOffBg || (isToday ? 'background:var(--accent-glow);' : '')}${offLabel ? 'display:flex;flex-direction:column;' : ''}"
         title="${escapeHtmlAttr((isToday ? 'วันนี้ · ' : '') + (offLabel ? 'วันหยุด: ' + offLabel + ' · ' : '') + 'กดที่ช่องนี้เพื่อเปิดแผนของวันนี้')}">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">
+        <div class="plan-mcell-head" style="display:flex;justify-content:space-between;align-items:center;gap:4px;">
           <strong style="font-size:12px;flex-shrink:0;${isToday ? 'color:var(--accent);' : ''}">${day}</strong>
           ${isToday ? '<span class="today-badge">วันนี้</span>' : ''}
-          <span style="display:inline-flex;align-items:center;gap:4px;flex-shrink:0;margin-left:auto;">
+          <span class="plan-mcell-tools" style="display:inline-flex;align-items:center;gap:4px;flex-shrink:0;margin-left:auto;">
             ${planDayCellSettingsHtml(iso, s.key, s.color, s.bg, true)}
             <!-- ปุ่ม + ใช้หน้าตาเดียวกับปุ่ม ⏱/👤 (ดู chip() ใน planDayCellSettingsHtml)
                  เดิมเป็นตัว + เปล่าๆ ไม่มีกรอบ อยู่ติดกันแล้วดูไม่เป็นปุ่มเหมือนอีกสองอัน -->
@@ -11429,7 +11476,9 @@ function renderPlanMonth() {
                      color:${s.color};border-color:${s.color};background:${s.bg};flex-shrink:0;">+</button>` : ''}
           </span>
         </div>
-        ${offLabel ? `<div style="flex:1;display:flex;align-items:center;justify-content:center;min-height:42px;padding:2px 4px;
+        ${nJobs ? `<span class="plan-mcell-sum" style="display:none;font-size:11px;font-weight:800;padding:1px 7px;border-radius:99px;
+            color:#fff;background:${s.color};" title="${nJobs} งาน">${nJobs} งาน</span>` : ''}
+        ${offLabel ? `<div class="plan-mcell-off" style="flex:1;display:flex;align-items:center;justify-content:center;min-height:42px;padding:2px 4px;
             font-size:15px;font-weight:800;color:var(--amber);text-align:center;line-height:1.3;overflow-wrap:anywhere;">${escapeHtmlAttr(offLabel)}</div>` : ''}
         <div class="plan-drop-zone" data-day="${iso}" style="margin-top:6px;display:flex;flex-direction:column;gap:4px;min-height:${offLabel ? 0 : 30}px;">${chips}</div>
       </div>`;
