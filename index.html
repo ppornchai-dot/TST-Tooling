@@ -2556,7 +2556,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-24.13';
+const APP_BUILD = '2026-11-24.14';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -7946,15 +7946,36 @@ function renderToolingLife() {
     return `<span style="font-weight:800;color:${color};">${x.left <= 0 ? 'ถึงอายุ' : 'เหลือ ' + escapeHtmlAttr(x.left.toLocaleString()) + ' mm'}</span>${
       x.left < 0 ? ` <span class="muted" style="font-size:11px;">(เกิน ${escapeHtmlAttr((-x.left).toLocaleString())} mm)</span>` : ''}`;
   };
+  // การ์ดสรุป + รหัสใบในแต่ละการ์ด (ผู้ใช้ขอ 24 พ.ย. 69) — กดรหัส = ไปที่ใบนั้นในทะเบียน · เกิน 24 ใบย่อเป็น +N
+  const SAW_KPI_MAX_CODES = 24;
+  // เครื่องของใบ = เครื่องที่ระบบผลิตบอกว่าใบอยู่ตอนนี้ ถ้าไม่ได้อยู่บนเครื่อง = เครื่องตามทะเบียน
+  const mcOfSaw = x => {
+    const m = String((x.u && x.u.open && x.u.open.machine) || x.r.machine || '').trim();
+    return m && m !== '—' ? m : '';
+  };
+  const kpiCodes = (label, xs, color, sub) => {
+    const chip = x => { const mc = mcOfSaw(x); return `<span onclick="${jsCallAttr('goToSawBlade', x.r.id)}" title="${escapeHtmlAttr('รหัส ' + x.r.id
+        + (mc ? ' · เครื่อง ' + mc : ' · ไม่ระบุเครื่อง') + ' — กดเพื่อไปที่ใบนี้ในทะเบียน')}"
+      style="cursor:pointer;font-size:11.5px;font-weight:800;padding:1px 7px;border-radius:6px;background:var(--bg-panel);white-space:nowrap;
+             color:var(--text-1);box-shadow:inset 0 0 0 1px ${color};">${escapeHtmlAttr(String(x.r.id || '—'))}${
+        mc ? `<span style="font-weight:600;color:var(--text-3);"> · ${escapeHtmlAttr(mc)}</span>` : ''}</span>`; };
+    const rest = xs.slice(SAW_KPI_MAX_CODES);
+    const codes = !xs.length ? '' : `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;">${xs.slice(0, SAW_KPI_MAX_CODES).map(chip).join('')}${
+      rest.length ? `<span style="font-size:11.5px;font-weight:700;color:var(--text-3);padding:1px 4px;"
+        title="${escapeHtmlAttr(rest.map(x => x.r.id).join(', '))}">+${rest.length}</span>` : ''}</div>`;
+    return dashMiniKpi(label, xs.length.toLocaleString(), color, sub).replace(/<\/div>\s*$/, codes + '</div>');
+  };
+  const byId = (a, b) => String(a.r.id).localeCompare(String(b.r.id), 'th', { numeric: true });
+  const ofStatus = (...ss) => list.filter(x => ss.includes(x.st.status)).sort(byId);
   el.innerHTML = `
-    <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));">
-      ${dashMiniKpi('ถึง OD หมดอายุ', nExp.toLocaleString(), 'var(--red)', 'OD ปัจจุบัน ≤ OD หมดอายุ')}
-      ${dashMiniKpi('ใกล้หมดอายุ', nWarn.toLocaleString(), 'var(--amber)', 'เหลือไม่เกิน ' + SAW_OD_WARN_MM + ' mm')}
-      ${dashMiniKpi('ยังไม่มี OD หมดอายุ', nNoSpec.toLocaleString(), 'var(--text-3)', 'หรือยังไม่มี OD ปัจจุบัน')}
-      ${dashMiniKpi('กำลังใช้งาน', n('กำลังใช้งาน').toLocaleString(), 'var(--inuse)', 'ใบที่อยู่บนเครื่องตอนนี้')}
-      ${dashMiniKpi('รอลับคม', n('รอลับคม').toLocaleString(), 'var(--red)', 'ถอดแล้ว ยังไม่ได้วางแผนลับ')}
-      ${dashMiniKpi('กำลังลับคม', n('กำลังลับคม').toLocaleString(), 'var(--amber)', 'วางแผน/กำลังลับอยู่')}
-      ${dashMiniKpi('มีปัญหา / หมดอายุ', (n('มีปัญหา') + n('หมดอายุ')).toLocaleString(), 'var(--text-2)', 'ตั้งไว้ในทะเบียน')}
+    <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));align-items:start;">
+      ${kpiCodes('ถึง OD หมดอายุ', list.filter(x => x.left != null && x.left <= 0), 'var(--red)', 'OD ปัจจุบัน ≤ OD หมดอายุ')}
+      ${kpiCodes('ใกล้หมดอายุ', list.filter(x => x.left != null && x.left > 0 && x.left <= SAW_OD_WARN_MM), 'var(--amber)', 'เหลือไม่เกิน ' + SAW_OD_WARN_MM + ' mm')}
+      ${kpiCodes('ยังไม่มี OD หมดอายุ', list.filter(x => x.left == null).sort(byId), 'var(--text-3)', 'หรือยังไม่มี OD ปัจจุบัน')}
+      ${kpiCodes('กำลังใช้งาน', ofStatus('กำลังใช้งาน'), 'var(--inuse)', 'ใบที่อยู่บนเครื่องตอนนี้')}
+      ${kpiCodes('รอลับคม', ofStatus('รอลับคม'), 'var(--red)', 'ถอดแล้ว ยังไม่ได้วางแผนลับ')}
+      ${kpiCodes('กำลังลับคม', ofStatus('กำลังลับคม'), 'var(--amber)', 'วางแผน/กำลังลับอยู่')}
+      ${kpiCodes('มีปัญหา / หมดอายุ', ofStatus('มีปัญหา', 'หมดอายุ'), 'var(--text-2)', 'ตั้งไว้ในทะเบียน')}
     </div>
     <div class="card table-wrap table-wrap-sticky">
       <table>
