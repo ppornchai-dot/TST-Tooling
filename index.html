@@ -1578,6 +1578,7 @@ canvas{display:block;}
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--red);" id="kpi-saw-wait">0</span><span class="reg-kpi-lbl">รอลับคม</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--amber);" id="kpi-saw-problem">0</span><span class="reg-kpi-lbl">มีปัญหา</span></div>
           <div class="reg-kpi"><span class="reg-kpi-val" style="color:var(--text-3);" id="kpi-saw-expired">0</span><span class="reg-kpi-lbl">หมดอายุ</span></div>
+          <div class="reg-kpi"><span class="reg-kpi-val" style="color:#475569;" id="kpi-saw-retired">0</span><span class="reg-kpi-lbl">ยกเลิกใช้งาน</span></div>
         </div>
         <!-- วางแบบเดียวกับแท็บ Roll SQ: คอลัมน์ซ้ายเลือกเครื่องผลิต / ใบเลื่อย · คอลัมน์ขวาเป็นตารางของที่เลือก -->
         <div class="reg-registry-grid" style="display:grid;grid-template-columns:340px 1fr;gap:14px;align-items:start;">
@@ -2556,7 +2557,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-24.15';
+const APP_BUILD = '2026-11-24.16';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6966,7 +6967,9 @@ function prodSawWaitingList() {
     //   + ใบที่ตั้งสถานะ "รอลับคม" เองในทะเบียน และระบบผลิตไม่มีข้อมูลของใบนี้เลย (ผู้ใช้ขอ 21 พ.ย. 69)
     //     ใบที่มีข้อมูลในระบบผลิต ยึดระบบผลิต: ลับคมหลังถอดแล้ว = พร้อมใช้ ถึงทะเบียนจะค้าง "รอลับคม" ก็ไม่ขึ้น
     //     (เจอจริง: 163 ทะเบียนค้างรอลับคม แต่ลับคม 20 พ.ย. หลังถอด 19 พ.ย. แล้ว — ป้ายขึ้นพร้อมใช้ แต่ไปโผล่ในการ์ดรอลับคม)
-    .filter(x => (x.u.waiting || (sawManualStatus(x.r) === 'รอลับคม' && !x.u.p)) && !info.working.has(x.idx))
+    //   ยกเว้นใบที่ตั้ง "ยกเลิกใช้งาน" — เลิกใช้แล้ว ไม่ต้องลับ (ไม่ขึ้นการ์ด และไม่ถูกวางแผนลับอัตโนมัติ)
+    .filter(x => (x.u.waiting || (sawManualStatus(x.r) === 'รอลับคม' && !x.u.p)) && !info.working.has(x.idx)
+      && sawManualStatus(x.r) !== 'ยกเลิกใช้งาน')
     .map(x => ({ ...x, manual: !x.u.waiting,
       // เครื่อง = เครื่องที่ถอดออกมา (ระบบผลิต) · ตั้งเอง = เครื่องในทะเบียน
       machine: x.u.waiting ? x.u.last.machine : sawMachineOf(x.r) }))
@@ -7985,15 +7988,18 @@ function renderToolingLife() {
   };
   const byId = (a, b) => String(a.r.id).localeCompare(String(b.r.id), 'th', { numeric: true });
   const ofStatus = (...ss) => list.filter(x => ss.includes(x.st.status)).sort(byId);
+  // ใบที่ยกเลิกใช้งานแล้ว ไม่ต้องเตือนเรื่องอายุ OD — ไปอยู่การ์ด "ยกเลิกใช้งาน" แทน
+  const active = list.filter(x => x.st.status !== 'ยกเลิกใช้งาน');
   el.innerHTML = `
     <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));align-items:start;">
-      ${kpiCodes('ถึง OD หมดอายุ', list.filter(x => x.left != null && x.left <= 0), 'var(--red)', 'OD ปัจจุบัน ≤ OD หมดอายุ')}
-      ${kpiCodes('ใกล้หมดอายุ', list.filter(x => x.left != null && x.left > 0 && x.left <= SAW_OD_WARN_MM), 'var(--amber)', 'เหลือไม่เกิน ' + SAW_OD_WARN_MM + ' mm')}
-      ${kpiCodes('ยังไม่มี OD หมดอายุ', list.filter(x => x.left == null).sort(byId), 'var(--text-3)', 'หรือยังไม่มี OD ปัจจุบัน')}
+      ${kpiCodes('ถึง OD หมดอายุ', active.filter(x => x.left != null && x.left <= 0), 'var(--red)', 'OD ปัจจุบัน ≤ OD หมดอายุ')}
+      ${kpiCodes('ใกล้หมดอายุ', active.filter(x => x.left != null && x.left > 0 && x.left <= SAW_OD_WARN_MM), 'var(--amber)', 'เหลือไม่เกิน ' + SAW_OD_WARN_MM + ' mm')}
+      ${kpiCodes('ยังไม่มี OD หมดอายุ', active.filter(x => x.left == null).sort(byId), 'var(--text-3)', 'หรือยังไม่มี OD ปัจจุบัน')}
       ${kpiCodes('กำลังใช้งาน', ofStatus('กำลังใช้งาน'), 'var(--inuse)', 'ใบที่อยู่บนเครื่องตอนนี้')}
       ${kpiCodes('รอลับคม', ofStatus('รอลับคม'), 'var(--red)', 'ถอดแล้ว ยังไม่ได้วางแผนลับ')}
       ${kpiCodes('กำลังลับคม', ofStatus('กำลังลับคม'), 'var(--amber)', 'วางแผน/กำลังลับอยู่')}
       ${kpiCodes('มีปัญหา / หมดอายุ', ofStatus('มีปัญหา', 'หมดอายุ'), 'var(--text-2)', 'ตั้งไว้ในทะเบียน')}
+      ${kpiCodes('ยกเลิกใช้งาน', ofStatus('ยกเลิกใช้งาน'), '#475569', 'เลิกใช้แล้ว ตั้งไว้ในทะเบียน')}
     </div>
     <div class="card table-wrap table-wrap-sticky">
       <table>
@@ -8842,7 +8848,7 @@ const MODAL_FORMS = {
         <div class="form-group"><label class="form-label">สถานะ</label>
           <select class="form-select">
             <option>พร้อมใช้</option><option>กำลังใช้งาน</option><option>รอลับคม</option>
-            <option>มีปัญหา</option><option>หมดอายุ</option>
+            <option>มีปัญหา</option><option>หมดอายุ</option><option>ยกเลิกใช้งาน</option>
           </select>
         </div>
         <div class="form-group"><label class="form-label">ลับคมล่าสุด</label>
@@ -21667,7 +21673,7 @@ function sawManualStatus(r) {
 }
 function sawEffectiveStatus(r) {
   const manual = sawManualStatus(r);
-  if (manual === 'มีปัญหา' || manual === 'หมดอายุ') return { status: manual, src: 'manual' };
+  if (manual === 'มีปัญหา' || manual === 'หมดอายุ' || manual === 'ยกเลิกใช้งาน') return { status: manual, src: 'manual' };
   const idx = ((toolingData || {}).saw || []).indexOf(r);
   const plan = typeof sawGrindPlanInfo === 'function' ? sawGrindPlanInfo() : null;
   if (plan && idx >= 0 && plan.working.has(idx)) return { status: 'กำลังลับคม', src: 'plan' };
@@ -21687,7 +21693,9 @@ function sawEffectiveStatus(r) {
 // ─── กดป้ายสถานะใบเลื่อยเพื่อเปลี่ยนสถานะ (รายการซ้าย + คอลัมน์สถานะในตาราง) ───────────
 // เขียนลงช่องสถานะของทะเบียน (ตัวเดียวกับปุ่ม ✏️) · "มีปัญหา" ถามอาการ แล้วลงประวัติเหมือนการ์ดบน Dashboard
 // เฉพาะ Admin/หัวหน้า (canEditPlan) — คนอื่นเห็นป้ายเฉยๆ กดไม่ได้
-const SAW_STATUS_OPTIONS = ['พร้อมใช้', 'กำลังใช้งาน', 'รอลับคม', 'มีปัญหา', 'หมดอายุ'];
+// ยกเลิกใช้งาน (ผู้ใช้ขอ 24 พ.ย. 69) = เลิกใช้ใบนี้ถาวร — ชนะสถานะจากระบบผลิต/แผน เหมือนมีปัญหา/หมดอายุ
+//   และไม่ขึ้นในการ์ดรอลับคม / ไม่ถูกวางแผนลับคมอัตโนมัติ (ดู prodSawWaitingList)
+const SAW_STATUS_OPTIONS = ['พร้อมใช้', 'กำลังใช้งาน', 'รอลับคม', 'มีปัญหา', 'หมดอายุ', 'ยกเลิกใช้งาน'];
 function closeSawStatusMenu() {
   const el = document.getElementById('saw-status-menu');
   if (el) el.remove();
@@ -21718,7 +21726,7 @@ function openSawStatusMenu(ev, idx, readyOnly) {
     + (readyOnly ? `<div style="font-size:10.5px;color:var(--text-3);line-height:1.5;padding:6px 8px 2px;border-top:1px solid var(--border-light);margin-top:4px;">
         พร้อมใช้ = ลับคมแล้ว ตั้งวันลับคมล่าสุดเป็นวันนี้ ใบนี้จะออกจากรายการรอลับคม</div>`
       : eff.src !== 'manual' ? `<div style="font-size:10.5px;color:var(--text-3);line-height:1.5;padding:6px 8px 2px;border-top:1px solid var(--border-light);margin-top:4px;">
-        ตอนนี้แสดงตาม${eff.src === 'plan' ? 'งานลับคมในแผน' : 'ระบบผลิต'} — "มีปัญหา" / "หมดอายุ" มีผลทันที
+        ตอนนี้แสดงตาม${eff.src === 'plan' ? 'งานลับคมในแผน' : 'ระบบผลิต'} — "มีปัญหา" / "หมดอายุ" / "ยกเลิกใช้งาน" มีผลทันที
         ${eff.src === 'prod' && eff.status === 'รอลับคม'
           ? '· "พร้อมใช้" = ลับคมแล้ว (ตั้งวันลับคมล่าสุดเป็นวันนี้)'
           : 'สถานะอื่นระบบจะยังแสดงตาม' + (eff.src === 'plan' ? 'แผน' : 'ระบบผลิต') + 'ก่อน'}</div>` : '');
@@ -21888,6 +21896,7 @@ function renderSawKpis() {
   set('kpi-saw-wait', n('รอลับคม'));
   set('kpi-saw-problem', n('มีปัญหา'));
   set('kpi-saw-expired', n('หมดอายุ'));
+  set('kpi-saw-retired', n('ยกเลิกใช้งาน'));
 }
 
 // ─── แก้ไข/ลบ มีดสลิตเตอร์ ───────────────────────────────────────────────────
