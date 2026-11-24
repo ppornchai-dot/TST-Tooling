@@ -2487,7 +2487,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-24.05';
+const APP_BUILD = '2026-11-24.06';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5912,9 +5912,15 @@ function dashSqWaitRowHtml(set) {
   const head = set[0] || {};
   const key = sqSetKey(head);
   const cm = sqColorMeta(head.color);
-  const w = sqProdWaitInfo(key);
+  // ระบบผลิตบันทึกการถอดไว้ (แม้ทะเบียนจะลงวันแต่งหลังถอดแล้ว แต่ตั้งกลับมารอแต่ง) → ใช้เวลาถอดนั้น
+  const w = sqProdWaitInfo(key) || prodSqRemovedFor(key);
+  const setAt = !w && sqSetStatusFor(key) === 'waitdress' ? sqSetStatusAt[key] : null;
   const pd = sqSetPlanDate(key);
   const u = sqSetProdUsage(key);
+  // OD ปัจจุบันของชิ้นในชุด — ต่ำสุด-สูงสุด (ชุดหนึ่งมีหลายชิ้น)
+  const ods = set.map(r => sqNum(r.odCur)).filter(v => v != null);
+  const odTxt = !ods.length ? '' : (Math.min(...ods) === Math.max(...ods) ? String(Math.min(...ods))
+    : Math.min(...ods) + '-' + Math.max(...ods));
   const film = String(head.filmFace || '').trim();
   const code = sqSetCodeBase(set);
   const expired = set.filter(sqOdExpired).length;
@@ -5938,7 +5944,11 @@ function dashSqWaitRowHtml(set) {
       ${code ? `<span style="flex-shrink:0;font-size:11.5px;font-weight:600;color:var(--text-3);white-space:nowrap;" title="รหัส SQ">รหัส <b
         style="font-size:12.5px;font-weight:800;color:var(--accent);">${escapeHtmlAttr(code)}</b></span>` : ''}
       ${film ? pill('หน้าฟิล์ม ' + film) : ''}
-      <span style="font-size:11.5px;color:var(--text-3);margin-left:auto;">${w ? 'ถอด ' + escapeHtmlAttr(prodSqFmtTime(w.endedAt)) : 'ตั้งในทะเบียน'}</span>
+      ${odTxt ? `<span title="${escapeHtmlAttr('OD ปัจจุบัน · ' + set.map(r => (sqNum(r.odCur) != null ? sqNum(r.odCur) : 'ยังไม่วัด')).join(', '))}">${pill('OD ' + odTxt)}</span>` : ''}
+      <span style="font-size:11.5px;color:var(--text-3);margin-left:auto;white-space:nowrap;"
+        title="${escapeHtmlAttr(w ? 'เวลาที่ระบบผลิตบันทึกว่าถอดออกจากเครื่อง' : setAt ? 'ระบบผลิตไม่ได้บันทึกการถอด — นี่คือเวลาที่ตั้งสถานะรอแต่งในทะเบียน' : 'ระบบผลิตไม่ได้บันทึกการถอด และไม่มีเวลาที่ตั้งสถานะไว้ (ตั้งก่อนเริ่มเก็บเวลา)')}">${
+        w ? 'ถอด <b>' + escapeHtmlAttr(prodSqFmtTime(w.endedAt)) + '</b>'
+        : setAt ? 'ตั้งรอแต่ง <b>' + escapeHtmlAttr(prodSqFmtTime(setAt)) + '</b>' : 'ไม่มีเวลาถอด'}</span>
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;">
       <span style="flex:0 0 auto;font-size:12px;font-weight:800;padding:2px 9px;border-radius:99px;${pd
@@ -15182,6 +15192,8 @@ let sqSetStatus = {};
 // เครื่องที่ชุด Roll SQ นั้นใส่อยู่ (คีย์ = sqSetKey ของชุด · ค่า = ชื่อเครื่อง เช่น 'P3')
 // ประกาศไว้ตรงนี้ด้วยเหตุผลเดียวกับ sqSetStatus — buildStateSnapshot() ถูกเรียกตั้งแต่ตอนบูต
 let sqSetMachine = {};
+// เวลาที่ตั้งสถานะชุดเอง (คีย์ = sqSetKey · ค่า = ISO) — ใช้บอกเวลาบนการ์ดรอแต่งของชุดที่ระบบผลิตไม่ได้บันทึกการถอด
+let sqSetStatusAt = {};
 // เครื่องที่ "ขนาด Size SQ" นั้นใช้ได้ (คีย์ = ชื่อขนาด · ค่า = รายการเครื่อง เช่น ['P2','P3'])
 // คนละเรื่องกับ sqSetMachine ด้านบน: ตัวนั้นคือ "ชุดนี้ใส่อยู่ที่เครื่องไหนตอนนี้"
 // ส่วนตัวนี้คือ "ขนาดนี้ใช้กับเครื่องไหนได้บ้าง" — เทียบเท่า rollSetMachines ของทะเบียน Roll
@@ -15592,7 +15604,7 @@ function requestReloadAllDevices() {
 
 function buildStateSnapshot() {
   return {
-    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollSetNote, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec, sqSetStatus, sqSetMachine, sqSizeMachines, sqExtraSizes, sawProblemLog, sawInspections,
+    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollSetNote, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec, sqSetStatus, sqSetStatusAt, sqSetMachine, sqSizeMachines, sqExtraSizes, sawProblemLog, sawInspections,
     planTasks, planTaskSeq, companyHolidays, companyHolidaySeq, planDayEndTime, planDayWorker, teamMembers, teamSeq,
     dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
     dailyPieceStatus, rollSizeLog, rollSizeLogSeq, dailyPauseLog, dailyPauseLogSeq,
@@ -15928,6 +15940,7 @@ function applyState(saved) {
   if (saved.rollColorStatus) rollColorStatus = saved.rollColorStatus;
   if (saved.rollSetNote) rollSetNote = saved.rollSetNote;
   if (saved.sqSetStatus) sqSetStatus = saved.sqSetStatus;
+  if (saved.sqSetStatusAt) sqSetStatusAt = saved.sqSetStatusAt;
   if (saved.sqSetMachine) sqSetMachine = saved.sqSetMachine;
   if (saved.sqSizeMachines) sqSizeMachines = saved.sqSizeMachines;
   if (Array.isArray(saved.sqExtraSizes)) sqExtraSizes = saved.sqExtraSizes;
@@ -19987,6 +20000,9 @@ function sqSetStatusFor(setKeyStr) { return sqSetStatus[setKeyStr] || 'ready'; }
 function setSqSetStatus(setKeyStr, status) {
   // ครอบตัวทำรายการซ้ำ — เป็นการ "ตั้งค่าให้เป็นค่านี้" ไม่ใช่สลับค่า ทำซ้ำตอน cloud ชนจึงได้ผลเดิม
   withCloudRetry(() => {
+    if (sqSetStatus[setKeyStr] !== status || !sqSetStatusAt[setKeyStr]) {
+      if (status === 'ready') delete sqSetStatusAt[setKeyStr]; else sqSetStatusAt[setKeyStr] = new Date().toISOString();
+    }
     if (status === 'ready') delete sqSetStatus[setKeyStr]; else sqSetStatus[setKeyStr] = status;
     persistState();
     renderSqTable(pageState.sq || 1);
@@ -20653,6 +20669,7 @@ function editSqSet(id) {
         const sid = newSqSetId();
         set.forEach(x => { x.setId = sid; });
         if (sqSetStatus[key0]) { sqSetStatus[sid] = sqSetStatus[key0]; delete sqSetStatus[key0]; }
+        if (sqSetStatusAt[key0]) { sqSetStatusAt[sid] = sqSetStatusAt[key0]; delete sqSetStatusAt[key0]; }
         if (sqSetMachine[key0]) { sqSetMachine[sid] = sqSetMachine[key0]; delete sqSetMachine[key0]; }
         if (selectedSqSetKey === key0) selectedSqSetKey = sid;
       }
