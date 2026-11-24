@@ -2487,7 +2487,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-23.06';
+const APP_BUILD = '2026-11-24.01';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -8187,7 +8187,7 @@ function sawReadyListHtml(list) {
   const rows = list.slice().sort((a, b) => String(a.machine || '~').localeCompare(String(b.machine || '~'))
     || String(a.id).localeCompare(String(b.id), undefined, { numeric: true }));
   // การ์ดใบเลื่อยหนึ่งใบ — กะทัดรัดลงคอลัมน์เครื่อง (แบบเดียวกับการ์ดใบเลื่อยกำลังใช้งาน)
-  const cardHtml = it => {
+  const cardHtml = (it, hideThick) => {
     const r = reg.find(x => x.id === it.id) || it;
     const u = typeof sawUsageInfo === 'function' ? sawUsageInfo(r) : null;
     const mc = it.machine && it.machine !== '—' ? it.machine : '—';
@@ -8199,7 +8199,7 @@ function sawReadyListHtml(list) {
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <span style="font-size:14px;font-weight:800;color:#fff;background:var(--green);padding:3px 11px;border-radius:6px;">รหัส ${escapeHtmlAttr(it.id || '—')}</span>
       ${od && od !== '—' ? `<span style="flex-shrink:0;font-size:11.5px;font-weight:800;padding:1px 8px;border-radius:99px;
-          background:var(--bg-panel);color:var(--text-2);box-shadow:inset 0 0 0 1px var(--border-light);">${escapeHtmlAttr(od)}</span>` : ''}${sawThickPillHtml(it)}
+          background:var(--bg-panel);color:var(--text-2);box-shadow:inset 0 0 0 1px var(--border-light);">${escapeHtmlAttr(od)}</span>` : ''}${hideThick ? '' : sawThickPillHtml(it)}
       <span style="margin-left:auto;"></span>
       ${(() => {
         // ป้ายสถานะ ต่อท้าย "ลับคมล่าสุด" (ตำแหน่งเดียวกับการ์ดรอลับคม) — Admin/หัวหน้ากดเปลี่ยนสถานะได้ (เมนูเดียวกับทะเบียนใบเลื่อย ครบทุกสถานะ) แบบเดียวกับการ์ด Roll SQ
@@ -8230,11 +8230,30 @@ function sawReadyListHtml(list) {
       const col = rows.filter(it => mOf(it) === m);
       return `<div>
         ${rollSetSectionHeaderHtml(m === 'ไม่ระบุ' ? 'ไม่ระบุเครื่อง' : 'เครื่อง ' + m, col.length, C_BLUE)}
-        ${col.length ? col.map(cardHtml).join('') : '<div style="padding:4px;color:var(--text-3);font-size:12px;">ไม่มี</div>'}
+        ${col.length ? sawThickGroupsHtml(col, cardHtml) : '<div style="padding:4px;color:var(--text-3);font-size:12px;">ไม่มี</div>'}
       </div>`;
     }).join('')}
     </div>
   </div>`;
+}
+// แบ่งใบในคอลัมน์เครื่องเป็นกลุ่มตามความหนา (บางไปหนา) — หัวกลุ่มแบบเดียวกับกลุ่ม Size ของการ์ด Roll SQ (ผู้ใช้ขอ 24 พ.ย. 69)
+// ในกลุ่มคงลำดับเดิม (ตามรหัส) · ใบที่ไม่ได้กรอกความหนาอยู่กลุ่ม "ไม่ระบุความหนา" ท้ายสุด · ป้ายหนาบนการ์ดซ่อนไว้ เพราะหัวกลุ่มบอกแล้ว
+function sawThickGroupsHtml(col, cardHtml) {
+  // คีย์กลุ่มเป็นตัวเลข — "4" กับ "4.0" ในทะเบียนอยู่กลุ่มเดียวกัน
+  const num = t => { const n = parseFloat(String(t).replace(/[^0-9.]/g, '')); return Number.isFinite(n) ? n : Infinity; };
+  const groups = new Map();
+  col.forEach(it => {
+    const n = num(sawThickLabel(it) || '');
+    const k = n === Infinity ? '' : String(n);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(it);
+  });
+  return [...groups.entries()].sort((a, b) => num(a[0]) - num(b[0]))
+    .map(([t, list]) => `<div style="display:flex;align-items:center;gap:8px;margin:10px 2px 6px;">
+        <b style="font-size:15px;font-weight:800;color:var(--text-1);white-space:nowrap;">${escapeHtmlAttr(t ? 'หนา ' + t + ' mm' : 'ไม่ระบุความหนา')}</b>
+        <span style="flex:1;height:1px;background:var(--border-light);"></span>
+        <span style="font-size:12px;font-weight:700;color:var(--text-3);white-space:nowrap;">${list.length} ใบ</span>
+      </div>` + list.map(it => cardHtml(it, true)).join('')).join('');
 }
 
 // วาดเฉพาะแผงที่กำลังเปิดอยู่ (แท็บ Roll ใช้ตัวเรนเดอร์เดิมของมันเอง ไม่ต้องทำอะไรที่นี่)
