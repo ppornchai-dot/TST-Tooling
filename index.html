@@ -2556,7 +2556,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-24.14';
+const APP_BUILD = '2026-11-24.15';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -7953,16 +7953,34 @@ function renderToolingLife() {
     const m = String((x.u && x.u.open && x.u.open.machine) || x.r.machine || '').trim();
     return m && m !== '—' ? m : '';
   };
+  // แบ่งรหัสเป็นแถวตามเครื่อง (ผู้ใช้ขอ 24 พ.ย. 69) — ป้ายเครื่องหัวแถว · เส้นคั่นระหว่างเครื่อง · ไม่ระบุเครื่องไว้ท้ายสุด
   const kpiCodes = (label, xs, color, sub) => {
-    const chip = x => { const mc = mcOfSaw(x); return `<span onclick="${jsCallAttr('goToSawBlade', x.r.id)}" title="${escapeHtmlAttr('รหัส ' + x.r.id
-        + (mc ? ' · เครื่อง ' + mc : ' · ไม่ระบุเครื่อง') + ' — กดเพื่อไปที่ใบนี้ในทะเบียน')}"
+    const byMc = new Map();
+    xs.forEach(x => { const m = mcOfSaw(x) || 'ไม่ระบุ'; if (!byMc.has(m)) byMc.set(m, []); byMc.get(m).push(x); });
+    const mcs = [...byMc.entries()].sort((a, b) => (a[0] === 'ไม่ระบุ') - (b[0] === 'ไม่ระบุ')
+      || a[0].localeCompare(b[0], 'th', { numeric: true }));
+    const chip = (x, mc) => `<span onclick="${jsCallAttr('goToSawBlade', x.r.id)}" title="${escapeHtmlAttr('รหัส ' + x.r.id
+        + (mc !== 'ไม่ระบุ' ? ' · เครื่อง ' + mc : ' · ไม่ระบุเครื่อง') + ' — กดเพื่อไปที่ใบนี้ในทะเบียน')}"
       style="cursor:pointer;font-size:11.5px;font-weight:800;padding:1px 7px;border-radius:6px;background:var(--bg-panel);white-space:nowrap;
-             color:var(--text-1);box-shadow:inset 0 0 0 1px ${color};">${escapeHtmlAttr(String(x.r.id || '—'))}${
-        mc ? `<span style="font-weight:600;color:var(--text-3);"> · ${escapeHtmlAttr(mc)}</span>` : ''}</span>`; };
-    const rest = xs.slice(SAW_KPI_MAX_CODES);
-    const codes = !xs.length ? '' : `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;">${xs.slice(0, SAW_KPI_MAX_CODES).map(chip).join('')}${
-      rest.length ? `<span style="font-size:11.5px;font-weight:700;color:var(--text-3);padding:1px 4px;"
-        title="${escapeHtmlAttr(rest.map(x => x.r.id).join(', '))}">+${rest.length}</span>` : ''}</div>`;
+             color:var(--text-1);box-shadow:inset 0 0 0 1px ${color};">${escapeHtmlAttr(String(x.r.id || '—'))}</span>`;
+    let shown = 0;
+    const rest = [];
+    const rows = mcs.map(([mc, g], i) => {
+      g.sort(byId);
+      const vis = g.slice(0, Math.max(0, SAW_KPI_MAX_CODES - shown));
+      shown += vis.length;
+      rest.push(...g.slice(vis.length));
+      if (!vis.length) return '';
+      return `<div style="display:flex;align-items:flex-start;gap:6px;padding:5px 0;${i ? 'border-top:1px dashed var(--border);' : ''}">
+        <span style="flex:0 0 auto;min-width:30px;text-align:center;font-size:11px;font-weight:800;padding:2px 6px;border-radius:6px;
+          color:#fff;background:${mc === 'ไม่ระบุ' ? 'var(--text-3)' : 'var(--accent)'};" title="${escapeHtmlAttr(mc === 'ไม่ระบุ'
+            ? 'ไม่ระบุเครื่องในทะเบียน' : 'เครื่อง ' + mc + ' · ' + g.length + ' ใบ')}">${escapeHtmlAttr(mc)}</span>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;">${vis.map(x => chip(x, mc)).join('')}</div>
+      </div>`;
+    }).join('');
+    const codes = !xs.length ? '' : `<div style="margin-top:8px;">${rows}${
+      rest.length ? `<div style="font-size:11.5px;font-weight:700;color:var(--text-3);padding:2px 0;"
+        title="${escapeHtmlAttr(rest.map(x => x.r.id + (mcOfSaw(x) ? ' · ' + mcOfSaw(x) : '')).join(', '))}">และอีก ${rest.length} ใบ</div>` : ''}</div>`;
     return dashMiniKpi(label, xs.length.toLocaleString(), color, sub).replace(/<\/div>\s*$/, codes + '</div>');
   };
   const byId = (a, b) => String(a.r.id).localeCompare(String(b.r.id), 'th', { numeric: true });
