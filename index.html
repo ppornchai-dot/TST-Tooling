@@ -2487,7 +2487,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-24.02';
+const APP_BUILD = '2026-11-24.03';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5850,9 +5850,12 @@ function dashSqSetRowHtml(set, badgeColor, rowBg, hideSize) {
     // ไม่แสดงเดือน/ปีที่ผลิต (ผู้ใช้ขอเอาออก) — เหลือช่องว่างไว้ดันป้ายสถานะไปชิดขวาเหมือนเดิม
     : `<span style="margin-left:auto;"></span>`;
   const toPlan = sqSetGoesToPlan(sqSetKey(head));
+  // วางแผนแต่งแล้ว (ยังไม่ได้ใส่เครื่อง) = โทนน้ำเงิน ขอบประ แบบเดียวกับใบเลื่อยรอลับคมที่วางแผนแล้ว (ผู้ใช้ขอ 24 พ.ย. 69)
+  const planned = !live && !!sqSetPlanDate(sqSetKey(head));
   return `<div onclick="${jsCallAttr(toPlan ? 'goToSqDressPlan' : 'goToSqSet', sqSetKey(head))}"
     style="display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;padding:8px 12px;border-radius:8px;cursor:pointer;
-           border:${rowBg === 'var(--inuse-dim)' ? '2px solid var(--inuse-neon);box-shadow:var(--inuse-neon-glow)' : '1px solid var(--border-light)'};background:${rowBg || 'var(--accent-glow)'};transition:filter .12s;margin-bottom:6px;"
+           ${planned ? 'border:2px dashed var(--accent);background:var(--accent-glow);'
+             : `border:${rowBg === 'var(--inuse-dim)' ? '2px solid var(--inuse-neon);box-shadow:var(--inuse-neon-glow)' : '1px solid var(--border-light)'};background:${rowBg || 'var(--accent-glow)'};`}transition:filter .12s;margin-bottom:6px;"
     onmouseover="this.style.filter='brightness(0.97)'" onmouseout="this.style.filter='none'"
     title="${escapeHtmlAttr(sqSetFullLabel(head) + ' · Roll ' + set.length + ' ชิ้น'
       + (String(head.thickness || '').trim() ? ' · ความหนา ' + String(head.thickness).trim() : '')
