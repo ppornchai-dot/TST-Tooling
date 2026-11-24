@@ -2556,7 +2556,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-24.09';
+const APP_BUILD = '2026-11-24.10';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -2740,6 +2740,7 @@ function renderDashboardKpi() {
 
   // แท็บอื่น (ใบเลื่อย) ใช้การ์ดชุดเดียวกันแต่นับคนละประเภทงาน — วาดใหม่ไปพร้อมกัน
   if (dashTab === 'saw' && typeof renderDashboardSimpleToolingPanel === 'function') renderDashboardSimpleToolingPanel('saw', 'ใบเลื่อย');
+  if (dashTab === 'sq' && typeof renderDashboardSqPanel === 'function') renderDashboardSqPanel();
 
   // 4) งานตกแผน — เลยเวลาจบตามแผนแล้วยังไม่เสร็จ (เกณฑ์เดียวกับหน้างานค้าง) เฉพาะของเดือนนี้
   const overdue = collectOverdueRecords().filter(r => String(r.dateIso || '').slice(0, 7) === thisYm
@@ -8201,14 +8202,9 @@ function renderDashboardSqPanel() {
   const sizeRows = [...bySize.values()].sort((a, b) => (b.expired - a.expired) || String(a.size).localeCompare(String(b.size), 'th'));
 
   el.innerHTML = `
-    <div class="kpi-grid">
-      ${dashMiniKpi('ชุด Roll SQ ทั้งหมด', sets.length.toLocaleString(), 'var(--purple)', pieces.length.toLocaleString() + ' ชิ้น')}
-      ${dashMiniKpi('ถึง OD หมดอายุแล้ว', expired.length.toLocaleString(), 'var(--red)',
-        expiredSets.length ? expiredSets.length.toLocaleString() + ' ชุดที่มีชิ้นถึงอายุ' : 'ยังไม่มีชิ้นถึงอายุ')}
-      ${dashMiniKpi('ยังไม่ได้วัด OD', unmeasured.length.toLocaleString(), 'var(--amber)',
-        'จาก ' + pieces.length.toLocaleString() + ' ชิ้น')}
-      ${dashMiniKpi('ขนาด Size SQ', bySize.size.toLocaleString(), 'var(--accent)', 'ที่มีชุดลงทะเบียนไว้')}
-    </div>
+    ${/* การ์ด KPI งานตามแผนแบบเดียวกับแท็บ Roll และใบเลื่อย (ผู้ใช้ขอ 24 พ.ย. 69)
+         — เดิมเป็นจำนวนชุด/ถึง OD/ยังไม่วัด OD/ขนาด ซึ่งยังดูได้ที่การ์ด "ถึง OD หมดอายุ" และตารางสรุปด้านล่าง */
+      dashWorkKpiGridHtml(['sq'], 'ชิ้น', 'งานแต่ง Roll SQ')}
 
     ${dashSqWorkingCardHtml(sets)}
     ${dashSqInUseCardHtml(sets)}
