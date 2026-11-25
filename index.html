@@ -2568,7 +2568,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-25.20';
+const APP_BUILD = '2026-11-25.21';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -10323,8 +10323,10 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason, flat) {
       const rollCell = isBreak
         ? `<td colspan="${splitSet ? 3 : 2}" class="muted" style="${breakStyle}">${escapeHtmlAttr(typeMeta.label)}</td>`
         : splitSet
-        ? `<td class="muted">${isFirstRow ? escapeHtmlAttr(pieceCodeOf(p.roll, (t.__origin || t).workType)) : ''}</td><td><strong style="color:var(--text-1);">${isFirstRow ? escapeHtmlAttr(pieceNameOf(p.roll, (t.__origin || t).workType)) : ''}</strong>${isFirstRow ? continuedBadge + contPieceLine : ''}${measuredSizeLine}${pauseReasonLine}</td><td style="font-size:12.5px;color:var(--text-2);">${isFirstRow ? escapeHtmlAttr(
-            [planSetLabel(t.rollSet), t.rollColor ? planRollColorLabel(t) : ''].filter(x => x && x !== '—').join(' · ')) : ''}</td>`
+        ? `<td class="muted">${isFirstRow ? escapeHtmlAttr(pieceCodeOf(p.roll, (t.__origin || t).workType)) : ''}</td><td><strong style="color:var(--text-1);">${isFirstRow ? escapeHtmlAttr(pieceNameOf(p.roll, (t.__origin || t).workType)) : ''}</strong>${isFirstRow ? continuedBadge + contPieceLine : ''}${measuredSizeLine}${pauseReasonLine}</td><td>${!isFirstRow ? ''
+            // แสดงแค่สี เป็นป้ายพื้นสีนั้น ดูแวบเดียวรู้ว่าหยิบชุดสีไหน (ชื่อชุดเอาออก — ผู้ใช้ขอ 25 พ.ย. 69)
+            : t.rollColor && planRollColorLabel(t) !== '—' ? rollColorPillHtml(inUseColorDot(t.rollSet, t.rollColor), planRollColorLabel(t))
+            : '<span class="muted">—</span>'}</td>`
         : `<td class="muted">${isFirstRow ? escapeHtmlAttr(pieceCodeOf(p.roll, (t.__origin || t).workType)) : ''}</td><td><strong>${isFirstRow ? escapeHtmlAttr(pieceNameOf(p.roll, (t.__origin || t).workType)) : ''}</strong>${
           // รายการเรียงทีละชิ้น (หน้างานประจำวัน) ไม่มีแถวงานบอกชุดแล้ว — บอกชุดไว้ใต้ชื่อชิ้น
           //   Roll SQ: แค่ขนาด (สี/ชุดที่/เดือนผลิตเอาออก ผู้ใช้ขอ 25 พ.ย. 69 — รหัสชิ้นบอกชุดอยู่แล้ว)
