@@ -2558,7 +2558,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-25.04';
+const APP_BUILD = '2026-11-25.05';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -8541,13 +8541,27 @@ function renderDashboardSimpleToolingPanel(key, name) {
           </div>
         </div>`).join('')}
       </div>`}
-    </div>`;
+    </div>
+    ${key === 'saw' ? (() => {
+      // ใบเลื่อยหมดอายุ ต่อจากพร้อมใช้งาน (ผู้ใช้ขอ 25 พ.ย. 69) — ใบที่สถานะเป็น "หมดอายุ" (ตั้งในทะเบียน) รูปแบบเดียวกับการ์ดพร้อมใช้งาน
+      const expiredItems = items.filter(it => it.status === 'หมดอายุ');
+      return `<div class="card">
+        <div class="card-header">
+          <span class="card-title" style="font-size:16px;color:var(--red);">ใบเลื่อยหมดอายุ</span>
+          <span style="margin-left:auto;font-size:12px;color:var(--text-3);">${expiredItems.length.toLocaleString()} ใบ</span>
+        </div>
+        ${sawReadyListHtml(expiredItems, { expired: true })}
+      </div>`;
+    })() : ''}`;
 }
 
 // รายการใบเลื่อยพร้อมใช้งาน — แถบแบบเดียวกับการ์ดกำลังใช้งาน (ป้ายเครื่อง + รหัส + OD) ให้เห็นชัด
 // เรียงตามเครื่องผลิต แล้วตามรหัส · ท้ายแถวบอกยอดตัดหลังลับคม/สะสม (ถ้ามีข้อมูลจากระบบผลิต)
-function sawReadyListHtml(list) {
-  if (!list.length) return '<div style="padding:22px 14px;text-align:center;color:var(--text-3);font-size:13px;">ยังไม่มีใบเลื่อยที่พร้อมใช้งาน</div>';
+// opts.expired = การ์ดใบเลื่อยหมดอายุ — รูปแบบเดียวกัน แต่โทนแดง
+function sawReadyListHtml(list, opts) {
+  const expiredCard = !!(opts && opts.expired);
+  const tone = expiredCard ? { bg: 'var(--red-dim)', badge: 'var(--red)', what: 'หมดอายุ' } : { bg: 'var(--green-dim)', badge: 'var(--green)', what: 'พร้อมใช้งาน' };
+  if (!list.length) return `<div style="padding:22px 14px;text-align:center;color:var(--text-3);font-size:13px;">${expiredCard ? 'ไม่มีใบเลื่อยที่หมดอายุ' : 'ยังไม่มีใบเลื่อยที่พร้อมใช้งาน'}</div>`;
   const reg = (toolingData || {}).saw || [];
   const rows = list.slice().sort((a, b) => String(a.machine || '~').localeCompare(String(b.machine || '~'))
     || String(a.id).localeCompare(String(b.id), undefined, { numeric: true }));
@@ -8559,10 +8573,10 @@ function sawReadyListHtml(list) {
     const od = sawOdLabel(it);
     return `<div onclick="${jsCallAttr('goToSawBlade', it.id)}"
       style="padding:8px 12px;border-radius:8px;margin-bottom:6px;cursor:pointer;
-             background:var(--green-dim);border:1px solid var(--border-light);"
-      title="${escapeHtmlAttr('พร้อมใช้งาน — เครื่องผลิต ' + mc + (u && u.lastGrind ? ' · ลับคมล่าสุด ' + fmtIsoDateThai(u.lastGrind) : ''))}">
+             background:${tone.bg};border:1px solid var(--border-light);"
+      title="${escapeHtmlAttr(tone.what + ' — เครื่องผลิต ' + mc + (u && u.lastGrind ? ' · ลับคมล่าสุด ' + fmtIsoDateThai(u.lastGrind) : ''))}">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      <span style="font-size:14px;font-weight:800;color:#fff;background:var(--green);padding:3px 11px;border-radius:6px;">รหัส ${escapeHtmlAttr(it.id || '—')}</span>
+      <span style="font-size:14px;font-weight:800;color:#fff;background:${tone.badge};padding:3px 11px;border-radius:6px;">รหัส ${escapeHtmlAttr(it.id || '—')}</span>
       ${od && od !== '—' ? `<span style="flex-shrink:0;font-size:11.5px;font-weight:800;padding:1px 8px;border-radius:99px;
           background:var(--bg-panel);color:var(--text-2);box-shadow:inset 0 0 0 1px var(--border-light);">${escapeHtmlAttr(od)}</span>` : ''}${sawThickPillHtml(it)}
       <span style="margin-left:auto;"></span>
