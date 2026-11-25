@@ -2568,7 +2568,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-25.21';
+const APP_BUILD = '2026-11-25.22';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -10319,14 +10319,24 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason, flat) {
       const pauseReasonLine = (isFirstRow && !isBreak && pieceEntry.status === 'paused' && pieceEntry.pauseReason)
         ? `<div class="muted" style="font-size:11px;font-weight:400;color:var(--amber);">⏸ พักงาน: ${escapeHtmlAttr(pieceEntry.pauseReason)}${pieceEntry.pausedAt ? ` (${escapeHtmlAttr(pieceEntry.pausedAt)})` : ''}</div>` : '';
       // Roll (แต่ง/ขัด) แบบรายชิ้น: แยกชุด/สีเป็นคอลัมน์ของตัวเอง ชื่อ Roll เหลือแค่ชื่อชิ้นตัวเข้ม (ผู้ใช้ขอ 25 พ.ย. 69)
-      const splitSet = !!(flat && flat.showSet && (t.__origin || t).workType !== 'sq');
+      // Roll SQ ใช้รูปแบบเดียวกัน (ผู้ใช้ขอ 25 พ.ย. 69): Size = ขนาด SQ · ชื่อ Roll = รหัสชิ้น (เช่น 3_R) · ชุดสี = สีของชุด SQ
+      const splitSet = !!(flat && flat.showSet);
+      const splitIsSq = (t.__origin || t).workType === 'sq';
+      const sqCm = splitIsSq && p.roll && p.roll.color ? sqColorMeta(p.roll.color) : null;
+      const colorPill = !isFirstRow ? ''
+        // แสดงแค่สี เป็นป้ายพื้นสีนั้น ดูแวบเดียวรู้ว่าหยิบชุดสีไหน (ชื่อชุดเอาออก — ผู้ใช้ขอ 25 พ.ย. 69)
+        : splitIsSq ? (sqCm && sqCm.key ? rollColorPillHtml(sqCm.dot, sqCm.label) : '<span class="muted">—</span>')
+        : t.rollColor && planRollColorLabel(t) !== '—' ? rollColorPillHtml(inUseColorDot(t.rollSet, t.rollColor), planRollColorLabel(t))
+        : '<span class="muted">—</span>';
+      const splitSize = !isFirstRow ? '' : splitIsSq
+        ? String((p.roll && p.roll.sizeSq) || (((toolingData || {}).sq || []).find(r => sqSetKey(r) === sqPlanSetKeyOf(t.rollSet)) || {}).sizeSq || '—').trim()
+        : pieceCodeOf(p.roll, (t.__origin || t).workType);
+      const splitName = !isFirstRow ? '' : splitIsSq
+        ? pieceCodeOf(p.roll, 'sq') : pieceNameOf(p.roll, (t.__origin || t).workType);
       const rollCell = isBreak
         ? `<td colspan="${splitSet ? 3 : 2}" class="muted" style="${breakStyle}">${escapeHtmlAttr(typeMeta.label)}</td>`
         : splitSet
-        ? `<td class="muted">${isFirstRow ? escapeHtmlAttr(pieceCodeOf(p.roll, (t.__origin || t).workType)) : ''}</td><td><strong style="color:var(--text-1);">${isFirstRow ? escapeHtmlAttr(pieceNameOf(p.roll, (t.__origin || t).workType)) : ''}</strong>${isFirstRow ? continuedBadge + contPieceLine : ''}${measuredSizeLine}${pauseReasonLine}</td><td>${!isFirstRow ? ''
-            // แสดงแค่สี เป็นป้ายพื้นสีนั้น ดูแวบเดียวรู้ว่าหยิบชุดสีไหน (ชื่อชุดเอาออก — ผู้ใช้ขอ 25 พ.ย. 69)
-            : t.rollColor && planRollColorLabel(t) !== '—' ? rollColorPillHtml(inUseColorDot(t.rollSet, t.rollColor), planRollColorLabel(t))
-            : '<span class="muted">—</span>'}</td>`
+        ? `<td class="muted">${escapeHtmlAttr(splitSize)}</td><td><strong style="color:var(--text-1);">${escapeHtmlAttr(splitName)}</strong>${isFirstRow ? continuedBadge + contPieceLine : ''}${measuredSizeLine}${pauseReasonLine}</td><td>${colorPill}</td>`
         : `<td class="muted">${isFirstRow ? escapeHtmlAttr(pieceCodeOf(p.roll, (t.__origin || t).workType)) : ''}</td><td><strong>${isFirstRow ? escapeHtmlAttr(pieceNameOf(p.roll, (t.__origin || t).workType)) : ''}</strong>${
           // รายการเรียงทีละชิ้น (หน้างานประจำวัน) ไม่มีแถวงานบอกชุดแล้ว — บอกชุดไว้ใต้ชื่อชิ้น
           //   Roll SQ: แค่ขนาด (สี/ชุดที่/เดือนผลิตเอาออก ผู้ใช้ขอ 25 พ.ย. 69 — รหัสชิ้นบอกชุดอยู่แล้ว)
@@ -23782,7 +23792,7 @@ function renderDailyTasks() {
     return `<tr><td colspan="12" style="padding:0;background:var(--bg-panel);">
       <table>
         <thead><tr>
-          <th style="padding-left:36px;">ลำดับ</th><th></th><th>${isCodeWorkType(s.key) || s.key === 'sq' ? 'รหัส' : 'Size'}</th><th>${s.key === 'saw' ? 'ใบเลื่อย' : s.key === 'slitter' ? 'มีด' : s.key === 'sq' ? 'ชิ้น / ชุด' : 'ชื่อ Roll</th><th>ชุดสี'}</th><th style="text-align:right;">นาที</th><th>เริ่มงาน</th><th>จบงาน</th>
+          <th style="padding-left:36px;">ลำดับ</th><th></th><th>${isCodeWorkType(s.key) ? 'รหัส' : 'Size'}</th><th>${s.key === 'saw' ? 'ใบเลื่อย' : s.key === 'slitter' ? 'มีด' : 'ชื่อ Roll</th><th>ชุดสี'}</th><th style="text-align:right;">นาที</th><th>เริ่มงาน</th><th>จบงาน</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
