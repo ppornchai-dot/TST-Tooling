@@ -2558,7 +2558,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-25.07';
+const APP_BUILD = '2026-11-25.08';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -10309,6 +10309,8 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason, flat) {
       const rollCell = isBreak
         ? `<td colspan="2" class="muted" style="${breakStyle}">${escapeHtmlAttr(typeMeta.label)}</td>`
         : `<td class="muted">${isFirstRow ? escapeHtmlAttr(pieceCodeOf(p.roll, (t.__origin || t).workType)) : ''}</td><td><strong>${isFirstRow ? escapeHtmlAttr(pieceNameOf(p.roll, (t.__origin || t).workType)) : ''}</strong>${
+          // รายการเรียงชิ้นของ Roll SQ (หน้างานประจำวัน) ไม่มีแถวงานบอกชุดแล้ว — บอกขนาด/สี/ชุดไว้ใต้ชื่อชิ้น
+          isFirstRow && flat && flat.showSet ? `<div style="font-size:11.5px;color:var(--text-3);font-weight:400;">${escapeHtmlAttr(planSetLabel(t.rollSet).replace(/^SQ /, ''))}</div>` : ''}${
           // ใบเลื่อย: บอกเครื่องผลิตของใบนั้น (ตามทะเบียน) ต่อท้ายรหัส
           isFirstRow && (t.__origin || t).workType === 'saw' && p.roll && String(p.roll.machine || '').trim() && String(p.roll.machine).trim() !== '—'
             ? ` <span class="chip chip-blue" style="font-size:10.5px;margin-left:4px;" title="เครื่องผลิตของใบนี้ (ตามทะเบียนใบเลื่อย)">${escapeHtmlAttr(String(p.roll.machine).trim())}</span>` : ''}${isFirstRow ? continuedBadge + contPieceLine : ''}${measuredSizeLine}${pauseReasonLine}</td>`;
@@ -23729,6 +23731,7 @@ function renderDailyTasks() {
       <span style="float:right;font-size:12px;font-weight:700;color:${meta.color};opacity:.9;">${
         !items.length ? 'ไม่มีงาน'
           : isCodeWorkType(meta.key) ? 'เสร็จ ' + donePieces + '/' + pieces + (meta.key === 'saw' ? ' ใบ' : ' รายการ')
+          : meta.key === 'sq' ? 'เสร็จ ' + donePieces + '/' + pieces + ' ชิ้น'
           : items.length + ' รายการ · ' + donePieces + '/' + pieces + ' ชิ้น'}</span>
     </td></tr>`;
   };
@@ -23743,14 +23746,14 @@ function renderDailyTasks() {
       const isMine = !restrictWorkerId || item.workerId == null || item.workerId === restrictWorkerId;
       const blockReason = !isMine ? 'งานของช่างคนอื่น'
         : (!canActOnDailyDate() ? 'กดได้เฉพาะวันทำงานก่อน / วันนี้ / วันทำงานถัดไป' : '');
-      const html = renderPlanDayTaskDetailRow(t, 12, true, blockReason, { startNo: no });
+      const html = renderPlanDayTaskDetailRow(t, 12, true, blockReason, { startNo: no, showSet: s.key === 'sq' });
       no += (t.rollIds || []).length;
       return html;
     }).join('');
     return `<tr><td colspan="12" style="padding:0;background:var(--bg-panel);">
       <table>
         <thead><tr>
-          <th style="padding-left:36px;">ลำดับ</th><th></th><th>รหัส</th><th>${s.key === 'saw' ? 'ใบเลื่อย' : 'มีด'}</th><th>กะ</th><th>ช่วงเวลา</th><th style="text-align:right;">นาที</th><th>เริ่มงาน</th><th>จบงาน</th>
+          <th style="padding-left:36px;">ลำดับ</th><th></th><th>รหัส</th><th>${s.key === 'saw' ? 'ใบเลื่อย' : s.key === 'sq' ? 'ชิ้น / ชุด' : 'มีด'}</th><th>กะ</th><th>ช่วงเวลา</th><th style="text-align:right;">นาที</th><th>เริ่มงาน</th><th>จบงาน</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
@@ -23791,7 +23794,8 @@ function renderDailyTasks() {
     const items = allItems.filter(it => it.section === s.key);
     // งานลับคม (ใบเลื่อย/มีดสลิตเตอร์): ไม่ว่าวางแผนกี่รายการต่อครั้ง ให้เรียงรายใบต่อกันเลย นับ 1, 2, 3 …
     // ไม่แยกเป็นหัวข้องาน 1 / 2 (ผู้ใช้ขอ 18 พ.ย. 69) — ปุ่มเริ่ม/พัก/จบ/แก้ไข OD อยู่ที่แถวของแต่ละใบ
-    if (items.length && isCodeWorkType(s.key)) return sectionHeader(s, items) + flatCodeRows(s, items);
+    // แต่ง Roll SQ ก็เรียงทีละชิ้นแบบเดียวกัน — 1 ชิ้นต่อ 1 รายการ ไม่ต้องมีแถวงานแล้วตารางรายชิ้นซ้อนข้างใต้ (ผู้ใช้ขอ 25 พ.ย. 69)
+    if (items.length && (isCodeWorkType(s.key) || s.key === 'sq')) return sectionHeader(s, items) + flatCodeRows(s, items);
     return sectionHeader(s, items) + (items.length ? items.map(rowHtmlFor).join('') : emptyRow(s.empty))
       + (s.addType ? addChecklistRow(s) : '');
   }).join('');
