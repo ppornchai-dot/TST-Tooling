@@ -1011,6 +1011,8 @@ canvas{display:block;}
     input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]), select, textarea{font-size:16px!important;}
   }
 }
+/* หน้าจอจำลองของช่าง (เปิดซ้อนในหน้าต่าง Admin) — ซ่อนตัวเลือก "ดูเป็น" ให้เหมือนจอที่ช่างเห็นจริง */
+.embed-view #admin-view-select-wrap{display:none!important;}
 /* จอโทรศัพท์: ระยะขอบเล็กลง ปุ่มสูงพอให้นิ้วกดง่าย */
 @media (max-width:600px){
   .content{padding:10px;}
@@ -1170,6 +1172,8 @@ canvas{display:block;}
       <div id="admin-view-select-wrap" style="display:none;align-items:center;">
         <select class="form-select" id="admin-view-select" onchange="onAdminViewChange()" style="padding:6px 10px;font-size:12px;" title="ดูหน้าจอในมุมมองของสมาชิกทีมคนอื่น">
         </select>
+        <button type="button" class="btn btn-ghost btn-sm" id="admin-view-device-btn" style="display:none;margin-left:6px;font-size:12px;white-space:nowrap;"
+          onclick="openDeviceViewFrame(adminViewAsName)" title="เปิดหน้าจอขนาดเดียวกับจอที่คนนี้ใช้ล่าสุด">📱 ดูแบบจอของเขา</button>
       </div>
       <div class="topbar-user" id="topbar-user">
         <div class="topbar-user-avatar" id="topbar-user-avatar"></div>
@@ -2507,6 +2511,14 @@ function rollStatusBar(items) {
   </div>`;
 }
 
+// ─── หน้าจอจำลองของช่าง (Admin กด "ดูเป็น" ช่างที่ใช้โทรศัพท์/แท็บเล็ต) ─────────────────────
+// แอปตัวนี้ถูกเปิดซ้อนในกรอบขนาดจอของช่าง (?embed=1&viewas=ชื่อ) — ดูเป็นช่างคนนั้นตั้งแต่เปิด
+// ไม่จำหน้า/แท็บลงเครื่อง (จะไปทับของหน้าต่างหลักของ Admin) · ไม่วางแผนอัตโนมัติ · ไม่บันทึกขนาดจอของตัวเอง
+// var ไม่ใช่ const — กันโค้ดที่รันตอนบูตก่อนบรรทัดนี้ชน TDZ (var ได้ undefined = ไม่ใช่โหมดซ้อน)
+var EMBED_VIEW = (() => { try { return new URLSearchParams(location.search).get('embed') === '1'; } catch (e) { return false; } })();
+var EMBED_VIEW_AS = (() => { try { return EMBED_VIEW ? (new URLSearchParams(location.search).get('viewas') || null) : null; } catch (e) { return null; } })();
+if (EMBED_VIEW) document.documentElement.classList.add('embed-view');
+
 // ─── NAVIGATION ───────────────────────────────────────────────────────────────
 let currentPage = 'dashboard';
 const CURRENT_PAGE_STORAGE_KEY = 'tst-tooling-current-page'; // จำหน้าล่าสุดไว้ใน localStorage เพื่อกลับมาหน้าเดิมได้เมื่อรีเฟรช (ไม่ใช่กลับไป Dashboard ทุกครั้ง)
@@ -2514,6 +2526,7 @@ const CURRENT_PAGE_STORAGE_KEY = 'tst-tooling-current-page'; // จำหน้�
 // เก็บในเครื่องนั้นเอง (localStorage) ไม่ขึ้นคลาวด์ ไม่กระทบเครื่องอื่น
 const SUBTAB_STORAGE_KEY = 'tst-tooling-subtabs';
 function rememberSubTab(name, key) {
+  if (EMBED_VIEW) return;
   try {
     const m = JSON.parse(localStorage.getItem(SUBTAB_STORAGE_KEY) || '{}') || {};
     m[name] = key;
@@ -2558,7 +2571,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-25.10';
+const APP_BUILD = '2026-11-25.11';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -2615,7 +2628,7 @@ function showPage(id) {
   const titleEl = document.getElementById('page-title');
   if (titleEl && PAGE_META[id]) titleEl.textContent = PAGE_META[id].title;
   currentPage = id;
-  try { localStorage.setItem(CURRENT_PAGE_STORAGE_KEY, id); } catch (e) { /* localStorage unavailable — แค่จำหน้าไม่ได้ตอนรีเฟรช ไม่กระทบการใช้งานอื่น */ }
+  if (!EMBED_VIEW) try { localStorage.setItem(CURRENT_PAGE_STORAGE_KEY, id); } catch (e) { /* localStorage unavailable — แค่จำหน้าไม่ได้ตอนรีเฟรช ไม่กระทบการใช้งานอื่น */ }
   // ออกจากหน้าวางแผนแล้วเลิกโหมดลบด้วย กันสถานะค้างไว้จนกลับมาเจอแถบแดงโดยไม่รู้ว่ามาจากไหน
   if (id !== 'plan' && planDeleteMode) cancelPlanDeleteMode();
   if (id === 'dashboard') initDashboard();
@@ -6526,6 +6539,8 @@ var prodBust = { saw: '', sq: '' };
 function prodBustQs(kind) { return prodBust[kind] ? '&ev=' + encodeURIComponent(prodBust[kind]) : ''; }
 // rows = แถวจากตาราง prod_events · silent = จำไว้เฉยๆ ไม่เด้ง (เปิดเครื่องนี้ครั้งแรก ไม่ไล่แจ้งของเก่า)
 function handleProdEventRows(rows, silent) {
+  // หน้าจอจำลองของช่างที่ซ้อนอยู่ในหน้าต่าง Admin — ไม่ต้องรับ/แจ้งเอง (ใช้ที่จำการแจ้งร่วมกับหน้าต่างหลัก ถ้ารับก่อนจะกลบการแจ้งของหน้าต่างหลัก)
+  if (EMBED_VIEW) return;
   const byKind = { saw: [], sq: [] };
   const latest = { saw: '', sq: '' };
   (rows || []).forEach(r => {
@@ -7274,7 +7289,7 @@ function sawAutoPlanCandidates() {
 }
 let sawAutoPlanTimer = null;
 function sawAutoPlanRemoved(delayMs) {
-  if (typeof cloudSyncReady === 'undefined' || !cloudSyncReady) return;
+  if (typeof cloudSyncReady === 'undefined' || !cloudSyncReady || EMBED_VIEW) return;
   if (sawAutoPlanTimer || !sawAutoPlanCandidates().length) return;
   const wait = delayMs != null ? delayMs : Math.floor(Math.random() * 5000);
   sawAutoPlanTimer = setTimeout(() => { sawAutoPlanTimer = null; sawAutoPlanRunNow(); }, wait);
@@ -7437,7 +7452,7 @@ function sqAutoPlanCandidates() {
 }
 let sqAutoPlanTimer = null;
 function sqAutoPlanRemoved(delayMs) {
-  if (typeof cloudSyncReady === 'undefined' || !cloudSyncReady) return;
+  if (typeof cloudSyncReady === 'undefined' || !cloudSyncReady || EMBED_VIEW) return;
   if (sqAutoPlanTimer || !sqAutoPlanCandidates().length) return;
   const wait = delayMs != null ? delayMs : Math.floor(Math.random() * 5000);
   sqAutoPlanTimer = setTimeout(() => { sqAutoPlanTimer = null; sqAutoPlanRunNow(); }, wait);
@@ -15506,6 +15521,9 @@ let sqSetStatus = {};
 let sqSetMachine = {};
 // เวลาที่ตั้งสถานะชุดเอง (คีย์ = sqSetKey · ค่า = ISO) — ใช้บอกเวลาบนการ์ดรอแต่งของชุดที่ระบบผลิตไม่ได้บันทึกการถอด
 let sqSetStatusAt = {};
+// จอที่แต่ละคนใช้ล่าสุด (คีย์ = ชื่อผู้ใช้ · ค่า = { kind: phone|tablet|desktop, w, h, at }) — Admin กด "ดูเป็น"
+// แล้วแสดงขนาดจอเดียวกับที่คนนั้นใช้จริง (ผู้ใช้ขอ 25 พ.ย. 69) · บันทึกเฉพาะตอนจอเปลี่ยน (ดู recordUserDevice)
+let userDevices = {};
 // เครื่องที่ "ขนาด Size SQ" นั้นใช้ได้ (คีย์ = ชื่อขนาด · ค่า = รายการเครื่อง เช่น ['P2','P3'])
 // คนละเรื่องกับ sqSetMachine ด้านบน: ตัวนั้นคือ "ชุดนี้ใส่อยู่ที่เครื่องไหนตอนนี้"
 // ส่วนตัวนี้คือ "ขนาดนี้ใช้กับเครื่องไหนได้บ้าง" — เทียบเท่า rollSetMachines ของทะเบียน Roll
@@ -15916,7 +15934,7 @@ function requestReloadAllDevices() {
 
 function buildStateSnapshot() {
   return {
-    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollSetNote, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec, sqSetStatus, sqSetStatusAt, sqSetMachine, sqSizeMachines, sqExtraSizes, sawProblemLog, sawInspections,
+    toolingData, extraRollSets, rollSetOrder, rollSetPalettes, rollColorSeq, rollSetMachines, rollSetStatus, rollColorStatus, rollSetNote, rollColorActiveMachine, rollSetCategoryTemplates, rollLifeSpec, sqSetStatus, sqSetStatusAt, userDevices, sqSetMachine, sqSizeMachines, sqExtraSizes, sawProblemLog, sawInspections,
     planTasks, planTaskSeq, companyHolidays, companyHolidaySeq, planDayEndTime, planDayWorker, teamMembers, teamSeq,
     dailyStatusByDate, dailyActualTimes, dailyChecklistTasks, dailyChecklistSeq, dailyAutoContinuedDates,
     dailyPieceStatus, rollSizeLog, rollSizeLogSeq, dailyPauseLog, dailyPauseLogSeq,
@@ -16253,6 +16271,7 @@ function applyState(saved) {
   if (saved.rollSetNote) rollSetNote = saved.rollSetNote;
   if (saved.sqSetStatus) sqSetStatus = saved.sqSetStatus;
   if (saved.sqSetStatusAt) sqSetStatusAt = saved.sqSetStatusAt;
+  if (saved.userDevices) userDevices = saved.userDevices;
   if (saved.sqSetMachine) sqSetMachine = saved.sqSetMachine;
   if (saved.sqSizeMachines) sqSizeMachines = saved.sqSizeMachines;
   if (Array.isArray(saved.sqExtraSizes)) sqExtraSizes = saved.sqExtraSizes;
@@ -25740,7 +25759,63 @@ function loginAs(user) {
   document.getElementById('login-overlay').classList.add('hidden');
   applyRoleUI();
   showPage(defaultPageForRole(effectiveRole()));
-  if (cloudSyncReady) { sawFillDefaultGrindTimes(); sawAutoPlanKick(); sqAutoPlanKick(); }   // ล็อกอินหลังโหลดข้อมูลเสร็จ — เติมเวลาลับคมที่ว่าง + วางแผนใบเลื่อย/ชุด SQ ที่ถอดแล้วตอนนี้เลย
+  if (cloudSyncReady) { sawFillDefaultGrindTimes(); sawAutoPlanKick(); sqAutoPlanKick(); recordUserDevice(); }   // ล็อกอินหลังโหลดข้อมูลเสร็จ — เติมเวลาลับคมที่ว่าง + วางแผนใบเลื่อย/ชุด SQ ที่ถอดแล้วตอนนี้เลย + จดจอที่ใช้
+}
+
+// ─── จอที่แต่ละคนใช้ (โทรศัพท์ / แท็บเล็ต / คอมพิวเตอร์) ─────────────────────────────────
+// แตะได้ + ด้านสั้นของจอ < 600px = โทรศัพท์ · < 1100px = แท็บเล็ต · นอกนั้น = คอมพิวเตอร์
+// โทรศัพท์/แท็บเล็ตเก็บเป็นแนวตั้งเสมอ (กว้าง = ด้านสั้น) — หมุนจอแล้วไม่ต้องบันทึกใหม่
+function currentDeviceInfo() {
+  const iw = Math.round(window.innerWidth), ih = Math.round(window.innerHeight);
+  const touch = (navigator.maxTouchPoints || 0) > 0 || 'ontouchstart' in window;
+  const short = Math.min(screen.width || iw, screen.height || ih);
+  const kind = touch && short < 600 ? 'phone' : touch && short < 1100 ? 'tablet' : 'desktop';
+  return kind === 'desktop' ? { kind, w: iw, h: ih } : { kind, w: Math.min(iw, ih), h: Math.max(iw, ih) };
+}
+// บันทึกเฉพาะเมื่อชนิดจอเปลี่ยน หรือขนาดต่างจากเดิมเกิน 30px — ไม่ได้เขียนทุกครั้งที่เปิดแอป
+function recordUserDevice() {
+  if (EMBED_VIEW || !currentUser || !currentUser.name || !cloudSyncReady) return;
+  const name = currentUser.name;
+  const d = currentDeviceInfo();
+  const prev = userDevices[name];
+  if (prev && prev.kind === d.kind && Math.abs((prev.w || 0) - d.w) <= 30 && (d.kind === 'desktop' || Math.abs((prev.h || 0) - d.h) <= 60)) return;
+  withCloudRetry(() => {
+    const p = userDevices[name];
+    if (p && p.kind === d.kind && Math.abs((p.w || 0) - d.w) <= 30 && (d.kind === 'desktop' || Math.abs((p.h || 0) - d.h) <= 60)) return 'noop';
+    userDevices = { ...userDevices, [name]: { ...d, at: new Date().toISOString() } };
+    persistState();
+  });
+}
+const DEVICE_KIND_LABEL = { phone: 'โทรศัพท์', tablet: 'แท็บเล็ต', desktop: 'คอมพิวเตอร์' };
+// เปิดหน้าจอจำลองขนาดเดียวกับจอของคนนั้น — แอปตัวจริงในกรอบ (iframe) จึงจัดหน้าแบบโทรศัพท์ได้ตรงทุกอย่าง
+function openDeviceViewFrame(name) {
+  closeDeviceViewFrame();
+  const d = userDevices[name];
+  if (!d || d.kind === 'desktop' || !d.w || !d.h) return;
+  const bezel = 10;
+  const scale = Math.min(1, (window.innerHeight - 110) / (d.h + bezel * 2), (window.innerWidth - 40) / (d.w + bezel * 2));
+  const el = document.createElement('div');
+  el.id = 'device-view-frame';
+  el.style.cssText = 'position:fixed;inset:0;z-index:4000;background:rgba(15,23,42,.6);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:12px;';
+  el.onclick = e => { if (e.target === el) closeDeviceViewFrame(); };
+  const src = location.pathname + '?embed=1&viewas=' + encodeURIComponent(name);
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;color:#fff;font-size:13px;max-width:92vw;">
+      <span>📱 หน้าจอของ <b>${escapeHtmlAttr(name)}</b> · ${escapeHtmlAttr(DEVICE_KIND_LABEL[d.kind] || d.kind)} ${d.w}×${d.h}
+        <span style="opacity:.75;">· จอที่ใช้ล่าสุด ${escapeHtmlAttr(d.at ? prodSqFmtTime(d.at) : '')}</span></span>
+      <button class="btn btn-sm" style="background:#fff;color:var(--text-1);" onclick="closeDeviceViewFrame()">✕ ปิด (ดูแบบคอม)</button>
+    </div>
+    <div style="width:${Math.round((d.w + bezel * 2) * scale)}px;height:${Math.round((d.h + bezel * 2) * scale)}px;flex-shrink:0;">
+      <div style="width:${d.w + bezel * 2}px;height:${d.h + bezel * 2}px;transform:scale(${scale});transform-origin:0 0;
+                  box-sizing:border-box;border:${bezel}px solid #111;border-radius:${d.kind === 'phone' ? 34 : 22}px;overflow:hidden;background:#fff;
+                  box-shadow:0 12px 40px rgba(0,0,0,.45);">
+        <iframe src="${escapeHtmlAttr(src)}" title="หน้าจอของ ${escapeHtmlAttr(name)}" style="width:${d.w}px;height:${d.h}px;border:0;display:block;"></iframe>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+}
+function closeDeviceViewFrame() {
+  const el = document.getElementById('device-view-frame');
+  if (el) el.remove();
 }
 
 function logoutUser() {
@@ -25755,14 +25830,21 @@ function renderAdminViewSelect() {
   const sel = document.getElementById('admin-view-select');
   if (!sel) return;
   const others = collectLoginUsers().filter(u => u.name !== currentUser.name);
+  // บอกชนิดจอที่คนนั้นใช้ล่าสุดไว้ท้ายชื่อ — เลือกแล้วจะเปิดหน้าจอขนาดนั้นให้ (โทรศัพท์/แท็บเล็ต)
+  const devTag = n => { const d = userDevices[n]; return d && d.kind !== 'desktop' ? ' · 📱 ' + (DEVICE_KIND_LABEL[d.kind] || '') : ''; };
   sel.innerHTML = '<option value="">👁 ดูเป็นตัวเอง (Admin)</option>' +
-    others.map(u => `<option value="${escapeHtmlAttr(u.name)}"${u.name === adminViewAsName ? ' selected' : ''}>👁 ดูเป็น: ${escapeHtmlAttr(u.name)} (${escapeHtmlAttr(roleLabel(u.role))})</option>`).join('');
+    others.map(u => `<option value="${escapeHtmlAttr(u.name)}"${u.name === adminViewAsName ? ' selected' : ''}>👁 ดูเป็น: ${escapeHtmlAttr(u.name)} (${escapeHtmlAttr(roleLabel(u.role))})${escapeHtmlAttr(devTag(u.name))}</option>`).join('');
+  const btn = document.getElementById('admin-view-device-btn');
+  const d = adminViewAsName ? userDevices[adminViewAsName] : null;
+  if (btn) btn.style.display = d && d.kind !== 'desktop' ? '' : 'none';
 }
 
 function onAdminViewChange() {
   const sel = document.getElementById('admin-view-select');
   adminViewAsName = sel.value || null;
   applyRoleUI();
+  // คนที่ใช้โทรศัพท์/แท็บเล็ต — เปิดหน้าจอขนาดเดียวกับจอของเขาเลย (ผู้ใช้ขอ 25 พ.ย. 69)
+  if (adminViewAsName) openDeviceViewFrame(adminViewAsName); else closeDeviceViewFrame();
 }
 
 function applyRoleUI() {
@@ -25852,6 +25934,13 @@ function initAuth() {
   if (saved && saved.name && saved.role) {
     currentUser = saved;
     document.getElementById('login-overlay').classList.add('hidden');
+    // หน้าจอจำลองของช่าง (เปิดซ้อนจากหน้าต่าง Admin) — ดูเป็นคนนั้นตั้งแต่เปิด และเริ่มที่หน้าแรกของบทบาทเขา
+    if (EMBED_VIEW && EMBED_VIEW_AS && currentUser.role === 'admin') {
+      adminViewAsName = EMBED_VIEW_AS;
+      applyRoleUI();
+      showPage(defaultPageForRole(effectiveRole()));
+      return;
+    }
     applyRoleUI();
     // รีเฟรชหน้าเว็บ (ยังล็อกอินอยู่) — กลับไปหน้าล่าสุดที่เคยดูอยู่ ไม่ใช่ Dashboard เสมอ
     let savedPage = null;
@@ -25929,9 +26018,13 @@ async function initCloudSync() {
     // ตัวเตือนงานค้างรอจนได้ข้อมูลจริงก่อนถึงจะทำงาน (ดู maybeOpenLeftoverPrompt)
     // refreshAfterCloudUpdate() ข้างบนรันก่อนบรรทัดนี้ จึงยังถูกกันไว้ — ต้องเรียกอีกทีตรงนี้
     refreshLeftoverWatch();
-    sawFillDefaultGrindTimes();
-    sawAutoPlanKick();
-    sqAutoPlanKick();
+    // หน้าจอจำลองของช่างที่เปิดซ้อนอยู่ ไม่ต้องทำงานเบื้องหลังพวกนี้ซ้ำ (หน้าต่างหลักทำอยู่แล้ว)
+    if (!EMBED_VIEW) {
+      sawFillDefaultGrindTimes();
+      sawAutoPlanKick();
+      sqAutoPlanKick();
+      recordUserDevice();
+    }
     supabaseClient
       .channel('app_state_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state', filter: 'id=eq.main' }, payload => {
