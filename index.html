@@ -2558,7 +2558,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-25.06';
+const APP_BUILD = '2026-11-25.07';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -23825,7 +23825,46 @@ function renderDailyTasks() {
   updatePendingBadge();
   // เติมตัวเลขนาทีของชิ้นที่กำลังทำ แล้วตั้งให้เดินต่อเอง (ตัวจับเวลาหยุดเองเมื่อไม่เหลือชิ้นที่กำลังทำ)
   ensureDailyRunMinTimer();
+  alignDailySubActionCols();
 }
+
+// ปุ่มเริ่ม/จบงานของแถวงาน กับของตารางรายชิ้นข้างใต้ ให้อยู่แนวเดียวกัน (ผู้ใช้ขอ 25 พ.ย. 69)
+// ตารางรายชิ้นเป็นตารางซ้อนคนละตัว คอลัมน์ "ลำดับ" ของมันย่อหน้าเข้าไป (36px) จึงกว้างกว่าของตารางหลัก
+// ปุ่มเลยเยื้องไปขวา — วัดจุดเริ่มคอลัมน์ "จัดการ" ของทั้งสองตาราง แล้วขยายคอลัมน์ลำดับฝั่งที่สั้นกว่าให้ตรงกัน
+// ความกว้างคอลัมน์ขึ้นกับเนื้อหาและขนาดจอ จึงวัดใหม่ทุกครั้งที่วาด/ปรับขนาดหน้าต่าง
+function alignDailySubActionCols() {
+  const main = document.getElementById('tbl-daily');
+  if (!main || !main.offsetParent) return;
+  const subs = [...main.querySelectorAll('#tbody-daily table')]
+    .map(t => ({ t, th0: t.querySelector('thead th:nth-child(1)'), th1: t.querySelector('thead th:nth-child(2)') }))
+    .filter(x => x.th0 && x.th1);
+  const mainNo = main.querySelector('thead th:nth-child(2)'), mainAct = main.querySelector('thead th:nth-child(3)');
+  if (!mainNo || !mainAct) return;
+  // ล้างค่าที่ตั้งไว้รอบก่อน แล้ววัดขนาดตามธรรมชาติ
+  [mainNo, ...subs.map(x => x.th0)].forEach(th => { th.style.minWidth = ''; th.style.width = ''; th.style.boxSizing = ''; });
+  if (!subs.length) return;
+  const left = el => el.getBoundingClientRect().left;
+  // ตั้งทั้ง width และ min-width: ตารางหลักกว้างเกินกล่อง (เลื่อนข้าง) ค่า width ถูกเมิน ต้องใช้ min-width
+  // ส่วนตารางรายชิ้นมีที่เหลือ ถ้าตั้งแค่ min-width ที่เหลือจะถูกแจกเข้าคอลัมน์นี้ด้วย ปุ่มเลยเกินไปนิดหน่อย — width ตรึงให้พอดี
+  const setW = (th, w) => { th.style.boxSizing = 'border-box'; th.style.minWidth = th.style.width = (Math.round(w * 10) / 10) + 'px'; };
+  // ทำซ้ำได้ไม่เกิน 3 รอบ — ความกว้างเศษพิกเซลทำให้รอบแรกอาจคลาดไปไม่ถึง 1px
+  for (let pass = 0; pass < 3; pass++) {
+    const target = Math.max(left(mainAct), ...subs.map(x => left(x.th1)));
+    let moved = false;
+    if (left(mainAct) < target - 0.3) { setW(mainNo, mainNo.getBoundingClientRect().width + target - left(mainAct)); moved = true; }
+    const mainX = left(mainAct);
+    subs.forEach(x => {
+      const d = mainX - left(x.th1);
+      if (Math.abs(d) > 0.3 && x.th0.getBoundingClientRect().width + d > 0) { setW(x.th0, x.th0.getBoundingClientRect().width + d); moved = true; }
+    });
+    if (!moved) break;
+  }
+}
+var alignDailySubTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(alignDailySubTimer);
+  alignDailySubTimer = setTimeout(alignDailySubActionCols, 120);
+});
 
 // ─── ประวัติการทำงาน (หน้า History) ───────────────────────────────────────
 // สถานะรายชิ้นเก็บแยก "ตามวัน" (dailyPieceStatus[วัน][งาน][ชิ้น]) ส่วนหน้างานประจำวันอ่านจาก
