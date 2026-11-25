@@ -898,6 +898,8 @@ canvas{display:block;}
 .hamburger-btn:hover{background:var(--bg-hover);color:var(--text-1);}
 .sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(22,32,48,.45);z-index:99;}
 .sidebar-backdrop.open{display:block;}
+/* จอโทรศัพท์: ปุ่มเลื่อนวันเหลือแค่ ‹ › ให้วันที่+ป้ายวันนี้อยู่บรรทัดเดียวกันได้ */
+@media (max-width:480px){ .daily-datenav-row .dnav-txt{display:none;} }
 
 @media (max-width:900px){
   .hamburger-btn{display:flex;}
@@ -914,6 +916,10 @@ canvas{display:block;}
 
   /* แถบเครื่องมือ/ปุ่มกรองที่มีหลายปุ่มเรียงกัน (ใส่ class="mobile-wrap" ไว้ที่ตัว container) ให้ตกบรรทัดแทนล้นจอแนวนอน — ไม่ใช้กฎกว้างๆ กับทุก display:flex เพราะจะไปพังแถวไอคอน+ข้อความสั้นๆ ที่ตั้งใจให้อยู่บรรทัดเดียว (เช่น หัวข้อหน้าบน topbar) */
   .mobile-wrap{flex-wrap:wrap;}
+  /* แถบเลื่อนวันของหน้างานประจำวัน — บีบให้อยู่บรรทัดเดียว */
+  .daily-datenav-row{gap:6px !important;}
+  .daily-datenav-row #daily-daterange-trigger{padding:0 2px !important;gap:5px !important;white-space:nowrap;}
+  .daily-datenav-row #daily-daterange-label{font-size:16px !important;}
 
   /* กริดหลายคอลัมน์ต่างๆ ยุบเหลือคอลัมน์เดียว (หรือ 2 คอลัมน์สำหรับ KPI) บนจอแคบ */
   .kpi-grid{grid-template-columns:repeat(2,1fr)!important;gap:10px;}
@@ -1977,8 +1983,9 @@ canvas{display:block;}
 
       <!-- เอาปุ่มกรอง ทั้งหมด/CNC/ขัด Roll ออกแล้ว — ตารางแบ่งหัวข้อเป็น 2 ประเภทงานให้เห็นทั้งคู่ในหน้าเดียว
            ช่าง CNC / ช่างขัด Roll ยังเห็นเฉพาะประเภทของตัวเอง ผ่าน forcedWorkTypeForRole() -->
-      <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
-        <button class="btn btn-ghost btn-sm daily-datenav-btn" data-daynav="-1" onclick="dailyNav(-1)">‹ ก่อนหน้า</button>
+      <!-- แถบเลื่อนวัน: บรรทัดเดียวเสมอ (จอแคบย่อปุ่มเหลือ ‹ ›) · เอาปุ่ม "วันนี้" ออกแล้ว — ป้ายวันนี้/พรุ่งนี้อยู่ข้างวันที่ เลือกวันจากปฏิทินได้ -->
+      <div class="daily-datenav-row" style="display:flex;flex-wrap:nowrap;gap:10px;margin-bottom:16px;align-items:center;">
+        <button class="btn btn-ghost btn-sm daily-datenav-btn" data-daynav="-1" onclick="dailyNav(-1)">‹<span class="dnav-txt"> ก่อนหน้า</span></button>
         <div style="position:relative;display:inline-flex;">
           <span id="daily-daterange-trigger" onclick="openDailyDatePicker(event)" title="คลิกเพื่อเลือกวันที่" style="padding:0 8px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;">
             <span aria-hidden="true" style="font-size:18px;">📅</span>
@@ -1987,8 +1994,7 @@ canvas{display:block;}
           </span>
           <div id="daily-date-popup" class="plan-date-popup" style="display:none;"></div>
         </div>
-        <button class="btn btn-ghost btn-sm daily-datenav-btn" data-daynav="1" onclick="dailyNav(1)">ถัดไป ›</button>
-        <button class="btn btn-ghost btn-sm daily-datenav-btn" onclick="dailyGoToday()" style="margin-left:auto;">วันนี้</button>
+        <button class="btn btn-ghost btn-sm daily-datenav-btn" data-daynav="1" onclick="dailyNav(1)"><span class="dnav-txt">ถัดไป </span>›</button>
       </div>
 
       <div class="kpi-grid">
@@ -2568,7 +2574,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-25.25';
+const APP_BUILD = '2026-11-25.26';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
