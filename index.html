@@ -2557,7 +2557,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-25.02';
+const APP_BUILD = '2026-11-25.03';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -7402,7 +7402,8 @@ function showSawAutoPlanNotice(made) {
 // · ชุดละ 1 ครั้งต่อการถอด 1 ครั้ง (จดเวลาถอดไว้ที่ชิ้นในทะเบียน autoPlanFor — ลบงานทิ้งเองแล้วไม่สร้างซ้ำ)
 // วางเฉพาะชุดที่การ์ดรอแต่งแสดง (dashSqEffectiveStatus = รอแต่ง) และยังไม่มีแผน — เกณฑ์เดียวกับรายการชุดในฟอร์มเพิ่มงาน
 // ไม่วางให้: ชุดที่ตั้งรอแต่งเอง (ระบบผลิตไม่ได้บันทึกการถอด) · การถอดก่อน 25 พ.ย. 69 (ผู้ใช้เลือกให้ชุดค้างเดิมวางเอง)
-// เวลาแต่งต่อชิ้น: ทะเบียน Roll SQ ไม่มีเวลาแต่ง → ใช้นาทีต่อชิ้นของงานแต่งล่าสุดของขนาดเดียวกัน ไม่เคยมี = 120 นาที (ผู้ใช้เลือก)
+// เวลาแต่งต่อชิ้น: ชิ้นที่กรอกเวลาแต่งในทะเบียนไว้ใช้ค่านั้น (เช่น GI 4"x4" 180 นาที — 25 พ.ย. 69)
+//   ชิ้นที่ไม่ได้กรอก → นาทีต่อชิ้นของงานแต่งล่าสุดของขนาดเดียวกัน ไม่เคยมี = 120 นาที (ผู้ใช้เลือก)
 const SQ_AUTO_PLAN_FROM = '2026-11-24T17:00:00Z';   // 25 พ.ย. 69 00:00 เวลาไทย
 const SQ_AUTO_PLAN_DEFAULT_MIN = 120;
 function sqAutoPlanKick() {
@@ -7453,8 +7454,11 @@ function sqAutoPlanRunNow() {
       const setName = SQ_PLAN_PREFIX + x.key;
       const rolls = getMatchingRollsForPlan(setName, null);
       const ids = rolls.map((_, i) => i);
-      const per = sqAutoPlanMinutesFor(x.head.sizeSq);
-      const at = planAutoTaskAtQueueEnd('sq', setName, ids, rolls, ids.map(() => per), true);
+      // เวลาแต่งในทะเบียน (ชิ้นที่กรอกไว้) ชนะเสมอ — ชิ้นที่ไม่ได้กรอกใช้นาทีจากงานล่าสุดของขนาดนี้
+      const regMin = rolls.map(r => parseFloat(r.grindTime) || 0);
+      const per = regMin.every(v => v > 0) ? 0 : sqAutoPlanMinutesFor(x.head.sizeSq);
+      const minutes = regMin.map(v => v > 0 ? v : per);
+      const at = planAutoTaskAtQueueEnd('sq', setName, ids, rolls, minutes, regMin.some(v => !(v > 0)));
       rolls.forEach(r => { r.autoPlanFor = x.w.endedAt; });   // จดไว้แม้วางไม่ได้ — ไม่ต้องลองซ้ำทุกครั้งที่ดึงข้อมูล
       if (at) made.push({ key: x.key, label: sqSetFullLabel(x.head), ...at });
     });
