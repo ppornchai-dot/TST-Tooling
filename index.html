@@ -2571,7 +2571,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-25.14';
+const APP_BUILD = '2026-11-25.15';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -23809,10 +23809,9 @@ function renderDailyTasks() {
   ];
   // แท็บประเภทงาน — แสดงเฉพาะหัวข้อของประเภทที่เลือก พร้อมหัวข้องานแทรกของประเภทเดียวกัน
   const tabType = activeWorkTypeTab();
-  // แท็บที่เรียงทีละชิ้น (Roll SQ / ใบเลื่อย / มีดสลิตเตอร์) ตารางรายชิ้นมีหัวคอลัมน์ของตัวเองแล้ว
-  // หัวตารางหลัก (SIZE ROLL / ชุดสี / ผู้รับผิดชอบ …) ไม่ตรงกับอะไรเลย — ซ่อนไว้ (ผู้ใช้ขอ 25 พ.ย. 69)
+  // หัวตารางหลัก (ลำดับ / จัดการ / SIZE ROLL / ชุดสี / ผู้รับผิดชอบ …) ซ่อนทุกแท็บ — ดูหัวตารางรายชิ้นข้างล่างแทน (ผู้ใช้ขอ 25 พ.ย. 69)
   const theadDaily = document.getElementById('thead-daily');
-  if (theadDaily) theadDaily.style.display = (tabType === 'sq' || isCodeWorkType(tabType)) ? 'none' : '';
+  if (theadDaily) theadDaily.style.display = 'none';
   tbody.innerHTML = DAILY_SECTIONS.filter(s => {
     if (s.addType) return s.addType === tabType;
     return s.key === tabType;
@@ -23868,11 +23867,15 @@ function alignDailySubActionCols() {
   const subs = [...main.querySelectorAll('#tbody-daily table')]
     .map(t => ({ t, th0: t.querySelector('thead th:nth-child(1)'), th1: t.querySelector('thead th:nth-child(2)') }))
     .filter(x => x.th0 && x.th1);
-  const mainNo = main.querySelector('thead th:nth-child(2)'), mainAct = main.querySelector('thead th:nth-child(3)');
+  // หัวตารางหลักซ่อนอยู่ — ใช้ช่องของแถวงานแถวแรก (แถวงานมี 12 ช่องเต็ม ไม่ใช่แถวหัวข้อ/ตารางรายชิ้นที่รวมช่องไว้)
+  const firstRow = [...main.querySelectorAll('#tbody-daily > tr')].find(tr => tr.children.length >= 12);
+  const headRow = main.querySelector('thead tr');
+  const ref = firstRow || (headRow && headRow.offsetParent ? headRow : null);
+  if (!ref) return;
+  const mainNo = ref.children[1], mainAct = ref.children[2];
   if (!mainNo || !mainAct) return;
   // ล้างค่าที่ตั้งไว้รอบก่อน แล้ววัดขนาดตามธรรมชาติ
   [mainNo, ...subs.map(x => x.th0)].forEach(th => { th.style.minWidth = ''; th.style.width = ''; th.style.boxSizing = ''; });
-  // หัวตารางหลักซ่อนอยู่ (แท็บที่เรียงทีละชิ้น) — ไม่มีแถวงานให้เทียบ ไม่ต้องจัด
   if (!subs.length || !mainAct.offsetParent) return;
   const left = el => el.getBoundingClientRect().left;
   // ตั้งทั้ง width และ min-width: ตารางหลักกว้างเกินกล่อง (เลื่อนข้าง) ค่า width ถูกเมิน ต้องใช้ min-width
