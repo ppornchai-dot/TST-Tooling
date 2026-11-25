@@ -2568,7 +2568,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-25.24';
+const APP_BUILD = '2026-11-25.25';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -7037,11 +7037,12 @@ function sawWorkEntries() {
 // แถวละใบ (ช่างเรียกใบเลื่อยด้วยรหัส) · งานแทรกของงานลับคมใบเลื่อยขึ้นด้วยเหมือนการ์ด Roll
 function sawWorkingCardHtml() {
   const accent = 'var(--amber)', accentBg = 'var(--amber-dim)';
-  const entries = sawWorkEntries().map(e => {
+  const sawEntries = sawWorkEntries().map(e => {
     const paused = e.entry.status === 'paused';
     return {
+      grinder: sawGrinderNo(e.r.machine) || 1,
       set: 'ใบเลื่อย รหัส ' + (e.r.id || '—'),
-      colorLabel: [sawOdLabel(e.r), e.r.machine, sawGrinderLabel(e.r.machine)].filter(x => x && x !== '—').join(' · '),
+      colorLabel: [sawOdLabel(e.r), e.r.machine].filter(x => x && x !== '—').join(' · '),
       dot: null, cat: e.cat, unit: 'ใบ', // ไม่ใส่จุดสี — สีสุ่มจากรหัสไม่มีความหมาย
       done: 0, total: 1, remainAmt: 1, doing: e.cat === 'doing' ? 1 : 0,
       active: e.entry.status === 'in_progress', activeLabel: 'กำลังลับ',
@@ -7050,7 +7051,23 @@ function sawWorkingCardHtml() {
       detailNote: [e.cat === 'doing' && e.entry.startTime ? 'เริ่ม ' + e.entry.startTime : (e.task.startTime ? 'แผน ' + e.task.startTime : ''),
         e.minutes ? e.minutes + ' นาที' : '', e.task.workerId ? workerName(e.task.workerId) : ''].filter(Boolean).map(escapeHtmlAttr).join(' · '),
     };
-  }).concat(getWorkingRollEntries('saw').filter(e => e.insert));
+  });
+  const insertEntries = getWorkingRollEntries('saw').filter(e => e.insert);
+  const entries = sawEntries.concat(insertEntries);
+  // แยกเครื่องลับ 1 (ซ้าย) กับ 2 (ขวา) — สองเครื่องทำพร้อมกัน (ผู้ใช้ขอ 25 พ.ย. 69) · จอแคบเรียงบน-ล่าง
+  const laneCol = g => {
+    const list = sawEntries.filter(e => e.grinder === g);
+    const c = sawGrinderColor(g);
+    return `<div style="min-width:0;border:1px solid var(--border-light);border-top:4px solid ${c};border-radius:10px;padding:8px 10px 4px;">
+      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px;">
+        <span style="font-size:15px;font-weight:800;color:${c};">⚙ เครื่องลับ ${g}</span>
+        <span style="font-size:11.5px;color:var(--text-3);">ใบของ ${escapeHtmlAttr(sawGrinderMachines(g).join(', '))}</span>
+        <span style="margin-left:auto;font-size:12px;color:var(--text-3);"><b style="color:${c};">${list.length}</b> ใบ</span>
+      </div>
+      ${list.length ? dashWorkingGroupsHtml(list, accent, accentBg, 'ใบ')
+        : '<div style="padding:12px;text-align:center;color:var(--text-3);font-size:12.5px;">ไม่มีใบที่กำลังลับหรือวางแผนไว้</div>'}
+    </div>`;
+  };
   return `<div class="card" style="margin-bottom:18px;">
     <div class="card-header">
       <span class="card-title" style="font-size:17px;color:${accent};display:inline-flex;align-items:center;gap:8px;">
@@ -7058,8 +7075,10 @@ function sawWorkingCardHtml() {
       <span style="margin-left:auto;font-size:12px;color:var(--text-3);"><b style="color:${accent};">${entries.length}</b> ใบ${escapeHtmlAttr(dashWorkingCountNote(entries))}</span>
     </div>
     <div style="padding:4px 14px 10px;">
-      ${entries.length ? dashWorkingGroupsHtml(entries, accent, accentBg, 'ใบ')
-        : '<div style="padding:14px;text-align:center;color:var(--text-3);font-size:13px;">ยังไม่มีใบเลื่อยที่กำลังลับคมหรือวางแผนไว้</div>'}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-top:6px;">
+        ${sawGrinderList().map(laneCol).join('')}
+      </div>
+      ${insertEntries.length ? `<div style="margin-top:10px;">${dashWorkingGroupsHtml(insertEntries, accent, accentBg, 'ใบ')}</div>` : ''}
       <div style="font-size:11px;color:var(--text-3);margin-top:6px;">
         แสดงงานลับคมตามแผนที่ยังไม่เสร็จ (รวมของวันนี้และวันข้างหน้า) แยกรายใบ · กดที่ใบเพื่อไปกดเริ่ม/จบงานในหน้างานประจำวัน</div>
     </div>
