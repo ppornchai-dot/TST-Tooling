@@ -2558,7 +2558,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-25.09';
+const APP_BUILD = '2026-11-25.10';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -10309,8 +10309,10 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason, flat) {
       const rollCell = isBreak
         ? `<td colspan="2" class="muted" style="${breakStyle}">${escapeHtmlAttr(typeMeta.label)}</td>`
         : `<td class="muted">${isFirstRow ? escapeHtmlAttr(pieceCodeOf(p.roll, (t.__origin || t).workType)) : ''}</td><td><strong>${isFirstRow ? escapeHtmlAttr(pieceNameOf(p.roll, (t.__origin || t).workType)) : ''}</strong>${
-          // รายการเรียงชิ้นของ Roll SQ (หน้างานประจำวัน) ไม่มีแถวงานบอกชุดแล้ว — บอกขนาด/สี/ชุดไว้ใต้ชื่อชิ้น
-          isFirstRow && flat && flat.showSet ? `<div style="font-size:11.5px;color:var(--text-3);font-weight:400;">${escapeHtmlAttr(planSetLabel(t.rollSet).replace(/^SQ /, ''))}</div>` : ''}${
+          // รายการเรียงชิ้นของ Roll SQ (หน้างานประจำวัน) ไม่มีแถวงานบอกชุดแล้ว — บอกแค่ขนาดไว้ใต้ชื่อชิ้น
+          // (สี/ชุดที่/เดือนผลิตเอาออก ผู้ใช้ขอ 25 พ.ย. 69 — รหัสชิ้นบอกชุดอยู่แล้ว)
+          isFirstRow && flat && flat.showSet ? `<div style="font-size:11.5px;color:var(--text-3);font-weight:400;">${escapeHtmlAttr(
+            String((((toolingData || {}).sq || []).find(r => sqSetKey(r) === sqPlanSetKeyOf(t.rollSet)) || {}).sizeSq || '').trim())}</div>` : ''}${
           // ใบเลื่อย: บอกเครื่องผลิตของใบนั้น (ตามทะเบียน) ต่อท้ายรหัส
           isFirstRow && (t.__origin || t).workType === 'saw' && p.roll && String(p.roll.machine || '').trim() && String(p.roll.machine).trim() !== '—'
             ? ` <span class="chip chip-blue" style="font-size:10.5px;margin-left:4px;" title="เครื่องผลิตของใบนี้ (ตามทะเบียนใบเลื่อย)">${escapeHtmlAttr(String(p.roll.machine).trim())}</span>` : ''}${isFirstRow ? continuedBadge + contPieceLine : ''}${measuredSizeLine}${pauseReasonLine}</td>`;
