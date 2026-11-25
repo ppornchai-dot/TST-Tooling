@@ -1608,7 +1608,7 @@ canvas{display:block;}
             <div class="table-wrap" style="overflow-x:auto;">
               <table>
                 <thead><tr>
-                  <th>รหัส</th><th title="OD ตั้งต้นของใบ — ไม่เปลี่ยนตามการลับคม">Ø เริ่มต้น</th><th title="OD ที่วัดได้ตอนจบงานลับคมครั้งล่าสุด">Ø ปัจจุบัน</th><th title="OD ต่ำสุดที่ยังใช้ได้ — OD ปัจจุบันเท่านี้หรือน้อยกว่า = ถึงอายุ">Ø หมดอายุ</th><th>จำนวนฟัน</th><th title="ความสูงของฟันที่วัดได้ (mm)">ความสูงฟัน</th><th title="ความหนาของใบเลื่อย (mm)">ความหนาใบเลื่อย</th><th>เครื่องผลิต</th><th>ตัดสะสม (ตัน)</th><th>Regrind ครั้งที่</th><th title="วันที่ลับคมครั้งล่าสุด">ลับคมล่าสุด</th><th title="เวลาที่ใช้ลับคมใบนี้ — ใช้คิดเวลาเริ่ม-จบของงานลับคมใบเลื่อยในหน้าวางแผน">เวลาลับคม (นาที)</th><th>สถานะ</th><th></th>
+                  <th>รหัส</th><th title="OD ตั้งต้นของใบ — ไม่เปลี่ยนตามการลับคม">Ø เริ่มต้น</th><th title="OD ที่วัดได้ตอนจบงานลับคมครั้งล่าสุด">Ø ปัจจุบัน</th><th title="OD ต่ำสุดที่ยังใช้ได้ — OD ปัจจุบันเท่านี้หรือน้อยกว่า = ถึงอายุ">Ø หมดอายุ</th><th>จำนวนฟัน</th><th title="ความสูงของฟันที่วัดได้ (mm)">ความสูงฟัน</th><th title="ความหนาของใบเลื่อย (mm)">ความหนาใบเลื่อย</th><th>เครื่องผลิต</th><th title="เครื่องลับ 1: ใบของ P1, P4, C5 · เครื่องลับ 2: ใบของ P2, P3">เครื่องลับ</th><th>ตัดสะสม (ตัน)</th><th>Regrind ครั้งที่</th><th title="วันที่ลับคมครั้งล่าสุด">ลับคมล่าสุด</th><th title="เวลาที่ใช้ลับคมใบนี้ — ใช้คิดเวลาเริ่ม-จบของงานลับคมใบเลื่อยในหน้าวางแผน">เวลาลับคม (นาที)</th><th>สถานะ</th><th></th>
                 </tr></thead>
                 <tbody id="tbody-saw"></tbody>
               </table>
@@ -2568,7 +2568,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-25.22';
+const APP_BUILD = '2026-11-25.23';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -21670,6 +21670,17 @@ function sawMachineOf(r) {
   const m = String((r || {}).machine || '').trim();
   return m && m !== '—' ? m : '';
 }
+// เครื่องลับใบเลื่อย — แบ่งตามเครื่องผลิตของใบ (ผู้ใช้กำหนด 25 พ.ย. 69)
+//   เครื่องลับ 1: ใบของ P1, P4, C5 · เครื่องลับ 2: ใบของ P2, P3
+// ย้ายใบไปเครื่องผลิตอื่น เครื่องลับเปลี่ยนตามเอง ไม่ต้องแก้ทีละใบ
+const SAW_GRINDER_BY_MACHINE = { P1: 1, P4: 1, C5: 1, P2: 2, P3: 2 };
+function sawGrinderNo(machine) {
+  return SAW_GRINDER_BY_MACHINE[String(machine || '').trim().toUpperCase().replace(/\s+/g, '')] || null;
+}
+function sawGrinderLabel(machine) {
+  const n = sawGrinderNo(machine);
+  return n ? 'เครื่องลับ ' + n : '';
+}
 // เรียงตามเครื่อง (C5, P1, P2 …) แล้วตามรหัสในเครื่องเดียวกัน · ยังไม่ระบุเครื่องไว้ท้ายสุด
 // เรียงเฉพาะที่แสดง ไม่แตะลำดับใน toolingData.saw (ปุ่มแก้ไข/ลบอ้างตำแหน่งเดิม)
 function sawSortedByMachine() {
@@ -21763,7 +21774,8 @@ function renderSawMachineList() {
     const header = `<div onclick="${jsCallAttr('selectSawMachine', mc)}" style="cursor:pointer;"
         title="${escapeHtmlAttr((mc ? 'เครื่อง ' + mc : 'ยังไม่ระบุเครื่อง') + ' — ' + blades.length + ' ใบ'
           + (inuse ? ' · กำลังใช้งาน ' + inuse : '') + ' · กดเพื่อดูเฉพาะเครื่องนี้ (กดซ้ำเพื่อดูทุกเครื่อง)')}">${
-        rollSetSectionHeaderHtml(mc ? 'เครื่อง ' + escapeHtmlAttr(mc) : 'ยังไม่ระบุเครื่อง', blades.length + ' ใบ',
+        rollSetSectionHeaderHtml(mc ? 'เครื่อง ' + escapeHtmlAttr(mc) : 'ยังไม่ระบุเครื่อง',
+          (sawGrinderNo(mc) ? sawGrinderLabel(mc) + ' · ' : '') + blades.length + ' ใบ',
           active ? 'var(--accent)' : 'var(--text-1)', { keepCase: true, big: true, tight: true })}</div>`;
     // ขยายเฉพาะเครื่องที่เลือก — เครื่องอื่น (และตอนดูทุกเครื่อง) ย่อไว้แค่หัวข้อ
     // กดเครื่องเดิมซ้ำ = ยกเลิกการเลือก → รายการย่อปิดลง ไม่งั้นรายการยาว 50 กว่าใบ หาเครื่องที่ต้องการยาก
@@ -21815,9 +21827,9 @@ function renderSawTable(page) {
   const grouped = selectedSawMachine === null && !selectedSawBlade;
   const mcCount = new Map();
   sorted.forEach(r => mcCount.set(sawMachineOf(r), (mcCount.get(sawMachineOf(r)) || 0) + 1));
-  const grpHead = (mc, cont) => `<tr><td colspan="14" onclick="${jsCallAttr('selectSawMachine', mc)}" style="cursor:pointer;background:var(--bg-panel);padding:7px 14px;
+  const grpHead = (mc, cont) => `<tr><td colspan="15" onclick="${jsCallAttr('selectSawMachine', mc)}" style="cursor:pointer;background:var(--bg-panel);padding:7px 14px;
       border-top:2px solid var(--border);font-size:12.5px;font-weight:800;color:var(--text-1);" title="กดเพื่อดูเฉพาะเครื่องนี้">
-      ${mc ? 'เครื่อง ' + escapeHtmlAttr(mc) : 'ยังไม่ระบุเครื่อง'}
+      ${mc ? 'เครื่อง ' + escapeHtmlAttr(mc) : 'ยังไม่ระบุเครื่อง'}${sawGrinderNo(mc) ? `<span style="font-weight:700;color:var(--accent);margin-left:6px;">· ${escapeHtmlAttr(sawGrinderLabel(mc))}</span>` : ''}
       <span style="font-weight:600;color:var(--text-3);margin-left:6px;">${mcCount.get(mc) || 0} ใบ${cont ? ' · ต่อจากหน้าก่อน' : ''}</span></td></tr>`;
   document.getElementById('tbody-saw').innerHTML = rows.map((r, i) => {
     const mc = sawMachineOf(r);
@@ -21832,6 +21844,7 @@ function renderSawTable(page) {
       <td>${r.toothHeight || '—'}</td>
       <td>${r.kerf}</td>
       <td>${r.machine}</td>
+      <td>${sawGrinderNo(r.machine) ? `<span class="chip ${sawGrinderNo(r.machine) === 1 ? 'chip-blue' : 'chip-purple'}" style="white-space:nowrap;">${escapeHtmlAttr(sawGrinderLabel(r.machine))}</span>` : '<span class="muted">—</span>'}</td>
       ${sawUsageCellHtml(r)}
       <td class="muted">${r.regrind}</td>
       <td class="muted">${r.lastService ? escapeHtmlAttr(fmtIsoDateThai(r.lastService)) : '—'}</td>
