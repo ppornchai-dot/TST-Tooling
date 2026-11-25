@@ -2568,7 +2568,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-25.18';
+const APP_BUILD = '2026-11-25.19';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -23775,7 +23775,7 @@ function renderDailyTasks() {
     return `<tr><td colspan="12" style="padding:0;background:var(--bg-panel);">
       <table>
         <thead><tr>
-          <th style="padding-left:36px;">ลำดับ</th><th></th><th>รหัส</th><th>${s.key === 'saw' ? 'ใบเลื่อย' : s.key === 'slitter' ? 'มีด' : s.key === 'sq' ? 'ชิ้น / ชุด' : 'ชื่อ Roll / ชุด'}</th><th style="text-align:right;">นาที</th><th>เริ่มงาน</th><th>จบงาน</th>
+          <th style="padding-left:36px;">ลำดับ</th><th></th><th>${isCodeWorkType(s.key) || s.key === 'sq' ? 'รหัส' : 'Size'}</th><th>${s.key === 'saw' ? 'ใบเลื่อย' : s.key === 'slitter' ? 'มีด' : s.key === 'sq' ? 'ชิ้น / ชุด' : 'ชื่อ Roll / ชุด'}</th><th style="text-align:right;">นาที</th><th>เริ่มงาน</th><th>จบงาน</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
