@@ -2568,7 +2568,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-25.17';
+const APP_BUILD = '2026-11-25.18';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5540,7 +5540,7 @@ function dashRollWorkingChipHtml(e, accentVar, bgVar) {
       : 'ดูรายละเอียดในทะเบียน Tooling')
       + (e.insert || e.unit ? '' : ' · กดเริ่มค้างไว้ ' + e.doing + ' ชิ้น'
           + ' · งานที่เหลือคิดเป็นสัดส่วนของเวลาต่อชิ้น ชิ้นที่ทำได้ครึ่งเดียวนับเป็น 0.5 ชิ้น'))}">
-    <span style="width:9px;height:9px;border-radius:50%;background:${e.dot};flex-shrink:0;"></span>
+    ${e.dot ? `<span style="width:9px;height:9px;border-radius:50%;background:${e.dot};flex-shrink:0;"></span>` : ''}
     <span style="flex:1;min-width:0;">
       <span style="display:block;font-size:13px;font-weight:700;color:var(--text-1);">${escapeHtmlAttr(e.set)}</span>
       <span style="display:block;font-size:11px;color:var(--text-3);">${escapeHtmlAttr(e.colorLabel)}${e.colorLabel ? ' · ' : ''}${detail}${dateNote}</span>
@@ -7042,7 +7042,7 @@ function sawWorkingCardHtml() {
     return {
       set: 'ใบเลื่อย รหัส ' + (e.r.id || '—'),
       colorLabel: [sawOdLabel(e.r), e.r.machine].filter(x => x && x !== '—').join(' · '),
-      dot: toolCalSawColor(e.r.id), cat: e.cat, unit: 'ใบ',
+      dot: null, cat: e.cat, unit: 'ใบ', // ไม่ใส่จุดสี — สีสุ่มจากรหัสไม่มีความหมาย
       done: 0, total: 1, remainAmt: 1, doing: e.cat === 'doing' ? 1 : 0,
       active: e.entry.status === 'in_progress', activeLabel: 'กำลังลับ',
       firstDate: e.date, dayCount: 1, taskId: e.task.id, taskDate: e.date, workType: 'saw',
