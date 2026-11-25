@@ -2557,7 +2557,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-24.16';
+const APP_BUILD = '2026-11-25.01';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -14956,7 +14956,16 @@ function carryOverLeftoverTask(taskId, targetDay) {
   }
 
   // แทรกไว้ "ก่อน" งานเดิมของวันนั้น แล้วไล่เวลางานเดิมต่อท้ายให้ใหม่
-  resequencePlanDayShift(day, shiftKey, [carriedId, ...existingIds.filter(id => id !== carriedId)], anchor);
+  // งานที่ทำไปแล้วบางส่วน (เช่น Roll SQ คู่ R/L ที่ทำเสร็จไปชิ้นหนึ่ง) ต้องเป็นรายการแรกของวันเสมอ (ผู้ใช้ขอ 25 พ.ย. 69)
+  //   ทำอีกชิ้นของคู่ให้ครบก่อนเริ่มงานใหม่ — งานที่ยกมาทั้งก้อน (ยังไม่เริ่ม) จึงไปต่อหลังงานแบบนี้ที่ยกมาแล้ว
+  //   เจอจริง: กด "ยกทั้งหมด" ยก 3_R (3_L เสร็จแล้ว) ก่อน แล้วยกชุด 4 (ยังไม่เริ่ม) ไปแทรกหน้าสุดทับ → 3_R ตกไปเที่ยง
+  const rest = existingIds.filter(id => id !== carriedId);
+  const isPartialCarry = id => { const x = planTasks.find(p => p.id === id); return !!(x && x.carriedFrom && x.carriedFrom.date < day); };
+  // ส่วนที่เหลือของคู่ที่เคยยกมาแล้วยังไม่เสร็จอีก (มี carriedFrom) ยกต่อทั้งก้อน — ก็ยังเป็นงานค้างครึ่งคู่ ต้องขึ้นก่อนเหมือนกัน
+  const order = (info.done.length || t.carriedFrom)
+    ? [carriedId, ...rest]
+    : [...rest.filter(isPartialCarry), carriedId, ...rest.filter(id => !isPartialCarry(id))];
+  resequencePlanDayShift(day, shiftKey, order, anchor);
   return carriedId;
 }
 
@@ -14977,7 +14986,12 @@ function carryOverAllLeftover() {
   const day = nextWorkingDayForCarry();
   const before = new Map(planTasks.map(x => [x.id, taskDisplayDate(x)]));
   let n = 0;
-  list.forEach(x => { if (carryOverLeftoverTask(x.task.id, day)) n++; });
+  // ลำดับที่ต้องการในวันปลายทาง: งานที่ทำไปแล้วบางส่วนก่อน แล้วงานที่ยังไม่เริ่ม — ภายในกลุ่มเรียงตามเวลาเดิม
+  // ทุกครั้งที่ยกจะแทรกไว้หน้ากลุ่มของตัวเอง จึงยกจากท้ายรายการขึ้นมา ลำดับสุดท้ายจะได้ตรงตามนี้
+  const startKey = x => taskDisplayDate(x.task) + ' ' + (x.task.startTime || '');
+  const partial = x => x.done.length > 0 || !!x.task.carriedFrom;
+  const ordered = list.slice().sort((a, b) => partial(b) - partial(a) || startKey(a).localeCompare(startKey(b)));
+  ordered.reverse().forEach(x => { if (carryOverLeftoverTask(x.task.id, day)) n++; });
   autoFixPlanSequencing();
   syncPlanProgressAfterMove(before);
   mergeAdjacentPlanTasks();
