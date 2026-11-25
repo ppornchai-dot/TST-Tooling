@@ -2571,7 +2571,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-25.11';
+const APP_BUILD = '2026-11-25.12';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -23788,24 +23788,24 @@ function renderDailyTasks() {
         title="${escapeHtmlAttr('เพิ่มงานแทรกของงาน' + planWorkTypeShortLabel(s.addType) + ' ของวันที่กำลังดู')}"
         style="font-size:15px;font-weight:800;padding:11px 22px;border-radius:10px;
                background:${s.color};color:#fff;border:1px solid ${s.color};box-shadow:0 1px 3px rgba(0,0,0,.18);">
-        + เพิ่มงานแทรก ${escapeHtmlAttr('(' + planWorkTypeShortLabel(s.addType) + ')')}</button>
+        + เพิ่มงานแทรก</button>
     </td></tr>`;
 
   // เรียงเป็นคู่: งานตามแผนของประเภทนั้น แล้วต่อด้วยงานแทรกของประเภทเดียวกันทันที
   // (เดิมงานแทรกทั้งสองประเภทไปกองท้ายตาราง ต้องเลื่อนหาว่าของงานไหน)
   const DAILY_SECTIONS = [
     { key: 'cnc',       icon: '⚙', label: 'แต่ง Roll (CNC)', color: 'var(--accent)', bg: 'var(--accent-glow)', empty: 'ไม่มีงานแต่ง Roll ในวันนี้', always: true },
-    { key: 'checklist-cnc',    icon: '＋', label: 'งานแทรก — แต่ง Roll (CNC)', color: 'var(--accent)', bg: 'var(--bg-panel)', empty: 'ยังไม่มีงานแทรกของงานแต่ง Roll ในวันนี้', always: true, addType: 'cnc' },
+    { key: 'checklist-cnc',    icon: '＋', label: 'งานแทรก', color: 'var(--accent)', bg: 'var(--bg-panel)', empty: 'ยังไม่มีงานแทรกของงานแต่ง Roll ในวันนี้', always: true, addType: 'cnc' },
     { key: 'polish',    icon: '✦', label: 'ขัด Roll',        color: 'var(--purple)', bg: 'var(--purple-dim)',  empty: 'ไม่มีงานขัด Roll ในวันนี้',  always: true },
-    { key: 'checklist-polish', icon: '＋', label: 'งานแทรก — ขัด Roll',        color: 'var(--purple)', bg: 'var(--bg-panel)', empty: 'ยังไม่มีงานแทรกของงานขัด Roll ในวันนี้',  always: true, addType: 'polish' },
+    { key: 'checklist-polish', icon: '＋', label: 'งานแทรก',        color: 'var(--purple)', bg: 'var(--bg-panel)', empty: 'ยังไม่มีงานแทรกของงานขัด Roll ในวันนี้',  always: true, addType: 'polish' },
     // แต่ง Roll SQ — ช่าง/เครื่องคนละชุดกับงานแต่ง Roll (CNC) จึงเป็นหัวข้อของตัวเอง
     // ยังไม่มีหัวข้อ "งานแทรก" ของ SQ เพราะงานแทรกยังรองรับแค่ CNC/ขัด Roll
     { key: 'sq',        icon: '◆', label: 'แต่ง Roll SQ',     color: 'var(--amber)',  bg: 'var(--amber-dim)',   empty: 'ไม่มีงานแต่ง Roll SQ ในวันนี้', always: true },
-    { key: 'checklist-sq',     icon: '＋', label: 'งานแทรก — แต่ง Roll SQ',  color: 'var(--amber)', bg: 'var(--bg-panel)', empty: 'ยังไม่มีงานแทรกของงานแต่ง Roll SQ ในวันนี้', always: true, addType: 'sq' },
+    { key: 'checklist-sq',     icon: '＋', label: 'งานแทรก',  color: 'var(--amber)', bg: 'var(--bg-panel)', empty: 'ยังไม่มีงานแทรกของงานแต่ง Roll SQ ในวันนี้', always: true, addType: 'sq' },
     { key: 'saw',       icon: '✧', label: 'ลับคมใบเลื่อย',     color: 'var(--green)',  bg: 'var(--green-dim)',   empty: 'ไม่มีงานลับคมใบเลื่อยในวันนี้', always: true },
-    { key: 'checklist-saw',    icon: '＋', label: 'งานแทรก — ลับคมใบเลื่อย', color: 'var(--green)', bg: 'var(--bg-panel)', empty: 'ยังไม่มีงานแทรกของงานลับคมใบเลื่อยในวันนี้', always: true, addType: 'saw' },
+    { key: 'checklist-saw',    icon: '＋', label: 'งานแทรก', color: 'var(--green)', bg: 'var(--bg-panel)', empty: 'ยังไม่มีงานแทรกของงานลับคมใบเลื่อยในวันนี้', always: true, addType: 'saw' },
     { key: 'slitter',   icon: '⚯', label: 'ลับคมมีดสลิตเตอร์', color: 'var(--red)',    bg: 'var(--red-dim)',     empty: 'ไม่มีงานลับคมมีดสลิตเตอร์ในวันนี้', always: true },
-    { key: 'checklist-slitter', icon: '＋', label: 'งานแทรก — ลับคมมีดสลิตเตอร์', color: 'var(--red)', bg: 'var(--bg-panel)', empty: 'ยังไม่มีงานแทรกของงานลับคมมีดสลิตเตอร์ในวันนี้', always: true, addType: 'slitter' },
+    { key: 'checklist-slitter', icon: '＋', label: 'งานแทรก', color: 'var(--red)', bg: 'var(--bg-panel)', empty: 'ยังไม่มีงานแทรกของงานลับคมมีดสลิตเตอร์ในวันนี้', always: true, addType: 'slitter' },
   ];
   // แท็บประเภทงาน — แสดงเฉพาะหัวข้อของประเภทที่เลือก พร้อมหัวข้องานแทรกของประเภทเดียวกัน
   const tabType = activeWorkTypeTab();
