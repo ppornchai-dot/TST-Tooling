@@ -2558,7 +2558,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-25.08';
+const APP_BUILD = '2026-11-25.09';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -10379,8 +10379,8 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason, flat) {
         <td class="muted" style="padding-left:36px;">${isFirstRow ? startNo + i + 1 : ''}</td>
         ${actionCell}
         ${rollCell}
-        <td>${shiftChip}</td>
-        <td>${typeChip}</td>
+        ${flat && flat.hideShift ? '' : `<td>${shiftChip}</td>
+        <td>${typeChip}</td>`}
         <td class="muted" style="text-align:right;">${escapeHtmlAttr(String(s.minutes))}${
           (!isBreak && isSplitPiece && pieceCountText(s.minutes, p.fullMinutes))
             ? `<div style="font-size:11px;font-weight:700;color:var(--accent);">${escapeHtmlAttr(pieceCountText(s.minutes, p.fullMinutes))}</div>` : ''}${
@@ -23746,14 +23746,15 @@ function renderDailyTasks() {
       const isMine = !restrictWorkerId || item.workerId == null || item.workerId === restrictWorkerId;
       const blockReason = !isMine ? 'งานของช่างคนอื่น'
         : (!canActOnDailyDate() ? 'กดได้เฉพาะวันทำงานก่อน / วันนี้ / วันทำงานถัดไป' : '');
-      const html = renderPlanDayTaskDetailRow(t, 12, true, blockReason, { startNo: no, showSet: s.key === 'sq' });
+      // Roll SQ: ไม่แสดงคอลัมน์ กะ / ช่วงเวลา — ช่างไม่ต้องดู (ผู้ใช้ขอ 25 พ.ย. 69) แถวพักยังมีชื่อ "พักเที่ยง" ให้เห็น
+      const html = renderPlanDayTaskDetailRow(t, 12, true, blockReason, { startNo: no, showSet: s.key === 'sq', hideShift: s.key === 'sq' });
       no += (t.rollIds || []).length;
       return html;
     }).join('');
     return `<tr><td colspan="12" style="padding:0;background:var(--bg-panel);">
       <table>
         <thead><tr>
-          <th style="padding-left:36px;">ลำดับ</th><th></th><th>รหัส</th><th>${s.key === 'saw' ? 'ใบเลื่อย' : s.key === 'sq' ? 'ชิ้น / ชุด' : 'มีด'}</th><th>กะ</th><th>ช่วงเวลา</th><th style="text-align:right;">นาที</th><th>เริ่มงาน</th><th>จบงาน</th>
+          <th style="padding-left:36px;">ลำดับ</th><th></th><th>รหัส</th><th>${s.key === 'saw' ? 'ใบเลื่อย' : s.key === 'sq' ? 'ชิ้น / ชุด' : 'มีด'}</th>${s.key === 'sq' ? '' : '<th>กะ</th><th>ช่วงเวลา</th>'}<th style="text-align:right;">นาที</th><th>เริ่มงาน</th><th>จบงาน</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
