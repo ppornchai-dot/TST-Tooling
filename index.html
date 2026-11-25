@@ -2557,7 +2557,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-25.01';
+const APP_BUILD = '2026-11-25.02';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6300,7 +6300,8 @@ function dashSqInUseCardHtml(sets) {
 //
 // API ของระบบผลิตต้องใช้คีย์ และห้ามเรียกตรงจากหน้าเว็บ — จึงเรียกผ่านตัวกลาง api/sq-usage.js บน Vercel
 // ซึ่งเก็บคีย์ไว้ฝั่ง server (หน้าเว็บนี้ไม่มีคีย์ และห้ามใส่คีย์ลงไฟล์นี้ — repo เป็นสาธารณะ)
-// ดึงเฉพาะตอนเปิดแท็บ Roll SQ / กด ↻ ตามที่ฝ่ายผลิตขอ ไม่ตั้งเวลาดึงซ้ำอัตโนมัติ
+// ดึงเฉพาะตอนเปิดแท็บ Roll SQ / กด ↻ / เปิดแอป 1 ครั้ง / มีรายการถอดชุดเข้ามา (วางแผนแต่งอัตโนมัติ — เหมือนใบเลื่อย)
+// ตามที่ฝ่ายผลิตขอ ไม่ตั้งเวลาดึงซ้ำอัตโนมัติ
 // แสดงผลอย่างเดียว ไม่เขียนลงข้อมูลกลาง (ไม่งั้นทุกเครื่องที่เปิดหน้านี้จะแย่งกันเขียน)
 // ใช้ var ไม่ใช่ const/let — การ์ดบน Dashboard อาจถูกวาดตั้งแต่ตอนบูตก่อนบรรทัดนี้จะรัน
 // ถ้าเป็น let/const จะชน TDZ แล้วสคริปต์ตายกลางทาง (var ได้ undefined แทน ซึ่งเช็กไว้แล้ว)
@@ -6551,6 +6552,8 @@ function handleProdEventRows(rows, silent) {
     // ถอดใบเลื่อย — ดึงใหม่เพื่อวางแผนลับคมให้อัตโนมัติ แม้ไม่ได้เปิดดูการ์ดอยู่ (ดึงตามเหตุการณ์ ไม่ใช่ดึงถี่
     // หลายเครื่องดึงพร้อมกันได้ URL เดียวกัน (&ev=) ตัวกลางแคชไว้ ยิงขึ้นระบบผลิตครั้งเดียว)
     else if (kind === 'saw' && evs.some(e => e.type === 'out')) loadProdSawUsage(true);
+    // ถอดชุด Roll SQ — ดึงใหม่เพื่อวางแผนแต่งให้อัตโนมัติ (แบบเดียวกับใบเลื่อย · ดึงตามเหตุการณ์ ไม่ใช่ดึงถี่)
+    else if (kind === 'sq' && !silent && evs.some(e => e.type === 'out')) loadProdSqInUse(true);
   });
 }
 // ตามเก็บรายการที่เข้ามาตอนเครื่องนี้ปิดแอป/พักจอ (realtime หลุด) — อ่านจากตารางของเราเอง ไม่ใช่ระบบผลิต
@@ -6721,6 +6724,7 @@ function loadProdSqInUse(force) {
         if (cands.length === 1) return String(cands[0].sizeSq || '').trim() + ' ' + sqColorMeta(cands[0].color).label + ' ' + sqSetOrdinalLabel(cands[0]);
         return 'ชุดรหัส ' + String(r.code || '—') + (r.product_name ? ' (' + String(r.product_name) + ')' : '');
       });
+      try { sqAutoPlanRemoved(); } catch (e2) { console.error('sqAutoPlanRemoved', e2); }
     } catch (e) {
       // ดึงไม่ได้ก็ยังโชว์ผลรอบก่อน (ถ้ามี) — แค่บอกว่ารอบล่าสุดล้มเหลว
       prodSqLive = { ...prodSqLive, status: 'error', at: Date.now(), error: String((e && e.message) || e) };
@@ -7290,20 +7294,32 @@ function sawAutoPlanRunNow() {
     });
     if (!made.length) { persistState(); return; }
     autoFixPlanSequencing();
+    const shown = made.map(planAutoTaskActualStart);   // ก่อนรวมงาน — รวมแล้ว id ของงานอาจหายไป
     mergeAdjacentPlanTasks();
     persistState();
     if (currentPage === 'plan') renderCurrentPlanView();
     rerenderProdSawViews();
-    showSawAutoPlanNotice(made);
+    showSawAutoPlanNotice(shown);
   });
 }
 // สร้างงานลับคม 1 ใบ — คืน { date, time } ที่วางไว้ หรือ null ถ้าวางไม่ได้
 function planSawGrindAuto(idx) {
-  const workType = 'saw';
   const scoped = getMatchingRollsForPlan(SAW_PLAN_SET, null);
   const roll = scoped[idx];
   const minutes = parseFloat((roll || {}).grindTime) || 0;
   if (!roll || !minutes) return null;
+  return planAutoTaskAtQueueEnd('saw', SAW_PLAN_SET, [idx], [roll], [minutes], false);
+}
+// วางงานอัตโนมัติ 1 งาน ต่อท้ายคิวของวันนี้ — กติกาเดียวกับกดบันทึกในฟอร์มเพิ่มงาน (ใช้ทั้งใบเลื่อยและ Roll SQ)
+//   rollIds = ลำดับชิ้นใน getMatchingRollsForPlan(rollSet) · minutesList = นาทีของแต่ละชิ้น (ตามลำดับ rollIds)
+//   withOverride = เก็บนาทีรายชิ้นไว้ในงาน (Roll SQ ไม่มีเวลาแต่งในทะเบียน จึงต้องเก็บไว้ที่งาน)
+// คืน { date, time } ที่วางไว้ หรือ null ถ้าวางไม่ได้
+function planAutoTaskAtQueueEnd(workType, rollSet, rollIds, rolls, minutesList, withOverride) {
+  const minutes = minutesList.reduce((a, b) => a + (Number(b) || 0), 0);
+  if (!rolls.length || !minutes) return null;
+  const listOv = withOverride ? minutesList : undefined;
+  const pieceOv = {};
+  rollIds.forEach((id, i) => { pieceOv[id] = minutesList[i]; });
   const capsFor = d => {
     const caps = {};
     ['morning', 'night'].forEach(k => {
@@ -7319,9 +7335,9 @@ function planSawGrindAuto(idx) {
   if (planWorkTypeAllowsShift(workType, 'both') && shiftKey !== 'both') shiftKey = bothModeStartFieldKey(startTime);
   const schedShift = planScheduleShiftFor(workType, shiftKey);
   let caps = capsFor(date);
-  const base = () => ({ date, shift: schedShift, startTime, otCapMinutesByShift: caps, rollIds: [idx] });
+  const base = () => ({ date, shift: schedShift, startTime, otCapMinutesByShift: caps, rollIds: rollIds.slice() });
   // ตัดแบ่งวันไม่ได้ และวันนั้นไม่มีที่ว่าง / ทำไม่จบในวัน → ยกไปต่อท้ายคิววันทำงานถัดไปทั้งงาน (กฎเดียวกับฟอร์ม)
-  if (!splitPlanDataAcrossDays(base(), [roll], workType)) {
+  if (!splitPlanDataAcrossDays(base(), rolls, workType, listOv)) {
     const workStart = advanceToShiftWindow(schedShift, date, startTime, caps, workType);
     const cap = shiftDailyCapacityMin(shiftKey) + Math.max(0, caps[shiftKey === 'night' ? 'night' : 'morning'] || 0);
     const overflow = minutes <= cap && (p => p.date && p.date !== date)(computePlanEnd(date, startTime, minutes, schedShift, caps));
@@ -7333,8 +7349,9 @@ function planSawGrindAuto(idx) {
       date = adv.date; startTime = adv.time; caps = capsFor(date);
     }
   }
-  const common = { workType, rollSet: SAW_PLAN_SET, rollColor: null, otCapMinutesByShift: caps, workerId: null, autoFromProd: true };
-  const groups = splitPlanDataAcrossDays(base(), [roll], workType);
+  const common = { workType, rollSet, rollColor: null, otCapMinutesByShift: caps, workerId: null, autoFromProd: true };
+  const groups = splitPlanDataAcrossDays(base(), rolls, workType, listOv);
+  const seqBefore = planTaskSeq;
   if (groups) {
     const gid = 'SG-' + String(planTaskSeq + 1).padStart(4, '0');
     groups.forEach(g => {
@@ -7348,12 +7365,21 @@ function planSawGrindAuto(idx) {
     const end = computePlanEnd(date, startTime, minutes, schedShift, caps);
     planTaskSeq++;
     planTasks.push({ ...common, id: 'PT-' + String(planTaskSeq).padStart(4, '0'), date,
-      rollIds: [idx], rollId: '1 Roll', rollName: roll.name, totalTime: minutes,
+      rollIds: rollIds.slice(), rollId: rolls.length + ' Roll', rollName: rolls.map(r => r.name).join(', '), totalTime: minutes,
       startTime: startTime || '—', endTime: end.time || '—', endDate: end.date || date,
       shift: schedShift === 'both' && shiftKey !== 'both' ? bothModeStartFieldKey(startTime) : shiftKey,
-      otMinutes: end.otMinutes || 0, otMinutesByShift: end.otMinutesByShift || {}, splitGroupId: null });
+      otMinutes: end.otMinutes || 0, otMinutesByShift: end.otMinutesByShift || {},
+      ...(withOverride ? { rollMinutesOverride: pieceOv } : {}), splitGroupId: null });
   }
-  return { date, time: startTime };
+  const taskIds = [];
+  for (let s = seqBefore + 1; s <= planTaskSeq; s++) taskIds.push('PT-' + String(s).padStart(4, '0'));
+  return { date, time: startTime, taskIds };
+}
+// วัน/เวลาเริ่มจริงของงานที่ระบบเพิ่งวางให้ — อ่านหลังจัดคิว (autoFixPlanSequencing อาจดันไปต่อท้ายงานที่วางไว้แล้ว)
+function planAutoTaskActualStart(at) {
+  const ts = (at.taskIds || []).map(id => planTasks.find(t => t.id === id)).filter(Boolean)
+    .sort((a, b) => (a.date + ' ' + a.startTime).localeCompare(b.date + ' ' + b.startTime));
+  return ts.length ? { ...at, date: ts[0].date, time: ts[0].startTime } : at;
 }
 // แจ้งคนที่เปิดแอปอยู่ (เครื่องที่วางแผนให้) ว่าระบบวางแผนอะไรไปบ้าง — กดไปดูงานในหน้าวางแผนได้
 function showSawAutoPlanNotice(made) {
@@ -7368,6 +7394,95 @@ function showSawAutoPlanNotice(made) {
     ${made.map(m => `<div onclick="${jsCallAttr('goToSawGrindPlan', m.id)};this.closest('#saw-autoplan-notice').remove()" style="cursor:pointer;padding:3px 0;">
       ใบเลื่อย <b>${escapeHtmlAttr(m.id)}</b> — ${escapeHtmlAttr(fmtDateThaiShort(parseISODate(m.date)))} ${escapeHtmlAttr(m.time)}</div>`).join('')}
     <div style="font-size:11px;color:var(--text-3);margin-top:4px;">ระบบผลิตถอดใบเหล่านี้ออกจากเครื่อง · กดที่รายการเพื่อดู/แก้ในหน้าวางแผน</div>`;
+  document.body.appendChild(el);
+}
+
+// ─── วางแผนแต่ง Roll SQ อัตโนมัติ เมื่อระบบผลิตถอดชุดออก (ผู้ใช้ขอ 25 พ.ย. 69) ───────────────
+// กติกาเดียวกับใบเลื่อยด้านบน: ทำบนเครื่องไหนก็ได้ที่เปิดแอป · ต่อท้ายคิวงานแต่ง Roll SQ ของวันนี้ (ทั้งชุด ทุกชิ้น)
+// · ชุดละ 1 ครั้งต่อการถอด 1 ครั้ง (จดเวลาถอดไว้ที่ชิ้นในทะเบียน autoPlanFor — ลบงานทิ้งเองแล้วไม่สร้างซ้ำ)
+// วางเฉพาะชุดที่การ์ดรอแต่งแสดง (dashSqEffectiveStatus = รอแต่ง) และยังไม่มีแผน — เกณฑ์เดียวกับรายการชุดในฟอร์มเพิ่มงาน
+// ไม่วางให้: ชุดที่ตั้งรอแต่งเอง (ระบบผลิตไม่ได้บันทึกการถอด) · การถอดก่อน 25 พ.ย. 69 (ผู้ใช้เลือกให้ชุดค้างเดิมวางเอง)
+// เวลาแต่งต่อชิ้น: ทะเบียน Roll SQ ไม่มีเวลาแต่ง → ใช้นาทีต่อชิ้นของงานแต่งล่าสุดของขนาดเดียวกัน ไม่เคยมี = 120 นาที (ผู้ใช้เลือก)
+const SQ_AUTO_PLAN_FROM = '2026-11-24T17:00:00Z';   // 25 พ.ย. 69 00:00 เวลาไทย
+const SQ_AUTO_PLAN_DEFAULT_MIN = 120;
+function sqAutoPlanKick() {
+  if (prodSqLive && prodSqLive.status === 'ok') sqAutoPlanRemoved();
+  else loadProdSqInUse(false);
+}
+// นาทีต่อชิ้นจากงานแต่งล่าสุดของขนาดนี้ — ข้ามงานที่ถูกตัดแบ่งวัน (นาทีในงานเป็นแค่บางส่วนของชิ้น)
+function sqAutoPlanMinutesFor(sizeSq) {
+  const size = String(sizeSq || '').trim();
+  let best = null;
+  (planTasks || []).forEach(t => {
+    if (!t || t.workType !== 'sq' || t.otherWork || t.splitGroupId || !isSqPlanSet(t.rollSet)) return;
+    const head = ((toolingData || {}).sq || []).find(r => sqSetKey(r) === sqPlanSetKeyOf(t.rollSet));
+    if (!head || String(head.sizeSq || '').trim() !== size) return;
+    const scoped = getMatchingRollsForPlan(t.rollSet, null);
+    const mins = (t.rollIds || []).map(i => pieceMinutesOfTask(t, i, scoped)).filter(v => v > 0);
+    if (!mins.length) return;
+    const k = (t.date || '') + ' ' + (t.startTime || '') + ' ' + t.id;
+    if (!best || k > best.k) best = { k, min: Math.max(...mins) };
+  });
+  return best ? best.min : SQ_AUTO_PLAN_DEFAULT_MIN;
+}
+function sqAutoPlanCandidates() {
+  if (!prodSqLive || prodSqLive.status !== 'ok') return [];
+  return sqPlannableSets().map(set => ({ set, head: set[0], key: sqSetKey(set[0]), w: sqProdWaitInfo(sqSetKey(set[0])) }))
+    .filter(x => x.w && x.w.endedAt && Date.parse(x.w.endedAt) >= Date.parse(SQ_AUTO_PLAN_FROM)
+      && !x.set.some(r => r.autoPlanFor === x.w.endedAt))
+    // ถอดก่อนได้คิวก่อน
+    .sort((a, b) => String(a.w.endedAt).localeCompare(String(b.w.endedAt)));
+}
+let sqAutoPlanTimer = null;
+function sqAutoPlanRemoved(delayMs) {
+  if (typeof cloudSyncReady === 'undefined' || !cloudSyncReady) return;
+  if (sqAutoPlanTimer || !sqAutoPlanCandidates().length) return;
+  const wait = delayMs != null ? delayMs : Math.floor(Math.random() * 5000);
+  sqAutoPlanTimer = setTimeout(() => { sqAutoPlanTimer = null; sqAutoPlanRunNow(); }, wait);
+}
+function sqAutoPlanRunNow() {
+  if (!cloudSyncReady || !sqAutoPlanCandidates().length) return;
+  // เครื่องนี้มีของที่ผู้ใช้กดค้างรอเขียน/กำลังแก้ชนอยู่ — ไม่แย่งช่องทำซ้ำของผู้ใช้ รอแล้วค่อยลองใหม่
+  if (cloudWriteInFlight || cloudWritePending || cloudReapply) { sqAutoPlanRemoved(3000); return; }
+  withCloudRetry(() => {
+    // คิดใหม่บนข้อมูลล่าสุดทุกครั้ง (รอบทำซ้ำหลังชนกับเครื่องอื่น อาจมีคนวางแผนไปแล้ว)
+    const list = sqAutoPlanCandidates();
+    if (!list.length) return 'noop';
+    const made = [];
+    list.forEach(x => {
+      const setName = SQ_PLAN_PREFIX + x.key;
+      const rolls = getMatchingRollsForPlan(setName, null);
+      const ids = rolls.map((_, i) => i);
+      const per = sqAutoPlanMinutesFor(x.head.sizeSq);
+      const at = planAutoTaskAtQueueEnd('sq', setName, ids, rolls, ids.map(() => per), true);
+      rolls.forEach(r => { r.autoPlanFor = x.w.endedAt; });   // จดไว้แม้วางไม่ได้ — ไม่ต้องลองซ้ำทุกครั้งที่ดึงข้อมูล
+      if (at) made.push({ key: x.key, label: sqSetFullLabel(x.head), ...at });
+    });
+    if (!made.length) { persistState(); return; }
+    autoFixPlanSequencing();
+    const shown = made.map(planAutoTaskActualStart);   // ก่อนรวมงาน — รวมแล้ว id ของงานอาจหายไป
+    mergeAdjacentPlanTasks();
+    persistState();
+    if (currentPage === 'plan') renderCurrentPlanView();
+    renderDashboardToolingPanels();
+    showSqAutoPlanNotice(shown);
+  });
+}
+function showSqAutoPlanNotice(made) {
+  const old = document.getElementById('sq-autoplan-notice');
+  if (old) old.remove();
+  const el = document.createElement('div');
+  el.id = 'sq-autoplan-notice';
+  // ถ้ามีกล่องของใบเลื่อยค้างอยู่ วางซ้อนไว้เหนือกล่องนั้น ไม่ทับกัน
+  const saw = document.getElementById('saw-autoplan-notice');
+  const bottom = 16 + (saw ? saw.offsetHeight + 10 : 0);
+  el.style.cssText = 'position:fixed;left:16px;bottom:' + bottom + 'px;z-index:3000;max-width:min(380px,calc(100vw - 32px));background:var(--bg-surface);'
+    + 'border:2px solid var(--accent);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:12px 14px;font-size:13px;color:var(--text-1);';
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:8px;font-weight:800;color:var(--accent);margin-bottom:6px;">
+      วางแผนแต่ง Roll SQ ให้อัตโนมัติ<button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="this.closest('#sq-autoplan-notice').remove()">✕</button></div>
+    ${made.map(m => `<div onclick="${jsCallAttr('goToSqDressPlan', m.key)};this.closest('#sq-autoplan-notice').remove()" style="cursor:pointer;padding:3px 0;">
+      <b>${escapeHtmlAttr(m.label)}</b> — ${escapeHtmlAttr(fmtDateThaiShort(parseISODate(m.date)))} ${escapeHtmlAttr(m.time)}</div>`).join('')}
+    <div style="font-size:11px;color:var(--text-3);margin-top:4px;">ระบบผลิตถอดชุดเหล่านี้ออกจากเครื่อง · กดที่รายการเพื่อดู/แก้ในหน้าวางแผน</div>`;
   document.body.appendChild(el);
 }
 
@@ -25553,7 +25668,7 @@ function loginAs(user) {
   document.getElementById('login-overlay').classList.add('hidden');
   applyRoleUI();
   showPage(defaultPageForRole(effectiveRole()));
-  if (cloudSyncReady) { sawFillDefaultGrindTimes(); sawAutoPlanKick(); }   // ล็อกอินหลังโหลดข้อมูลเสร็จ — เติมเวลาลับคมที่ว่าง + วางแผนใบที่ถอดแล้วตอนนี้เลย
+  if (cloudSyncReady) { sawFillDefaultGrindTimes(); sawAutoPlanKick(); sqAutoPlanKick(); }   // ล็อกอินหลังโหลดข้อมูลเสร็จ — เติมเวลาลับคมที่ว่าง + วางแผนใบเลื่อย/ชุด SQ ที่ถอดแล้วตอนนี้เลย
 }
 
 function logoutUser() {
@@ -25744,6 +25859,7 @@ async function initCloudSync() {
     refreshLeftoverWatch();
     sawFillDefaultGrindTimes();
     sawAutoPlanKick();
+    sqAutoPlanKick();
     supabaseClient
       .channel('app_state_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state', filter: 'id=eq.main' }, payload => {
