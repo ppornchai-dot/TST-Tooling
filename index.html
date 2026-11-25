@@ -2568,7 +2568,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-25.23';
+const APP_BUILD = '2026-11-25.24';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -7041,7 +7041,7 @@ function sawWorkingCardHtml() {
     const paused = e.entry.status === 'paused';
     return {
       set: 'ใบเลื่อย รหัส ' + (e.r.id || '—'),
-      colorLabel: [sawOdLabel(e.r), e.r.machine].filter(x => x && x !== '—').join(' · '),
+      colorLabel: [sawOdLabel(e.r), e.r.machine, sawGrinderLabel(e.r.machine)].filter(x => x && x !== '—').join(' · '),
       dot: null, cat: e.cat, unit: 'ใบ', // ไม่ใส่จุดสี — สีสุ่มจากรหัสไม่มีความหมาย
       done: 0, total: 1, remainAmt: 1, doing: e.cat === 'doing' ? 1 : 0,
       active: e.entry.status === 'in_progress', activeLabel: 'กำลังลับ',
@@ -7252,6 +7252,7 @@ function goToSawGrindPlan(sawId) {
   if (currentPlanWorkType !== 'saw') switchPlanWorkType('saw');
   renderCurrentPlanView();
   if (idx < 0 || !canEditPlan()) return;
+  planFormSawLanePreset = sawBladeGrinder(idx);   // เปิดฟอร์มที่เครื่องลับของใบนี้
   openPlanTaskModal('add', null, dailyTodayIso());
   // ติ๊กใบนี้ในรายการให้เลย — ผ่าน toggleRollOption ตัวเดียวกับที่ผู้ใช้ติ๊กเอง (คิดเวลา/วันจบให้ครบ)
   setTimeout(() => {
@@ -7321,7 +7322,9 @@ function planSawGrindAuto(idx) {
   const roll = scoped[idx];
   const minutes = parseFloat((roll || {}).grindTime) || 0;
   if (!roll || !minutes) return null;
-  return planAutoTaskAtQueueEnd('saw', SAW_PLAN_SET, [idx], [roll], [minutes], false);
+  // ต่อท้ายคิวของเครื่องลับของใบนั้น (เครื่องลับ 1/2 ทำพร้อมกันได้ คิวแยกกัน)
+  return withPlanLane(sawBladeGrinder(idx),
+    () => planAutoTaskAtQueueEnd('saw', SAW_PLAN_SET, [idx], [roll], [minutes], false));
 }
 // วางงานอัตโนมัติ 1 งาน ต่อท้ายคิวของวันนี้ — กติกาเดียวกับกดบันทึกในฟอร์มเพิ่มงาน (ใช้ทั้งใบเลื่อยและ Roll SQ)
 //   rollIds = ลำดับชิ้นใน getMatchingRollsForPlan(rollSet) · minutesList = นาทีของแต่ละชิ้น (ตามลำดับ rollIds)
@@ -10894,7 +10897,7 @@ function planFillBlockReason(dateIso, workType, caps) {
   const shifts = planDayEndShiftsFor(workType);
   const head = 'ไม่มีงานที่ดึงมาเติมได้ในเวลาที่เหลือของวันนี้';
   const sameSetOnly = !!(PLAN_WORKTYPE_META[workType] || {}).fillSameSetOnly;
-  const later = planTasks.filter(t => t.workType === workType && !planTaskIsSettled(t)
+  const later = planTasks.filter(t => planQ(t, workType) && !planTaskIsSettled(t)
     && t.endTime && t.endTime !== '—' && taskDisplayDate(t) > dateIso)
     .sort((a, b) => (taskDisplayDate(a) + a.startTime).localeCompare(taskDisplayDate(b) + b.startTime));
 
@@ -11060,7 +11063,7 @@ function planFillAllFreeTails(workType) {
   while (changed && rounds < 60) {
     changed = false; rounds++;
     const days = [...new Set(planTasks
-      .filter(t => t.workType === workType && t.endTime && t.endTime !== '—' && taskDisplayDate(t) >= start)
+      .filter(t => planQ(t, workType) && t.endTime && t.endTime !== '—' && taskDisplayDate(t) >= start)
       .map(t => taskDisplayDate(t)))].sort();
     for (let i = 0; i < days.length; i++) {
       const caps = planDayCapsFor(days[i], workType);
@@ -11222,7 +11225,9 @@ function renderPlanDay() {
     const row = `
     <tr data-taskid="${escapeHtmlAttr(t.id)}"${dragAttrs}${rowClickable ? ` style="cursor:pointer;" onclick="togglePlanDayTaskDetail('${t.id}')" title="คลิกเพื่อดูเวลาแยกรายชิ้น"` : ''}>
       <td class="muted" style="white-space:nowrap;">${grip}${rowClickable ? `<span aria-hidden="true" style="display:inline-block;width:12px;transition:transform .15s;transform:rotate(${expanded ? 90 : 0}deg);">▸</span>` : ''}${i + 1}</td>
-      <td>${escapeHtmlAttr(planSetLabel(t.rollSet))}</td>
+      <td>${t.workType === 'saw' && !t.otherWork
+        ? `<span class="chip" style="white-space:nowrap;font-weight:800;background:${sawGrinderBg(sawTaskGrinder(t.__origin || t))};color:${sawGrinderColor(sawTaskGrinder(t.__origin || t))};">${escapeHtmlAttr(planChipSetLabel(t))}</span>`
+        : escapeHtmlAttr(planSetLabel(t.rollSet))}</td>
       <td>${escapeHtmlAttr(planRollColorLabel(t))}</td>
       <td class="muted">${escapeHtmlAttr(codeTask ? String(t.rollId || '').replace(/\bRoll\b/, t.workType === 'slitter' ? 'รายการ' : 'ใบ') : t.rollId)}${(() => {
         // ความคืบหน้าของส่วนนี้ — เห็นได้ตั้งแต่ยังไม่กางแถว ไม่ต้องกดเข้าไปดูทีละชิ้น
@@ -11492,6 +11497,22 @@ function planPieceUnit(t) {
   if (t.workType === 'slitter') return 'รายการ';
   return 'Roll';
 }
+// ชื่อบนชิปงานในปฏิทิน — งานลับคมบอกเครื่องลับแทน "ใบเลื่อย (ทั้งทะเบียน)" (สองเครื่องทำพร้อมกันได้)
+function planChipSetLabel(t) {
+  if (t && t.workType === 'saw' && !t.otherWork) return 'เครื่องลับ ' + sawTaskGrinder(t.__origin || t);
+  return planSetLabel((t || {}).rollSet);
+}
+// ขอบซ้ายสีประจำเครื่องลับ — แยกสองคิวที่วางคู่กันในช่องวันเดียวกันได้ด้วยตา
+function planChipLaneStyle(t) {
+  if (!t || t.workType !== 'saw' || t.otherWork) return '';
+  return 'border-left:4px solid ' + sawGrinderColor(sawTaskGrinder(t.__origin || t)) + ';';
+}
+// เรียงงานลับคมในช่องวันตามเครื่องลับ (เครื่อง 1 ก่อน แล้วเครื่อง 2) คงลำดับเวลาภายในเครื่องเดียวกัน
+function planSortTasksByLane(tasks) {
+  if (!(tasks || []).some(t => t && t.workType === 'saw')) return tasks || [];
+  return tasks.map((t, i) => ({ t, i })).sort((a, b) =>
+    (planTaskLane(a.t.__origin || a.t) - planTaskLane(b.t.__origin || b.t)) || (a.i - b.i)).map(x => x.t);
+}
 function planCalendarChip(t, editable, extraStyle) {
   const prog = PLAN_PROGRESS_META[planTaskProgressState(t)] || PLAN_PROGRESS_META.wait;
   const color = planRollColorLabel(t);
@@ -11511,15 +11532,16 @@ function planCalendarChip(t, editable, extraStyle) {
   // ปฏิทินรวมทั้ง CNC และขัด Roll ไว้ด้วยกันแล้ว ติดไอคอนประเภทงานไว้หน้าชื่อชุดให้แยกออกด้วยตาเปล่า
   const typeIcon = t.workType === 'polish' ? '✦ ' : '⚙ ';
   const typeLabel = (PLAN_WORKTYPE_META[t.workType] || {}).label || '';
-  const fullTitle = `[${prog.label}] ${typeLabel} · ${SHIFTS[t.shift]?.label || ''} — ${planSetLabel(t.rollSet)}${hasColor ? ' · ' + color : ''} — ${rollText} — ${t.rollName}`
+  extraStyle = (extraStyle || '') + planChipLaneStyle(t);
+  const fullTitle = `[${prog.label}] ${typeLabel} · ${SHIFTS[t.shift]?.label || ''} — ${planChipSetLabel(t)}${hasColor ? ' · ' + color : ''} — ${rollText} — ${t.rollName}`
     + (partTag ? ` — ส่วนที่ ${t.__partIndex + 1}/${t.__partCount} ของงานที่ทำข้ามวัน (${t.startTime}–${t.endTime})` : '')
     + (carriedCount ? `\nมีอีก ${carriedCount} ชิ้นที่เริ่มไว้แล้วแต่ไปทำจบในช่วงถัดไป — ช่วงนี้จึงนับเป็นสัดส่วนของเวลาที่ทำได้จริง` : '');
   // โหมดลบ: คลิกที่งานคือติ๊กเลือก/ยกเลิกเลือก (ไม่เปิดฟอร์มแก้ไข) และมีเครื่องหมายบอกว่าเลือกอยู่
   if (planDeleteMode) {
     const picked = planDeleteSelected.has(t.id);
-    return `<span class="chip plan-cal-chip ${prog.chip}${picked ? ' pcc-picked' : ' pcc-pickable'}" data-taskid="${escapeHtmlAttr(t.id)}" style="${extraStyle || ''}cursor:pointer;" onclick="togglePlanDeleteSelect('${t.id}')" title="${escapeHtmlAttr((picked ? 'เลือกอยู่ — คลิกเพื่อยกเลิก' : 'คลิกเพื่อเลือกลบ') + ' · ' + fullTitle)}"><span class="pcc-set">${picked ? '☑ ' : '☐ '}${typeIcon}${escapeHtmlAttr(planSetLabel(t.rollSet))}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span>${timeHtml}</span>`;
+    return `<span class="chip plan-cal-chip ${prog.chip}${picked ? ' pcc-picked' : ' pcc-pickable'}" data-taskid="${escapeHtmlAttr(t.id)}" style="${extraStyle || ''}cursor:pointer;" onclick="togglePlanDeleteSelect('${t.id}')" title="${escapeHtmlAttr((picked ? 'เลือกอยู่ — คลิกเพื่อยกเลิก' : 'คลิกเพื่อเลือกลบ') + ' · ' + fullTitle)}"><span class="pcc-set">${picked ? '☑ ' : '☐ '}${typeIcon}${escapeHtmlAttr(planChipSetLabel(t))}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span>${timeHtml}</span>`;
   }
-  return `<span class="chip plan-cal-chip ${prog.chip}" style="${extraStyle || ''}${editable ? 'cursor:pointer;' : ''}" ${editable ? `onclick="openPlanTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(fullTitle)}"><span class="pcc-set">${typeIcon}${escapeHtmlAttr(planSetLabel(t.rollSet))}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span>${timeHtml}</span>`;
+  return `<span class="chip plan-cal-chip ${prog.chip}" style="${extraStyle || ''}${editable ? 'cursor:pointer;' : ''}" ${editable ? `onclick="openPlanTaskModal('edit','${t.id}')"` : ''} title="${escapeHtmlAttr(fullTitle)}"><span class="pcc-set">${typeIcon}${escapeHtmlAttr(planChipSetLabel(t))}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span>${timeHtml}</span>`;
 }
 
 // ─── รวมชิปงานของชุด Roll เดียวกัน สีเดียวกัน ที่เดินต่อเวลากันพอดี ─────────────
@@ -11532,6 +11554,7 @@ function planCalendarChip(t, editable, extraStyle) {
 function planChipMergeable(a, b) {
   if (!a || !b) return false;
   if (a.workType !== b.workType || a.rollSet !== b.rollSet) return false;
+  if (!planSameLane(a.__origin || a, b.__origin || b)) return false;   // คนละเครื่องลับ ไม่ยุบรวม
   if ((a.rollColor || '') !== (b.rollColor || '')) return false;
   if ((a.shift || '') !== (b.shift || '')) return false;
   if (!a.endTime || !b.startTime || a.endTime === '—' || b.startTime === '—') return false;
@@ -11577,7 +11600,8 @@ function planMergedCalendarChip(group, editable, extraStyle) {
   const typeLabel = (PLAN_WORKTYPE_META[first.workType] || {}).label || '';
   const detail = group.map(t => '· ' + t.startTime + '–' + t.endTime + '  ' + fmtRollAmount(planPartRollAmount(t)) + ' ' + unit).join('\n');
   // ใบเลื่อย/Roll SQ เก็บชื่อชุดเป็นคีย์ภายใน (SAW:all / SQ:…) — แสดงชื่อที่อ่านได้ (planSetLabel)
-  const fullTitle = `[${prog.label}] ${typeLabel} · ${SHIFTS[first.shift]?.label || ''} — ${planSetLabel(first.rollSet)}`
+  extraStyle = (extraStyle || '') + planChipLaneStyle(first);
+  const fullTitle = `[${prog.label}] ${typeLabel} · ${SHIFTS[first.shift]?.label || ''} — ${planChipSetLabel(first)}`
     + `${hasColor ? ' · ' + color : ''} — รวม ${group.length} รายการที่เดินต่อกัน ${total} ${unit}\n${detail}`;
   const ids = group.map(t => t.id);
   if (planDeleteMode) {
@@ -11585,11 +11609,11 @@ function planMergedCalendarChip(group, editable, extraStyle) {
     const picked = ids.every(id => planDeleteSelected.has(id));
     return `<span class="chip plan-cal-chip ${prog.chip}${picked ? ' pcc-picked' : ' pcc-pickable'}" style="${extraStyle || ''}cursor:pointer;"
       onclick="${jsCallAttr('togglePlanDeleteSelectGroup', ids.join(','))}"
-      title="${escapeHtmlAttr((picked ? 'เลือกอยู่ทั้งกลุ่ม — คลิกเพื่อยกเลิก' : 'คลิกเพื่อเลือกลบทั้งกลุ่ม') + ' · ' + fullTitle)}"><span class="pcc-set">${picked ? '☑ ' : '☐ '}${typeIcon}${escapeHtmlAttr(planSetLabel(first.rollSet))}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span><span class="pcc-time">${escapeHtmlAttr(timeText)}</span></span>`;
+      title="${escapeHtmlAttr((picked ? 'เลือกอยู่ทั้งกลุ่ม — คลิกเพื่อยกเลิก' : 'คลิกเพื่อเลือกลบทั้งกลุ่ม') + ' · ' + fullTitle)}"><span class="pcc-set">${picked ? '☑ ' : '☐ '}${typeIcon}${escapeHtmlAttr(planChipSetLabel(first))}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}</span><span class="pcc-time">${escapeHtmlAttr(timeText)}</span></span>`;
   }
   return `<span class="chip plan-cal-chip ${prog.chip}" style="${extraStyle || ''}cursor:pointer;"
     onclick="${jsCallAttr('planOpenDay', first.date)}"
-    title="${escapeHtmlAttr(fullTitle + '\n\nคลิกเพื่อเปิดแผนของวันนี้ (แก้ไข/ลบรายรายการได้ที่นั่น)')}"><span class="pcc-set">${typeIcon}${escapeHtmlAttr(planSetLabel(first.rollSet))}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}<span style="opacity:.75;"> ×${group.length}</span></span><span class="pcc-time">${escapeHtmlAttr(timeText)}</span></span>`;
+    title="${escapeHtmlAttr(fullTitle + '\n\nคลิกเพื่อเปิดแผนของวันนี้ (แก้ไข/ลบรายรายการได้ที่นั่น)')}"><span class="pcc-set">${typeIcon}${escapeHtmlAttr(planChipSetLabel(first))}</span><span class="pcc-sub">${escapeHtmlAttr(sub)}<span style="opacity:.75;"> ×${group.length}</span></span><span class="pcc-time">${escapeHtmlAttr(timeText)}</span></span>`;
 }
 
 function togglePlanDeleteSelectGroup(idsCsv) {
@@ -11647,7 +11671,7 @@ function renderPlanWeek() {
     planSectionsForRole().map(s => planSectionHeaderRow(s, 7, planSectionCount(partsByDate, s.key, days.map(toISODate)))
       + '<tr style="vertical-align:top;">' + days.map(d => {
         const iso = toISODate(d);
-        const tasks = (partsByDate.get(iso) || []).filter(t => planTaskSectionKey(t) === s.key);
+        const tasks = planSortTasksByLane((partsByDate.get(iso) || []).filter(t => planTaskSectionKey(t) === s.key));
         // ยุบงานของชุด/สีเดียวกันที่เดินต่อเวลากันพอดีให้เป็นชิปเดียว (ดู planChipGroups)
         const items = planChipGroups(tasks)
           .map(g => planCalendarChipForGroup(g, iso, editable, true)).join('');
@@ -11708,7 +11732,7 @@ function renderPlanMonth() {
       // ขึ้นชื่อเฉพาะวันหยุดบริษัทที่เพิ่มไว้เท่านั้น — วันอาทิตย์รู้ได้จากคอลัมน์อยู่แล้ว ไม่ต้องเขียนกำกับ
       // (วันอาทิตย์ที่ตั้งเป็นวันหยุดพิเศษด้วย ยังขึ้นชื่อวันหยุดนั้นตามปกติ)
       const offLabel = holidayName || '';
-      const tasks = (partsByDate.get(iso) || []).filter(t => planTaskSectionKey(t) === s.key);
+      const tasks = planSortTasksByLane((partsByDate.get(iso) || []).filter(t => planTaskSectionKey(t) === s.key));
       // งานแทรกของวันนั้น (หมวดเดียวกัน) — ต่อท้ายชิปงานตามแผน เห็นในปฏิทินรายเดือนด้วย
       // ยุบงานของชุด/สีเดียวกันที่เดินต่อเวลากันพอดีให้เป็นชิปเดียว (ดู planChipGroups)
       const chips = planChipGroups(tasks)
@@ -11897,7 +11921,7 @@ function onPlanDragUp() {
       .map(id => planTasks.find(t => t.id === id)).filter(Boolean);
     const movingIds = new Set(moving.map(t => t.id));
     // หาเวลาต่อท้ายวันโดยไม่นับงานที่กำลังยกมาเอง (ไม่งั้นใบที่สองจะต่อจากเวลาเดิมของใบแรก)
-    let cursor = { date: targetDay, time: planAppendStartOnDayExcept(task.workType, targetDay, d.shift, movingIds) };
+    let cursor = { date: targetDay, time: withPlanLane(planTaskLane(task), () => planAppendStartOnDayExcept(task.workType, targetDay, d.shift, movingIds)) };
     moving.forEach(t => {
       t.date = cursor.date;
       t.startTime = cursor.time;
@@ -11938,7 +11962,7 @@ function onPlanDragUp() {
 function planAppendStartOnDayExcept(workType, dateIso, shiftKey, excludeIds) {
   let last = null;
   planTasks.forEach(t => {
-    if ((excludeIds && excludeIds.has(t.id)) || t.workType !== workType) return;
+    if ((excludeIds && excludeIds.has(t.id)) || !planQ(t, workType)) return;
     if (taskDisplayDate(t) !== dateIso) return;
     if ((t.endDate || t.date) !== dateIso || !t.endTime || t.endTime === '—') return;
     if (!last || t.endTime > last) last = t.endTime;
@@ -11948,7 +11972,7 @@ function planAppendStartOnDayExcept(workType, dateIso, shiftKey, excludeIds) {
 function planAppendStartOnDay(workType, dateIso, shiftKey, excludeId) {
   let last = null;
   planTasks.forEach(t => {
-    if (t.id === excludeId || t.workType !== workType) return;
+    if (t.id === excludeId || !planQ(t, workType)) return;
     if (taskDisplayDate(t) !== dateIso) return;
     if ((t.endDate || t.date) !== dateIso || !t.endTime || t.endTime === '—') return;
     if (!last || t.endTime > last) last = t.endTime;
@@ -11986,11 +12010,15 @@ function syncPlanProgressAfterMove(beforeDays) {
 }
 
 // จ่ายเวลาเริ่ม–จบใหม่ให้งานในวัน+กะเดียวกันตามลำดับที่ให้มา เริ่มจาก anchor แล้วไล่ต่อกันไป
+// anchor = เวลาเริ่ม หรือฟังก์ชัน (เครื่องลับ) → เวลาเริ่ม · งานลับคมไล่เวลาแยกตามเครื่องลับ (ทำพร้อมกันได้)
 function resequencePlanDayShift(day, shift, orderedIds, anchor) {
   const tasks = orderedIds.map(id => planTasks.find(t => t.id === id)).filter(t => t && t.shift === shift);
   if (!tasks.length) return;
-  let cursor = { date: day, time: anchor };
+  const cursors = new Map();
   tasks.forEach(t => {
+    const lane = planTaskLane(t);
+    if (!cursors.has(lane)) cursors.set(lane, { date: day, time: typeof anchor === 'function' ? anchor(lane) : anchor });
+    const cursor = cursors.get(lane);
     t.date = cursor.date;
     t.startTime = cursor.time;
     const sched = planTaskSchedShift(t);
@@ -11999,7 +12027,7 @@ function resequencePlanDayShift(day, shift, orderedIds, anchor) {
     t.endDate = computed.date || t.date;
     t.otMinutes = computed.otMinutes || 0;
     t.otMinutesByShift = computed.otMinutesByShift || {};
-    cursor = nextValidPlanContinuePoint(sched, t.endDate, t.endTime, t.otCapMinutesByShift, t.workType);
+    cursors.set(lane, nextValidPlanContinuePoint(sched, t.endDate, t.endTime, t.otCapMinutesByShift, t.workType));
   });
 }
 
@@ -12078,7 +12106,7 @@ function planTaskFormFields() {
     </div>
     <div class="modal-row" id="pf-row-rollids">
       <div class="form-group"><label class="form-label">จำนวน Roll ที่เลือก</label><input class="form-input" id="pf-rollid" disabled></div>
-      <div class="form-group"><label class="form-label" id="pf-rollids-title">รายชื่อ Roll — เลือกเฉพาะรายการที่ต้องการได้</label>
+      <div class="form-group"><div id="pf-saw-lane" style="display:none;margin-bottom:10px;"></div><label class="form-label" id="pf-rollids-title">รายชื่อ Roll — เลือกเฉพาะรายการที่ต้องการได้</label>
         <div class="roll-ms" style="position:relative;">
           <input type="hidden" id="pf-rollids" value="">
           <div class="form-select" id="pf-rollids-toggle" onclick="toggleRollDropdown(event)" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;gap:8px;">
@@ -12387,6 +12415,8 @@ function renderRollOptionsPanel(rolls, selectedIndexes) {
     });
   }
   const visible = rolls.map((r, idx) => ({ r, idx }))
+    // ใบเลื่อย: เฉพาะใบของเครื่องลับที่เลือกในฟอร์ม
+    .filter(x => !isSaw || sawBladeGrinder(x.idx) === planFormSawLane)
     .filter(x => !isCode || selectedSet.has(x.idx)
       || (!sawPlanned.has(x.idx) && (!isSaw || !sawHasData || sawWait.has(x.idx))));
   // รายการรอลับคมตัดใบที่วางแผนแล้วออกให้ตั้งแต่ต้น (ดู prodSawWaitingList) — นับจากชุดที่วางแผนแล้วตรงๆ
@@ -12582,6 +12612,7 @@ function applySawPlanFormLayout() {
   if (countGroup) countGroup.style.display = saw ? 'none' : '';
   const rowIds = document.getElementById('pf-row-rollids');
   if (rowIds) rowIds.classList.toggle('full', saw);
+  renderPlanSawLanePicker();
   const lbl = document.getElementById('pf-rollids-title');
   if (lbl) lbl.textContent = wtNow === 'slitter' ? 'รหัสมีดสลิตเตอร์ — เลือกที่จะลับคม'
     : saw ? 'รหัสใบเลื่อย — เลือกใบที่จะลับคม' : 'รายชื่อ Roll — เลือกเฉพาะรายการที่ต้องการได้';
@@ -12595,6 +12626,44 @@ function applySawPlanFormLayout() {
     if (wtNow === 'saw' && typeof loadProdSawUsage === 'function') loadProdSawUsage(false);
   }
   updateRollSelectionLabel();
+}
+// ─── ฟอร์มวางแผนลับคม: เลือกเครื่องลับก่อน แล้วเลือกใบของเครื่องนั้น (ผู้ใช้ขอ 25 พ.ย. 69) ───
+// หนึ่งงาน = หนึ่งเครื่องลับ (สองเครื่องทำพร้อมกันได้ คิวแยกกัน) · รายการใบแสดงเฉพาะใบของเครื่องที่เลือก
+// เวลาเริ่มของงานใหม่ = ท้ายคิวของเครื่องลับนั้น
+var planFormSawLane = 1;
+var planFormSawLanePreset = null;   // ตั้งก่อนเปิดฟอร์ม (เช่นกดการ์ดใบรอลับคม) ให้เปิดมาที่เครื่องของใบนั้น
+function planFormLane() { return planFormWorkType() === 'saw' ? planFormSawLane : null; }
+function renderPlanSawLanePicker() {
+  const box = document.getElementById('pf-saw-lane');
+  if (!box) return;
+  const show = planFormWorkType() === 'saw' && !planFormOtherWork;
+  box.style.display = show ? '' : 'none';
+  if (!show) { box.innerHTML = ''; return; }
+  const editing = !!currentEditingPlanTaskId;
+  box.innerHTML = `<label class="form-label">เครื่องลับ</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">${sawGrinderList().map(g => {
+      const on = planFormSawLane === g, c = sawGrinderColor(g);
+      return `<button type="button" class="btn btn-sm" ${editing && !on ? 'disabled' : ''}
+        onclick="setPlanFormSawLane(${g})"
+        title="${escapeHtmlAttr('ลับใบของเครื่อง ' + sawGrinderMachines(g).join(', ') + (editing ? ' — แก้งานเดิมเปลี่ยนเครื่องลับไม่ได้ (ใบในงานเป็นของเครื่องนี้)' : ''))}"
+        style="font-weight:800;padding:7px 14px;border-radius:8px;border:2px solid ${c};
+               background:${on ? c : 'transparent'};color:${on ? '#fff' : c};${editing && !on ? 'opacity:.4;' : ''}">
+        เครื่องลับ ${g} <span style="font-weight:600;opacity:.85;">(${escapeHtmlAttr(sawGrinderMachines(g).join(', '))})</span></button>`;
+    }).join('')}</div>`;
+}
+function setPlanFormSawLane(g) {
+  if (currentEditingPlanTaskId || planFormSawLane === g) return;
+  planFormSawLane = g;
+  // ใบที่ติ๊กไว้ของอีกเครื่องเอาออก — งานหนึ่งเป็นของเครื่องลับเดียว
+  const hid = document.getElementById('pf-rollids');
+  if (hid) hid.value = hid.value.split(',').filter(Boolean).filter(i => sawBladeGrinder(i) === g).join(',');
+  renderPlanSawLanePicker();
+  refreshSawPlanOptions();
+  updateRollSelectionLabel();
+  recalcPlanTotalsFromSelection();
+  // เวลาเริ่ม = ท้ายคิวของเครื่องที่เลือก
+  refreshPlanFormAppendStart();
+  if (typeof updatePlanEndTime === 'function') updatePlanEndTime();
 }
 // วาดรายการรหัสใบเลื่อยในฟอร์มใหม่ คงใบที่ติ๊กไว้ — เรียกตอนเปิดฟอร์ม และตอนได้สถานะจากระบบผลิต
 function refreshSawPlanOptions() {
@@ -13154,7 +13223,7 @@ function applyPlanFormShift(key) {
     setPlanShiftButtons(key);
     // สลับกะแล้วท้ายคิวเป็นของกะใหม่ — งานใหม่ให้คิดใหม่ ไม่ยกเวลาของกะเดิมมาใช้
     const appendStart = currentEditingPlanTaskId ? null
-      : planQueueEndFor(currentPlanWorkType, (document.getElementById('pf-date') || {}).value, key).time;
+      : withPlanLane(planFormLane(), () => planQueueEndFor(currentPlanWorkType, (document.getElementById('pf-date') || {}).value, key)).time;
     if (key === 'morning' && startMorningEl) { startMorningEl.value = appendStart || startMorningEl.value || SHIFTS.morning.start; if (startNightEl) startNightEl.value = ''; }
     if (key === 'night' && startNightEl) { startNightEl.value = appendStart || startNightEl.value || SHIFTS.night.start; if (startMorningEl) startMorningEl.value = ''; }
   }
@@ -13295,7 +13364,7 @@ function onPlanRollColorChange() {
 
 // หางาน (ประเภทเดียวกัน) ที่จบล่าสุด (เรียงตามวันที่จบ+เวลาจบ) เพื่อให้งานใหม่เริ่มต่อจากตรงนั้นได้เลย ไม่ทับเวลากับงานที่วางแผนไว้ก่อนหน้า
 function findLatestPlanTaskEnd(workType, excludeId) {
-  const candidates = planTasks.filter(t => t.workType === workType && t.id !== excludeId && t.endDate && t.endTime && t.endTime !== '—');
+  const candidates = planTasks.filter(t => planQ(t, workType) && t.id !== excludeId && t.endDate && t.endTime && t.endTime !== '—');
   if (!candidates.length) return null;
   return candidates.reduce((latest, t) => (t.endDate + ' ' + t.endTime) > (latest.endDate + ' ' + latest.endTime) ? t : latest);
 }
@@ -13365,7 +13434,7 @@ function advanceToShiftWindow(shiftKey, date, time, otCaps, workType) {
 // ไม่ใช่เวลานาฬิกาตรงๆ ไม่งั้นงานกะดึกที่จบหลังเที่ยงคืนจะถูกมองว่าจบเร็วสุดของวัน
 function planLastTaskOnDay(workType, dateIso, shiftKey) {
   if (!dateIso) return null;
-  const sameDay = planTasks.filter(t => t.workType === workType && taskDisplayDate(t) === dateIso
+  const sameDay = planTasks.filter(t => planQ(t, workType) && taskDisplayDate(t) === dateIso
     && t.endTime && t.endTime !== '—'
     // กะเดียวกัน หรือฝ่ายใดฝ่ายหนึ่งเป็น "2 กะ" ซึ่งกินเวลาทั้งวันทำงาน
     && (t.shift === shiftKey || t.shift === 'both' || shiftKey === 'both'));
@@ -13399,7 +13468,7 @@ function planAppendStartFor(workType, dateIso, shiftKey) {
 // (งานที่เริ่มวันก่อนแล้วจบวันนี้ ก็ถือว่าวันนี้ไม่ว่าง ไม่งั้นจะไปเริ่ม 08:00 ทับงานนั้น)
 function planDayHasWork(workType, dateIso) {
   if (!dateIso) return false;
-  return planTasks.some(t => t.workType === workType && t.endTime && t.endTime !== '—'
+  return planTasks.some(t => planQ(t, workType) && t.endTime && t.endTime !== '—'
     && (t.date === dateIso || (t.date < dateIso && (t.endDate || t.date) >= dateIso)));
 }
 
@@ -13433,8 +13502,9 @@ function refreshPlanFormAppendStart() {
   // ผู้ใช้เลือกวันมาเองแล้ว — ห้ามย้ายวันให้ (เดิมเขียนทับ ทำให้เลือกวันไม่ติดเลย)
   // คิดแค่ "เวลาเริ่ม" ของวันนั้น: วันว่าง = ต้นกะ, วันมีงาน = ต่อท้ายงานสุดท้ายของวันนั้น
   let time = shift.start;
-  if (planDayHasWork(currentPlanWorkType, date)) {
-    const p = planAppendStartFor(currentPlanWorkType, date, shiftKey);
+  const lane = planFormLane();   // ใบเลื่อย: ท้ายคิวของเครื่องลับที่เลือก
+  if (withPlanLane(lane, () => planDayHasWork(currentPlanWorkType, date))) {
+    const p = withPlanLane(lane, () => planAppendStartFor(currentPlanWorkType, date, shiftKey));
     time = p.date === date ? p.time : shift.start; // ล้นออกนอกวันแล้ว ใช้ต้นกะไว้ก่อน ให้ผู้ใช้ปรับ/กดปุ่มต่อเวลาเอง
   }
   const fieldKey = shiftKey === 'both' ? bothModeStartFieldKey(time) : (shiftKey === 'night' ? 'night' : 'morning');
@@ -13448,7 +13518,7 @@ function refreshPlanFormAppendStart() {
 }
 
 function findPrecedingPlanTask(task) {
-  const sameType = planTasks.filter(t => t.workType === task.workType && t.id !== task.id && t.endDate && t.endTime && t.endTime !== '—');
+  const sameType = planTasks.filter(t => t.workType === task.workType && planSameLane(t, task) && t.id !== task.id && t.endDate && t.endTime && t.endTime !== '—');
   const taskStartKey = task.date + ' ' + (task.startTime || '');
   const before = sameType.filter(t => {
     const tStartKey = t.date + ' ' + (t.startTime || '');
@@ -13552,7 +13622,7 @@ function reanchorPlanTaskToActual(taskId) {
 
   // ลำดับงานก่อนย้าย — ต้องเก็บไว้ก่อน ไม่งั้นพอย้ายไปไกลแล้วเรียงใหม่จะไม่ใช่ลำดับเดิมที่ผู้ใช้เห็น
   const order = planTasks
-    .filter(x => x.workType === t.workType && x.startTime && x.startTime !== '—')
+    .filter(x => x.workType === t.workType && planSameLane(x, t) && x.startTime && x.startTime !== '—')
     .sort((a, b) => (a.date + ' ' + a.startTime).localeCompare(b.date + ' ' + b.startTime))
     .map(x => x.id);
   t.date = probe.date; t.startTime = probe.startTime; t.shift = probe.shift;
@@ -13608,9 +13678,16 @@ function autoFixPlanSequencing() {
   while (changed && guard < 1000) {
     changed = false;
     guard++;
+    // งานลับคมใบเลื่อยแยกคิวตามเครื่องลับ (ทำพร้อมกันได้) — ประเภทอื่นมีคิวเดียว
+    const queues = [];
     workTypes.forEach(workType => {
-      const tasks = planTasks
-        .filter(t => t.workType === workType && t.endDate && t.endTime && t.endTime !== '—')
+      const all = planTasks.filter(t => t.workType === workType && t.endDate && t.endTime && t.endTime !== '—');
+      const lanes = new Map();
+      all.forEach(t => { const k = planTaskLane(t); if (!lanes.has(k)) lanes.set(k, []); lanes.get(k).push(t); });
+      lanes.forEach(list => queues.push(list));
+    });
+    queues.forEach(list => {
+      const tasks = list
         .sort((a, b) => {
           const ak = a.date + ' ' + (a.startTime || ''), bk = b.date + ' ' + (b.startTime || '');
           return ak !== bk ? ak.localeCompare(bk) : (a.id < b.id ? -1 : 1);
@@ -13764,6 +13841,8 @@ function autoFillPlanDayTails() {
 // fromCloud = ข้อมูลชุดนี้เพิ่งดึงมาจากคลาวด์ (เปิดหน้า · realtime · กลับมาที่แท็บ)
 function tidyPlanAfterStateLoad(fromCloud) {
   let changed = false;
+  // งานลับคมที่มีใบของสองเครื่องลับปนกัน (วางไว้ก่อนแยกเครื่อง) แยกเป็นงานของแต่ละเครื่องก่อนจัดคิว
+  if (splitMixedSawGrinderTasks()) changed = true;
   if (refreshPlanTaskEndTimes()) changed = true;
   if (autoFixPlanSequencing()) changed = true;
   // เดิมเรียก autoFillPlanDayTails() ตรงนี้ด้วย — เอาออกแล้ว
@@ -13795,7 +13874,7 @@ function mergeAdjacentPlanTasks() {
     planTasks.forEach(t => {
       // ไม่รวมโควตา OT ไว้ในคีย์ — ชุด/สี/กะ/ผู้ปฏิบัติงานเดียวกันและต่อเวลากันสนิท ให้รวมเสมอ
       // (โควตา OT ของงานที่รวมแล้วใช้ค่าของวันนั้นเป็นหลัก ดูตอนรวมด้านล่าง)
-      const key = [t.workType, t.rollSet, t.rollColor, t.shift, t.workerId || ''].join('|');
+      const key = [t.workType, planTaskLane(t), t.rollSet, t.rollColor, t.shift, t.workerId || ''].join('|');
       if (!byGroup.has(key)) byGroup.set(key, []);
       byGroup.get(key).push(t);
     });
@@ -13876,11 +13955,14 @@ function mergeAdjacentPlanTasks() {
 // (ถ้าไปสลับตำแหน่งใบแทน เวลาจะเลื่อนกันทั้งแถวและงานที่กดเริ่มไปแล้วจะพัง)
 function normalizePlanRollPieceOrder() {
   let changed = false;
-  const planKey = t => [t.workType, t.rollSet, t.rollColor].join('|');
+  const planKey = t => [t.workType, planTaskLane(t), t.rollSet, t.rollColor].join('|');
   const allByKey = new Map();
   const groups = new Map();
   planTasks.forEach(t => {
     if (!(t.rollIds || []).length) return;
+    // ใบเลื่อย/มีดสลิตเตอร์ไม่มี "ชิ้นที่ 1 → 2 → 3" — ลำดับในทะเบียนไม่มีความหมาย ทำตามลำดับที่วางแผน (คิวตามเวลาถอด)
+    // และห้ามสลับใบข้ามงาน ไม่งั้นใบของเครื่องลับหนึ่งจะไปอยู่ในงานของอีกเครื่อง
+    if (isCodeWorkType(t.workType)) return;
     const key = planKey(t);
     if (!allByKey.has(key)) allByKey.set(key, []);
     allByKey.get(key).push(t);
@@ -14071,6 +14153,10 @@ function openPlanTaskModal(mode, taskId, presetDate, presetShift) {
     });
   }
   const workType = task ? task.workType : currentPlanWorkType;
+  // ใบเลื่อย: งานเดิม = เครื่องลับของงานนั้น · งานใหม่ = เครื่องที่ส่งมา (การ์ดใบรอลับคม) หรือเครื่องลับ 1
+  planFormSawLane = workType === 'saw' ? (task ? sawTaskGrinder(task) : (planFormSawLanePreset || 1)) : 1;
+  planFormSawLanePreset = null;
+  const formLane = workType === 'saw' ? planFormSawLane : null;
   const workTypeLabel = PLAN_WORKTYPE_META[workType].label;
   document.getElementById('modal-title').textContent = mode === 'edit' ? ('แก้ไขงาน — ' + workTypeLabel) : ('เพิ่มงานใหม่ — ' + workTypeLabel);
   document.getElementById('modal-body').innerHTML = planTaskFormFields();
@@ -14080,14 +14166,14 @@ function openPlanTaskModal(mode, taskId, presetDate, presetShift) {
   // เดิมเริ่มที่ต้นกะเสมอแล้วปล่อยให้ autoFixPlanSequencing จัดคิวให้ ผลคืองานที่เพิ่มทีหลังไปเริ่มทับต้นกะ
   // แล้วดันงานเดิมให้เลื่อนออกไป ดูเหมือน "แทรก" หน้างานที่วางไว้ก่อน — ตอนนี้ต่อท้ายให้ตั้งแต่ตอนกรอกฟอร์ม
   // chainFrom เหลือไว้ใช้เป็นค่าเริ่มต้นของ "ผู้ปฏิบัติงาน" อย่างเดียว เพราะมักเป็นคนเดิมกับงานล่าสุด
-  const chainFrom = !task ? findLatestPlanTaskEnd(workType) : null;
+  const chainFrom = !task ? withPlanLane(formLane, () => findLatestPlanTaskEnd(workType)) : null;
   const pickedDate = task ? task.date : (presetDate || toISODate(planViewDate));
   // งานใหม่ยึดกะของหัวข้อที่กดเพิ่มมา ไม่มีก็กะเช้า (เดิมยึดกะที่กำลังกรองอยู่ ซึ่งไม่มีปุ่มกรองกะแล้ว)
   let defaultShift = (task ? task.shift : null) || presetShift || 'morning';
   // งานใหม่ต้องเริ่มด้วยกะที่ประเภทงานนี้ทำได้ (งานขัด Roll = กะเช้าเท่านั้น)
   if (!task && !planWorkTypeAllowsShift(workType, defaultShift)) defaultShift = planWorkTypeShifts(workType)[0] || 'morning';
   // งานใหม่ไปต่อ "ท้ายคิว" จริงของประเภทงานนี้ ซึ่งอาจเลยวันที่กดเพิ่มไปแล้ว
-  const queueEnd = task ? null : planQueueEndFor(workType, pickedDate, defaultShift);
+  const queueEnd = task ? null : withPlanLane(formLane, () => planQueueEndFor(workType, pickedDate, defaultShift));
   const formDate = task ? task.date : queueEnd.date;
   setPlanFormDate('pf-date', formDate);
   const startValue = task ? task.startTime : queueEnd.time;
@@ -14154,7 +14240,12 @@ function openPlanTaskModal(mode, taskId, presetDate, presetShift) {
     }
   }
 
+  // บันทึกงานลับคม: หาท้ายคิว/เวลาว่างเฉพาะคิวของเครื่องลับที่เลือกในฟอร์ม
   document.querySelector('.modal-footer .btn-primary').onclick = function() {
+    const btnEl = this;
+    return withPlanLane(workType === 'saw' ? planFormSawLane : null, () => planTaskModalSave.call(btnEl));
+  };
+  const planTaskModalSave = function() {
     const g = id => (document.getElementById(id)||{}).value.trim();
     let date = g('pf-date'); // ปรับได้ ถ้าเวลาที่เหลือในวันไม่พอแล้วต้องยกงานไปวันถัดไปทั้งก้อน
     const other = planFormOtherWork ? planOtherWorkFields() : null;
@@ -14188,6 +14279,15 @@ function openPlanTaskModal(mode, taskId, presetDate, presetShift) {
           : isSawPlanSet(setName)
           ? 'ยังไม่ได้เลือกรหัสใบเลื่อย — เลือกใบที่จะลับคมอย่างน้อย 1 ใบก่อนบันทึก'
           : 'ยังไม่ได้เลือกรายการ Roll — เลือก Roll อย่างน้อย 1 รายการก่อนบันทึก');
+        return;
+      }
+    }
+    if (!other && workType === 'saw') {
+      const ids = ((document.getElementById('pf-rollids') || {}).value || '').split(',').filter(Boolean);
+      const wrong = ids.filter(i => sawBladeGrinder(i) !== planFormSawLane);
+      if (wrong.length) {
+        alert('ใบ ' + wrong.map(i => (((toolingData || {}).saw || [])[Number(i)] || {}).id || i).join(', ')
+          + ' เป็นของเครื่องลับอื่น — งานหนึ่งรายการต้องเป็นใบของเครื่องลับ ' + planFormSawLane + ' เท่านั้น');
         return;
       }
     }
@@ -14310,7 +14410,7 @@ function openPlanTaskModal(mode, taskId, presetDate, presetShift) {
     } else if (mode === 'edit') {
       // ลำดับงานก่อนแก้ — ใช้ไล่ "ต่อเวลา" ให้งานถัดไปหลังบันทึก (ดู rechainPlanTasksAfter)
       const orderBefore = planTasks
-        .filter(x => x.workType === task.workType)
+        .filter(x => x.workType === task.workType && planSameLane(x, task))
         .sort((a, b) => {
           const ak = a.date + ' ' + (a.startTime || ''), bk = b.date + ' ' + (b.startTime || '');
           return ak !== bk ? ak.localeCompare(bk) : (a.id < b.id ? -1 : 1);
@@ -14623,12 +14723,11 @@ function savePlanDayEnd() {
     const sameShift = planTasks
       .filter(t => t.workType === workType && taskDisplayDate(t) === dateIso && t.shift === sh)
       .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
-    const settledEnd = sameShift.filter(planTaskIsSettled)
+    const settledEndOf = lane => sameShift.filter(t => planTaskIsSettled(t) && planTaskLane(t) === lane)
       .reduce((best, t) => (!best || (t.endTime || '') > best) ? (t.endTime || '') : best, '');
     const movable = sameShift.filter(t => !planTaskIsSettled(t)).map(t => t.id);
     if (!movable.length) return;
-    const anchor = settledEnd || (SHIFTS[sh] || SHIFTS.morning).start;
-    resequencePlanDayShift(dateIso, sh, movable, anchor);
+    resequencePlanDayShift(dateIso, sh, movable, lane => settledEndOf(lane) || (SHIFTS[sh] || SHIFTS.morning).start);
   });
   autoFixPlanSequencing();   // เวลาน้อยลง → งานท้ายวันถูกดันไปวันถัดไปเอง
   mergeAdjacentPlanTasks();
@@ -14710,7 +14809,7 @@ function planTimeInWorkingDay(dateIso, shiftKey, workType, atDate, atTime, otCap
 function planDaySpillEndTask(workType, dateIso, shiftKey) {
   let best = null;
   planTasks.forEach(t => {
-    if (t.workType !== workType || !t.endTime || t.endTime === '—') return;
+    if (!planQ(t, workType) || !t.endTime || t.endTime === '—') return;
     if (taskDisplayDate(t) === dateIso) return;            // ตัวที่ planLastTaskOnDay เห็นอยู่แล้ว
     const endDate = t.endDate || t.date;
     if (endDate !== dateIso) return;                       // ไม่ได้มาจบในวันนี้
@@ -14828,7 +14927,7 @@ function planPullForwardPlan(workType, dateIso, shiftKey, otCaps, opts) {
   // วันที่ยังไม่มีงานเลย (lastHere = null) = ยังไม่ได้กำหนดว่าใส่ชุดไหน ดึงงานถัดไปในคิวได้ตามปกติ
   const sameSetOnly = !allowOtherSet && !!(PLAN_WORKTYPE_META[workType] || {}).fillSameSetOnly;
   const later = planTasks
-    .filter(t => t.workType === workType && t.endTime && t.endTime !== '—' && !planTaskIsSettled(t)
+    .filter(t => planQ(t, workType) && t.endTime && t.endTime !== '—' && !planTaskIsSettled(t)
       && queueKey(taskDisplayDate(t), t.startTime) > tailKey)
     .filter(t => !sameSetOnly || !lastHere || sameSetAsHere(t))
     .sort((a, b) => {
@@ -14853,8 +14952,10 @@ function planPullForwardPlan(workType, dateIso, shiftKey, otCaps, opts) {
     // งานที่ดึงมาต้องใช้โควตา OT ของวันปลายทาง ไม่ใช่ของวันต้นทาง (กัน OT ข้ามวัน)
     const candCaps = tail.caps;
     if (!shiftAllowsMinute(shiftKey, (+mm[1]) * 60 + (+mm[2]), candCaps, workType)) break;
-    const label = (cand.rollSet || cand.rollName || cand.rollId || '')
-      + (cand.rollColor ? ' · ' + rollColorLabelFor(cand.rollSet, cand.rollColor) : '');
+    const label = cand.workType === 'saw' && !cand.otherWork
+      ? planChipSetLabel(cand) + ' · ใบ ' + (cand.rollName || '')
+      : (cand.rollSet || cand.rollName || cand.rollId || '')
+        + (cand.rollColor ? ' · ' + rollColorLabelFor(cand.rollSet, cand.rollColor) : '');
     const fit = planPullPieceFit(cand, curDate, curTime, shiftKey, candCaps, dateIso);
     if (!fit.taken.length) break;               // เวลาที่เหลือไม่พอแม้ชิ้นเดียว
     const whole = fit.allWhole;
@@ -14954,7 +15055,7 @@ function applyPlanPullForward(workType, shiftKey, moves) {
       // (เช่นงานของวันที่ 17 ที่เริ่ม 01:20 ของวันที่ 18) จะถูกนับเป็นงานของวันที่ 18
       // แล้วถูกจัดเวลาใหม่ไปเริ่ม 20:00 = ถูกดึงออกจากวันที่ 17 ทั้งที่ไม่มีใครสั่ง
       // (อาการที่เห็น: เติมกะดึกวันก่อนไว้แล้ว พอเปิดหน้าใหม่ช่องว่างนั้นกลับมาอีก)
-      .filter(t => t.workType === workType && taskDisplayDate(t) === day && t.shift === shift
+      .filter(t => planQ(t, workType) && taskDisplayDate(t) === day && t.shift === shift
         && !planTaskIsSettled(t) && !touched.has(t.id))
       .sort((a, b) => {
         const ak = a.startTime || '', bk = b.startTime || '';
@@ -14977,6 +15078,11 @@ function applyPlanPullForward(workType, shiftKey, moves) {
 // ตอนผู้ใช้กดปุ่มเติมเองจะส่ง PLAN_FILL_MIN_FREE มา เพราะสั่งมาเองแล้วว่าจะเติมช่องว่างนั้น
 function pullWorkIntoFreeTail(workType, dateIso, shiftKey, otCaps, auto, minFree, allowOtherSet) {
   if (!canEditPlan()) return [];
+  // ใบเลื่อย: เครื่องลับ 1 กับ 2 มีเวลาว่างท้ายวันของตัวเอง — เติมแยกทีละเครื่อง
+  if (workType === 'saw' && planLaneScope == null) {
+    return sawGrinderList().reduce((all, g) => all.concat(withPlanLane(g,
+      () => pullWorkIntoFreeTail(workType, dateIso, shiftKey, otCaps, auto, minFree, allowOtherSet))), []);
+  }
   const { tail, moves } = planPullForwardPlan(workType, dateIso, shiftKey, otCaps, { allowOtherSet });
   // ช่องว่างท้ายวันเล็กเกินไป ไม่ต้องกวน (เศษเวลาจากการปัดเวลาแต่ละงาน)
   const floor = minFree == null ? PLAN_AUTO_FILL_MIN_FREE : minFree;
@@ -15086,7 +15192,7 @@ function carryOverLeftoverTask(taskId, targetDay) {
 
   // งานเดิมของวันปลายทาง (กะเดียวกัน ประเภทเดียวกัน) — เอาไว้ต่อท้ายงานที่ยกมา
   const existingIds = planTasks
-    .filter(x => x.workType === t.workType && x.shift === shiftKey && taskDisplayDate(x) === day)
+    .filter(x => x.workType === t.workType && planSameLane(x, t) && x.shift === shiftKey && taskDisplayDate(x) === day)
     .sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime))
     .map(x => x.id);
 
@@ -21673,13 +21779,98 @@ function sawMachineOf(r) {
 // เครื่องลับใบเลื่อย — แบ่งตามเครื่องผลิตของใบ (ผู้ใช้กำหนด 25 พ.ย. 69)
 //   เครื่องลับ 1: ใบของ P1, P4, C5 · เครื่องลับ 2: ใบของ P2, P3
 // ย้ายใบไปเครื่องผลิตอื่น เครื่องลับเปลี่ยนตามเอง ไม่ต้องแก้ทีละใบ
-const SAW_GRINDER_BY_MACHINE = { P1: 1, P4: 1, C5: 1, P2: 2, P3: 2 };
+// เป็นฟังก์ชัน ไม่ใช่ตัวแปร — ตัวจัดคิวแผนงานถูกเรียกตั้งแต่ตอนโหลดสคริปต์ (ก่อนบรรทัดนี้จะทำงาน)
+function sawGrinderMap() { return { P1: 1, P4: 1, C5: 1, P2: 2, P3: 2 }; }
 function sawGrinderNo(machine) {
-  return SAW_GRINDER_BY_MACHINE[String(machine || '').trim().toUpperCase().replace(/\s+/g, '')] || null;
+  return sawGrinderMap()[String(machine || '').trim().toUpperCase().replace(/\s+/g, '')] || null;
 }
 function sawGrinderLabel(machine) {
   const n = sawGrinderNo(machine);
   return n ? 'เครื่องลับ ' + n : '';
+}
+function sawGrinderList() { return [1, 2]; }
+function sawGrinderMachines(n) {
+  const m = sawGrinderMap();
+  return Object.keys(m).filter(k => m[k] === n);
+}
+// สีประจำเครื่องลับ — ใช้ทั้งทะเบียน ปฏิทินแผน และหน้างานประจำวัน ให้จำได้ด้วยสี
+function sawGrinderColor(n) { return n === 2 ? 'var(--purple)' : 'var(--accent)'; }
+function sawGrinderBg(n) { return n === 2 ? 'var(--purple-dim)' : 'var(--accent-glow)'; }
+function sawBladeGrinder(idx) {
+  return sawGrinderNo((((toolingData || {}).saw || [])[Number(idx)] || {}).machine) || 1;
+}
+
+// ─── คิวงานลับคมแยกตามเครื่องลับ (ผู้ใช้ขอ 25 พ.ย. 69) ─────────────────────────
+// เครื่องลับ 1 กับ 2 ทำงานพร้อมกันได้ — งานลับคมแต่ละรายการเป็นของเครื่องลับเครื่องเดียว
+// ดูจากเครื่องผลิตของใบในงาน (ใบแรก) ไม่ได้เก็บเลขเครื่องลับไว้ในงาน: ย้ายใบไปเครื่องผลิตอื่น งานก็ย้ายเครื่องลับตาม
+// คิวเวลาเริ่ม–จบจึงไล่แยกเป็นสองเส้น ไม่ต่อคิวข้ามเครื่อง ประเภทงานอื่นมีเส้นเดียวเหมือนเดิม
+// planLaneScope = เครื่องลับที่กำลังจัดคิวอยู่ (ตัวช่วยหาท้ายคิว/เวลาว่างอ่านค่านี้) · null = ไม่จำกัด
+var planLaneScope = null;
+function sawTaskGrinder(t) {
+  if (!t || t.workType !== 'saw') return null;
+  const reg = (toolingData || {}).saw || [];
+  for (const i of (t.rollIds || [])) {
+    const n = sawGrinderNo((reg[Number(i)] || {}).machine);
+    if (n) return n;
+  }
+  return 1;
+}
+function planTaskLane(t) { return t && t.workType === 'saw' ? sawTaskGrinder(t) : 0; }
+function planSameLane(a, b) { return planTaskLane(a) === planTaskLane(b); }
+// งานนี้อยู่ในคิวที่กำลังดูไหม (ประเภทงาน + เครื่องลับที่จำกัดไว้)
+function planQ(t, workType) {
+  if (!t || t.workType !== workType) return false;
+  return planLaneScope == null || workType !== 'saw' || sawTaskGrinder(t) === planLaneScope;
+}
+function withPlanLane(lane, fn) {
+  const prev = planLaneScope;
+  planLaneScope = lane || null;
+  try { return fn(); } finally { planLaneScope = prev; }
+}
+// งานลับคมที่มีใบของสองเครื่องลับปนกัน (วางแผนไว้ก่อนแยกเครื่อง) — แยกใบของอีกเครื่องออกเป็นงานใหม่
+// แตะเฉพาะใบที่ยังไม่ได้เริ่ม · งานของวันที่ผ่านไปแล้ว/ทำจบแล้วเป็นประวัติ ไม่แยก
+// คืน true ถ้ามีการแยก — ผู้เรียกจัดคิว (autoFixPlanSequencing) ต่อเอง
+function splitMixedSawGrinderTasks() {
+  if (!Array.isArray(planTasks)) return false;
+  const today = dailyTodayIso();
+  const reg = (toolingData || {}).saw || [];
+  let changed = false;
+  planTasks.slice().forEach(t => {
+    if (!t || t.workType !== 'saw' || t.otherWork || (t.rollIds || []).length < 2) return;
+    const d = taskDisplayDate(t);
+    if (d < today || (dailyStatusByDate[d] || {})[t.id] === 'done') return;
+    const laneOf = i => sawGrinderNo((reg[Number(i)] || {}).machine) || 1;
+    const lanes = [...new Set(t.rollIds.map(laneOf))];
+    if (lanes.length < 2) return;
+    const started = i => { const st = pieceEntryFor(d, t.id, i).status; return st && st !== 'pending'; };
+    // เครื่องที่งานเดิมเก็บไว้ = เครื่องของใบแรกที่เริ่มแล้ว (ไม่มีใบไหนเริ่ม = ใบแรกของงาน)
+    const keepLane = laneOf(t.rollIds.find(started) != null ? t.rollIds.find(started) : t.rollIds[0]);
+    const move = t.rollIds.filter(i => laneOf(i) !== keepLane && !started(i));
+    const keep = t.rollIds.filter(i => !move.includes(i));
+    if (!move.length || !keep.length) return;
+    const scoped = getMatchingRollsForPlan(t.rollSet, t.rollColor);
+    const minOf = i => pieceMinutesOfTask(t, i, scoped) || 0;
+    const ovOf = ids => { const o = {}; ids.forEach(i => { if (t.rollMinutesOverride && t.rollMinutesOverride[i] != null) o[i] = t.rollMinutesOverride[i]; }); return Object.keys(o).length ? o : undefined; };
+    planTaskSeq++;
+    const nt = { ...t, id: 'PT-' + String(planTaskSeq).padStart(4, '0'), rollIds: move.slice(),
+      rollId: move.length + ' Roll', rollName: move.map(i => (scoped[i] || {}).name).filter(Boolean).join(', '),
+      totalTime: move.reduce((s, i) => s + minOf(i), 0), rollMinutesOverride: ovOf(move), splitGroupId: null };
+    delete nt.carriedFrom;
+    t.rollIds = keep;
+    t.rollId = keep.length + ' Roll';
+    t.rollName = keep.map(i => (scoped[i] || {}).name).filter(Boolean).join(', ');
+    t.totalTime = keep.reduce((s, i) => s + minOf(i), 0);
+    t.rollMinutesOverride = ovOf(keep);
+    [t, nt].forEach(x => {
+      const c = computePlanEnd(x.date, x.startTime, x.totalTime, planTaskSchedShift(x), x.otCapMinutesByShift || {});
+      x.endTime = c.time || x.endTime; x.endDate = c.date || x.date;
+      x.otMinutes = c.otMinutes || 0; x.otMinutesByShift = c.otMinutesByShift || {};
+    });
+    // งานใหม่เริ่มที่เวลาเดิมของงาน (คนละเครื่องลับ ทำพร้อมกันได้) — ชนกับงานของเครื่องนั้น ตัวจัดคิวดันต่อท้ายให้เอง
+    planTasks.push(nt);
+    changed = true;
+  });
+  return changed;
 }
 // เรียงตามเครื่อง (C5, P1, P2 …) แล้วตามรหัสในเครื่องเดียวกัน · ยังไม่ระบุเครื่องไว้ท้ายสุด
 // เรียงเฉพาะที่แสดง ไม่แตะลำดับใน toolingData.saw (ปุ่มแก้ไข/ลบอ้างตำแหน่งเดิม)
@@ -23787,6 +23978,19 @@ function renderDailyTasks() {
     </td></tr>`;
   };
   const emptyRow = text => `<tr><td colspan="12" style="padding:14px;text-align:center;color:var(--text-3);font-size:12.5px;">${escapeHtmlAttr(text)}</td></tr>`;
+  // หัวข้อย่อยของเครื่องลับในหัวข้อลับคมใบเลื่อย — บอกเครื่องผลิตที่เครื่องนี้ลับ และความคืบหน้ารายใบ
+  const sawGrinderDailyHeader = (g, list) => {
+    let total = 0, doneN = 0;
+    list.forEach(it => (it.raw ? (it.raw.rollIds || []) : []).forEach(idx => {
+      total++; if (getDailyPieceEntry(it.key, idx).status === 'done') doneN++;
+    }));
+    const c = sawGrinderColor(g);
+    return `<tr><td colspan="12" style="padding:9px 14px;background:${sawGrinderBg(g)};border-left:5px solid ${c};border-top:1px solid var(--border-light);">
+      <span style="font-size:14px;font-weight:800;color:${c};">⚙ เครื่องลับ ${g}</span>
+      <span style="font-size:12px;color:var(--text-3);margin-left:8px;">ใบของ ${escapeHtmlAttr(sawGrinderMachines(g).join(', '))}</span>
+      <span style="float:right;font-size:12px;font-weight:700;color:${c};">${total ? 'เสร็จ ' + doneN + '/' + total + ' ใบ' : ''}</span>
+    </td></tr>`;
+  };
   // รายใบของทุกงานในหัวข้อลับคม ต่อกันในตารางเดียว (หัวคอลัมน์ชุดเดียว) — เลขลำดับนับต่อเนื่องข้ามงาน
   const flatCodeRows = (s, items) => {
     let no = 0;
@@ -23851,6 +24055,13 @@ function renderDailyTasks() {
     // ไม่แยกเป็นหัวข้องาน 1 / 2 (ผู้ใช้ขอ 18 พ.ย. 69) — ปุ่มเริ่ม/พัก/จบ/แก้ไข OD อยู่ที่แถวของแต่ละใบ
     // แต่ง Roll SQ / แต่ง Roll (CNC) / ขัด Roll ก็เรียงทีละชิ้นแบบเดียวกัน — 1 ชิ้นต่อ 1 รายการ
     // ไม่ต้องมีแถวงานแล้วตารางรายชิ้นซ้อนข้างใต้ (ผู้ใช้ขอ 25 พ.ย. 69) · งานแทรก (addType) ยังเป็นแถวงานตามเดิม
+    // ลับคมใบเลื่อย: แยกเป็นเครื่องลับ 1 / 2 (ทำพร้อมกัน คิวแยกกัน) แต่ละเครื่องนับลำดับของตัวเอง (ผู้ใช้ขอ 25 พ.ย. 69)
+    if (items.length && !s.addType && s.key === 'saw') {
+      return sectionHeader(s, items) + sawGrinderList().map(g => {
+        const li = items.filter(it => (it.raw ? sawTaskGrinder(it.raw) : 1) === g);
+        return sawGrinderDailyHeader(g, li) + (li.length ? flatCodeRows(s, li) : emptyRow('ไม่มีงานลับคมของเครื่องลับ ' + g + ' ในวันนี้'));
+      }).join('');
+    }
     if (items.length && !s.addType) return sectionHeader(s, items) + flatCodeRows(s, items);
     return sectionHeader(s, items) + (items.length ? items.map(rowHtmlFor).join('') : emptyRow(s.empty))
       + (s.addType ? addChecklistRow(s) : '');
