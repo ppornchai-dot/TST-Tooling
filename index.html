@@ -1542,7 +1542,8 @@ canvas{display:block;}
               <span style="font-size:13px;font-weight:700;">Size SQ</span>
               <button class="btn btn-primary btn-sm" onclick="openAddSqSize()" title="เพิ่มขนาดใหม่ — กรอกชื่อขนาดกับเครื่อง แล้วเพิ่มชุดที่ปุ่มท้ายรายการของขนาดนั้น">+ เพิ่ม Size SQ</button>
             </div>
-            <div id="sq-set-list" style="max-height:620px;overflow-y:auto;padding:4px 8px 8px;"></div>
+            <!-- scrollbar-gutter: เผื่อที่แถบเลื่อนไว้ตลอด — เปิดขนาดที่มีหลายชุดแล้วแถบเลื่อนโผล่ รายการจะไม่แคบลงจนหัวข้อขนาดยาวๆ ตกบรรทัด (ผู้ใช้แจ้ง 25 พ.ย. 69) -->
+            <div id="sq-set-list" style="max-height:620px;overflow-y:auto;scrollbar-gutter:stable;padding:4px 8px 8px;"></div>
           </div>
 
           <!-- COL 2: รายการ Roll ของชุดที่เลือก -->
@@ -2557,7 +2558,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-25.03';
+const APP_BUILD = '2026-11-25.04';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -19372,10 +19373,11 @@ function rollSetSectionHeaderHtml(label, count, color, opts) {
   const o = opts || {};
   const c = color || 'var(--text-3)';
   if (o.big) {
-    return `<div style="font-size:${o.tight ? 15 : 16}px;font-weight:800;color:${c};${o.keepCase ? '' : 'text-transform:uppercase;'}
+    // nowrap = ชื่อกับปุ่มต่อท้ายอยู่บรรทัดเดียวเสมอ (ผู้เรียกต้องห่อชื่อให้ย่อ … ได้เอง)
+    return `<div style="font-size:${o.fontSize || (o.tight ? 15 : 16)}px;font-weight:800;color:${c};${o.keepCase ? '' : 'text-transform:uppercase;'}
       padding:14px 4px 8px;margin-top:4px;border-bottom:2px solid ${c};margin-bottom:8px;
-      display:flex;align-items:center;justify-content:space-between;">
-      <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;"><span style="width:10px;height:10px;border-radius:50%;background:${c};flex-shrink:0;"></span>${label}</span>
+      display:flex;align-items:center;justify-content:space-between;gap:6px;">
+      <span style="display:flex;align-items:center;gap:${o.nowrap ? 5 : 8}px;flex-wrap:${o.nowrap ? 'nowrap' : 'wrap'};min-width:0;${o.nowrap ? 'white-space:nowrap;' : ''}"><span style="width:10px;height:10px;border-radius:50%;background:${c};flex-shrink:0;"></span>${label}</span>
       <span style="font-weight:700;font-size:${o.tight ? 11.5 : 14}px;flex-shrink:0;white-space:nowrap;">${count}</span>
     </div>`;
   }
@@ -21188,8 +21190,10 @@ function renderSqSetList() {
     const mcRow = sqSizeMachineButtonsHtml(size, { compact: true });
     const header = `<div onclick="${jsCallAttr('selectSqSize', size)}" style="cursor:pointer;"
         title="${escapeHtmlAttr(size + ' — ' + sets.length + ' ชุด · ' + pieces + ' ชิ้น · ดู Roll SQ ทุกชุดของขนาดนี้ (กดซ้ำเพื่อดูทุกขนาด)')}">${
-        rollSetSectionHeaderHtml(escapeHtmlAttr(size) + mcRow, sets.length + ' ชุด',
-          sizeActive ? 'var(--accent)' : 'var(--text-1)', { keepCase: true, big: true, tight: true })}</div>`;
+        // ชื่อขนาด + ปุ่มเครื่องอยู่บรรทัดเดียวเสมอ — ที่ไม่พอจริงๆ ชื่อย่อ … (ชื่อเต็มอยู่ใน title) ปุ่มเครื่องไม่หด
+        rollSetSectionHeaderHtml(`<span style="overflow:hidden;text-overflow:ellipsis;min-width:0;">${escapeHtmlAttr(size)}</span>`
+          + `<span style="flex-shrink:0;display:inline-flex;">${mcRow}</span>`, sets.length + ' ชุด',
+          sizeActive ? 'var(--accent)' : 'var(--text-1)', { keepCase: true, big: true, tight: true, nowrap: true, fontSize: 13.5 })}</div>`;
     // ขยายเฉพาะขนาดที่เลือก (แบบทะเบียนใบเลื่อย) — ขนาดอื่นย่อไว้แค่หัวข้อ · กดขนาดเดิมซ้ำ = ย่อปิด
     // เลขลำดับยังนับต่อเนื่องทั้งทะเบียน (นับชุดของขนาดที่ย่อไว้ด้วย)
     if (!sizeActive) { num += sets.length; return header; }
