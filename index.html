@@ -2576,7 +2576,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-26.1';
+const APP_BUILD = '2026-11-26.2';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -8029,11 +8029,55 @@ function renderToolingLife() {
       return main + (x.unmeasured && x.unmeasured < x.set.length
         ? ` <div style="font-size:11px;color:var(--amber);">ยังไม่วัด ${x.unmeasured} ลูก</div>` : '');
     };
+    // รายชื่อชุดใต้ตัวเลขในการ์ด — แบบเดียวกับแท็บ Roll (ผู้ใช้ขอ 26 พ.ย. 69)
+    // ขนาด · สี ชุดที่ N ทางซ้าย ค่าที่ต้องดูทางขวา · บรรทัดล่างบอกแผนแต่งถ้ามี · กดแล้วไปที่ชุดนั้นในทะเบียน Roll SQ
+    const sqPlanOf = x => {
+      let best = null, allDone = true;
+      planTasks.forEach(t => {
+        if (t.workType !== 'sq' || t.rollSet !== SQ_PLAN_PREFIX + x.key) return;
+        const d = taskDisplayDate(t);
+        const done = planTaskProgressState(t) === 'done';
+        if (!done) allDone = false;
+        if (!best || d > best) best = d;
+      });
+      if (!best || best < addDaysIso(dailyTodayIso(), -30)) return null;   // แผนเก่าเกิน 30 วัน = รอบก่อน ไม่ต้องโชว์
+      return { date: best, done: allDone };
+    };
+    const kpiSets = (label, xs, color, sub, rightOf) => {
+      const lines = xs.map(x => {
+        const cm = sqColorMeta(x.head.color);
+        const plan = sqPlanOf(x);
+        const right = rightOf(x);
+        return `<div onclick="${jsCallAttr('goToSqSet', x.key)}" style="cursor:pointer;margin-bottom:2px;"
+          title="${escapeHtmlAttr(sqSetFullLabel(x.head) + ' · ' + right
+            + (plan ? ' · ' + (plan.done ? 'แต่งเสร็จแล้วเมื่อ ' : 'วางแผนแต่งไว้ วันที่ ') + fmtDateThai(parseISODate(plan.date)) : ' · ยังไม่ได้วางแผนแต่ง')
+            + ' — กดเพื่อเปิดชุดนี้ในทะเบียน Roll SQ')}">
+          <div style="display:flex;gap:5px;align-items:baseline;">
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">• ${escapeHtmlAttr(x.head.sizeSq || '—')}</span>
+            <b style="flex:0 0 auto;">${escapeHtmlAttr(right)}</b>
+          </div>
+          <div style="margin-left:9px;font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${cm.dot};
+              box-shadow:inset 0 0 0 1px rgba(0,0,0,.18);vertical-align:middle;"></span>
+            <span style="font-weight:700;color:var(--text-2);">${escapeHtmlAttr(cm.label + ' ' + sqSetOrdinalLabel(x.head))}</span>${
+            plan ? ` <span style="font-weight:800;color:${plan.done ? 'var(--green)' : 'var(--accent)'};">· ${escapeHtmlAttr((plan.done ? '✓ แต่งเสร็จ ' : 'วางแผนแต่ง ')
+              + fmtDateThaiShort(parseISODate(plan.date)))}</span>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+      const listHtml = lines ? `<div style="margin-top:6px;font-size:11px;line-height:1.5;color:${color};">${lines}</div>` : '';
+      return dashMiniKpi(label, xs.length.toLocaleString(), color, sub).replace(/<\/div>\s*$/, listHtml + '</div>');
+    };
+    const mm = v => (Math.round(v * 100) / 100).toLocaleString();
+    const byMargin = (a, b) => (a.minMargin == null) - (b.minMargin == null) || (a.minMargin || 0) - (b.minMargin || 0);
     el.innerHTML = `
-      <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));">
-        ${dashMiniKpi('ถึง OD หมดอายุ', cnt('expired').toLocaleString(), 'var(--red)', 'ชุดที่มีลูกถึง OD หมดอายุแล้ว')}
-        ${dashMiniKpi('ใกล้หมดอายุ', rows.filter(isNear).length.toLocaleString(), 'var(--amber)', 'เหลือไม่เกิน ' + SQ_OD_WARN_MM + ' mm')}
-        ${dashMiniKpi('ยังวัด OD ไม่ครบ', cnt('unmeasured').toLocaleString(), 'var(--amber)', 'ชุดที่ยังมีลูกไม่ได้วัด OD ปัจจุบัน')}
+      <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));align-items:start;">
+        ${kpiSets('ถึง OD หมดอายุ', rows.filter(r => r.state === 'expired').sort(byMargin), 'var(--red)', 'ชุดที่มีลูกถึง OD หมดอายุแล้ว',
+          x => x.minMargin != null && x.minMargin < 0 ? 'เกิน ' + mm(-x.minMargin) + ' mm' : x.expired + ' ลูก')}
+        ${kpiSets('ใกล้หมดอายุ', rows.filter(isNear).sort(byMargin), 'var(--amber)', 'เหลือไม่เกิน ' + SQ_OD_WARN_MM + ' mm',
+          x => 'เหลือ ' + mm(x.minMargin) + ' mm')}
+        ${kpiSets('ยังวัด OD ไม่ครบ', rows.filter(r => r.state === 'unmeasured'), 'var(--amber)', 'ชุดที่ยังมีลูกไม่ได้วัด OD ปัจจุบัน',
+          x => 'ยังไม่วัด ' + x.unmeasured + '/' + x.set.length + ' ลูก')}
         ${dashMiniKpi('ปกติ', cnt('ok').toLocaleString(), 'var(--green)', 'วัดครบ และยังไม่ถึง OD หมดอายุ')}
         ${dashMiniKpi('กำลังใช้งาน', loading ? '…' : inUse.toLocaleString(), 'var(--inuse)', 'ตามระบบผลิต')}
       </div>
