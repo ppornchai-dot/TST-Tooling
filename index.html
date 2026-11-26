@@ -2571,7 +2571,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-26.9';
+const APP_BUILD = '2026-11-26.10';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -24363,6 +24363,14 @@ function historyPieceOutcome(dateIso, task, rollIdx, entry) {
 }
 
 // รวบรวมงานที่ "สำเร็จ" แล้วทั้งหมด จากงานตามแผน (CNC/ขัด Roll) + เช็คลิสต์ที่เพิ่มเอง ไล่ทุกวันที่เคยมีการบันทึกสถานะไว้ในหน้างานประจำวัน (ไม่ใช่แค่วันที่กำลังดูอยู่)
+// ป้ายเครื่องลับในหน้าประวัติ — สีประจำเครื่องเดียวกับหน้าวางแผน/งานประจำวัน (ฟ้า = 1, ม่วง = 2)
+function historyGrinderChip(n, compact) {
+  if (!n) return '';
+  const c = sawGrinderColor(n);
+  return compact
+    ? `<span title="เครื่องลับ ${n}" style="font-size:9px;font-weight:800;padding:0 4px;border-radius:3px;line-height:1.6;flex-shrink:0;color:${c};background:${sawGrinderBg(n)};box-shadow:inset 0 0 0 1px ${c};">ลับ${n}</span>`
+    : `<span style="display:inline-block;font-size:11px;font-weight:800;padding:1px 7px;border-radius:6px;white-space:nowrap;color:${c};background:${sawGrinderBg(n)};box-shadow:inset 0 0 0 1px ${c};">⚙ เครื่องลับ ${n}</span>`;
+}
 function collectHistoryRecords() {
   const records = [];
   Object.keys(dailyStatusByDate).forEach(dateIso => {
@@ -24448,6 +24456,8 @@ function collectHistoryRecords() {
           // (บันทึกเก่าก่อนมีช่องนี้) ก็อ่านจากทะเบียนตัวปัจจุบันแทน
           odStandard: entry.odStandard || (roll ? String(roll.diameterStd || '').trim() || null : null),
           rollSetName: t.rollSet || null,
+          // ลับคมใบเลื่อย: เครื่องลับ 1/2 (ผู้ใช้ขอ 26 พ.ย. 69)
+          grinder: t.workType === 'saw' ? (sawGrinderNo(roll ? sawMachineOf(roll) : '') || sawTaskGrinder(t) || null) : null,
           // คีย์ชุดสีดิบ — ปฏิทินหน้านี้ใช้หาสีจริงของชุด (rollColorLabelFor/inUseColorDot ต้องใช้คีย์ ไม่ใช่ชื่อไทย)
           rollColorKey: t.rollColor || null,
           who: historyActorsText([entry.startBy, entry.doneBy], historyActorsText((() => {
@@ -24488,6 +24498,7 @@ function collectHistoryRecords() {
           ? 'แก้เมื่อ ' + (time || '—') + ' · แจ้งปัญหาวันที่ ' + fmtDateThai(parseISODate(e.date))
           : 'แจ้งเมื่อ ' + (time || '—') + (e.fixedDate ? ' · แก้แล้ววันที่ ' + fmtDateThai(parseISODate(e.fixedDate)) : ' · ยังไม่ได้แก้'),
         sawId: e.sawId || '',
+        grinder: sawGrinderNo(e.machine) || null,
         shiftKey: sk,
         sortKey: date + ' ' + historyShiftRank(sk) + ' ' + String(historyDayOrderMin(time) + 1).padStart(4, '0') + ' ~' + (e.sawId || '') + (fixed ? ' 1' : ' 0'),
       });
@@ -24606,13 +24617,15 @@ function closeHistoryCalDetail() {
   if (el) el.remove();
   document.removeEventListener('keydown', historyCalDetailEsc);
 }
-function openHistoryCalDetail(iso, typeKey, setName, colorKey) {
+function openHistoryCalDetail(iso, typeKey, setName, colorKey, grinder) {
   closeHistoryCalDetail();
+  grinder = Number(grinder) || 0;   // ส่งผ่าน onclick มาเป็นข้อความ ('2') — แปลงเป็นเลขก่อนเทียบ
   const meta = HISTORY_CAL_TYPE[typeKey] || { icon: '•', label: typeKey, color: 'var(--text-2)' };
   const list = collectHistoryRecords()
     .filter(r => r.date === iso && r.typeKey === typeKey
       && String(r.rollSetName || '') === String(setName || '')
-      && String(r.rollColorKey || '') === String(colorKey || ''))
+      && String(r.rollColorKey || '') === String(colorKey || '')
+      && (!grinder || r.grinder === grinder))
     // เรียงตามลำดับที่ทำจริงในวันนั้น (ตารางเรียงใหม่→เก่า แต่ในวันเดียวกันอยากเห็นไล่ตามเวลา)
     .sort((a, b) => String(a.sortKey || '').localeCompare(String(b.sortKey || '')));
 
@@ -24664,6 +24677,7 @@ function openHistoryCalDetail(iso, typeKey, setName, colorKey) {
         <div style="min-width:0;flex:1;">
           <div style="font-size:16px;font-weight:800;color:var(--text-1);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             ${escapeHtmlAttr(setName ? planSetLabel(setName) : 'งานแทรก')}
+            ${historyGrinderChip(grinder)}
             ${dot ? `<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:800;padding:2px 9px;border-radius:99px;
                    background:${dot};color:${rollColorTextOn(dot)};box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);">${escapeHtmlAttr(colorName)}</span>` : ''}
           </div>
@@ -24730,14 +24744,15 @@ function renderHistoryCalendar(records, fromIso, toIso, typeKey) {
     const map = new Map();
     list.forEach(r => {
       const set = r.rollSetName || null;
-      const key = r.typeKey + '|' + (set || '~ins') + '|' + (r.rollColorKey || '');
+      const key = r.typeKey + '|' + (set || '~ins') + '|' + (r.rollColorKey || '') + '|' + (r.grinder || '');
       let g = map.get(key);
-      if (!g) { g = { typeKey: r.typeKey, set, colorKey: r.rollColorKey || null, items: [] }; map.set(key, g); }
+      if (!g) { g = { typeKey: r.typeKey, set, colorKey: r.rollColorKey || null, grinder: r.grinder || null, items: [] }; map.set(key, g); }
       g.items.push(r);
     });
     // งานแต่ง Roll ขึ้นก่อนงานขัด แล้วเรียงตามชื่อชุด — ลำดับเดียวกันทุกวัน กวาดตาข้ามวันได้
     return [...map.values()].sort((a, b) =>
       a.typeKey !== b.typeKey ? (HISTORY_CAL_TYPE_ORDER.indexOf(a.typeKey) - HISTORY_CAL_TYPE_ORDER.indexOf(b.typeKey))
+        : (a.grinder || 0) !== (b.grinder || 0) ? (a.grinder || 0) - (b.grinder || 0)
         : String(a.set || '').localeCompare(String(b.set || ''), 'th'));
   };
 
@@ -24773,6 +24788,7 @@ function renderHistoryCalendar(records, fromIso, toIso, typeKey) {
         return `<div title="${escapeHtmlAttr(tip + '\nกดเพื่อดูในตารางด้านล่าง')}"
           style="display:flex;align-items:center;gap:4px;font-size:10.5px;line-height:1.45;margin-top:2px;padding:0 2px;margin-left:-2px;margin-right:-2px;">
           <span style="font-size:9px;font-weight:800;padding:0 4px;border-radius:3px;line-height:1.6;flex-shrink:0;background:${meta.color};color:#fff;">${meta.icon}</span>
+          ${historyGrinderChip(g.grinder, true)}
           <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--amber);font-weight:700;">${escapeHtmlAttr(ids.sort((a, b) => a.localeCompare(b, 'th', { numeric: true })).join(', '))} มีปัญหา</span>
           <span style="margin-left:auto;flex-shrink:0;font-weight:800;color:${meta.color};">${g.items.length}</span>
         </div>`;
@@ -24800,7 +24816,7 @@ function renderHistoryCalendar(records, fromIso, toIso, typeKey) {
       const notDone = g.items.filter(x => x.result !== 'สำเร็จ');
       const hrs = g.items.reduce((s, x) => s + (x.hours || 0), 0);
       const who = [...new Set(g.items.map(x => x.who).filter(x => x && x !== '—'))];
-      const tips = [meta.label + ' · ' + (codes.length ? 'รหัส ' + codes.join(', ') : g.set ? planSetLabel(g.set) : 'งานแทรก') + (colorName && !sqHead ? ' · ' + colorName : ''),
+      const tips = [meta.label + (g.grinder ? ' · เครื่องลับ ' + g.grinder : '') + ' · ' + (codes.length ? 'รหัส ' + codes.join(', ') : g.set ? planSetLabel(g.set) : 'งานแทรก') + (colorName && !sqHead ? ' · ' + colorName : ''),
         n + ' ชิ้น' + (hrs ? ' · ' + (Math.round(hrs * 10) / 10).toLocaleString() + ' ชม.' : '')];
       if (who.length) tips.push('ผู้ดำเนินการ ' + who.join(', '));
       // สรุปผลที่ไม่ใช่ "สำเร็จ" ไว้ในทูลทิป (พักงาน/ย้ายวัน/ไม่ได้ปิดงาน) — ในช่องวันมีที่แค่จุดเตือน
@@ -24812,12 +24828,13 @@ function renderHistoryCalendar(records, fromIso, toIso, typeKey) {
       tips.push('กดเพื่อดูรายชิ้น — OD ที่เหลือและเวลาที่ใช้จริง');
       // กดบรรทัด = เปิดรายละเอียดรายชิ้น · ต้องกัน event ไม่ให้ไหลไปถึงช่องวัน ไม่งั้นจะไปกรองตารางแทน
       return `<div title="${escapeHtmlAttr(tips.join('\n'))}"
-        onclick="event.stopPropagation();${jsCallAttr('openHistoryCalDetail', iso, g.typeKey, g.set || '', g.colorKey || '')}"
+        onclick="event.stopPropagation();${jsCallAttr('openHistoryCalDetail', iso, g.typeKey, g.set || '', g.colorKey || '', g.grinder || 0)}"
         onmouseover="this.style.background='var(--bg-panel)'" onmouseout="this.style.background='transparent'"
         style="display:flex;align-items:center;gap:4px;font-size:10.5px;line-height:1.45;margin-top:2px;
                cursor:pointer;border-radius:4px;padding:0 2px;margin-left:-2px;margin-right:-2px;background:transparent;">
         <span style="font-size:9px;font-weight:800;padding:0 4px;border-radius:3px;line-height:1.6;flex-shrink:0;
                background:${meta.color};color:#fff;">${meta.icon}</span>
+        ${historyGrinderChip(g.grinder, true)}
         <span style="min-width:0;${codes.length ? 'white-space:normal;word-break:break-word;color:var(--text-1);font-weight:700;' : 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2);font-weight:600;'}">${
           escapeHtmlAttr(setShort)}</span>
         ${cat ? `<span title="${escapeHtmlAttr(cat)}" style="font-size:9px;font-weight:800;color:var(--text-3);flex-shrink:0;">${
@@ -24925,7 +24942,7 @@ function renderHistory() {
       <td class="muted">${escapeHtmlAttr(fmtDateThai(parseISODate(r.date)))}</td>
       <td class="muted">${escapeHtmlAttr(r.wo)}</td>
       <td>${escapeHtmlAttr(r.typeLabel)}</td>
-      <td>${escapeHtmlAttr(r.tooling)}</td>
+      <td>${escapeHtmlAttr(r.tooling)}${r.grinder ? '<div style="margin-top:3px;">' + historyGrinderChip(r.grinder) + '</div>' : ''}</td>
       <td>${escapeHtmlAttr(r.detail)}${r.measuredSize ? odCompareHtml(r.measuredSize, r.registryDiameter, r.rollSetName, r.odStandard) : ''}</td>
       <td class="muted">${escapeHtmlAttr(r.who)}</td>
       <td class="muted">${r.hours != null ? `<div style="white-space:nowrap;"><span style="color:var(--text-3);font-weight:600;font-size:10.5px;">Standard</span> ` + r.hours + ' ชม.' + (r.minutes != null ? ' (' + Math.round(r.minutes).toLocaleString() + ' นาที)' : '') + '</div>' : '—'}${(r.startTime || r.endTime) ? `<div style="font-size:11px;white-space:nowrap;"><span style="color:var(--text-3);font-weight:600;font-size:10.5px;">ทำจริง</span> ${escapeHtmlAttr(r.startTime || '—')} – ${escapeHtmlAttr(r.endTime || '—')}${(() => { const mm = actualMinutesBetween(r.startTime, r.endTime); return mm == null ? '' : ` <span style="color:var(--text-2);font-weight:700;">(${mm.toLocaleString()} นาที)</span>`; })()}</div>` : ''}</td>
