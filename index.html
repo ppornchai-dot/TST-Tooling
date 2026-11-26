@@ -1886,9 +1886,12 @@ canvas{display:block;}
       <!-- แท็บ Roll (ของเดิมทั้งหมด) -->
       <div id="rl-panel-roll">
 
+      <!-- อายุ Roll มี 2 ส่วน (ผู้ใช้ขอ 26 พ.ย. 69): ต่อรอบการแต่ง (น้ำหนักผลิต) · หมดการใช้งาน (ขนาด OD) -->
+      <div class="rl-section-title" style="margin-top:14px;font-size:14px;font-weight:800;color:var(--text-1);">
+        อายุ Roll ต่อรอบการแต่ง <span style="font-size:12px;font-weight:600;color:var(--text-3);">— ตามน้ำหนักผลิตเทียบน้ำหนักต่อรอบการแต่ง</span></div>
       <!-- 5 การ์ดแล้ว ถ้าบังคับ 5 คอลัมน์ตายตัว จอที่ไม่กว้างพอจะบีบชื่อชุดในการ์ดเหลือไม่กี่ตัวอักษร
            auto-fit จึงเรียง 5 ใบเรียงเดียวเมื่อจอกว้างพอ และตัดลงบรรทัดใหม่เองเมื่อไม่พอ -->
-      <div class="kpi-grid" style="margin-top:14px;grid-template-columns:repeat(auto-fit,minmax(212px,1fr));">
+      <div class="kpi-grid" style="margin-top:8px;grid-template-columns:repeat(auto-fit,minmax(212px,1fr));">
         <!-- เกินรอบการแต่งไปแล้ว — แยกออกจาก "ใกล้หมดอายุ" เพราะคนละความหมายในการลงมือทำ
              ใกล้หมดอายุ = ต้องรีบจัดคิวแต่ง · หมดอายุ = เดินเกินรอบไปแล้ว ต้องแต่งทันที
              เดิมรวมอยู่การ์ดเดียวกัน ชุดที่ 113% กับ 91% จึงดูเท่ากันหมด -->
@@ -1922,6 +1925,11 @@ canvas{display:block;}
           <div class="kpi-value" id="rolllife-kpi-nospec">0</div>
         </div>
       </div>
+
+      <div class="rl-section-title" style="font-size:14px;font-weight:800;color:var(--text-1);">
+        อายุ Roll หมดการใช้งาน <span style="font-size:12px;font-weight:600;color:var(--text-3);">— ตามขนาด OD ปัจจุบันเทียบ Ø หมดอายุ (ลูกที่เหลือน้อยสุดในชุด)</span></div>
+      <!-- วาดใน renderRollLife (ดู rollOdLifeGroups) -->
+      <div class="kpi-grid" id="rolllife-od-kpis" style="margin-top:8px;grid-template-columns:repeat(auto-fit,minmax(212px,1fr));"></div>
 
       <div class="card" style="margin-bottom:16px;">
         <div class="card-header" style="cursor:pointer;" onclick="toggleRollLifeSpec()">
@@ -2571,7 +2579,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-26.13';
+const APP_BUILD = '2026-11-26.14';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -19268,6 +19276,76 @@ function renderRollLife() {
   if (critList) critList.innerHTML = bandListHtml('critical');
   const warnList = document.getElementById('rolllife-kpi-warn-list');
   if (warnList) warnList.innerHTML = bandListHtml('warn');
+  renderRollOdLifeKpis();
+}
+
+// ─── อายุ Roll หมดการใช้งาน ตามขนาด OD (ผู้ใช้ขอ 26 พ.ย. 69) ─────────────────────
+// คนละเรื่องกับอายุต่อรอบการแต่ง: แต่งได้อีกกี่ครั้งไม่สำคัญ ถ้า OD เหลือถึงขนาดหมดอายุแล้วต้องเปลี่ยนลูกใหม่
+// OD ปัจจุบัน = ช่อง Ø ในทะเบียน (ลูกที่ยังไม่เคยวัดหลังแต่ง ถือเท่า Ø ตั้งต้น — เกณฑ์เดียวกับตารางอายุ)
+// Ø หมดอายุ = ค่ารายลูก (diameterMin) หรือ OD เล็กสุดของเกณฑ์ทั้งชุด (rollMinDiameterInfo)
+// ชุด = Size Roll + ชุดสี ยึดลูกที่เหลือน้อยสุด เพราะถอดเปลี่ยนทั้งชุด
+function rollOdWarnMm() { return 10; }   // ฟังก์ชัน ไม่ใช่ var — กันถูกเรียกก่อนบรรทัดนี้ทำงานตอนบูต
+function rollOdLifeGroups() {
+  const map = new Map();
+  toolingData.roll.forEach(roll => {
+    const colorKey = roll.color || NO_COLOR_KEY;
+    const key = roll.set + '|' + colorKey;
+    let g = map.get(key);
+    if (!g) {
+      const cm = colorKey === NO_COLOR_KEY ? null : getSetPalette(roll.set).find(c => c.key === colorKey);
+      g = { set: roll.set || '—', colorKey, colorLabel: cm ? cm.label : (colorKey === NO_COLOR_KEY ? 'ไม่ระบุสี' : colorKey),
+        count: 0, withSpec: 0, expired: 0, minMargin: null, worst: null };
+      map.set(key, g);
+    }
+    g.count++;
+    const min = rollMinDiameterInfo(roll).num, cur = rollLifeNum(roll.diameter);
+    if (min == null) return;
+    g.withSpec++;
+    if (cur == null) return;
+    const m = Math.round((cur - min) * 100) / 100;
+    if (m <= 0) g.expired++;
+    if (g.minMargin == null || m < g.minMargin) { g.minMargin = m; g.worst = roll; }
+  });
+  return [...map.values()].map(g => {
+    g.state = !g.withSpec || g.minMargin == null ? 'nospec'
+      : g.expired ? 'expired' : g.minMargin <= rollOdWarnMm() ? 'near' : 'ok';
+    return g;
+  });
+}
+function renderRollOdLifeKpis() {
+  const el = document.getElementById('rolllife-od-kpis');
+  if (!el) return;
+  const groups = rollOdLifeGroups();
+  const mm = v => (Math.round(v * 100) / 100).toLocaleString();
+  const lines = (list, rightOf) => list.map(g => `<div onclick="${jsCallAttr('goToRollSetColor', g.set, g.colorKey)}"
+      style="cursor:pointer;margin-bottom:2px;"
+      title="${escapeHtmlAttr(g.set + ' · ' + g.colorLabel + ' · ' + rightOf(g)
+        + (g.worst ? ' · ลูกที่เหลือน้อยสุด ' + (g.worst.name || '') + ' Ø' + g.worst.diameter : '')
+        + (g.withSpec < g.count ? ' · กำหนด Ø หมดอายุแล้ว ' + g.withSpec + '/' + g.count + ' ลูก' : '')
+        + ' — กดเพื่อดูในทะเบียน Tooling')}">
+      <div style="display:flex;gap:5px;align-items:baseline;">
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">• ${
+          escapeHtmlAttr(rollSetGroupDisplayName(g.set))} <span style="opacity:.75;">${
+          escapeHtmlAttr(parseSizeRollName(g.set).category || '')} · ${escapeHtmlAttr(g.colorLabel)}</span></span>
+        <b style="flex:0 0 auto;">${escapeHtmlAttr(rightOf(g))}</b>
+      </div>
+    </div>`).join('');
+  const byMargin = (a, b) => a.minMargin - b.minMargin;
+  const exp = groups.filter(g => g.state === 'expired').sort(byMargin);
+  const near = groups.filter(g => g.state === 'near').sort(byMargin);
+  const ok = groups.filter(g => g.state === 'ok');
+  const nospec = groups.filter(g => g.state === 'nospec');
+  el.innerHTML =
+    lifeKpiCard('reddeep', 'ถึง OD หมดอายุ (≤ 0 mm)', exp.length,
+      lines(exp, g => g.minMargin < 0 ? 'เกิน ' + mm(-g.minMargin) + ' mm' : g.expired + ' ลูก'),
+      'ชุดที่มีลูก Ø ปัจจุบันเท่ากับหรือเล็กกว่า Ø หมดอายุแล้ว — ต้องเปลี่ยนลูกใหม่')
+    + lifeKpiCard('red', 'ใกล้หมดอายุ (≤ ' + rollOdWarnMm() + ' mm)', near.length,
+      lines(near, g => 'เหลือ ' + mm(g.minMargin) + ' mm'),
+      'Ø ปัจจุบันเหลืออีกไม่เกิน ' + rollOdWarnMm() + ' mm ถึง Ø หมดอายุ — เตรียมลูกใหม่')
+    + lifeKpiCard('green', 'ปกติ (> ' + rollOdWarnMm() + ' mm)', ok.length, '',
+      'เหลือมากกว่า ' + rollOdWarnMm() + ' mm ก่อนถึง Ø หมดอายุ')
+    + lifeKpiCard('blue', 'ยังไม่กำหนดเกณฑ์', nospec.length, '',
+      'ยังไม่ได้กรอก Ø หมดอายุ (รายลูกในทะเบียน Tooling หรือ OD เล็กสุดของทั้งชุดในเกณฑ์อายุ Roll)');
 }
 
 function rollSetScope() {
