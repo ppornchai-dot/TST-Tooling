@@ -2571,7 +2571,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-26.11';
+const APP_BUILD = '2026-11-26.12';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -7065,7 +7065,7 @@ function sawWorkingCardHtml() {
     return {
       grinder: sawGrinderNo(e.r.machine) || 1,
       set: 'ใบเลื่อย รหัส ' + (e.r.id || '—'),
-      colorLabel: [sawOdLabel(e.r), e.r.machine].filter(x => x && x !== '—').join(' · '),
+      colorLabel: [sawOdLabel(e.r), sawThickLabel(e.r), e.r.machine].filter(x => x && x !== '—').join(' · '),
       dot: null, cat: e.cat, unit: 'ใบ', // ไม่ใส่จุดสี — สีสุ่มจากรหัสไม่มีความหมาย
       done: 0, total: 1, remainAmt: 1, doing: e.cat === 'doing' ? 1 : 0,
       active: e.entry.status === 'in_progress', activeLabel: 'กำลังลับ',
@@ -7129,7 +7129,7 @@ function openSawProblemPicker() {
           style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:13px;">
         <input type="checkbox" class="sawprob-cb" value="${idx}" style="width:15px;height:15px;cursor:pointer;">
         <b style="min-width:64px;">รหัส ${escapeHtmlAttr(r.id || '—')}</b>
-        <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr([sawOdLabel(r), r.machine && r.machine !== '—' ? r.machine : ''].filter(Boolean).join(' · '))}</span>
+        <span style="font-size:12px;color:var(--text-3);">${escapeHtmlAttr([sawOdLabel(r), sawThickLabel(r), r.machine && r.machine !== '—' ? r.machine : ''].filter(Boolean).join(' · '))}</span>
         <span style="margin-left:auto;">${statusChip(st)}</span>
       </label>`).join('') || '<div style="padding:12px;color:var(--text-3);font-size:13px;">ทุกใบเป็น "มีปัญหา" อยู่แล้ว</div>'}
     </div>
@@ -7818,7 +7818,7 @@ async function renderProdWeightTooling(force) {
       const reg = sawReg.find(x => sawCodeKey(x.id) === sawCodeKey(r.code));
       key = sawCodeKey(r.code);
       title = 'รหัส ' + String(r.code).trim();
-      sub = reg ? [sawOdLabel(reg), reg.machine].filter(x => x && x !== '—').join(' · ') : 'ไม่พบใบนี้ในทะเบียนใบเลื่อย';
+      sub = reg ? [sawOdLabel(reg), sawThickLabel(reg), reg.machine].filter(x => x && x !== '—').join(' · ') : 'ไม่พบใบนี้ในทะเบียนใบเลื่อย';
       sortKey = (reg ? '0|' : '1|') + String(r.code).trim().padStart(6, '0');
     }
     if (!groups.has(key)) groups.set(key, { key, title, sub, color, sortKey, kg: 0, pcs: 0, rounds: [], sqSize: kind === 'sq' && key.indexOf('x|') !== 0 ? title : null });
@@ -8635,7 +8635,7 @@ function renderDashboardSimpleToolingPanel(key, name) {
             ${list.map(it => `<div style="display:flex;align-items:center;gap:12px;padding:6px 10px;background:var(--bg-surface);border-radius:6px;">
               <span style="font-size:12px;color:var(--text-3);min-width:70px;">${escapeHtmlAttr(it.id || '')}</span>
               <span style="font-size:13px;color:var(--text-1);flex:1;">${escapeHtmlAttr(key === 'saw'
-                ? [sawOdLabel(it), it.machine].filter(x => x && x !== '—').join(' · ') || '—'
+                ? [sawOdLabel(it), sawThickLabel(it), it.machine].filter(x => x && x !== '—').join(' · ') || '—'
                 : (it.name || ''))}</span>
             </div>`).join('')}
           </div>
@@ -12515,7 +12515,7 @@ function renderRollOptionsPanel(rolls, selectedIndexes) {
   const sawExtra = r => {
     if (!isSaw) return '';
     const reg = ((toolingData || {}).saw || []).find(x => x.id === r.id);
-    const info = reg ? [sawOdLabel(reg), reg.machine].filter(x => x && x !== '—').join(' · ') : '';
+    const info = reg ? [sawOdLabel(reg), sawThickLabel(reg), reg.machine].filter(x => x && x !== '—').join(' · ') : '';
     const w = reg ? sawWait.get(((toolingData || {}).saw || []).indexOf(reg)) : null;
     return (info ? ` <span style="font-size:11px;color:var(--text-3);">${escapeHtmlAttr(info)}</span>` : '')
       + (w ? ` <span style="font-size:11px;color:var(--text-2);margin-left:auto;">${w.manual ? 'รอลับคม (ตั้งในทะเบียน)'
