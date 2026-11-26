@@ -1923,23 +1923,8 @@ canvas{display:block;}
         </div>
       </div>
 
-      <div class="card" style="margin-bottom:16px;">
-        <div class="card-header" style="cursor:pointer;" onclick="toggleRollLifeSpec()">
-          <span class="card-title">เกณฑ์อายุต่อ Size Roll <span class="muted" style="font-weight:400;font-size:12px;">— กรอกก่อนจึงคำนวณอายุได้</span></span>
-          <button class="btn btn-ghost btn-sm" id="rolllife-spec-toggle">แสดง</button>
-        </div>
-        <div id="rolllife-spec-body" style="display:none;">
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Size Roll</th><th>OD ตอน Roll ใหม่ (mm)</th><th>OD เล็กสุดที่ใช้ได้ (mm)</th><th>รีดได้สูงสุด (ตัน)</th><th>จำนวน Roll</th></tr></thead>
-              <tbody id="rolllife-spec-tbody"></tbody>
-            </table>
-          </div>
-          <div style="padding:12px 20px;border-top:1px solid var(--border-light);display:flex;justify-content:flex-end;">
-            <button class="btn btn-primary btn-sm" onclick="saveRollLifeSpec()">บันทึกเกณฑ์</button>
-          </div>
-        </div>
-      </div>
+      <!-- เอาการ์ด "เกณฑ์อายุต่อ Size Roll" ออกแล้ว (ผู้ใช้ขอ 26 พ.ย. 69) — Ø หมดอายุกรอกรายลูกในทะเบียน Tooling
+           ค่าเกณฑ์ที่เคยบันทึกไว้ (rollLifeSpec) ยังอยู่ในข้อมูลและยังถูกใช้คำนวณเหมือนเดิม แค่ไม่มีหน้าแก้แล้ว -->
 
       <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;">
         <div class="search-bar" style="flex:1;margin-bottom:0;">
@@ -2571,7 +2556,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-26.15';
+const APP_BUILD = '2026-11-26.16';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -19028,7 +19013,7 @@ function renderRollLife() {
   const sets = getRollSets();
 
   const specBody = document.getElementById('rolllife-spec-tbody');
-  specBody.innerHTML = sets.map((setName, i) => {
+  if (specBody) specBody.innerHTML = sets.map((setName, i) => {
     const s = rollLifeSpec[setName] || {};
     const count = toolingData.roll.filter(r => r.set === setName).length;
     return `<tr>
@@ -23219,7 +23204,7 @@ function rollMinDiameterInfo(roll) {
 function rollMinOdHtml(roll) {
   const info = rollMinDiameterInfo(roll);
   if (!info.text) {
-    return '<span class="muted" title="ยังไม่ได้กำหนดขนาดหมดอายุของลูกนี้ — กรอกได้ที่ปุ่มแก้ไข หรือกำหนดทั้งชุดที่หน้าอายุ Tooling">—</span>';
+    return '<span class="muted" title="ยังไม่ได้กำหนดขนาดหมดอายุของลูกนี้ — กรอกได้ที่ปุ่มแก้ไข">—</span>';
   }
   const head = info.fromSpec
     ? `<span class="muted" title="อ้างจาก OD เล็กสุด ของเกณฑ์อายุ Roll ชุดนี้ (ยังไม่ได้กรอกเฉพาะลูกนี้)">${escapeHtmlAttr(info.text)} <span style="font-size:10px;">ทั้งชุด</span></span>`
