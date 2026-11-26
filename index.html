@@ -2576,7 +2576,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-26.2';
+const APP_BUILD = '2026-11-26.3';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -8013,7 +8013,6 @@ function renderToolingLife() {
       size, rows: sqSortSetsByCode(sets.slice()).map(st => rowByKey.get(sqSetKey(st[0]))).filter(Boolean),
     })).filter(g => g.rows.length);
     const cnt = s => rows.filter(r => r.state === s).length;
-    const inUse = rows.filter(r => r.use && r.use.open).length;
     const fmt1 = v => v == null ? '—' : (Math.round(v * 100) / 100).toLocaleString();
     // อายุ = OD ปัจจุบัน เทียบ OD หมดอายุ (แบบเดียวกับแท็บใบเลื่อย) — ยึดลูกที่เหลือน้อยสุดในชุด
     const SQ_OD_WARN_MM = 10;
@@ -8079,7 +8078,6 @@ function renderToolingLife() {
         ${kpiSets('ยังวัด OD ไม่ครบ', rows.filter(r => r.state === 'unmeasured'), 'var(--amber)', 'ชุดที่ยังมีลูกไม่ได้วัด OD ปัจจุบัน',
           x => 'ยังไม่วัด ' + x.unmeasured + '/' + x.set.length + ' ลูก')}
         ${dashMiniKpi('ปกติ', cnt('ok').toLocaleString(), 'var(--green)', 'วัดครบ และยังไม่ถึง OD หมดอายุ')}
-        ${dashMiniKpi('กำลังใช้งาน', loading ? '…' : inUse.toLocaleString(), 'var(--inuse)', 'ตามระบบผลิต')}
       </div>
       <div class="card table-wrap table-wrap-sticky">
         <table>
