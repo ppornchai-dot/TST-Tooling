@@ -2228,7 +2228,7 @@ canvas{display:block;}
            ใช้ตัวกรองประเภทงาน/คำค้นหาชุดเดียวกับตาราง ตัวเลขจึงตรงกันเสมอ -->
       <div class="card" style="margin-bottom:16px;" id="history-cal-card">
         <div class="card-header" style="flex-wrap:wrap;row-gap:8px;">
-          <span class="card-title" id="history-cal-title" style="font-size:17px;white-space:nowrap;">ปฏิทินการแต่ง Roll / ขัด Roll</span>
+          <span class="card-title" id="history-cal-title" style="font-size:17px;white-space:nowrap;">ปฏิทินประวัติการแต่ง Roll / ขัด Roll</span>
           <span style="margin-left:auto;display:inline-flex;align-items:center;gap:8px;">
             <button class="btn btn-ghost btn-sm" onclick="historyCalNav(-1)" title="เดือนก่อนหน้า">‹</button>
             <span id="history-cal-label" style="font-size:14px;font-weight:800;min-width:120px;text-align:center;"></span>
@@ -2580,7 +2580,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-26.6';
+const APP_BUILD = '2026-11-26.7';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -24710,7 +24710,7 @@ function renderHistoryCalendar(records, fromIso, toIso, typeKey) {
   // หน้าประวัติดูทีละประเภทงาน — หัวปฏิทินและแถบสรุปบอกเฉพาะงานของแท็บนั้น (ไม่ขึ้นงานประเภทอื่นเป็น 0)
   const typeLabel = { cnc: 'แต่ง Roll', polish: 'ขัด Roll', sq: 'แต่ง Roll SQ', saw: 'ลับคมใบเลื่อย', slitter: 'ลับคมมีดสลิตเตอร์' }[typeKey] || 'แต่ง Roll / ขัด Roll';
   const calTitle = document.getElementById('history-cal-title');
-  if (calTitle) calTitle.textContent = 'ปฏิทินการ' + typeLabel;
+  if (calTitle) calTitle.textContent = 'ปฏิทินประวัติการ' + typeLabel;
   const showType = k => !typeKey || k === typeKey || (typeKey === 'saw' && k === 'sawprob');
   const m = historyCalMonthDate();
   const year = m.getFullYear(), month = m.getMonth();
@@ -24727,7 +24727,7 @@ function renderHistoryCalendar(records, fromIso, toIso, typeKey) {
     toggle.style.background = 'var(--accent)';
     toggle.style.color = '#fff';
     toggle.title = historyCalOpen
-      ? 'กำลังแสดงปฏิทินการ' + typeLabel + ' — กดเพื่อซ่อนแล้วดูเฉพาะตาราง'
+      ? 'กำลังแสดงปฏิทินประวัติการ' + typeLabel + ' — กดเพื่อซ่อนแล้วดูเฉพาะตาราง'
       : 'กดเพื่อดูงานทั้งเดือนเป็นปฏิทิน ว่าวันไหนแต่ง/ขัดชุดไหนไปบ้าง';
   }
   if (!historyCalOpen) return;   // ปิดอยู่ — ไม่ต้องเสียเวลาวาด
