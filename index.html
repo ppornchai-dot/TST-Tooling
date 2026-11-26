@@ -2571,7 +2571,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-26.10';
+const APP_BUILD = '2026-11-26.11';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -24942,7 +24942,7 @@ function renderHistory() {
       <td class="muted">${escapeHtmlAttr(fmtDateThai(parseISODate(r.date)))}</td>
       <td class="muted">${escapeHtmlAttr(r.wo)}</td>
       <td>${escapeHtmlAttr(r.typeLabel)}</td>
-      <td>${escapeHtmlAttr(r.tooling)}${r.grinder ? '<div style="margin-top:3px;">' + historyGrinderChip(r.grinder) + '</div>' : ''}</td>
+      <td>${escapeHtmlAttr(r.tooling)}</td>
       <td>${escapeHtmlAttr(r.detail)}${r.measuredSize ? odCompareHtml(r.measuredSize, r.registryDiameter, r.rollSetName, r.odStandard) : ''}</td>
       <td class="muted">${escapeHtmlAttr(r.who)}</td>
       <td class="muted">${r.hours != null ? `<div style="white-space:nowrap;"><span style="color:var(--text-3);font-weight:600;font-size:10.5px;">Standard</span> ` + r.hours + ' ชม.' + (r.minutes != null ? ' (' + Math.round(r.minutes).toLocaleString() + ' นาที)' : '') + '</div>' : '—'}${(r.startTime || r.endTime) ? `<div style="font-size:11px;white-space:nowrap;"><span style="color:var(--text-3);font-weight:600;font-size:10.5px;">ทำจริง</span> ${escapeHtmlAttr(r.startTime || '—')} – ${escapeHtmlAttr(r.endTime || '—')}${(() => { const mm = actualMinutesBetween(r.startTime, r.endTime); return mm == null ? '' : ` <span style="color:var(--text-2);font-weight:700;">(${mm.toLocaleString()} นาที)</span>`; })()}</div>` : ''}</td>
@@ -24979,17 +24979,45 @@ function renderHistory() {
     </td></tr>`;
   };
 
-  let html = '', curDay = null, curShift = null;
+  // ลับคมใบเลื่อย: ในแต่ละกะแบ่งเป็นเครื่องลับ 1 แล้วเครื่องลับ 2 (ผู้ใช้ขอ 26 พ.ย. 69)
+  // จัดลำดับใหม่แบบคงลำดับเวลาเดิมไว้ภายในเครื่องลับเดียวกัน — บันทึกที่ไม่รู้เครื่องลับไว้ท้ายกะ
+  const byGrinder = typeFilter === 'saw';
+  const shiftOf = r => HISTORY_SHIFT_META[r.shiftKey] ? r.shiftKey : 'unknown';
+  if (byGrinder) {
+    let block = -1, prev = null;
+    const keyed = records.map((r, i) => {
+      const k = r.date + '|' + shiftOf(r);
+      if (k !== prev) { block++; prev = k; }
+      return { r, i, block, g: r.grinder || 9 };
+    });
+    keyed.sort((a, b) => a.block - b.block || a.g - b.g || a.i - b.i);
+    records.length = 0;
+    keyed.forEach(x => records.push(x.r));
+  }
+  const grinderHeader = (n, list) => {
+    const c = n ? sawGrinderColor(n) : 'var(--text-3)';
+    const mcs = n ? sawGrinderMachines(n) : [];
+    return `<tr><td colspan="8" style="background:${n ? sawGrinderBg(n) : 'var(--bg-panel)'};padding:5px 12px 5px 26px;border-left:4px solid ${c};">
+      <span style="font-size:12.5px;font-weight:800;color:${c};">⚙ ${n ? 'เครื่องลับ ' + n : 'ไม่ระบุเครื่องลับ'}</span>${
+        mcs.length ? ` <span style="font-size:11.5px;font-weight:600;color:var(--text-3);">ใบของ ${escapeHtmlAttr(mcs.join(', '))}</span>` : ''}
+      <span style="float:right;font-size:11px;font-weight:700;color:${c};">${list.length.toLocaleString()} รายการ</span>
+    </td></tr>`;
+  };
+
+  let html = '', curDay = null, curShift = null, curGrinder;
   records.forEach((r, i) => {
-    const shiftKey = HISTORY_SHIFT_META[r.shiftKey] ? r.shiftKey : 'unknown';
+    const shiftKey = shiftOf(r);
     if (r.date !== curDay) {
       curDay = r.date; curShift = null;
       html += dayHeader(r.date, records.filter(x => x.date === r.date));
     }
     if (shiftKey !== curShift) {
-      curShift = shiftKey;
-      html += shiftHeader(shiftKey, records.filter(x => x.date === r.date
-        && (HISTORY_SHIFT_META[x.shiftKey] ? x.shiftKey : 'unknown') === shiftKey));
+      curShift = shiftKey; curGrinder = undefined;
+      html += shiftHeader(shiftKey, records.filter(x => x.date === r.date && shiftOf(x) === shiftKey));
+    }
+    if (byGrinder && (r.grinder || 0) !== curGrinder) {
+      curGrinder = r.grinder || 0;
+      html += grinderHeader(curGrinder, records.filter(x => x.date === r.date && shiftOf(x) === shiftKey && (x.grinder || 0) === curGrinder));
     }
     html += rowHtml(r);
   });
