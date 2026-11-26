@@ -313,6 +313,10 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%;}
 .kpi-icon.green{background:var(--green-dim);}
 .kpi-icon.red{background:var(--red-dim);}
 .kpi-icon.reddeep{background:var(--red-deep-dim);}
+/* การ์ดอายุใบเลื่อย: กำลังใช้งาน / ยกเลิก-มีปัญหา (ดู lifeKpiCard) */
+.kpi-card.inuse::before{background:var(--inuse);}
+.kpi-card.gray::before{background:#475569;}
+.kpi-icon.inuse,.kpi-icon.gray{background:var(--bg-panel);}
 
 /* ─── GRID LAYOUTS ───────────────────────────── */
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;}
@@ -2576,7 +2580,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-26.3';
+const APP_BUILD = '2026-11-26.4';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -5888,6 +5892,26 @@ function renderDashboardTabCounts() {
 }
 
 // การ์ด KPI เล็กของแผงหมวดอื่น — รูปแบบเดียวกับ .kpi-card ของแท็บ Roll
+// การ์ดสรุปของหน้าอายุ Tooling (Roll SQ / ใบเลื่อย) — หน้าตาเดียวกับการ์ดแท็บ Roll (ผู้ใช้ขอ 26 พ.ย. 69)
+// แถบสีด้านบน + ไอคอนมุมขวา + ตัวเลขใหญ่ + รายการตัวเล็กสีเดียวกับการ์ดใต้ตัวเลข
+var LIFE_KPI_TONES = {
+  reddeep: { color: 'var(--red-deep)', icon: '<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>' },
+  red:     { color: 'var(--red)',      icon: '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/>' },
+  amber:   { color: 'var(--amber)',    icon: '<circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/>' },
+  green:   { color: 'var(--green)',    icon: '<polyline points="20 6 9 17 4 12"/>' },
+  blue:    { color: 'var(--accent)',   icon: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>' },
+  inuse:   { color: 'var(--inuse)',    icon: '<polygon points="6 4 20 12 6 20 6 4"/>' },
+  gray:    { color: '#475569',         icon: '<circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/>' },
+};
+function lifeKpiCard(tone, label, value, listHtml, title) {
+  const t = LIFE_KPI_TONES[tone] || LIFE_KPI_TONES.blue;
+  return `<div class="kpi-card ${tone}">
+    <div class="kpi-icon ${tone}"><svg width="18" height="18" fill="none" stroke="${t.color}" stroke-width="2" viewBox="0 0 24 24">${t.icon}</svg></div>
+    <div class="kpi-label" style="padding-right:44px;"${title ? ` title="${escapeHtmlAttr(title)}"` : ''}>${escapeHtmlAttr(label)}</div>
+    <div class="kpi-value"${tone === 'reddeep' ? ' style="color:var(--red-deep);"' : ''}>${escapeHtmlAttr(String(value))}</div>
+    ${listHtml ? `<div style="margin-top:4px;font-size:11px;line-height:1.5;color:${t.color};">${listHtml}</div>` : ''}
+  </div>`;
+}
 function dashMiniKpi(label, value, color, sub) {
   return `<div class="kpi-card" style="border-top:3px solid ${color};">
     <div class="kpi-label">${escapeHtmlAttr(label)}</div>
@@ -8042,42 +8066,46 @@ function renderToolingLife() {
       if (!best || best < addDaysIso(dailyTodayIso(), -30)) return null;   // แผนเก่าเกิน 30 วัน = รอบก่อน ไม่ต้องโชว์
       return { date: best, done: allDone };
     };
-    const kpiSets = (label, xs, color, sub, rightOf) => {
-      const lines = xs.map(x => {
-        const cm = sqColorMeta(x.head.color);
-        const plan = sqPlanOf(x);
-        const right = rightOf(x);
-        return `<div onclick="${jsCallAttr('goToSqSet', x.key)}" style="cursor:pointer;margin-bottom:2px;"
-          title="${escapeHtmlAttr(sqSetFullLabel(x.head) + ' · ' + right
-            + (plan ? ' · ' + (plan.done ? 'แต่งเสร็จแล้วเมื่อ ' : 'วางแผนแต่งไว้ วันที่ ') + fmtDateThai(parseISODate(plan.date)) : ' · ยังไม่ได้วางแผนแต่ง')
-            + ' — กดเพื่อเปิดชุดนี้ในทะเบียน Roll SQ')}">
-          <div style="display:flex;gap:5px;align-items:baseline;">
-            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">• ${escapeHtmlAttr(x.head.sizeSq || '—')}</span>
-            <b style="flex:0 0 auto;">${escapeHtmlAttr(right)}</b>
-          </div>
-          <div style="margin-left:9px;font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${cm.dot};
-              box-shadow:inset 0 0 0 1px rgba(0,0,0,.18);vertical-align:middle;"></span>
-            <span style="font-weight:700;color:var(--text-2);">${escapeHtmlAttr(cm.label + ' ' + sqSetOrdinalLabel(x.head))}</span>${
-            plan ? ` <span style="font-weight:800;color:${plan.done ? 'var(--green)' : 'var(--accent)'};">· ${escapeHtmlAttr((plan.done ? '✓ แต่งเสร็จ ' : 'วางแผนแต่ง ')
-              + fmtDateThaiShort(parseISODate(plan.date)))}</span>` : ''}
-          </div>
-        </div>`;
-      }).join('');
-      const listHtml = lines ? `<div style="margin-top:6px;font-size:11px;line-height:1.5;color:${color};">${lines}</div>` : '';
-      return dashMiniKpi(label, xs.length.toLocaleString(), color, sub).replace(/<\/div>\s*$/, listHtml + '</div>');
-    };
+    // รายการแบบเดียวกับแท็บ Roll: "• ขนาด สี ชุดที่ N ........ ค่า" แล้วบรรทัดแผนแต่ง (ถ้ามี) ใต้ชื่อ
+    const setLines = (xs, rightOf) => xs.map(x => {
+      const cm = sqColorMeta(x.head.color);
+      const plan = sqPlanOf(x);
+      const right = rightOf(x);
+      return `<div onclick="${jsCallAttr('goToSqSet', x.key)}" style="cursor:pointer;margin-bottom:2px;"
+        title="${escapeHtmlAttr(sqSetFullLabel(x.head) + ' · ' + right
+          + (plan ? ' · ' + (plan.done ? 'แต่งเสร็จแล้วเมื่อ ' : 'วางแผนแต่งไว้ — ตามแผนจะเสร็จวันที่ ') + fmtDateThai(parseISODate(plan.date)) : ' · ยังไม่ได้วางแผนแต่งชุดนี้')
+          + ' — กดเพื่อเปิดชุดนี้ในทะเบียน Roll SQ')}">
+        <div style="display:flex;gap:5px;align-items:baseline;">
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">• ${
+            escapeHtmlAttr(x.head.sizeSq || '—')} <span style="opacity:.75;">· ${escapeHtmlAttr(cm.label + ' ' + sqSetOrdinalLabel(x.head))}</span></span>
+          <b style="flex:0 0 auto;">${escapeHtmlAttr(right)}</b>
+        </div>
+        ${plan ? `<div style="margin-left:9px;font-size:10.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+          color:${plan.done ? 'var(--green)' : 'var(--accent)'};">${escapeHtmlAttr((plan.done ? '✓ แต่งเสร็จ ' : 'วางแผนแต่ง ')
+            + fmtDateThaiShort(parseISODate(plan.date)))}</div>` : ''}
+      </div>`;
+    }).join('');
     const mm = v => (Math.round(v * 100) / 100).toLocaleString();
     const byMargin = (a, b) => (a.minMargin == null) - (b.minMargin == null) || (a.minMargin || 0) - (b.minMargin || 0);
+    const sExp = rows.filter(r => r.state === 'expired').sort(byMargin);
+    const sNear = rows.filter(isNear).sort(byMargin);
+    const sUnm = rows.filter(r => r.state === 'unmeasured');
+    const sOk = rows.filter(r => r.state === 'ok' && !isNear(r));
     el.innerHTML = `
-      <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));align-items:start;">
-        ${kpiSets('ถึง OD หมดอายุ', rows.filter(r => r.state === 'expired').sort(byMargin), 'var(--red)', 'ชุดที่มีลูกถึง OD หมดอายุแล้ว',
-          x => x.minMargin != null && x.minMargin < 0 ? 'เกิน ' + mm(-x.minMargin) + ' mm' : x.expired + ' ลูก')}
-        ${kpiSets('ใกล้หมดอายุ', rows.filter(isNear).sort(byMargin), 'var(--amber)', 'เหลือไม่เกิน ' + SQ_OD_WARN_MM + ' mm',
-          x => 'เหลือ ' + mm(x.minMargin) + ' mm')}
-        ${kpiSets('ยังวัด OD ไม่ครบ', rows.filter(r => r.state === 'unmeasured'), 'var(--amber)', 'ชุดที่ยังมีลูกไม่ได้วัด OD ปัจจุบัน',
-          x => 'ยังไม่วัด ' + x.unmeasured + '/' + x.set.length + ' ลูก')}
-        ${dashMiniKpi('ปกติ', cnt('ok').toLocaleString(), 'var(--green)', 'วัดครบ และยังไม่ถึง OD หมดอายุ')}
+      <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(212px,1fr));">
+        ${lifeKpiCard('reddeep', 'ถึง OD หมดอายุ (≤ 0 mm)', sExp.length.toLocaleString(),
+          setLines(sExp, x => x.minMargin != null && x.minMargin < 0 ? 'เกิน ' + mm(-x.minMargin) + ' mm' : x.expired + ' ลูก'),
+          'ชุดที่มีลูกที่ OD ปัจจุบันเท่ากับหรือต่ำกว่า OD หมดอายุแล้ว')}
+        ${lifeKpiCard('red', 'ใกล้หมดอายุ (≤ ' + SQ_OD_WARN_MM + ' mm)', sNear.length.toLocaleString(),
+          setLines(sNear, x => 'เหลือ ' + mm(x.minMargin) + ' mm'),
+          'OD ปัจจุบันเหลืออีกไม่เกิน ' + SQ_OD_WARN_MM + ' mm ถึง OD หมดอายุ (ยึดลูกที่เหลือน้อยสุดในชุด)')}
+        ${lifeKpiCard('amber', 'ยังวัด OD ไม่ครบ', sUnm.length.toLocaleString(),
+          setLines(sUnm, x => 'ยังไม่วัด ' + x.unmeasured + '/' + x.set.length + ' ลูก'),
+          'ชุดที่ยังมีลูกไม่ได้วัด OD ปัจจุบัน')}
+        ${lifeKpiCard('green', 'ปกติ (> ' + SQ_OD_WARN_MM + ' mm)', sOk.length.toLocaleString(), '',
+          'วัดครบ และเหลือมากกว่า ' + SQ_OD_WARN_MM + ' mm ก่อนถึง OD หมดอายุ')}
+        ${lifeKpiCard('blue', 'ยังไม่กำหนดเกณฑ์', cnt('nospec').toLocaleString(), '',
+          'ยังไม่ได้กรอก OD หมดอายุในทะเบียน Roll SQ จึงคิดอายุไม่ได้')}
       </div>
       <div class="card table-wrap table-wrap-sticky">
         <table>
@@ -8161,7 +8189,9 @@ function renderToolingLife() {
     return m && m !== '—' ? m : '';
   };
   // แบ่งรหัสเป็นแถวตามเครื่อง (ผู้ใช้ขอ 24 พ.ย. 69) — ป้ายเครื่องหัวแถว · เส้นคั่นระหว่างเครื่อง · ไม่ระบุเครื่องไว้ท้ายสุด
-  const kpiCodes = (label, xs, color, sub) => {
+  // หน้าตาการ์ดแบบเดียวกับแท็บ Roll (lifeKpiCard) — ข้างในยังเป็นรหัสใบแยกแถวตามเครื่องเหมือนเดิม
+  const kpiCodes = (tone, label, xs, title) => {
+    const color = (LIFE_KPI_TONES[tone] || LIFE_KPI_TONES.blue).color;
     const byMc = new Map();
     xs.forEach(x => { const m = mcOfSaw(x) || 'ไม่ระบุ'; if (!byMc.has(m)) byMc.set(m, []); byMc.get(m).push(x); });
     const mcs = [...byMc.entries()].sort((a, b) => (a[0] === 'ไม่ระบุ') - (b[0] === 'ไม่ระบุ')
@@ -8185,25 +8215,30 @@ function renderToolingLife() {
         <div style="display:flex;flex-wrap:wrap;gap:4px;">${vis.map(x => chip(x, mc)).join('')}</div>
       </div>`;
     }).join('');
-    const codes = !xs.length ? '' : `<div style="margin-top:8px;">${rows}${
+    const codes = !xs.length ? '' : `<div style="margin-top:4px;">${rows}${
       rest.length ? `<div style="font-size:11.5px;font-weight:700;color:var(--text-3);padding:2px 0;"
         title="${escapeHtmlAttr(rest.map(x => x.r.id + (mcOfSaw(x) ? ' · ' + mcOfSaw(x) : '')).join(', '))}">และอีก ${rest.length} ใบ</div>` : ''}</div>`;
-    return dashMiniKpi(label, xs.length.toLocaleString(), color, sub).replace(/<\/div>\s*$/, codes + '</div>');
+    return lifeKpiCard(tone, label, xs.length.toLocaleString(), codes, title);
   };
   const byId = (a, b) => String(a.r.id).localeCompare(String(b.r.id), 'th', { numeric: true });
   const ofStatus = (...ss) => list.filter(x => ss.includes(x.st.status)).sort(byId);
   // ใบที่ยกเลิกใช้งานแล้ว ไม่ต้องเตือนเรื่องอายุ OD — ไปอยู่การ์ด "ยกเลิกใช้งาน" แทน
   const active = list.filter(x => x.st.status !== 'ยกเลิกใช้งาน');
   el.innerHTML = `
-    <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));align-items:start;">
-      ${kpiCodes('ถึง OD หมดอายุ', active.filter(x => x.left != null && x.left <= 0), 'var(--red)', 'OD ปัจจุบัน ≤ OD หมดอายุ')}
-      ${kpiCodes('ใกล้หมดอายุ', active.filter(x => x.left != null && x.left > 0 && x.left <= SAW_OD_WARN_MM), 'var(--amber)', 'เหลือไม่เกิน ' + SAW_OD_WARN_MM + ' mm')}
-      ${kpiCodes('ยังไม่มี OD หมดอายุ', active.filter(x => x.left == null).sort(byId), 'var(--text-3)', 'หรือยังไม่มี OD ปัจจุบัน')}
-      ${kpiCodes('กำลังใช้งาน', ofStatus('กำลังใช้งาน'), 'var(--inuse)', 'ใบที่อยู่บนเครื่องตอนนี้')}
-      ${kpiCodes('รอลับคม', ofStatus('รอลับคม'), 'var(--red)', 'ถอดแล้ว ยังไม่ได้วางแผนลับ')}
-      ${kpiCodes('กำลังลับคม', ofStatus('กำลังลับคม'), 'var(--amber)', 'วางแผน/กำลังลับอยู่')}
-      ${kpiCodes('มีปัญหา / หมดอายุ', ofStatus('มีปัญหา', 'หมดอายุ'), 'var(--text-2)', 'ตั้งไว้ในทะเบียน')}
-      ${kpiCodes('ยกเลิกใช้งาน', ofStatus('ยกเลิกใช้งาน'), '#475569', 'เลิกใช้แล้ว ตั้งไว้ในทะเบียน')}
+    <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(212px,1fr));">
+      ${kpiCodes('reddeep', 'ถึง OD หมดอายุ (≤ 0 mm)', active.filter(x => x.left != null && x.left <= 0), 'OD ปัจจุบันเท่ากับหรือต่ำกว่า OD หมดอายุแล้ว')}
+      ${kpiCodes('red', 'ใกล้หมดอายุ (≤ ' + SAW_OD_WARN_MM + ' mm)', active.filter(x => x.left != null && x.left > 0 && x.left <= SAW_OD_WARN_MM), 'OD ปัจจุบันเหลืออีกไม่เกิน ' + SAW_OD_WARN_MM + ' mm ถึง OD หมดอายุ')}
+      ${lifeKpiCard('green', 'ปกติ (> ' + SAW_OD_WARN_MM + ' mm)', active.filter(x => x.left != null && x.left > SAW_OD_WARN_MM).length.toLocaleString(), '', 'เหลือมากกว่า ' + SAW_OD_WARN_MM + ' mm ก่อนถึง OD หมดอายุ')}
+      ${kpiCodes('blue', 'ยังไม่กำหนดเกณฑ์', active.filter(x => x.left == null).sort(byId), 'ยังไม่ได้กรอก OD หมดอายุ หรือยังไม่มี OD ปัจจุบัน จึงคิดอายุไม่ได้')}
+    </div>
+    <!-- สถานะของใบตามทะเบียน — แยกจากการ์ดอายุด้านบน -->
+    <div style="font-size:12px;font-weight:800;color:var(--text-3);margin:-4px 2px 8px;">สถานะใบในทะเบียน</div>
+    <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(212px,1fr));">
+      ${kpiCodes('inuse', 'กำลังใช้งาน', ofStatus('กำลังใช้งาน'), 'ใบที่อยู่บนเครื่องตอนนี้')}
+      ${kpiCodes('red', 'รอลับคม', ofStatus('รอลับคม'), 'ถอดแล้ว ยังไม่ได้วางแผนลับ')}
+      ${kpiCodes('amber', 'กำลังลับคม', ofStatus('กำลังลับคม'), 'วางแผน/กำลังลับอยู่')}
+      ${kpiCodes('gray', 'มีปัญหา / หมดอายุ', ofStatus('มีปัญหา', 'หมดอายุ'), 'ตั้งไว้ในทะเบียน')}
+      ${kpiCodes('gray', 'ยกเลิกใช้งาน', ofStatus('ยกเลิกใช้งาน'), 'เลิกใช้แล้ว ตั้งไว้ในทะเบียน')}
     </div>
     <div class="card table-wrap table-wrap-sticky">
       <table>
