@@ -2580,7 +2580,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-26.5';
+const APP_BUILD = '2026-11-26.6';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -24783,7 +24783,7 @@ function renderHistoryCalendar(records, fromIso, toIso, typeKey) {
         return `<div title="${escapeHtmlAttr(tip + '\nกดเพื่อดูในตารางด้านล่าง')}"
           style="display:flex;align-items:center;gap:4px;font-size:10.5px;line-height:1.45;margin-top:2px;padding:0 2px;margin-left:-2px;margin-right:-2px;">
           <span style="font-size:9px;font-weight:800;padding:0 4px;border-radius:3px;line-height:1.6;flex-shrink:0;background:${meta.color};color:#fff;">${meta.icon}</span>
-          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--amber);font-weight:700;">ใบเลื่อย ${escapeHtmlAttr(ids.join(', '))}</span>
+          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--amber);font-weight:700;">${escapeHtmlAttr(ids.sort((a, b) => a.localeCompare(b, 'th', { numeric: true })).join(', '))} มีปัญหา</span>
           <span style="margin-left:auto;flex-shrink:0;font-weight:800;color:${meta.color};">${g.items.length}</span>
         </div>`;
       }
@@ -24796,8 +24796,12 @@ function renderHistoryCalendar(records, fromIso, toIso, typeKey) {
       const colorName = sqCm ? sqCm.label : (g.set && g.colorKey && !codeSet && !isSqPlanSet(g.set) ? rollColorLabelFor(g.set, g.colorKey) : '');
       // ชื่อชุดเต็มคือ 'GI 4"x4" (100x100) Forming' ซึ่งยาวเกินช่องวันมาก โดนตัดเหลือ 'GI 4"x4" (100x1…'
       // จึงตัดขนาดมิลออก (อยู่ในทูลทิปแล้ว) และย่อหมวดเป็นป้าย F/S/T แบบเดียวกับปฏิทินชุด Roll ที่ใช้งาน
+      // ใบเลื่อย/มีดสลิตเตอร์: บอกรหัสใบที่ทำในวันนั้นเลย (ผู้ใช้ขอ 26 พ.ย. 69) — รหัสอยู่หน้า "(ชิ้นที่ n/m)" ใน detail
+      const codes = codeSet ? [...new Set(g.items.map(x => String(x.detail || '').replace(/\s*\(ชิ้นที่.*$/, '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, 'th', { numeric: true })) : [];
       const setShort = !g.set ? 'งานแทรก'
         : isSqPlanSet(g.set) ? (sqHead ? inUseCalSizeShort(String(sqHead.sizeSq || '').trim()) + ' ' + sqSetOrdinalLabel(sqHead) : 'ชุดที่ถูกลบไปแล้ว')
+        : codes.length ? codes.join(', ')
         : isSawPlanSet(g.set) ? 'ใบเลื่อย'
         : isSlitterPlanSet(g.set) ? 'มีดสลิตเตอร์'
         : inUseCalSizeShort(rollSetGroupDisplayName(g.set));
@@ -24806,7 +24810,7 @@ function renderHistoryCalendar(records, fromIso, toIso, typeKey) {
       const notDone = g.items.filter(x => x.result !== 'สำเร็จ');
       const hrs = g.items.reduce((s, x) => s + (x.hours || 0), 0);
       const who = [...new Set(g.items.map(x => x.who).filter(x => x && x !== '—'))];
-      const tips = [meta.label + ' · ' + (g.set ? planSetLabel(g.set) : 'งานแทรก') + (colorName && !sqHead ? ' · ' + colorName : ''),
+      const tips = [meta.label + ' · ' + (codes.length ? 'รหัส ' + codes.join(', ') : g.set ? planSetLabel(g.set) : 'งานแทรก') + (colorName && !sqHead ? ' · ' + colorName : ''),
         n + ' ชิ้น' + (hrs ? ' · ' + (Math.round(hrs * 10) / 10).toLocaleString() + ' ชม.' : '')];
       if (who.length) tips.push('ผู้ดำเนินการ ' + who.join(', '));
       // สรุปผลที่ไม่ใช่ "สำเร็จ" ไว้ในทูลทิป (พักงาน/ย้ายวัน/ไม่ได้ปิดงาน) — ในช่องวันมีที่แค่จุดเตือน
@@ -24824,7 +24828,7 @@ function renderHistoryCalendar(records, fromIso, toIso, typeKey) {
                cursor:pointer;border-radius:4px;padding:0 2px;margin-left:-2px;margin-right:-2px;background:transparent;">
         <span style="font-size:9px;font-weight:800;padding:0 4px;border-radius:3px;line-height:1.6;flex-shrink:0;
                background:${meta.color};color:#fff;">${meta.icon}</span>
-        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2);font-weight:600;">${
+        <span style="min-width:0;${codes.length ? 'white-space:normal;word-break:break-word;color:var(--text-1);font-weight:700;' : 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2);font-weight:600;'}">${
           escapeHtmlAttr(setShort)}</span>
         ${cat ? `<span title="${escapeHtmlAttr(cat)}" style="font-size:9px;font-weight:800;color:var(--text-3);flex-shrink:0;">${
           escapeHtmlAttr(ROLL_CAT_ABBR[cat] || cat)}</span>` : ''}
