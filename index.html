@@ -2201,16 +2201,7 @@ canvas{display:block;}
           ลับคมมีดสลิตเตอร์ <span class="reg-tab-count history-type-count" data-count-for="slitter"></span></button>
       </div>
 
-      <!-- ปุ่มเปิด/ปิดปฏิทิน — อยู่ใต้แถบปุ่มประเภทงานและตัวใหญ่ ให้เห็นตั้งแต่เปิดหน้ามาว่าดูแบบปฏิทินได้
-           (เดิมเป็นปุ่มเล็กในหัวการ์ด พอปิดปฏิทินไปแล้วแทบไม่มีใครหาเจอว่าเปิดกลับมายังไง) -->
-      <div style="margin:4px 0 14px;">
-        <button id="history-cal-toggle" onclick="toggleHistoryCal()"
-          style="display:inline-flex;align-items:center;gap:10px;border:none;cursor:pointer;
-                 font-family:inherit;font-size:17px;font-weight:800;padding:14px 22px;border-radius:12px;
-                 box-shadow:0 2px 8px rgba(0,0,0,.16);transition:filter .12s;"
-          onmouseover="this.style.filter='brightness(1.06)'" onmouseout="this.style.filter='none'"></button>
-      </div>
-
+      <!-- เอาปุ่มเปิด/ปิดปฏิทินออกแล้ว (ผู้ใช้ขอ 26 พ.ย. 69) — ปฏิทินแสดงตลอด -->
       <!-- ปฏิทินงานที่ทำไปแล้ว — เห็นภาพรวมทั้งเดือนว่าวันไหนแต่ง/ขัดชุดไหนไปบ้าง
            ตารางด้านล่างดูทีละรายการซึ่งต้องเลื่อนหาเอง เลยไม่เห็นว่าเดือนนี้วันไหนว่างวันไหนแน่น
            ใช้ตัวกรองประเภทงาน/คำค้นหาชุดเดียวกับตาราง ตัวเลขจึงตรงกันเสมอ -->
@@ -2580,7 +2571,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-26.8';
+const APP_BUILD = '2026-11-26.9';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -24566,10 +24557,9 @@ const HISTORY_CAL_TYPE = {
 // ลำดับที่ใช้เรียงบรรทัดในช่องวันของปฏิทิน — ไล่ตามลำดับงานจริง (แต่ง → ขัด → แต่ง SQ)
 const HISTORY_CAL_TYPE_ORDER = ['cnc', 'polish', 'sq', 'saw', 'sawprob', 'slitter'];
 let historyCalMonth = null;   // เดือนที่กำลังดู (วันที่ 1 ของเดือนนั้น)
-// เปิด/ปิดค้างไว้ตามเครื่อง — บางคนใช้หน้านี้ค้นรายการอย่างเดียว ไม่อยากให้ปฏิทินดันตารางลงไป
-// เก็บใน localStorage ไม่ใช่ข้อมูลกลาง เพราะเป็นความชอบของเครื่องที่ใช้ ไม่ใช่ข้อมูลงาน
+// ปฏิทินแสดงตลอด — เอาปุ่มเปิด/ปิดออกแล้ว (ผู้ใช้ขอ 26 พ.ย. 69)
+// ไม่อ่านค่าที่เครื่องเคยกดปิดไว้ (tst-tooling-history-cal) แล้ว ไม่งั้นเครื่องนั้นจะไม่เห็นปฏิทินและไม่มีปุ่มให้เปิดกลับ
 let historyCalOpen = true;
-try { historyCalOpen = localStorage.getItem('tst-tooling-history-cal') !== '0'; } catch (e) {}
 
 function historyCalMonthDate() {
   if (!historyCalMonth) {
