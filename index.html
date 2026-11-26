@@ -2580,7 +2580,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-26.4';
+const APP_BUILD = '2026-11-26.5';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -8221,7 +8221,6 @@ function renderToolingLife() {
     return lifeKpiCard(tone, label, xs.length.toLocaleString(), codes, title);
   };
   const byId = (a, b) => String(a.r.id).localeCompare(String(b.r.id), 'th', { numeric: true });
-  const ofStatus = (...ss) => list.filter(x => ss.includes(x.st.status)).sort(byId);
   // ใบที่ยกเลิกใช้งานแล้ว ไม่ต้องเตือนเรื่องอายุ OD — ไปอยู่การ์ด "ยกเลิกใช้งาน" แทน
   const active = list.filter(x => x.st.status !== 'ยกเลิกใช้งาน');
   el.innerHTML = `
@@ -8230,15 +8229,6 @@ function renderToolingLife() {
       ${kpiCodes('red', 'ใกล้หมดอายุ (≤ ' + SAW_OD_WARN_MM + ' mm)', active.filter(x => x.left != null && x.left > 0 && x.left <= SAW_OD_WARN_MM), 'OD ปัจจุบันเหลืออีกไม่เกิน ' + SAW_OD_WARN_MM + ' mm ถึง OD หมดอายุ')}
       ${lifeKpiCard('green', 'ปกติ (> ' + SAW_OD_WARN_MM + ' mm)', active.filter(x => x.left != null && x.left > SAW_OD_WARN_MM).length.toLocaleString(), '', 'เหลือมากกว่า ' + SAW_OD_WARN_MM + ' mm ก่อนถึง OD หมดอายุ')}
       ${kpiCodes('blue', 'ยังไม่กำหนดเกณฑ์', active.filter(x => x.left == null).sort(byId), 'ยังไม่ได้กรอก OD หมดอายุ หรือยังไม่มี OD ปัจจุบัน จึงคิดอายุไม่ได้')}
-    </div>
-    <!-- สถานะของใบตามทะเบียน — แยกจากการ์ดอายุด้านบน -->
-    <div style="font-size:12px;font-weight:800;color:var(--text-3);margin:-4px 2px 8px;">สถานะใบในทะเบียน</div>
-    <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(212px,1fr));">
-      ${kpiCodes('inuse', 'กำลังใช้งาน', ofStatus('กำลังใช้งาน'), 'ใบที่อยู่บนเครื่องตอนนี้')}
-      ${kpiCodes('red', 'รอลับคม', ofStatus('รอลับคม'), 'ถอดแล้ว ยังไม่ได้วางแผนลับ')}
-      ${kpiCodes('amber', 'กำลังลับคม', ofStatus('กำลังลับคม'), 'วางแผน/กำลังลับอยู่')}
-      ${kpiCodes('gray', 'มีปัญหา / หมดอายุ', ofStatus('มีปัญหา', 'หมดอายุ'), 'ตั้งไว้ในทะเบียน')}
-      ${kpiCodes('gray', 'ยกเลิกใช้งาน', ofStatus('ยกเลิกใช้งาน'), 'เลิกใช้แล้ว ตั้งไว้ในทะเบียน')}
     </div>
     <div class="card table-wrap table-wrap-sticky">
       <table>
