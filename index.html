@@ -2211,18 +2211,6 @@ canvas{display:block;}
           onmouseover="this.style.filter='brightness(1.06)'" onmouseout="this.style.filter='none'"></button>
       </div>
 
-      <!-- ช่วงวันที่อยู่ซ้ายสุด ช่องค้นหายืดเต็มพื้นที่ที่เหลือ -->
-      <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;">
-        <input type="date" class="form-input" id="history-date-from" style="width:150px;flex:0 0 auto;" onchange="renderHistory()">
-        <span style="align-self:center;color:var(--text-3);flex:0 0 auto;">—</span>
-        <input type="date" class="form-input" id="history-date-to" style="width:150px;flex:0 0 auto;" onchange="renderHistory()">
-        <div class="search-bar" style="flex:1;margin-bottom:0;">
-          <svg width="14" height="14" fill="none" stroke="var(--text-3)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" id="history-search" placeholder="ค้นหา WO / Tooling / ชื่อ Roll / ผู้ดำเนินการ..." oninput="renderHistory()">
-        </div>
-      </div>
-
-
       <!-- ปฏิทินงานที่ทำไปแล้ว — เห็นภาพรวมทั้งเดือนว่าวันไหนแต่ง/ขัดชุดไหนไปบ้าง
            ตารางด้านล่างดูทีละรายการซึ่งต้องเลื่อนหาเอง เลยไม่เห็นว่าเดือนนี้วันไหนว่างวันไหนแน่น
            ใช้ตัวกรองประเภทงาน/คำค้นหาชุดเดียวกับตาราง ตัวเลขจึงตรงกันเสมอ -->
@@ -2238,6 +2226,18 @@ canvas{display:block;}
         </div>
         <div style="padding:12px 14px;">
           <div id="history-cal-body"></div>
+        </div>
+      </div>
+
+      <!-- ช่วงวันที่ + ค้นหา อยู่ใต้ปฏิทิน ติดกับตารางที่มันกรอง (ผู้ใช้ขอ 26 พ.ย. 69)
+           ช่วงวันที่อยู่ซ้ายสุด ช่องค้นหายืดเต็มพื้นที่ที่เหลือ -->
+      <div class="mobile-wrap" style="display:flex;gap:10px;margin-bottom:16px;">
+        <input type="date" class="form-input" id="history-date-from" style="width:150px;flex:0 0 auto;" onchange="renderHistory()">
+        <span style="align-self:center;color:var(--text-3);flex:0 0 auto;">—</span>
+        <input type="date" class="form-input" id="history-date-to" style="width:150px;flex:0 0 auto;" onchange="renderHistory()">
+        <div class="search-bar" style="flex:1;margin-bottom:0;">
+          <svg width="14" height="14" fill="none" stroke="var(--text-3)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="history-search" placeholder="ค้นหา WO / Tooling / ชื่อ Roll / ผู้ดำเนินการ..." oninput="renderHistory()">
         </div>
       </div>
 
@@ -2580,7 +2580,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-26.7';
+const APP_BUILD = '2026-11-26.8';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
