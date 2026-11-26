@@ -1996,6 +1996,8 @@ canvas{display:block;}
         </div>
         <button class="btn btn-ghost btn-sm daily-datenav-btn" data-daynav="1" onclick="dailyNav(1)"><span class="dnav-txt">ถัดไป </span>›</button>
       </div>
+      <!-- งานค้างจากวันก่อน (เฉพาะมุมมองช่าง) — ดู renderDailyLeftoverAlert -->
+      <div id="daily-leftover-alert" style="display:none;"></div>
 
       <div class="kpi-grid">
         <div class="kpi-card blue">
@@ -2574,7 +2576,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-25.26';
+const APP_BUILD = '2026-11-26.1';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -15445,6 +15447,105 @@ function refreshLeftoverWatch() {
   maybeOpenLeftoverPrompt();
 }
 
+// ── งานค้างจากวันก่อน: แจ้งผู้ปฏิบัติงานที่หน้างานประจำวัน (ผู้ใช้ขอ 26 พ.ย. 69) ──
+// ช่างยกงานไปวันอื่นเองไม่ได้ (เฉพาะหัวหน้า/แอดมิน ผ่านหน้าต่างบน Dashboard) — ฝั่งช่างแค่ให้รู้ว่ามีชิ้นไหนค้าง
+// จะได้ทำต่อ/กดจบงานที่ลืมกด หรือแจ้งหัวหน้า · เด้งครั้งแรกที่เปิดหน้างานในการโหลดหน้านั้น และเด้งใหม่เมื่อมีงานค้างเพิ่ม
+// แถบสีแดงเหนือ KPI ยังอยู่ตลอดจนกว่างานค้างจะหมด
+function dailyLeftoverForWorker() {
+  if (!currentUser || !isDailyTechRole() || !cloudSyncReady) return [];
+  const sec = activeWorkTypeTab();
+  return leftoverWorkTasks().filter(x => planTaskSectionKey(x.task) === sec);
+}
+function dailyLeftoverPieceNames(x) {
+  const t = x.task;
+  if (t.otherWork) return t.rollName || t.rollSet || '—';
+  const scoped = getMatchingRollsForPlan(t.rollSet, t.rollColor);
+  const names = x.remaining.map(i => {
+    const r = scoped[i];
+    if (!r) return '';
+    return t.workType === 'sq' ? pieceCodeOf(r, 'sq') : String(r.name != null ? r.name : (r.id != null ? r.id : ''));
+  }).filter(Boolean);
+  return names.length ? names.join(', ') : (t.rollName || '—');
+}
+let dailyLeftoverShownSig = null;   // ชุดงานค้างที่เด้งไปแล้วในการโหลดหน้านี้
+function renderDailyLeftoverAlert() {
+  const el = document.getElementById('daily-leftover-alert');
+  if (!el) return;
+  const list = dailyLeftoverForWorker();
+  if (!list.length) { el.innerHTML = ''; el.style.display = 'none'; return; }
+  const pieces = list.reduce((s, x) => s + x.remaining.length, 0);
+  el.style.display = '';
+  el.innerHTML = `<div style="background:var(--red-dim);border-left:4px solid var(--red);border-radius:8px;padding:10px 14px;margin-bottom:16px;
+      display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+    <div style="flex:1;min-width:200px;font-size:14px;font-weight:800;color:var(--red);">
+      ⚠ มีงานค้างจากวันก่อน ${list.length} รายการ · ${pieces} ชิ้น
+      <div style="font-size:11.5px;font-weight:600;color:var(--text-3);margin-top:2px;">เลยกำหนดแล้วยังไม่เสร็จ — ทำต่อให้เสร็จ หรือแจ้งหัวหน้างาน</div>
+    </div>
+    <button class="btn btn-primary btn-sm" style="background:var(--red);border-color:var(--red);font-weight:800;flex:0 0 auto;"
+      onclick="openDailyLeftoverPrompt()">ดูรายการ</button>
+  </div>`;
+  if (currentPage !== 'daily') return;
+  const sig = dailyTodayIso() + '|' + (currentUser.name || '') + '|' + effectiveRole() + '|' + list.map(x => x.task.id).sort().join(',');
+  if (dailyLeftoverShownSig === sig) return;
+  dailyLeftoverShownSig = sig;
+  openDailyLeftoverPrompt(list);
+}
+function openDailyLeftoverPrompt(listIn) {
+  const list = listIn || dailyLeftoverForWorker();
+  if (!list.length) return;
+  let ov = document.getElementById('daily-leftover-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'daily-leftover-overlay';
+    ov.className = 'modal-overlay';
+    ov.onclick = e => { if (e.target === ov) closeDailyLeftoverPrompt(); };
+    document.body.appendChild(ov);
+  }
+  const rows = list.map(x => {
+    const t = x.task;
+    const canOpen = dailyTechDateAllowed(x.date) && x.date !== dailyViewDate;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:9px 11px;margin-bottom:6px;
+        border:1px solid var(--border-light);border-radius:8px;background:var(--red-dim);">
+      <span style="flex:0 0 auto;font-size:11px;font-weight:800;color:#fff;background:var(--red);padding:2px 9px;border-radius:6px;">${
+        escapeHtmlAttr(fmtDateThaiShort(parseISODate(x.date)))}</span>
+      <span style="flex:1;min-width:0;">
+        <span style="display:block;font-size:13.5px;font-weight:800;color:var(--text-1);">${escapeHtmlAttr(dailyLeftoverPieceNames(x))}</span>
+        <span style="display:block;font-size:11px;color:var(--text-3);">${escapeHtmlAttr(planWorkTypeShortLabel(t.workType))} ·
+          ${escapeHtmlAttr(t.otherWork ? 'งานอื่น' : planChipSetLabel(t))} ·
+          เหลือ ${x.remaining.length}/${(t.rollIds || []).length} ชิ้น${x.done.length ? ' (ทำแล้ว ' + x.done.length + ')' : ''}</span>
+      </span>
+      ${canOpen ? `<button class="btn btn-ghost btn-sm" style="flex:0 0 auto;font-weight:700;"
+        onclick="${jsCallAttr('openDailyLeftoverDay', x.date)}">เปิดวันนั้น</button>` : ''}
+    </div>`;
+  }).join('');
+  ov.innerHTML = `<div class="modal" style="max-width:600px;display:flex;flex-direction:column;max-height:90vh;overflow:hidden;">
+    <div class="modal-head" style="flex:0 0 auto;">
+      <h3 style="color:var(--red);">⚠ มีงานค้างจากวันก่อน ${list.length} รายการ</h3>
+      <button class="modal-close" onclick="closeDailyLeftoverPrompt()">✕</button>
+    </div>
+    <div style="flex:0 0 auto;padding:12px 22px 0;font-size:12.5px;color:var(--text-2);line-height:1.6;">
+      งานเหล่านี้<b style="color:var(--red);">เลยวันที่วางแผนไว้แล้วแต่ยังไม่เสร็จ</b><br>
+      · ทำเสร็จแล้วแต่ลืมกด → เปิดหน้างานของวันนั้นแล้วกด <b>จบงาน</b><br>
+      · ยังไม่ได้ทำ → ทำต่อให้เสร็จ หรือแจ้งหัวหน้างานเพื่อยกไปวางแผนวันใหม่
+    </div>
+    <div class="modal-body" style="flex:1 1 auto;min-height:0;overflow-y:auto;padding-top:12px;">${rows}</div>
+    <div class="modal-footer" style="flex:0 0 auto;display:flex;justify-content:flex-end;">
+      <button class="btn btn-primary" style="font-weight:800;" onclick="closeDailyLeftoverPrompt()">รับทราบ</button>
+    </div>
+  </div>`;
+  ov.classList.add('open');
+}
+function closeDailyLeftoverPrompt() {
+  const ov = document.getElementById('daily-leftover-overlay');
+  if (ov) ov.classList.remove('open');
+}
+function openDailyLeftoverDay(iso) {
+  closeDailyLeftoverPrompt();
+  if (isDailyTechRole() && !dailyTechDateAllowed(iso)) return;
+  dailyViewDate = iso;
+  renderDailyTasks();
+}
+
 // ─── ลบแผนงาน: เลือกงานจากปฏิทินได้เลย ไม่ต้องเปิดกล่องซ้อน ─────────────────────
 // กด "ลบแผนงาน" → เข้าโหมดเลือก → คลิกงานในปฏิทิน (รายเดือน/รายสัปดาห์) เพื่อติ๊ก → กด "ลบที่เลือก"
 // ไม่แตะเช็คลิสต์งานประจำวันที่เพิ่มเอง หรือล็อกขนาดที่วัดได้เดิม
@@ -24122,6 +24223,7 @@ function renderDailyTasks() {
   // เติมตัวเลขนาทีของชิ้นที่กำลังทำ แล้วตั้งให้เดินต่อเอง (ตัวจับเวลาหยุดเองเมื่อไม่เหลือชิ้นที่กำลังทำ)
   ensureDailyRunMinTimer();
   alignDailySubActionCols();
+  renderDailyLeftoverAlert();   // งานค้างจากวันก่อน — แถบเตือน + เด้งแจ้งช่าง
 }
 
 // ปุ่มเริ่ม/จบงานของแถวงาน กับของตารางรายชิ้นข้างใต้ ให้อยู่แนวเดียวกัน (ผู้ใช้ขอ 25 พ.ย. 69)
