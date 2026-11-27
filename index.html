@@ -2556,7 +2556,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-27.1';
+const APP_BUILD = '2026-11-27.2';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -6669,7 +6669,7 @@ function loadProdSqInUse(force) {
       const allRows = (json.rows || []).filter(Boolean);
       const ownMatch = r => {
         const sk = apiSizeKey(r);
-        const c = !sk ? [] : heads.filter(h => rollSetFgKey(h.sizeSq) === sk && h.color === r.color && sqSetMatchesProdCode(h, r.code));
+        const c = !sk ? [] : heads.filter(h => sqSizeMatchesProd(h.sizeSq, sk) && h.color === r.color && sqSetMatchesProdCode(h, r.code));
         return { n: c.length, key: c.length === 1 ? sqSetKey(c[0]) : null };
       };
       // รอบที่ขนาดสินค้าไม่ตรงชุดไหนในทะเบียน แต่ต่อจากรอบก่อนหน้าทันที (เครื่อง/รหัส/สีเดียวกัน ห่างไม่เกิน 2 นาที) = ชุดเดิมที่ยังอยู่บนเครื่อง
@@ -6696,7 +6696,7 @@ function loadProdSqInUse(force) {
           if (k) kgBy[k] = (kgBy[k] || 0) + (Number(f.weight_kg) || 0);
         });
         const sizeKey = apiSizeKey(r) || Object.keys(kgBy).sort((a, b) => kgBy[b] - kgBy[a])[0] || null;
-        const cands = !sizeKey ? [] : heads.filter(h => rollSetFgKey(h.sizeSq) === sizeKey
+        const cands = !sizeKey ? [] : heads.filter(h => sqSizeMatchesProd(h.sizeSq, sizeKey)
           && h.color === r.color && sqSetMatchesProdCode(h, r.code));
         const viaPrev = !cands.length && prevRound(r) ? chainKey(prevRound(r)) : null;
         return {
@@ -6741,7 +6741,7 @@ function loadProdSqInUse(force) {
       // แจ้งเตือนมุมขวาล่างถ้าฝ่ายผลิตถอด/ใส่ชุดใหม่ตั้งแต่ครั้งก่อนที่เห็น
       prodChangeNotify('sq', json.rows || [], r => {
         const sk = apiSizeKey(r);
-        const cands = !sk ? [] : heads.filter(h => rollSetFgKey(h.sizeSq) === sk && h.color === r.color && sqSetMatchesProdCode(h, r.code));
+        const cands = !sk ? [] : heads.filter(h => sqSizeMatchesProd(h.sizeSq, sk) && h.color === r.color && sqSetMatchesProdCode(h, r.code));
         if (cands.length === 1) return String(cands[0].sizeSq || '').trim() + ' ' + sqColorMeta(cands[0].color).label + ' ' + sqSetOrdinalLabel(cands[0]);
         return 'ชุดรหัส ' + String(r.code || '—') + (r.product_name ? ' (' + String(r.product_name) + ')' : '');
       });
@@ -7760,9 +7760,18 @@ async function fetchProdToolingRounds(kind, fromIso, toIso, force) {
 // รอบหนึ่งของ SQ → ชุดในทะเบียน (ขนาดจาก product_code + สี + ชุดที่ N) — เกณฑ์เดียวกับ loadProdSqInUse
 function prodSqSetOfRound(r, heads) {
   const sizeKey = fgProductCodeToKey(String(r.product_code || ''));
-  const cands = !sizeKey ? [] : heads.filter(h => rollSetFgKey(h.sizeSq) === sizeKey
+  const cands = !sizeKey ? [] : heads.filter(h => sqSizeMatchesProd(h.sizeSq, sizeKey)
     && h.color === r.color && sqSetMatchesProdCode(h, r.code));
   return { sizeKey, head: cands.length === 1 ? cands[0] : null, candCount: cands.length };
+}
+// ขนาดสินค้าจากระบบผลิต (fgKey) ตรงกับชุด Roll SQ ในทะเบียนไหม
+// บางขนาดเดินด้วยชุด Roll SQ ของอีกขนาด — GI 1.5x1.5 ใช้ชุด GI 2x1 (ผู้ใช้แจ้ง 27 พ.ย. 69)
+function sqSizeMatchesProd(sizeSq, prodKey) {
+  if (!prodKey) return false;
+  const k = rollSetFgKey(sizeSq);
+  if (!k) return false;
+  const SQ_PROD_SIZE_ALIAS = { 'GI|1.5x1.5': 'GI|2x1' };
+  return k === prodKey || SQ_PROD_SIZE_ALIAS[prodKey] === k;
 }
 
 var prodToolingRenderGen = 0;
