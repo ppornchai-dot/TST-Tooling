@@ -2556,7 +2556,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-26.16';
+const APP_BUILD = '2026-11-27.1';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -7350,14 +7350,18 @@ function planSawGrindAuto(idx) {
   const minutes = parseFloat((roll || {}).grindTime) || 0;
   if (!roll || !minutes) return null;
   // ต่อท้ายคิวของเครื่องลับของใบนั้น (เครื่องลับ 1/2 ทำพร้อมกันได้ คิวแยกกัน)
+  // เริ่มที่วัน–เวลาปัจจุบัน ถ้าคิวของวันนี้ยังมีงานเลยเวลาตอนนี้ไปแล้วจึงต่อท้ายคิว (ผู้ใช้ขอ 27 พ.ย. 69)
   return withPlanLane(sawBladeGrinder(idx),
-    () => planAutoTaskAtQueueEnd('saw', SAW_PLAN_SET, [idx], [roll], [minutes], false));
+    () => planAutoTaskAtQueueEnd('saw', SAW_PLAN_SET, [idx], [roll], [minutes], false, true));
 }
 // วางงานอัตโนมัติ 1 งาน ต่อท้ายคิวของวันนี้ — กติกาเดียวกับกดบันทึกในฟอร์มเพิ่มงาน (ใช้ทั้งใบเลื่อยและ Roll SQ)
 //   rollIds = ลำดับชิ้นใน getMatchingRollsForPlan(rollSet) · minutesList = นาทีของแต่ละชิ้น (ตามลำดับ rollIds)
 //   withOverride = เก็บนาทีรายชิ้นไว้ในงาน (Roll SQ ไม่มีเวลาแต่งในทะเบียน จึงต้องเก็บไว้ที่งาน)
 // คืน { date, time } ที่วางไว้ หรือ null ถ้าวางไม่ได้
-function planAutoTaskAtQueueEnd(workType, rollSet, rollIds, rolls, minutesList, withOverride) {
+//   fromNow = เริ่มไม่ก่อน "ตอนนี้" (วันตามปฏิทิน + เวลาปัจจุบัน) — ใบเลื่อยที่เพิ่งถอด
+//     เจอจริง 27 พ.ย. 69: ถอดใบ 130 ตอน 08:18 แต่วันทำงาน (dailyTodayIso) ยังเป็น 26 เพราะกะดึกค้าง
+//     จึงไปต่อท้ายคิววันที่ 26 เวลา 09:20 ซึ่งเป็นอดีตไปแล้ว
+function planAutoTaskAtQueueEnd(workType, rollSet, rollIds, rolls, minutesList, withOverride, fromNow) {
   const minutes = minutesList.reduce((a, b) => a + (Number(b) || 0), 0);
   if (!rolls.length || !minutes) return null;
   const listOv = withOverride ? minutesList : undefined;
@@ -7373,8 +7377,23 @@ function planAutoTaskAtQueueEnd(workType, rollSet, rollIds, rolls, minutesList, 
   };
   // จุดเริ่ม = ท้ายคิวของวันนี้ (ตัวเดียวกับฟอร์มเพิ่มงาน)
   let shiftKey = planWorkTypeShifts(workType)[0] || 'morning';
-  const q = planQueueEndFor(workType, dailyTodayIso(), shiftKey);
-  let date = q.date, startTime = q.time;
+  let date, startTime;
+  if (fromNow) {
+    // ตอนนี้ (ปฏิทินจริง) — คิวของวันนี้จบเลยตอนนี้ไปแล้ว = ต่อท้ายคิว · ไม่มีงาน/จบก่อนตอนนี้ = เริ่มตอนนี้เลย
+    const now = new Date();
+    const nowDate = toISODate(now);
+    const nowTime = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    const q = planQueueEndFor(workType, nowDate, shiftKey);
+    if (q.date > nowDate || (q.date === nowDate && q.time > nowTime)) { date = q.date; startTime = q.time; }
+    else {
+      // นอกเวลากะ (พัก/เลิกงาน/วันหยุด) เลื่อนไปต้นช่วงทำงานถัดไปให้
+      const adv = advanceToShiftWindow(planScheduleShiftFor(workType, shiftKey), nowDate, nowTime, capsFor(nowDate), workType);
+      date = adv.date; startTime = adv.time;
+    }
+  } else {
+    const q = planQueueEndFor(workType, dailyTodayIso(), shiftKey);
+    date = q.date; startTime = q.time;
+  }
   if (planWorkTypeAllowsShift(workType, 'both') && shiftKey !== 'both') shiftKey = bothModeStartFieldKey(startTime);
   const schedShift = planScheduleShiftFor(workType, shiftKey);
   let caps = capsFor(date);
