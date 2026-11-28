@@ -2556,7 +2556,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-27.2';
+const APP_BUILD = '2026-11-28.2';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -15274,8 +15274,8 @@ function nextWorkingDayForCarry() {
 }
 
 // ยกงานที่เหลือของงานหนึ่งไปวันถัดไป แล้ว "แทรกไว้ก่อน" งานเดิมของวันนั้น
-function carryOverLeftoverTask(taskId, targetDay) {
-  if (!canEditPlan()) return null;
+function carryOverLeftoverTask(taskId, targetDay, auto) {
+  if (!auto && !canEditPlan()) return null;
   const info = leftoverWorkTasks().find(x => x.task.id === taskId);
   if (!info) return null;
   const t = info.task;
@@ -15320,6 +15320,23 @@ function carryOverLeftoverTask(taskId, targetDay) {
       splitGroupId: null,
       carriedFrom: { taskId: t.id, date: info.date },   // บอกที่มา ใช้แสดงในแถบเตือน/ตรวจย้อนหลัง
     });
+    // ชิ้นที่กดเริ่ม/พักไว้แล้ว ย้ายสถานะรายชิ้นตามไปงานใหม่ด้วย — สถานะผูกกับ "งาน+วัน" ถ้าไม่ย้าย ชิ้นนั้นจะกลับเป็น
+    // "ยังไม่เริ่ม" ในงานใหม่ ทั้งที่ช่างกำลังทำอยู่ (เจอจริง 28 พ.ย. 69: S2-B กดเริ่ม 08:02 แล้วถูกยกไป ปุ่มกลับเป็น "เริ่มงาน")
+    const oldPieces = (dailyPieceStatus[info.date] || {})[t.id];
+    if (oldPieces) {
+      const oldTaskSt = (dailyStatusByDate[info.date] || {})[t.id];
+      let active = false;
+      info.remaining.forEach(i => {
+        if (oldPieces[i] === undefined) return;
+        const dayMap = dailyPieceStatus[day] || (dailyPieceStatus[day] = {});
+        (dayMap[carriedId] || (dayMap[carriedId] = {}))[i] = oldPieces[i];
+        if ((oldPieces[i] || {}).status && oldPieces[i].status !== 'done') active = true;
+        delete oldPieces[i];
+      });
+      if (active) (dailyStatusByDate[day] || (dailyStatusByDate[day] = {}))[carriedId] = (oldTaskSt && oldTaskSt !== 'done') ? oldTaskSt : 'in_progress';
+      // งานเดิมเหลือแต่ชิ้นที่เสร็จแล้ว = งานนั้นเสร็จ
+      if (oldTaskSt && oldTaskSt !== 'done') dailyStatusByDate[info.date][t.id] = 'done';
+    }
 
     t.rollIds = info.done.slice();
     t.rollId = t.otherWork ? (info.done.length + ' รายการ') : (info.done.length + ' Roll');
@@ -15362,6 +15379,18 @@ function carryOverAllLeftover() {
   const list = leftoverWorkTasksForTab();
   if (!list.length) return 0;
   const day = nextWorkingDayForCarry();
+  const n = carryLeftoverList(list, day, false);
+  persistState();
+  renderCurrentPlanView();
+  renderDailyTasks();
+  renderDashboardLeftoverAlert();
+  closeLeftoverPrompt();
+  alert('ยกงานค้าง ' + n + ' รายการไปวันที่ ' + fmtDateThai(parseISODate(day)) + ' แล้ว\nวางไว้ก่อนงานเดิมของวันนั้น');
+  return n;
+}
+
+// ยกงานค้างทั้งรายการไปวันปลายทาง แล้วจัดลำดับ/ย้ายความคืบหน้าตาม (ยังไม่บันทึก — ผู้เรียก persistState เอง)
+function carryLeftoverList(list, day, auto) {
   const before = new Map(planTasks.map(x => [x.id, taskDisplayDate(x)]));
   let n = 0;
   // ลำดับที่ต้องการในวันปลายทาง: งานที่ทำไปแล้วบางส่วนก่อน แล้วงานที่ยังไม่เริ่ม — ภายในกลุ่มเรียงตามเวลาเดิม
@@ -15369,16 +15398,11 @@ function carryOverAllLeftover() {
   const startKey = x => taskDisplayDate(x.task) + ' ' + (x.task.startTime || '');
   const partial = x => x.done.length > 0 || !!x.task.carriedFrom;
   const ordered = list.slice().sort((a, b) => partial(b) - partial(a) || startKey(a).localeCompare(startKey(b)));
-  ordered.reverse().forEach(x => { if (carryOverLeftoverTask(x.task.id, day)) n++; });
+  ordered.reverse().forEach(x => { if (carryOverLeftoverTask(x.task.id, day, auto)) n++; });
+  if (!n) return 0;
   autoFixPlanSequencing();
   syncPlanProgressAfterMove(before);
   mergeAdjacentPlanTasks();
-  persistState();
-  renderCurrentPlanView();
-  renderDailyTasks();
-  renderDashboardLeftoverAlert();
-  closeLeftoverPrompt();
-  alert('ยกงานค้าง ' + n + ' รายการไปวันที่ ' + fmtDateThai(parseISODate(day)) + ' แล้ว\nวางไว้ก่อนงานเดิมของวันนั้น');
   return n;
 }
 
@@ -15401,7 +15425,7 @@ function renderDashboardLeftoverAlert() {
   const el = document.getElementById('dash-leftover-alert');
   if (!el) return;
   // ด้วยเหตุผลเดียวกับ maybeOpenLeftoverPrompt — ยังไม่ได้ข้อมูลจริงจากคลาวด์ อย่าเพิ่งขึ้นแถบเตือน
-  const list = (canEditPlan() && cloudSyncReady) ? leftoverWorkTasksForTab() : [];
+  const list = (canEditPlan() && cloudSyncReady && !leftoverAutoPending()) ? leftoverWorkTasksForTab() : [];
   if (!list.length) { el.innerHTML = ''; el.style.display = 'none'; return; }
   const tabLabel = LEFTOVER_TAB_LABEL[leftoverTabKey()];
   el.style.display = '';
@@ -15499,7 +15523,7 @@ function maybeOpenLeftoverPrompt() {
   // เครื่องที่ไม่ได้เปิดมานาน ข้อมูลในเครื่องจะเก่ามาก (งานที่ทำจบไปนานแล้วยังค้างอยู่ในสำเนานั้น)
   // ถ้าเตือนตรงนี้จะเด้งรายการเก่าเป็นสิบๆ ใบ แล้วถ้ากด "ยกทั้งหมดไปวันถัดไป" จะสร้างงานซ้ำขึ้นมาจริงๆ
   // (เจอจริง 31 ต.ค.: เด้ง 65 รายการของเดือน ส.ค. ทั้งที่ข้อมูลจริงบนคลาวด์ไม่มีงานค้างเลย)
-  if (!cloudSyncReady) return;
+  if (!cloudSyncReady || leftoverAutoPending()) return;
   const today = dailyTodayIso();
   // เด้งวันละครั้งต่อแท็บ (แต่ละแท็บมีงานค้างของตัวเอง)
   const seenKey = today + '|' + leftoverTabKey();
@@ -15514,16 +15538,67 @@ function maybeOpenLeftoverPrompt() {
 }
 
 function refreshLeftoverWatch() {
+  leftoverAutoCarryKick();
   renderDashboardLeftoverAlert();
   maybeOpenLeftoverPrompt();
 }
+
+// ─── ยกงานค้างจากวันก่อนมาวันนี้อัตโนมัติ เริ่ม 08:00 (ผู้ใช้ขอ 28 พ.ย. 69) ─────────────────
+// ไม่ต้องรอหัวหน้า/แอดมินกดยกเอง — ทำบนเครื่องไหนก็ได้ที่เปิดแอป (กติกาเดียวกับวางแผนใบเลื่อย/Roll SQ อัตโนมัติ)
+// ใช้ตัวยกเดิม (carryOverLeftoverTask): ยกเฉพาะชิ้นที่เหลือ ชิ้นที่เสร็จอยู่กับวันเดิม · วางต้นกะแรก (กะเช้า 08:00)
+// แทรกไว้ก่อนงานเดิมของวันนั้น · วันนี้เป็นวันหยุดยกไปวันทำงานถัดไป
+// ตรวจตอนได้ข้อมูลจากคลาวด์ครบ และทุก 5 นาที (เปิดหน้าค้างข้ามวัน) · หลายเครื่องเปิดพร้อมกัน หน่วงแบบสุ่ม 0–5 วินาที
+// รอบทำซ้ำหลังชนกับเครื่องอื่นคิดใหม่บนข้อมูลล่าสุด เจอว่ายกไปแล้วก็จบเงียบๆ
+let leftoverAutoTimer = null;
+function leftoverAutoPending() { return !!leftoverAutoTimer; }
+function leftoverAutoCarryKick(delayMs) {
+  if (typeof cloudSyncReady === 'undefined' || !cloudSyncReady || EMBED_VIEW) return;
+  if (leftoverAutoTimer || !leftoverWorkTasks().length) return;
+  const wait = delayMs != null ? delayMs : Math.floor(Math.random() * 5000);
+  leftoverAutoTimer = setTimeout(() => { leftoverAutoTimer = null; leftoverAutoCarryNow(); }, wait);
+}
+function leftoverAutoCarryNow() {
+  if (!cloudSyncReady || !leftoverWorkTasks().length) return;
+  // เครื่องนี้มีของที่ผู้ใช้กดค้างรอเขียน/กำลังแก้ชนอยู่ — ไม่แย่งช่องทำซ้ำของผู้ใช้ รอแล้วค่อยลองใหม่
+  if (cloudWriteInFlight || cloudWritePending || cloudReapply) { leftoverAutoCarryKick(3000); return; }
+  withCloudRetry(() => {
+    const list = leftoverWorkTasks();
+    if (!list.length) return 'noop';
+    const day = nextWorkingDayForCarry();
+    const pieces = list.reduce((sum, x) => sum + x.remaining.length, 0);
+    const n = carryLeftoverList(list, day, true);
+    if (!n) return 'noop';
+    persistState();
+    if (currentPage === 'plan') renderCurrentPlanView();
+    renderDailyTasks();
+    renderDashboardLeftoverAlert();
+    closeLeftoverPrompt();
+    closeDailyLeftoverPrompt();
+    showLeftoverAutoNotice(n, pieces, day);
+  });
+}
+function showLeftoverAutoNotice(n, pieces, day) {
+  const old = document.getElementById('leftover-auto-notice');
+  if (old) old.remove();
+  const el = document.createElement('div');
+  el.id = 'leftover-auto-notice';
+  el.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:3000;max-width:min(360px,calc(100vw - 32px));background:var(--bg-surface);'
+    + 'border:2px solid var(--accent);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:12px 14px;font-size:13px;color:var(--text-1);';
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:8px;font-weight:800;color:var(--accent);margin-bottom:4px;">
+      ยกงานค้างมาวันนี้ให้อัตโนมัติ<button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="this.closest('#leftover-auto-notice').remove()">✕</button></div>
+    <div style="line-height:1.6;">งานค้างจากวันก่อน ${n} รายการ · ${pieces} ชิ้น → วันที่ ${escapeHtmlAttr(fmtDateThai(parseISODate(day)))} เริ่ม 08:00
+      <div class="muted" style="font-size:11.5px;">วางไว้ก่อนงานเดิมของวันนั้น · ชิ้นที่ทำเสร็จแล้วอยู่กับวันเดิม</div></div>`;
+  document.body.appendChild(el);
+  setTimeout(() => { if (el.isConnected) el.remove(); }, 20000);
+}
+setInterval(() => { try { if (cloudSyncReady) leftoverAutoCarryKick(); } catch (e) { /* ข้ามรอบนี้ */ } }, 5 * 60 * 1000);
 
 // ── งานค้างจากวันก่อน: แจ้งผู้ปฏิบัติงานที่หน้างานประจำวัน (ผู้ใช้ขอ 26 พ.ย. 69) ──
 // ช่างยกงานไปวันอื่นเองไม่ได้ (เฉพาะหัวหน้า/แอดมิน ผ่านหน้าต่างบน Dashboard) — ฝั่งช่างแค่ให้รู้ว่ามีชิ้นไหนค้าง
 // จะได้ทำต่อ/กดจบงานที่ลืมกด หรือแจ้งหัวหน้า · เด้งครั้งแรกที่เปิดหน้างานในการโหลดหน้านั้น และเด้งใหม่เมื่อมีงานค้างเพิ่ม
 // แถบสีแดงเหนือ KPI ยังอยู่ตลอดจนกว่างานค้างจะหมด
 function dailyLeftoverForWorker() {
-  if (!currentUser || !isDailyTechRole() || !cloudSyncReady) return [];
+  if (!currentUser || !isDailyTechRole() || !cloudSyncReady || leftoverAutoPending()) return [];
   const sec = activeWorkTypeTab();
   return leftoverWorkTasks().filter(x => planTaskSectionKey(x.task) === sec);
 }
