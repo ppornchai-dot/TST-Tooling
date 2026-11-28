@@ -2556,7 +2556,7 @@ const PAGE_META = {
 // จึงเจอบ่อยว่าแก้ขึ้นเว็บแล้วแต่เครื่องที่ใช้งานยังเห็นของเก่า แล้วแยกไม่ออกว่า
 // "แก้ไม่ขึ้น" หรือ "ยังไม่ได้ของใหม่" — เลขนี้บอกได้ทันทีว่ากำลังใช้ไฟล์รุ่นไหน
 // ต้องแก้ค่านี้ทุกครั้งที่ขึ้นเวอร์ชันใหม่
-const APP_BUILD = '2026-11-28.2';
+const APP_BUILD = '2026-11-28.3';
 function renderAppBuildStamp() {
   const el = document.getElementById('app-build-stamp');
   if (el) el.textContent = APP_BUILD;
@@ -10241,18 +10241,88 @@ function planTaskPieceBreakdown(t) {
 // บรรทัด "ทำจริง N นาที" ใต้เวลามาตรฐานในตารางรายชิ้น — คิดจากเวลาเริ่ม–จบที่กดไว้จริง
 // ต้องมีทั้งเวลาเริ่มและเวลาจบจริงถึงจะคิดได้ (กดเริ่มแล้วยังไม่จบ = ยังไม่รู้ว่าใช้เวลาเท่าไร)
 // std = เวลามาตรฐานทั้งชิ้น เอาไว้บอกว่าเกิน/ไม่เกินไปเท่าไร
-function actualPieceMinutesHtml(show, entry, std) {
+// ─── นาทีทำงานจริง: พัก/เริ่มเองอัตโนมัติตามเวลาทำงาน (ผู้ใช้ขอ 28 พ.ย. 69) ─────────────────
+// ช่างไม่ได้กดพักงาน ระบบก็ไม่นับช่วงที่ไม่ใช่เวลาทำงาน — กติกาเดียวกับตัววางแผน (advancePlanCursor):
+//   พักเที่ยง 12:00–13:00 · เลิกงาน 17:00 ถึง 08:00 ของวันทำงานถัดไป (ไม่มี OT)
+//   มี OT = นับต่อถึงเวลาเลิกงานที่ตั้งไว้ของวันนั้น (หักพักก่อน OT 20 นาทีเหมือนตอนวางแผน)
+//   วันอาทิตย์/วันหยุดบริษัทไม่นับ · งานที่ทำได้ 2 กะ (CNC) นับกะดึก 20:00–05:00 ด้วย
+// คืน { worked: นาทีทำงาน, active: ตอนจบช่วงยังอยู่ในเวลาทำงานไหม, why: เหตุที่หยุดนับ }
+function planOtCapsForDay(dateIso, task) {
+  const caps = {};
+  ['morning', 'night'].forEach(k => {
+    const v = otMinutesFromDayEnd(planDayEndFor(dateIso, task.workType, k), task.workType, k);
+    // ไม่ได้ตั้งเวลาเลิกงานของวันนั้น — วันของงานใช้ OT ที่วางไว้กับงาน · วันอื่นถือว่าไม่มี OT
+    caps[k] = v != null ? v : (dateIso === task.date ? Math.max(0, ((task.otCapMinutesByShift || {})[k]) || 0) : 0);
+  });
+  return caps;
+}
+function planWorkMinutesBetween(task, startTs, endTs) {
+  const wall = Math.max(0, (endTs - startTs) / 60000);
+  if (!task || !isFinite(startTs) || !isFinite(endTs) || endTs <= startTs) return { worked: 0, active: true, why: '' };
+  const st = new Date(startTs);
+  const startDate = toISODate(st);
+  const startMin = st.getHours() * 60 + st.getMinutes();
+  const owningOf = abs => { const di = Math.floor(abs / 1440); return addDaysIso(startDate, di - ((abs - di * 1440) < 8 * 60 ? 1 : 0)); };
+  const capMemo = {};
+  const capsAt = abs => { const d = owningOf(abs); return capMemo[d] || (capMemo[d] = planOtCapsForDay(d, task)); };
+  const state = initPlanCursorState(startDate, planMinToHHMM(startMin), planTaskSchedShift(task), capsAt(startMin));
+  if (!state) return { worked: Math.floor(wall), active: true, why: '' };
+  const endAbs = startMin + (endTs - parseISODate(startDate).getTime() - startMin * 60000) / 60000;
+  let worked = 0, lastType = null, guard = 0;
+  // เวลาเริ่มตกในช่วงพัก — ตัวเริ่มต้นเลื่อนไปท้ายพักให้แล้ว
+  if (state.cursor > startMin) lastType = 'lunch';
+  while (state.cursor < endAbs && guard++ < 20000) {
+    state.otCaps = capsAt(state.cursor);
+    advancePlanCursor(state, 1).forEach(c => {
+      const a = Math.max(c.start, startMin), b = Math.min(c.end, endAbs);
+      if (b > a && (c.type === 'normal' || c.type === 'ot')) worked += b - a;
+      if (c.start <= endAbs) lastType = c.type;
+    });
+  }
+  const active = state.cursor >= endAbs && (lastType === 'normal' || lastType === 'ot');
+  const why = active ? '' : lastType === 'lunch' ? 'พักเที่ยง' : lastType === 'otbreak' ? 'พักก่อน OT'
+    : (lastType && lastType !== 'shiftgap') ? 'พัก' : 'นอกเวลางาน';
+  return { worked: Math.floor(worked + 1e-6), active, why };
+}
+// เวลาเริ่มของชิ้น (ms) — ใช้เวลาที่บันทึกไว้จริงถ้ามี ไม่งั้นประกอบจาก ชม.:นาที + วันของงาน
+function pieceStartMs(task, entry) {
+  if (entry && isFinite(Number(entry.startAtMs)) && Number(entry.startAtMs) > 0) return Number(entry.startAtMs);
+  return entry ? pieceStartTimestamp(task, entry.startTime) : null;
+}
+// นาทีที่ลงมือจริงของชิ้นที่จบแล้ว = นาทีทำงานระหว่างเริ่ม–จบ (หักพัก/นอกเวลางานเอง) − นาทีที่กดพักงาน
+function pieceWorkedMinutes(task, entry) {
+  if (!task || !entry || !entry.startTime || !entry.endTime) return null;
+  const gross = actualMinutesBetween(entry.startTime, entry.endTime);
+  const a = pieceStartMs(task, entry);
+  if (a == null) return gross == null ? null : Math.max(0, gross - (parseFloat(entry.pausedMin) || 0));
+  const b = (isFinite(Number(entry.doneAtMs)) && Number(entry.doneAtMs) > a) ? Number(entry.doneAtMs)
+    : (gross == null ? null : a + gross * 60000);
+  if (b == null) return null;
+  const w = planWorkMinutesBetween(task, a, b).worked;
+  return Math.max(0, w - Math.max(0, parseFloat(entry.pausedMin) || 0));
+}
+// นาทีทำงานในช่วงที่กดพักงาน (pausedAt → ตอนนี้) — หักเฉพาะส่วนที่เป็นเวลาทำงาน
+// ช่วงพักเที่ยง/นอกเวลางานที่อยู่ในช่วงกดพัก ระบบไม่นับอยู่แล้ว ไม่งั้นจะหักซ้ำสองรอบ
+function pauseWorkMinutes(task, pausedAt, resumedAt, resumedMs) {
+  const gap = pauseGapMinutes(pausedAt, resumedAt);
+  if (!task || !gap) return gap;
+  return planWorkMinutesBetween(task, resumedMs - gap * 60000, resumedMs).worked;
+}
+
+function actualPieceMinutesHtml(show, entry, std, task) {
   if (!show || !entry || !entry.startTime || !entry.endTime) return '';
   const gross = actualMinutesBetween(entry.startTime, entry.endTime);
   if (gross == null) return '';
   // หักช่วงที่กดพักงานออก — เวลาที่ใช้จริงคือเวลาที่ลงมือจริง ไม่รวมตอนที่พัก
   const paused = Math.max(0, Math.min(parseFloat(entry.pausedMin) || 0, gross));
-  const mins = gross - paused;
+  const wm = task ? pieceWorkedMinutes(task, entry) : null;
+  const mins = wm != null ? wm : gross - paused;
   const stdNum = parseFloat(std);
   const diff = isFinite(stdNum) ? Math.round(mins - stdNum) : null;
   const over = diff != null && diff > 0;
   const tip = 'เวลาที่ใช้จริง ' + entry.startTime + ' – ' + entry.endTime
     + (paused > 0 ? ' (หักพักงาน ' + paused.toLocaleString() + ' นาที)' : '')
+    + (wm != null ? ' · ไม่นับพักเที่ยง/นอกเวลางาน/วันหยุด' : '')
     + ' = ' + mins.toLocaleString() + ' นาที'
     + (diff == null ? '' : (diff === 0 ? ' (เท่ามาตรฐานพอดี)'
       : (over ? ' (เกินมาตรฐาน ' + diff.toLocaleString() + ' นาที)'
@@ -10292,15 +10362,15 @@ const DAILY_RUN_MIN_MAX = 24 * 60;
 
 function runningPieceMinutesHtml(show, entry, std, task) {
   if (!show || !entry || entry.status !== 'in_progress' || !entry.startTime) return '';
-  const at = pieceStartTimestamp(task, entry.startTime);
+  const at = pieceStartMs(task, entry);
   if (at == null) return '';
-  const mins = Math.floor((Date.now() - at) / 60000);
-  if (mins < 0 || mins > DAILY_RUN_MIN_MAX) return '';
+  const mins = task ? planWorkMinutesBetween(task, at, Date.now()).worked : Math.floor((Date.now() - at) / 60000);
+  if (Date.now() < at - 60000 || mins > DAILY_RUN_MIN_MAX) return '';
   const stdNum = parseFloat(std);
   // นาทีที่พักไปแล้วรวมทั้งหมด — ตัวนับต้องหักออก ไม่งั้นช่วงที่พักจะถูกนับเป็นเวลาทำงาน
   const paused = Math.max(0, parseFloat(entry.pausedMin) || 0);
   // เนื้อความ/สีเติมโดย refreshDailyRunMinutes() แล้วอัปเดตซ้ำทุก 15 วินาที
-  return `<div class="daily-run-min" data-at="${at}" data-start="${escapeHtmlAttr(entry.startTime)}"
+  return `<div class="daily-run-min" data-at="${at}" data-tid="${escapeHtmlAttr(task ? task.id : '')}" data-start="${escapeHtmlAttr(entry.startTime)}"
     data-std="${isFinite(stdNum) ? escapeHtmlAttr(String(stdNum)) : ''}" data-paused="${paused}"
     style="font-size:11px;font-weight:700;"></div>`;
 }
@@ -10317,20 +10387,26 @@ function refreshDailyRunMinutes() {
   nodes.forEach(el => {
     const at = Number(el.dataset.at);
     const paused = Math.max(0, parseFloat(el.dataset.paused) || 0);
-    const mins = isFinite(at) ? Math.max(0, Math.floor((Date.now() - at) / 60000) - paused) : null;
-    // ลืมกดจบงานข้ามวัน — ปล่อยว่างไว้ ดีกว่าโชว์ตัวเลขที่อ่านแล้วเข้าใจผิด
+    // นับเฉพาะเวลาทำงาน — พักเที่ยง/หลังเลิกงาน/วันหยุด หยุดนับเองแล้วนับต่อเองตอนเข้างาน (ผู้ใช้ขอ 28 พ.ย. 69)
+    const task = el.dataset.tid ? planTasks.find(x => x.id === el.dataset.tid) : null;
+    const wk = isFinite(at) && task ? planWorkMinutesBetween(task, at, Date.now()) : null;
+    const mins = !isFinite(at) ? null
+      : Math.max(0, (wk ? wk.worked : Math.floor((Date.now() - at) / 60000)) - paused);
+    // ลืมกดจบงานนานมาก — ปล่อยว่างไว้ ดีกว่าโชว์ตัวเลขที่อ่านแล้วเข้าใจผิด
     if (mins == null || mins < 0 || mins > DAILY_RUN_MIN_MAX) { el.textContent = ''; el.title = ''; return; }
     const std = parseFloat(el.dataset.std);
     const over = isFinite(std) && mins > std;
-    el.style.color = over ? 'var(--amber)' : 'var(--accent)';
-    el.textContent = 'กำลังทำ ' + mins.toLocaleString() + ' นาที';
+    const idle = wk && !wk.active;
+    el.style.color = idle ? 'var(--text-3)' : over ? 'var(--amber)' : 'var(--accent)';
+    el.textContent = 'กำลังทำ ' + mins.toLocaleString() + ' นาที' + (idle ? ' · หยุดนับ (' + wk.why + ')' : '');
     el.title = 'เริ่มงาน ' + el.dataset.start + ' — ผ่านไปแล้ว ' + mins.toLocaleString() + ' นาที'
       + (mins >= 60 ? ' (' + formatMinutesAsHm(mins).replace('≈ ', '') + ')' : '')
       + (isFinite(std)
         ? (over ? ' · เกินมาตรฐาน ' + Math.round(mins - std).toLocaleString() + ' นาที'
                 : ' · เหลืออีก ' + Math.round(std - mins).toLocaleString() + ' นาที จากมาตรฐาน ' + std.toLocaleString() + ' นาที')
         : '')
-      + ' · นับจากเวลาที่กดเริ่มงาน'
+      + ' · นับจากเวลาที่กดเริ่มงาน เฉพาะเวลาทำงาน (ไม่นับพักเที่ยง/นอกเวลางาน/วันหยุด)'
+      + (idle ? ' · ตอนนี้' + wk.why + ' ระบบหยุดนับให้เอง จะนับต่อเมื่อถึงเวลาทำงาน' : '')
       + (paused > 0 ? ' หักช่วงที่พักงานออกแล้ว ' + paused.toLocaleString() + ' นาที' : ' (ยังไม่เคยพักงาน)');
   });
 }
@@ -10522,7 +10598,7 @@ function renderPlanDayTaskDetailRow(t, colspan, interactive, lockReason, flat) {
           // เวลาที่ใช้จริงของชิ้นนั้น (จากเวลาเริ่ม–จบที่กดไว้จริง) — วางไว้แถวที่โชว์เวลาจบจริง
           // เทียบกับเวลามาตรฐานทั้งชิ้น (fullMinutes) ไม่ใช่เฉพาะส่วนที่ตัดมาแสดงในแถวนี้
           // เกินมาตรฐาน = สีเหลือง · ไม่เกิน = สีเขียว จะได้เห็นทันทีว่าชิ้นไหนใช้เวลาเกิน
-          actualPieceMinutesHtml(isLastRow && !isBreak, pieceEntry, p.fullMinutes != null ? p.fullMinutes : s.minutes)}${
+          actualPieceMinutesHtml(isLastRow && !isBreak, pieceEntry, p.fullMinutes != null ? p.fullMinutes : s.minutes, t.__origin || t)}${
           // ชิ้นที่กำลังทำอยู่ — เดินนาทีให้เห็นว่าทำมากี่นาทีแล้ว เทียบกับเวลามาตรฐานทั้งชิ้น
           // วางไว้แถวแรกของชิ้น (แถวเดียวกับปุ่มและเวลาเริ่มจริง) ไม่ใช่แถวสุดท้ายที่ไว้โชว์เวลาที่ใช้จริงตอนจบ
           runningPieceMinutesHtml(interactive && isFirstRow && !isBreak, pieceEntry,
@@ -23011,10 +23087,11 @@ function getDailyPieceEntry(taskId, rollIdx) {
 function startDailyPiece(taskId, rollIdx, workerId) {
   if (!canActOnDailyItem(workerId)) return;
   const at = nowHHMM();
+  const atMs = Date.now();
   withCloudRetry(() => {
     // ชิ้นที่ถูกตัดข้ามกะ ถือเป็นงานชิ้นเดียว — กดที่แถวไหนก็มีผลกับทุกส่วน
-    setPieceStatusForChain(taskId, rollIdx, { status: 'in_progress', startTime: at,
-      endTime: null, pauseReason: null, pausedAt: null });
+    setPieceStatusForChain(taskId, rollIdx, { status: 'in_progress', startTime: at, startAtMs: atMs,
+      endTime: null, doneAtMs: null, pauseReason: null, pausedAt: null });
     persistState();
     renderDailyTasks();
   });
@@ -23793,6 +23870,7 @@ async function finishDailyPiece(taskId, rollIdx, workerId, fromTaskRow) {
   }
   // จับเวลาครั้งเดียวนอก withCloudRetry — ถ้าเขียนชนแล้วต้องทำซ้ำ ต้องได้เวลาเดิม ไม่ใช่เวลาที่ทำซ้ำ
   const endAt = nowHHMM();
+  const endMs = Date.now();
   // ต้องอยู่ใน withCloudRetry เหมือนตอนกดเริ่มงาน (startDailyPiece)
   // ไม่งั้นถ้ามีเครื่องอื่นเขียนแทรกเข้ามาก่อน การเขียนนี้จะถูกปฏิเสธ ระบบดึงข้อมูลใหม่มาทับ
   // แล้วสถานะที่เพิ่งกดหายไปเงียบๆ — อาการที่เห็นคือกดเริ่มแล้วจบงาน สักพักเด้งกลับเป็น "เริ่มงาน" ใหม่
@@ -23805,15 +23883,15 @@ async function finishDailyPiece(taskId, rollIdx, workerId, fromTaskRow) {
     // กดจบทั้งที่ยังพักงานค้างอยู่ — ปิดช่วงพักนั้นด้วย ไม่งั้นเวลาที่พักจะถูกนับเป็นเวลาทำงาน
     const cur = getDailyPieceEntry(taskId, rollIdx) || {};
     const pausedMin = (parseFloat(cur.pausedMin) || 0)
-      + (cur.status === 'paused' ? pauseGapMinutes(cur.pausedAt, endAt) : 0);
+      + (cur.status === 'paused' ? pauseWorkMinutes(t2, cur.pausedAt, endAt, endMs) : 0);
     // ชิ้นที่ถูกตัดข้ามกะ = งานชิ้นเดียว กดจบที่แถวไหนก็จบทุกส่วน
     const rowStart = fromTaskRow && !cur.startTime ? (getDailyActualTimes(taskId).startTime || null) : null;
     const rowStartBy = rowStart && !cur.startBy ? (getDailyActualTimes(taskId).startBy || null) : null;
     setPieceStatusForChain(taskId, rollIdx, {
       ...(needsMeasuredSize
-        ? { status: 'done', endTime: endAt, pausedAt: null, pausedMin, measuredSize: size,
+        ? { status: 'done', endTime: endAt, doneAtMs: endMs, pausedAt: null, pausedMin, measuredSize: size,
             registryDiameter: pieceCurrentOdOf(roll2) || null, odStandard: pieceStdOdOf(roll2) || null }
-        : { status: 'done', endTime: endAt, pausedAt: null, pausedMin }),
+        : { status: 'done', endTime: endAt, doneAtMs: endMs, pausedAt: null, pausedMin }),
       ...(rowStart ? { startTime: rowStart } : {}),
       ...(rowStartBy ? { startBy: rowStartBy } : {}),
     });
@@ -23927,11 +24005,13 @@ function resumeDailyPiece(taskId, rollIdx, workerId) {
   if (!canActOnDailyItem(workerId)) return;
   // จับเวลาครั้งเดียวนอก withCloudRetry — ถ้าเขียนชนแล้วต้องทำซ้ำ ต้องได้เวลาเดิม
   const resumedAt = nowHHMM();
+  const resumedMs = Date.now();
   withCloudRetry(() => {
     const cur = getDailyPieceEntry(taskId, rollIdx) || {};
     // สะสมนาทีที่พักไว้ เพื่อหักออกจากเวลาที่นับให้ทั้งตอนกำลังทำและตอนสรุปเวลาที่ใช้จริง
     // อ่าน pausedMin ใหม่ทุกครั้งที่ทำซ้ำ (ข้อมูลถูกแทนทั้งชุดตอนดึงของใหม่มา) จะได้ไม่บวกซ้ำ
-    const add = pauseGapMinutes(cur.pausedAt, resumedAt);
+    // หักเฉพาะส่วนที่เป็นเวลาทำงาน — ช่วงพักเที่ยง/นอกเวลางานระบบไม่นับอยู่แล้ว
+    const add = pauseWorkMinutes(planTasks.find(x => x.id === taskId), cur.pausedAt, resumedAt, resumedMs);
     const pausedMin = (parseFloat(cur.pausedMin) || 0) + add;
     setPieceStatusForChain(taskId, rollIdx,
       { status: 'in_progress', pauseReason: null, pausedAt: null, pausedMin });
@@ -24586,6 +24666,8 @@ function collectHistoryRecords() {
           minutes: (outcome.key === 'moved' || !minutes) ? null : minutes,
           startTime: entry.startTime || null,
           endTime: entry.endTime || null,
+          // นาทีที่ลงมือจริง — ไม่นับพักเที่ยง/นอกเวลางาน/วันหยุด และหักที่กดพักงาน (เกณฑ์เดียวกับหน้างานประจำวัน)
+          workMin: entry.status === 'done' ? pieceWorkedMinutes(t, entry) : null,
           result: meta.label, resultChip: meta.chip, resultNote: outcome.note || '',
           // กะยึดเวลาที่กดเริ่มจริง ถ้าไม่มีเวลาเริ่มจึงถอยไปใช้กะของงานตามแผน
           shiftKey: sk,
@@ -24750,7 +24832,7 @@ function openHistoryCalDetail(iso, typeKey, setName, colorKey, grinder) {
   const dot = plainRollSet && colorKey ? inUseColorDot(setName, colorKey) : null;
   // งานขัด Roll ไม่ได้บันทึกขนาด OD (ไม่ได้แต่งเนื้อ Roll) — ตัดคอลัมน์ทิ้งไปเลย ไม่ต้องโชว์ขีดเปล่าทั้งแถว
   const showOd = workTypeMeasuresOd(typeKey);
-  const actualOf = r => actualMinutesBetween(r.startTime, r.endTime);
+  const actualOf = r => r.workMin != null ? r.workMin : actualMinutesBetween(r.startTime, r.endTime);
   const sumActual = list.reduce((s, r) => s + (actualOf(r) || 0), 0);
   const sumPlan = list.reduce((s, r) => s + (r.minutes || 0), 0);
   const doneCount = list.filter(r => r.result === 'สำเร็จ').length;
